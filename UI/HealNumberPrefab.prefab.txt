@@ -1,0 +1,19 @@
+HealNumberPrefab
+- Root (RectTransform, CanvasGroup)
+  - Text (TextMeshProUGUI)
+    - Font: Arial or preferred game font
+    - Font Size: 36
+    - Font Style: Bold
+    - Color: #00FF00 (Green)
+    - Outline: Enabled, Color: #003300, Width: 0.2
+    - Alignment: Center
+    - Raycast Target: Disabled
+
+Notes for Unity Editor:
+1. Create a new UI Text - TextMeshPro object
+2. Add CanvasGroup component to the root
+3. Configure the TextMeshProUGUI component with above settings
+4. Set RectTransform anchor to middle-center
+5. Set width/height to 200x50
+6. Add a '+' prefix to the text display in the DamageNumberManager script
+7. Save as prefab in Prefabs/UI/ folder 

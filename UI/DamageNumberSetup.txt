@@ -1,0 +1,44 @@
+Damage Number System Setup Guide (No Prefabs)
+=========================================
+
+Follow these steps to set up the damage number popup system:
+
+1. Setup EffectsCanvas:
+   - In the scene hierarchy, locate the "EffectsCanvas" GameObject
+   - Make sure the Canvas has:
+     - Render Mode: Screen Space - Camera
+     - Render Camera: Main Camera
+     - Sort Order: Above all other UI canvases (higher than your other UI canvases)
+   - Add the DamageNumberManager script to the EffectsCanvas
+
+2. Configure DamageNumberManager in Inspector:
+   - Text Styling:
+     - Default Font Size: 36 (for regular damage and healing)
+     - Critical Font Size: 42 (for critical hits)
+     - Font Asset: Assign your preferred TextMeshPro font (optional, will use default if empty)
+     - Damage Color: Red (#FF0000)
+     - Critical Color: Orange (#FF8000)
+     - Heal Color: Green (#00FF00)
+   - Animation Settings:
+     - Display Duration: 1.5 seconds
+     - Popup Delay Between Numbers: 0.1 seconds
+     - Initial/Pop/Final Scale: Adjust to control the "pop" effect
+     - Move Distance: How far the numbers float upward
+     - Fade Out Duration: How long it takes to fade out at the end
+
+3. Update Project:
+   - Make sure you have DOTween in your project (used for animations)
+   - If not, import it from the Asset Store or add via package manager
+
+4. Testing:
+   - Run the game and test combat
+   - When damage or healing occurs, you should see animated numbers appear
+   - Critical hits will show larger orange numbers with exclamation points
+   - Healing will show green numbers with + prefixes
+
+No prefabs are needed - the system creates all UI elements dynamically at runtime!
+
+The damage popup will display different styles based on:
+- Regular damage: Red numbers
+- Critical damage: Orange, larger numbers with exclamation mark
+- Healing: Green numbers with + prefix 
