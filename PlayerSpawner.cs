@@ -18,7 +18,14 @@ public class PlayerSpawner : NetworkBehaviour
         Debug.Log($"PlayerSpawner.OnStartServer called, ID: {NetworkObject.ObjectId}");
         
         // Subscribe to connection events
-        NetworkManager.ServerManager.OnRemoteConnectionState += ServerManager_OnRemoteConnectionState;
+        if (NetworkManager.ServerManager != null)
+        {
+            NetworkManager.ServerManager.OnRemoteConnectionState += ServerManager_OnRemoteConnectionState;
+        }
+        else
+        {
+            Debug.LogError("PlayerSpawner: ServerManager is null, cannot subscribe to connection events.");
+        }
         
         // Ensure we have a player prefab
         if (playerPrefab == null)
@@ -58,7 +65,22 @@ public class PlayerSpawner : NetworkBehaviour
         Debug.Log("PlayerSpawner.OnStopServer called");
         
         // Unsubscribe from connection events
-        NetworkManager.ServerManager.OnRemoteConnectionState -= ServerManager_OnRemoteConnectionState;
+        if (NetworkManager.ServerManager != null)
+        {
+            NetworkManager.ServerManager.OnRemoteConnectionState -= ServerManager_OnRemoteConnectionState;
+        }
+
+        // Unsubscribe from any lingering scene load events (safety measure)
+        if (NetworkManager != null && NetworkManager.ServerManager != null)
+        {
+            foreach (NetworkConnection conn in NetworkManager.ServerManager.Clients.Values)
+            {
+                if (conn != null && conn.IsValid) // Check if connection is valid
+                {
+                    conn.OnLoadedStartScenes -= Connection_OnLoadedStartScenes;
+                }
+            }
+        }
     }
 
     private void ServerManager_OnRemoteConnectionState(NetworkConnection conn, RemoteConnectionStateArgs args)
@@ -67,16 +89,41 @@ public class PlayerSpawner : NetworkBehaviour
         
         if (args.ConnectionState == RemoteConnectionState.Started)
         {
-            Debug.Log($"Player connected! Spawning player for connection {conn.ClientId}");
-            
-            if (!initialized)
-            {
-                Debug.Log("PlayerSpawner not initialized yet, attempting to find player prefab before spawning");
-                FindPlayerPrefab();
-                initialized = true;
-            }
-            
+            // Wait for the client to load the start scenes before spawning player
+            Debug.Log($"Client connected: {conn.ClientId}. Waiting for scene load confirmation...");
+            conn.OnLoadedStartScenes += Connection_OnLoadedStartScenes;
+        }
+        else if (args.ConnectionState == RemoteConnectionState.Stopped)
+        {
+            // Client disconnected, ensure we unsubscribe from the scene load event
+            Debug.Log($"Client disconnected: {conn.ClientId}. Unsubscribing from scene load event.");
+            conn.OnLoadedStartScenes -= Connection_OnLoadedStartScenes;
+            // Player object cleanup is usually handled automatically by FishNet when owner disconnects
+        }
+    }
+
+    private void Connection_OnLoadedStartScenes(NetworkConnection conn, bool asServer)
+    {
+        Debug.Log($"Connection {conn.ClientId} has loaded start scenes. Spawning player...");
+
+        // Unsubscribe immediately to prevent multiple spawns for the same connection
+        conn.OnLoadedStartScenes -= Connection_OnLoadedStartScenes;
+
+        // Ensure initialization check before spawning
+        if (!initialized)
+        {
+            Debug.LogWarning("PlayerSpawner not fully initialized, attempting late initialization before spawning.");
+            FindPlayerPrefab(); // Attempt to find prefab if initialization was delayed
+            if (playerPrefab != null) initialized = true;
+        }
+
+        if (initialized && playerPrefab != null)
+        {
             SpawnPlayer(conn);
+        }
+        else
+        {
+            Debug.LogError($"Failed to spawn player for connection {conn.ClientId}: Spawner not initialized or prefab missing.");
         }
     }
 
@@ -84,16 +131,11 @@ public class PlayerSpawner : NetworkBehaviour
     {
         Debug.Log($"Attempting to spawn player for connection {conn.ClientId}");
         
-        // Try to set player prefab if null
+        // Double check prefab just before instantiation
         if (playerPrefab == null)
         {
-            FindPlayerPrefab();
-            
-            if (playerPrefab == null)
-            {
-                Debug.LogError("Cannot spawn player: Failed to find player prefab through all fallback methods.");
-                return;
-            }
+            Debug.LogError($"Cannot spawn player for connection {conn.ClientId}: playerPrefab is null!");
+            return;
         }
         
         try
@@ -120,7 +162,7 @@ public class PlayerSpawner : NetworkBehaviour
                 }
                 catch (System.Exception ex)
                 {
-                    Debug.LogError($"Error spawning player NetworkObject: {ex.Message}\n{ex.StackTrace}");
+                    Debug.LogError($"Error spawning player NetworkObject for Conn {conn.ClientId}: {ex.Message}\n{ex.StackTrace}");
                     Destroy(playerObj);
                 }
             }
@@ -132,7 +174,7 @@ public class PlayerSpawner : NetworkBehaviour
         }
         catch (System.Exception ex)
         {
-            Debug.LogError($"Error spawning player: {ex.Message}\n{ex.StackTrace}");
+            Debug.LogError($"Error during player instantiation or spawning for Conn {conn.ClientId}: {ex.Message}\n{ex.StackTrace}");
         }
     }
 
@@ -157,28 +199,7 @@ public class PlayerSpawner : NetworkBehaviour
             return;
         }
         
-        // Try to find any existing NetworkObject prefabs in the scene
-        // or registered prefabs that might be player prefabs
-        if (InstanceFinder.NetworkManager != null)
-        {
-            Debug.Log("Checking for Player component in existing NetworkObjects");
-            // Look for existing PlayerObjects in the scene as a last resort
-            Player[] players = FindObjectsByType<Player>(FindObjectsSortMode.None);
-            if (players != null && players.Length > 0)
-            {
-                foreach (Player player in players)
-                {
-                    if (player != null && player.gameObject != null && player.GetComponent<NetworkObject>() != null)
-                    {
-                        playerPrefab = player.gameObject;
-                        Debug.Log($"Found player prefab from scene: {playerPrefab.name}");
-                        return;
-                    }
-                }
-            }
-        }
-        
-        Debug.LogWarning("Could not find a player prefab in any location");
+        Debug.LogWarning("Could not find a player prefab via GameManager or Resources.");
     }
 
     // Get the player prefab reference from GameManager if possible
@@ -191,13 +212,17 @@ public class PlayerSpawner : NetworkBehaviour
         }
         else
         {
-            Debug.LogWarning("PlayerSpawner does not have player prefab assigned. Will attempt to retrieve from GameManager.");
+            Debug.LogWarning("PlayerSpawner does not have player prefab assigned. Will attempt to retrieve from GameManager or fallbacks.");
             FindPlayerPrefab();
             
             if (playerPrefab != null)
             {
                 Debug.Log($"PlayerSpawner found and assigned player prefab: {playerPrefab.name}");
                 initialized = true;
+            }
+             else
+            {
+                 Debug.LogError("PlayerSpawner could not find a Player Prefab during Start/Initialization!");
             }
         }
     }

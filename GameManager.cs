@@ -264,37 +264,9 @@ public class GameManager : MonoBehaviour
             Debug.Log("Server started");
             isHost = true;
             SetGameState(GameState.Lobby);
-            
-            // Spawn the PlayerSpawner
+
+            // Spawn the PlayerSpawner from prefab
             SpawnPlayerSpawner();
-            
-            // Add host as a player using the local client's connection
-            try 
-            {
-                if (InstanceFinder.ClientManager != null && InstanceFinder.ClientManager.Started)
-                {
-                    NetworkConnection localConnection = InstanceFinder.ClientManager.Connection;
-                    if (localConnection.IsValid) // Check if local client connection is valid
-                    {
-                        string hostName = PlayerPrefs.GetString("PlayerName", "HostPlayer"); // Get saved name or default
-                        AddPlayer(localConnection, hostName); 
-                    }
-                    else
-                    {
-                        Debug.LogError("Server started, but local client connection is not valid!");
-                    }
-                }
-                else
-                {
-                    Debug.LogWarning("Unable to add host player - ClientManager is null or not initialized yet");
-                    // Add a delayed attempt to add the host player when client connects
-                    StartCoroutine(TryAddHostPlayerDelayed());
-                }
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"Error while adding host player: {ex.Message}");
-            }
         }
         else if (args.ConnectionState == LocalConnectionState.Stopped)
         {
@@ -304,29 +276,6 @@ public class GameManager : MonoBehaviour
             nextPlayerId = 0;
             SetGameState(GameState.StartScreen); // Go back to start screen when server stops
         }
-    }
-
-    private System.Collections.IEnumerator TryAddHostPlayerDelayed()
-    {
-        // Try several times with a delay
-        for (int i = 0; i < 5; i++)
-        {
-            yield return new WaitForSeconds(0.5f);
-            
-            if (InstanceFinder.ClientManager != null && InstanceFinder.ClientManager.Started)
-            {
-                NetworkConnection localConnection = InstanceFinder.ClientManager.Connection;
-                if (localConnection.IsValid)
-                {
-                    string hostName = PlayerPrefs.GetString("PlayerName", "HostPlayer");
-                    AddPlayer(localConnection, hostName);
-                    Debug.Log("Successfully added host player after delay");
-                    yield break;
-                }
-            }
-        }
-        
-        Debug.LogWarning("Failed to add host player after multiple attempts");
     }
 
     private void ServerManager_OnRemoteConnectionState(NetworkConnection conn, RemoteConnectionStateArgs args)
@@ -755,72 +704,62 @@ public class GameManager : MonoBehaviour
 
     private void SpawnPlayerSpawner()
     {
-        Debug.Log("GameManager.SpawnPlayerSpawner called");
-        
+        Debug.Log("GameManager.SpawnPlayerSpawner looking for scene instance...");
+
         try
         {
-            // Find existing PlayerSpawner to avoid duplication
-            PlayerSpawner existingSpawner = FindFirstObjectByType<PlayerSpawner>();
-            if (existingSpawner != null)
-            {
-                Debug.Log($"Found existing PlayerSpawner: {existingSpawner.name}");
-                
-                // Check if already spawned on network
-                if (existingSpawner.IsSpawned)
-                {
-                    Debug.Log("PlayerSpawner already exists and is spawned on the network");
-                    return;
-                }
-                else if (existingSpawner.NetworkObject != null)
-                {
-                    Debug.Log("Found existing PlayerSpawner with NetworkObject, spawning it");
-                    if (InstanceFinder.NetworkManager != null && InstanceFinder.NetworkManager.IsServerStarted)
-                    {
-                        try
-                        {
-                            InstanceFinder.ServerManager.Spawn(existingSpawner.gameObject);
-                            Debug.Log($"Successfully spawned existing PlayerSpawner on network");
-                            return;
-                        }
-                        catch (System.Exception ex)
-                        {
-                            Debug.LogError($"Error spawning existing PlayerSpawner: {ex.Message}");
-                            // Continue to create a new one
-                        }
-                    }
-                }
-            }
-            
             // Verify server is running before spawning
             if (InstanceFinder.NetworkManager == null || !InstanceFinder.NetworkManager.IsServerStarted)
             {
                 Debug.LogWarning("Cannot spawn PlayerSpawner: NetworkManager not available or server not started");
                 return;
             }
-            
-            // Create a dynamic PlayerSpawner
-            Debug.Log("Creating a dynamic PlayerSpawner");
-            GameObject spawnerObj = new GameObject("PlayerSpawner");
-            PlayerSpawner spawner = spawnerObj.AddComponent<PlayerSpawner>();
-            NetworkObject nob = spawnerObj.AddComponent<NetworkObject>();
-            
-            // Set the player prefab
-            if (playerPrefab != null)
+
+            // Find the PlayerSpawner instance in the scene
+            PlayerSpawner spawnerInstance = FindFirstObjectByType<PlayerSpawner>();
+
+            if (spawnerInstance == null)
             {
-                Debug.Log($"Setting playerPrefab on dynamic PlayerSpawner to: {playerPrefab.name}");
-                spawner.playerPrefab = playerPrefab;
+                Debug.LogError("PlayerSpawner instance not found in the scene! Make sure it exists and is active.");
+                return;
+            }
+
+            NetworkObject nob = spawnerInstance.GetComponent<NetworkObject>();
+            if (nob == null)
+            {
+                Debug.LogError("PlayerSpawner instance in scene is missing its NetworkObject component!");
+                return;
             }
             
-            // Spawn it on the network
+            Debug.Log($"Found PlayerSpawner instance: {spawnerInstance.gameObject.name}");
+
+            // Assign the player prefab reference from GameManager
+            if (playerPrefab != null)
+            {
+                 Debug.Log($"Setting playerPrefab on PlayerSpawner instance to: {playerPrefab.name}");
+                 spawnerInstance.playerPrefab = playerPrefab;
+             }
+             else
+             {
+                  Debug.LogWarning("Player Prefab is not assigned in GameManager Inspector! PlayerSpawner might not spawn players correctly.");
+             }
+
+            // Check if it's already spawned
+            if (nob.IsSpawned)
+            {
+                Debug.Log("PlayerSpawner instance is already spawned on the network.");
+                return;
+            }
+
+            // Spawn the scene instance on the network
             try
             {
-                InstanceFinder.ServerManager.Spawn(spawnerObj);
-                Debug.Log("Dynamic PlayerSpawner created and spawned on the network");
+                InstanceFinder.ServerManager.Spawn(spawnerInstance.gameObject);
+                Debug.Log("Scene PlayerSpawner instance spawned on the network");
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"Error spawning dynamic PlayerSpawner: {ex.Message}\n{ex.StackTrace}");
-                Destroy(spawnerObj);
+                Debug.LogError($"Error spawning scene PlayerSpawner instance: {ex.Message}\n{ex.StackTrace}");
             }
         }
         catch (System.Exception ex)
