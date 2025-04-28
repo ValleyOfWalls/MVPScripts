@@ -46,7 +46,16 @@ public class PlayerManager
         NetworkPlayer player = GetLocalNetworkPlayer();
         if (player != null)
         {
-            player.ToggleReady();
+            // Get the attached LobbyPlayerInfo component instead
+            LobbyPlayerInfo lobbyInfo = player.GetComponent<LobbyPlayerInfo>();
+            if (lobbyInfo != null)
+            {
+                lobbyInfo.ToggleReady();
+            }
+            else
+            {
+                Debug.LogWarning("LobbyPlayerInfo component not found on NetworkPlayer");
+            }
         }
     }
     
@@ -57,7 +66,9 @@ public class PlayerManager
             
         foreach (NetworkPlayer player in NetworkPlayer.Players)
         {
-            if (!player.GetIsReady())
+            // Get the LobbyPlayerInfo to check ready status
+            LobbyPlayerInfo lobbyInfo = player.GetComponent<LobbyPlayerInfo>();
+            if (lobbyInfo == null || !lobbyInfo.IsReady)
                 return false;
         }
         
@@ -72,7 +83,7 @@ public class PlayerManager
         return statusEffectManager;
     }
     
-    // Methods to be added later for gameplay functionality
+    // Combat-specific methods remain unchanged
     public void ResetHealth()
     {
         // Reset player health
@@ -122,4 +133,4 @@ public class PlayerManager
     {
         return startingEnergy;
     }
-} 
+}

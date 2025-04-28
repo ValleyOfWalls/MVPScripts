@@ -13,13 +13,6 @@ public class Player : NetworkBehaviour
         private set => _playerName.Value = value;
     }
     
-    private readonly SyncVar<bool> _isReady = new SyncVar<bool>(false);
-    public bool IsReady
-    {
-        get => _isReady.Value;
-        private set => _isReady.Value = value;
-    }
-    
     private readonly SyncVar<int> _playerId = new SyncVar<int>(0);
     public int PlayerId
     {
@@ -39,7 +32,6 @@ public class Player : NetworkBehaviour
         
         // Set up callbacks for SyncVars
         _playerName.OnChange += OnPlayerNameChanged;
-        _isReady.OnChange += OnReadyStatusChanged;
         
         if (IsOwner)
         {
@@ -68,23 +60,24 @@ public class Player : NetworkBehaviour
     {
         base.OnStopClient();
         
-        // Unsubscribe from callbacks - Removed unnecessary null checks
+        // Unsubscribe from callbacks
         _playerName.OnChange -= OnPlayerNameChanged;
-        _isReady.OnChange -= OnReadyStatusChanged;
     }
     
     public override void OnStartServer()
     {
         base.OnStartServer();
         
-        // Assign sequential player ID
-        PlayerId = GameManager.Instance != null ? GameManager.Instance.GetNextPlayerId() : 0;
-    }
-    
-    [ServerRpc]
-    public void CmdSetReady(bool isReady)
-    {
-        IsReady = isReady;
+        // Assign sequential player ID - now using LobbyManager
+        if (LobbyManager.Instance != null)
+        {
+            PlayerId = LobbyManager.Instance.GetNextPlayerId();
+        }
+        else
+        {
+            PlayerId = 0;
+            Debug.LogWarning("LobbyManager not found when assigning player ID");
+        }
     }
     
     [ServerRpc]
@@ -101,21 +94,6 @@ public class Player : NetworkBehaviour
     {
         // You can add additional logic here when the player name changes
         Debug.Log($"Player name changed: {oldValue} -> {newValue}");
-    }
-    
-    private void OnReadyStatusChanged(bool oldValue, bool newValue, bool asServer)
-    {
-        // You can add additional logic here when the ready status changes
-        Debug.Log($"Player {PlayerName} ready status changed: {oldValue} -> {newValue}");
-        
-        if (asServer)
-        {
-            // Notify game manager
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.SetPlayerReady(Owner, newValue);
-            }
-        }
     }
     
     [ServerRpc(RequireOwnership = false)]
@@ -135,4 +113,4 @@ public class Player : NetworkBehaviour
         if (conn != null && conn.IsActive)
             conn.Disconnect(true);
     }
-} 
+}

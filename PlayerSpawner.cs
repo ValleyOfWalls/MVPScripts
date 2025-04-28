@@ -144,6 +144,13 @@ public class PlayerSpawner : NetworkBehaviour
             GameObject playerObj = Instantiate(playerPrefab);
             NetworkObject nob = playerObj.GetComponent<NetworkObject>();
             
+            // Make sure the LobbyPlayerInfo component is attached to the player
+            if (playerObj.GetComponent<LobbyPlayerInfo>() == null)
+            {
+                playerObj.AddComponent<LobbyPlayerInfo>();
+                Debug.Log("Added LobbyPlayerInfo component to player prefab instance.");
+            }
+            
             if (nob != null)
             {
                 // Check if connection is still valid before spawning
@@ -220,10 +227,10 @@ public class PlayerSpawner : NetworkBehaviour
                 Debug.Log($"PlayerSpawner found and assigned player prefab: {playerPrefab.name}");
                 initialized = true;
             }
-             else
+            else
             {
-                 Debug.LogError("PlayerSpawner could not find a Player Prefab during Start/Initialization!");
+                Debug.LogError("PlayerSpawner could not find a Player Prefab during Start/Initialization!");
             }
         }
     }
-} 
+}
