@@ -10,8 +10,7 @@ public class PlayerManager
     private int startingEnergy;
     
     private NetworkPlayer localNetworkPlayer;
-    private StatusEffectManager statusEffectManager;
-    
+   
     public PlayerManager(GameManager gameManager)
     {
         this.gameManager = gameManager;
@@ -75,13 +74,7 @@ public class PlayerManager
         return true;
     }
     
-    public StatusEffectManager GetStatusEffectManager()
-    {
-        if (statusEffectManager == null)
-            statusEffectManager = new StatusEffectManager();
-            
-        return statusEffectManager;
-    }
+  
     
     // Combat-specific methods remain unchanged
     public void ResetHealth()

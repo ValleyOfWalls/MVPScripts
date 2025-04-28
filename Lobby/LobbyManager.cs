@@ -5,8 +5,9 @@ using System.Collections.Generic;
 using FishNet.Transporting;
 using Steamworks;
 using FishNet;
+using FishNet.Object;
 
-public class LobbyManager : MonoBehaviour
+public class LobbyManager : NetworkBehaviour
 {
     public static LobbyManager Instance { get; private set; }
 
@@ -87,12 +88,15 @@ public class LobbyManager : MonoBehaviour
         {
             players.Add(newPlayer);
             // Update player list for all clients
-            RpcUpdatePlayerList(players);
+            ObserversUpdatePlayerList(players);
         }
         else
         {
             Debug.LogWarning($"Player {playerName} (ConnId: {conn.ClientId}) already exists in the list.");
         }
+        
+        // Update player list for all clients
+        ObserversUpdatePlayerList(players);
     }
     
     public void SetPlayerReady(NetworkConnection conn, bool isReady)
@@ -110,7 +114,7 @@ public class LobbyManager : MonoBehaviour
         }
         
         // Update player list for all clients
-        RpcUpdatePlayerList(players);
+        ObserversUpdatePlayerList(players);
         
         // Check if all players are ready
         CheckAllPlayersReady();
@@ -164,13 +168,14 @@ public class LobbyManager : MonoBehaviour
         {
             players.Remove(disconnectedPlayer);
             // Update player list for all clients
-            RpcUpdatePlayerList(players);
+            ObserversUpdatePlayerList(players);
             // Update controls in case the leaving player affected readiness
             CheckAllPlayersReady();
         }
     }
 
-    public void RpcUpdatePlayerList(List<PlayerInfo> updatedPlayers)
+    [ObserversRpc]
+    public void ObserversUpdatePlayerList(List<PlayerInfo> updatedPlayers)
     {
         // Update UI
         if (lobbyUIManager != null)
@@ -179,10 +184,11 @@ public class LobbyManager : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("LobbyUIManager is null in RpcUpdatePlayerList");
+            Debug.LogWarning("LobbyUIManager is null in ObserversUpdatePlayerList");
         }
     }
 
+    [ObserversRpc]
     public void RpcSetStartGameButtonActive(bool active)
     {
         if (lobbyUIManager != null)
@@ -196,6 +202,7 @@ public class LobbyManager : MonoBehaviour
         }
     }
 
+    [ObserversRpc]
     public void RpcStartGame()
     {
         Debug.Log("RpcStartGame received. Requesting state change to Combat.");
@@ -210,7 +217,7 @@ public class LobbyManager : MonoBehaviour
             // Send the current server-side list to all clients via RPC
             if (InstanceFinder.NetworkManager != null && InstanceFinder.NetworkManager.IsServerStarted)
             {
-                RpcUpdatePlayerList(players);
+                ObserversUpdatePlayerList(players);
             }
         }
         else Debug.LogWarning("LobbyUIManager null in UpdatePlayerList");

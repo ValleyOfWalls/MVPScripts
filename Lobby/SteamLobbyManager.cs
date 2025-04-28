@@ -8,6 +8,11 @@ public class SteamLobbyManager : MonoBehaviour
     private static SteamLobbyManager s_instance;
     public static SteamLobbyManager Instance { get { return s_instance; } }
 
+    // Constants for Lobby Filtering
+    private const string LOBBY_GAME_ID_KEY = "GameID";
+    private const string LOBBY_GAME_ID_VALUE = "3DMVP_LOBBY_V1"; // Unique ID for your game
+    private const string LOBBY_VERSION_KEY = "Version"; // Key for game version
+
     [SerializeField] private int maxPlayers = 8;
     
     // Delegates
@@ -73,7 +78,8 @@ public class SteamLobbyManager : MonoBehaviour
             return;
         }
         
-        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, maxPlayers);
+        // SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, maxPlayers);
+        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, maxPlayers); // Use Public for easier testing
     }
     
     public void JoinLobby(CSteamID lobbyId)
@@ -111,6 +117,11 @@ public class SteamLobbyManager : MonoBehaviour
             OnLobbiesListed?.Invoke(new List<CSteamID>());
             return;
         }
+        
+        // Add filters before requesting the list
+        SteamMatchmaking.AddRequestLobbyListStringFilter(LOBBY_GAME_ID_KEY, LOBBY_GAME_ID_VALUE, ELobbyComparison.k_ELobbyComparisonEqual);
+        SteamMatchmaking.AddRequestLobbyListStringFilter(LOBBY_VERSION_KEY, Application.version, ELobbyComparison.k_ELobbyComparisonEqual);
+        // You can add other filters here if needed (e.g., distance, slots available)
         
         SteamMatchmaking.RequestLobbyList();
     }
@@ -188,9 +199,11 @@ public class SteamLobbyManager : MonoBehaviour
         m_currentLobbyId = new CSteamID(param.m_ulSteamIDLobby);
         m_isHost = true;
         
-        // Set lobby data
-        SteamMatchmaking.SetLobbyData(m_currentLobbyId, "name", "Game Lobby");
-        SteamMatchmaking.SetLobbyData(m_currentLobbyId, "game_version", Application.version);
+        // Set lobby data for filtering
+        SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_GAME_ID_KEY, LOBBY_GAME_ID_VALUE);
+        SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_VERSION_KEY, Application.version); 
+        // SteamMatchmaking.SetLobbyData(m_currentLobbyId, "name", "Game Lobby"); // Redundant if filtering by GameID
+        // SteamMatchmaking.SetLobbyData(m_currentLobbyId, "game_version", Application.version); // Replaced by constant
         
         OnLobbyCreated?.Invoke(true, m_currentLobbyId);
         
@@ -203,26 +216,42 @@ public class SteamLobbyManager : MonoBehaviour
     
     private void OnLobbyEnteredCallback(LobbyEnter_t param)
     {
+        CSteamID lobbyId = new CSteamID(param.m_ulSteamIDLobby);
+        Debug.Log($"OnLobbyEnteredCallback received for lobby {lobbyId}. Response code: {param.m_EChatRoomEnterResponse}");
+
         if (param.m_EChatRoomEnterResponse != (uint)EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess)
         {
-            Debug.LogError($"Failed to join lobby: {param.m_EChatRoomEnterResponse}");
+            Debug.LogError($"Failed to join lobby: {(EChatRoomEnterResponse)param.m_EChatRoomEnterResponse}");
             OnLobbyJoined?.Invoke(false, CSteamID.Nil);
             return;
         }
         
-        m_currentLobbyId = new CSteamID(param.m_ulSteamIDLobby);
-        m_isHost = SteamUser.GetSteamID() == SteamMatchmaking.GetLobbyOwner(m_currentLobbyId);
+        Debug.Log($"Successfully entered lobby {lobbyId}.");
+        m_currentLobbyId = lobbyId;
+        m_isHost = false; // Explicitly set as client because we joined an existing lobby
+        Debug.Log($"Is this client the host? {m_isHost} (Forced to false as we joined)");
         
         RefreshPlayerList();
         
         OnLobbyJoined?.Invoke(true, m_currentLobbyId);
         
         // If we're not the host, connect to the host's server
-        if (!m_isHost && GameManager.Instance != null)
+        if (!m_isHost)
         {
-            // The lobby owner is the server
-            string playerName = SteamFriends.GetPersonaName();
-            GameManager.Instance.JoinGame(playerName);
+            if (GameManager.Instance != null)
+            {
+                string playerName = SteamFriends.GetPersonaName();
+                Debug.Log($"GameManager instance found. Calling JoinGame({playerName}) for lobby {m_currentLobbyId}...");
+                GameManager.Instance.JoinGame(playerName);
+            }
+            else
+            {
+                 Debug.LogError("Cannot JoinGame: GameManager instance is null!");
+            }
+        }
+        else
+        {
+            Debug.Log("This client is the host, not calling JoinGame.");
         }
     }
     
@@ -234,11 +263,26 @@ public class SteamLobbyManager : MonoBehaviour
         {
             CSteamID lobbyId = SteamMatchmaking.GetLobbyByIndex(i);
             
+            // You might want to add more filtering here based on lobby data
+            // e.g., SteamMatchmaking.GetLobbyData(lobbyId, "game_version") == Application.version
+            
             // Add lobby to the list
             m_availableLobbies.Add(lobbyId);
         }
         
         OnLobbiesListed?.Invoke(m_availableLobbies);
+        
+        // If lobbies were found, join the first one. Otherwise, create a new one.
+        if (m_availableLobbies.Count > 0)
+        {
+            Debug.Log($"Found {m_availableLobbies.Count} lobbies. Joining the first one: {m_availableLobbies[0]}");
+            JoinLobby(m_availableLobbies[0]); 
+        }
+        else
+        {
+            Debug.Log("No lobbies found. Creating a new lobby.");
+            CreateLobby();
+        }
     }
     
     private void OnLobbyDataUpdatedCallback(LobbyDataUpdate_t param)

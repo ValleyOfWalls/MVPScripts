@@ -110,8 +110,8 @@ public class UIManager : MonoBehaviour
         // Use Steam Lobby Manager to Create/Join
         if (SteamLobbyManager.Instance != null)
         {
-            Debug.Log("Attempting to create Steam Lobby...");
-            SteamLobbyManager.Instance.CreateLobby();
+            Debug.Log("Attempting to find or create Steam Lobby...");
+            SteamLobbyManager.Instance.RequestLobbiesList();
         }
         else
         {
