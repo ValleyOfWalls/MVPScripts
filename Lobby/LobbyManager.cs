@@ -193,8 +193,8 @@ public class LobbyManager : NetworkBehaviour
     {
         if (lobbyUIManager != null)
         {
-            // Only the host should see the start game button
-            lobbyUIManager.SetStartGameButtonActive(active && isHost);
+            // Allow any player to see the button if active
+            lobbyUIManager.SetStartGameButtonActive(active);
         }
         else
         {
@@ -259,5 +259,25 @@ public void ServerSetPlayerReady(NetworkConnection conn, bool isReady)
         }
         
         return true;
+    }
+
+    // New ServerRpc for clients to request starting the game
+    [ServerRpc(RequireOwnership = false)] // Allow any client to call this
+    public void CmdRequestStartGame(NetworkConnection sender = null) // Use sender for potential validation
+    {
+        Debug.Log($"CmdRequestStartGame received from ClientId: {sender?.ClientId ?? -1}");
+        
+        // Only start if all players are ready
+        if (AreAllPlayersReady(true)) // Use serverOnly check
+        {
+            Debug.Log("Server starting game based on client request...");
+            // Call the existing ObserversRpc to notify all clients and change state
+            RpcStartGame();
+        }
+        else
+        {
+            Debug.LogWarning($"Client {sender?.ClientId ?? -1} requested start game, but not all players are ready.");
+            // Optionally send a TargetRpc back to the sender indicating failure
+        }
     }
 }

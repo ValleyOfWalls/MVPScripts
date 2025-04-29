@@ -108,9 +108,28 @@ public class NetworkPlayer : NetworkBehaviour
     [ServerRpc]
     public void CmdSetSteamInfo(string steamName, ulong steamId)
     {
-        _steamName.Value = steamName;
+        string finalName = steamName;
+        // Check if steamId is 0 (potential local test without Steam) or if name already exists
+        bool nameExists = false;
+        foreach (NetworkPlayer otherPlayer in Players)
+        {
+            // Check against other players, not itself
+            if (otherPlayer != this && otherPlayer.SteamName == steamName)
+            {
+                nameExists = true;
+                break;
+            }
+        }
+
+        if (steamId == 0 || nameExists)
+        {
+            finalName = $"{steamName} ({Owner.ClientId})";
+            Debug.Log($"Duplicate name or local test detected. Appending ClientId: {finalName}");
+        }
+
+        _steamName.Value = finalName;
         _steamId.Value = steamId;
-        Debug.Log($"Server received Steam info: Name={steamName}, ID={steamId}");
+        Debug.Log($"Server set Steam info: Name={_steamName.Value}, ID={_steamId.Value} for ClientId {Owner.ClientId}");
         
         // Update UI if needed
         if (LobbyManager.Instance != null) 

@@ -135,10 +135,14 @@ public class LobbyUIManager : NetworkBehaviour
 
     private void OnStartGameButtonClicked()
     {
+        // Instead of calling StartGame directly (server-only), call the new ServerRpc
         if (LobbyManager.Instance != null)
-            LobbyManager.Instance.StartGame();
+        {
+            Debug.Log("Start Game button clicked. Sending CmdRequestStartGame to server.");
+            LobbyManager.Instance.CmdRequestStartGame(); 
+        }
         else
-            Debug.LogError("LobbyManager instance is null when trying to start game.");
+            Debug.LogError("LobbyManager instance is null when trying to request game start.");
     }
 
     private void OnLeaveButtonClicked()

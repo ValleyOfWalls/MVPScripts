@@ -15,6 +15,7 @@ namespace Combat
         [SerializeField] private GameObject combatPlayerPrefab;
         [SerializeField] private GameObject petPrefab;
         [SerializeField] private GameObject playerHandPrefab;
+        [SerializeField] private GameObject combatRootPrefab;
         
         [Header("References")]
         [SerializeField] private Transform petSpawnPointsParent;
@@ -25,6 +26,7 @@ namespace Combat
         private readonly Dictionary<NetworkPlayer, CombatData> activeCombats = new Dictionary<NetworkPlayer, CombatData>();
         private readonly List<NetworkPlayer> playersInCombat = new List<NetworkPlayer>();
         private bool combatStarted = false;
+        private readonly Dictionary<NetworkPlayer, Transform> playerCombatRoots = new Dictionary<NetworkPlayer, Transform>(); // Added parent storage
         
         // Awake is called when the script instance is being loaded
         private void Awake()
@@ -70,17 +72,28 @@ namespace Combat
             // Set state
             combatStarted = true;
             playersInCombat.AddRange(players);
+            playerCombatRoots.Clear(); // Clear roots before combat
             
-            // --- Step 1: Create and Spawn all Pets --- 
+            // --- Step 1: Create Parents and Spawn all Pets --- 
             Dictionary<NetworkPlayer, Pet> allPlayerPets = new Dictionary<NetworkPlayer, Pet>();
             foreach (NetworkPlayer player in players)
             {
-                GameObject playerPetObj = Instantiate(petPrefab);
+                // Instantiate the CombatRootPrefab
+                GameObject playerRootObj = Instantiate(combatRootPrefab);
+                // Rename for clarity in hierarchy
+                playerRootObj.name = $"Player_{player.Owner.ClientId}_CombatRoot"; 
+                // NetworkObject is already on the prefab, just spawn it with ownership
+                Spawn(playerRootObj, player.Owner);
+                
+                playerCombatRoots[player] = playerRootObj.transform; // Store the parent transform
+                
+                // Instantiate pet under the player's root
+                GameObject playerPetObj = Instantiate(petPrefab, playerCombatRoots[player]);
                 Pet playerPet = playerPetObj.GetComponent<Pet>();
-                Spawn(playerPetObj, player.Owner); // Spawn with ownership
+                Spawn(playerPetObj, player.Owner); // Spawn pet with ownership
                 playerPet.Initialize(player);
                 allPlayerPets[player] = playerPet;
-                Debug.Log($"Created pet for {player.GetSteamName()}");
+                Debug.Log($"Created and spawned pet for {player.GetSteamName()} under spawned root {playerRootObj.name}"); // Updated log
             }
             
             // --- Step 2: Create Pet Matchups --- 
@@ -103,13 +116,16 @@ namespace Combat
                 Pet playerPet = allPlayerPets[player];
                 Pet opponentPet = allPlayerPets[opponentPetOwner];
                 
-                // Create combat player
-                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab);
+                // Retrieve the player's combat root
+                Transform playerRoot = playerCombatRoots[player];
+                
+                // Create combat player under the player's root
+                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab, playerRoot);
                 CombatPlayer combatPlayer = combatPlayerObj.GetComponent<CombatPlayer>();
                 Spawn(combatPlayerObj, player.Owner); // Assign ownership
                 
-                // Create player hand
-                GameObject playerHandObj = Instantiate(playerHandPrefab);
+                // Create player hand under the player's root
+                GameObject playerHandObj = Instantiate(playerHandPrefab, playerRoot);
                 PlayerHand playerHand = playerHandObj.GetComponent<PlayerHand>();
                 Spawn(playerHandObj, player.Owner); // Assign ownership
                 
