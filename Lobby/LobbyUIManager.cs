@@ -31,6 +31,7 @@ public class LobbyUIManager : MonoBehaviour
             return;
         }
         Instance = this;
+        DontDestroyOnLoad(gameObject);
 
         // Hide player entry template
         if (playerEntryTemplate != null)
