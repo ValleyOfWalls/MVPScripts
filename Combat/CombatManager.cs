@@ -7,6 +7,8 @@ using FishNet.Connection;
 using DG.Tweening;
 using System.Linq;
 using System.Reflection;
+using FishNet.Managing.Scened;
+using FishNet;
 
 namespace Combat
 {
@@ -142,53 +144,42 @@ namespace Combat
             combatStarted = true;
             
             // --- Step 1: Create Combat Roots for players with clear naming ---
+            Dictionary<NetworkPlayer, NetworkObject> playerRootObjects = new Dictionary<NetworkPlayer, NetworkObject>(); // Store NetworkObject
             foreach (NetworkPlayer player in players)
             {
-                // Create a combat root for this player with more descriptive naming
                 GameObject rootObj = Instantiate(combatRootPrefab);
-                string playerName = player.GetSteamName();
-                rootObj.name = $"Player_{playerName}_Root";
-                Spawn(rootObj);
-                
-                // Set as parent for this player's combat objects
-                playerCombatRoots[player] = rootObj.transform;
-                
-                Debug.Log($"[CombatManager] Created combat root for {playerName}");
+                // Don't rename on server yet, clients will do this
+                Spawn(rootObj); 
+                playerRootObjects[player] = rootObj.GetComponent<NetworkObject>(); // Store the NetworkObject
+                playerCombatRoots[player] = rootObj.transform; // Keep local transform reference if needed
+                Debug.Log($"[CombatManager] Spawned combat root for Player {player.Owner.ClientId}");
             }
             
-            // --- Step 2: Spawn player pets with clear naming ---
+            // --- Step 2: Spawn player pets ---
             Dictionary<NetworkPlayer, Pet> allPlayerPets = new Dictionary<NetworkPlayer, Pet>();
+            Dictionary<NetworkPlayer, NetworkObject> playerPetObjects = new Dictionary<NetworkPlayer, NetworkObject>(); // Store NetworkObject
             foreach (NetworkPlayer player in players)
             {
-                Transform rootTransform = playerCombatRoots[player];
-                string playerName = player.GetSteamName();
-                
-                // Create a Pet container under the player root
-                GameObject petContainer = new GameObject($"Pet_Container_{playerName}");
-                petContainer.transform.SetParent(rootTransform, false);
-                
-                GameObject petObj = Instantiate(petPrefab, petContainer.transform);
-                petObj.name = $"Pet_{playerName}";
-                
+                // Instantiate pet, don't parent or rename yet
+                GameObject petObj = Instantiate(petPrefab); 
                 Pet pet = petObj.GetComponent<Pet>();
+                
                 if (pet != null)
                 {
-                    // Spawn and initialize the pet
-                    Spawn(petObj);
-                    pet.Initialize(player);
+                    Spawn(petObj); // Spawn the pet
+                    pet.Initialize(player); // Initialize (this might need adjustment if init relies on hierarchy/name)
                     allPlayerPets[player] = pet;
-                    
-                    Debug.Log($"[CombatManager] Created pet for {playerName} under proper container");
+                    playerPetObjects[player] = petObj.GetComponent<NetworkObject>(); // Store the NetworkObject
+                    Debug.Log($"[CombatManager] Spawned pet for Player {player.Owner.ClientId}");
                 }
                 else
                 {
-                    Debug.LogError($"[CombatManager] Pet prefab missing Pet component for player {playerName}");
+                    Debug.LogError($"[CombatManager] Pet prefab missing Pet component for player {player.Owner.ClientId}");
                 }
             }
             
             // --- Step 2a: Assign pets to opponents --- 
             Dictionary<NetworkPlayer, NetworkPlayer> petAssignments = new Dictionary<NetworkPlayer, NetworkPlayer>();
-            // Make a copy of the player list and shuffle it to randomize pet assignments
             List<NetworkPlayer> shuffledPlayers = new List<NetworkPlayer>(players);
             ShuffleList(shuffledPlayers);
             
@@ -198,61 +189,47 @@ namespace Combat
                 NetworkPlayer player = shuffledPlayers[i];
                 NetworkPlayer opponentOwner = shuffledPlayers[(i + 1) % shuffledPlayers.Count];
                 petAssignments[player] = opponentOwner;
-                
                 Debug.Log($"  - {player.GetSteamName()} will fight against {opponentOwner.GetSteamName()}'s pet");
             }
             
-            // --- Step 3: Create CombatPlayers, PlayerHands, and link Pets with clear naming --- 
+            // --- Step 3: Create CombatPlayers and PlayerHands --- 
+            Dictionary<NetworkPlayer, NetworkObject> playerCombatPlayerObjects = new Dictionary<NetworkPlayer, NetworkObject>();
+            Dictionary<NetworkPlayer, NetworkObject> playerHandObjects = new Dictionary<NetworkPlayer, NetworkObject>();
+
             foreach (NetworkPlayer player in players)
             {
-                string playerName = player.GetSteamName();
                 NetworkPlayer opponentPetOwner = petAssignments[player];
-                
-                // Retrieve existing pets
                 Pet playerPet = allPlayerPets[player];
                 Pet opponentPet = allPlayerPets[opponentPetOwner];
                 
-                Debug.Log($"[CombatManager] Setting up combat for {playerName} - Pet: {(playerPet != null ? "Found" : "Missing")}, OpponentPet: {(opponentPet != null ? "Found" : "Missing")}");
-                
-                // Retrieve the player's combat root
-                Transform playerRoot = playerCombatRoots[player];
-                
-                // Create a CombatPlayer container under the player root
-                GameObject playerContainer = new GameObject($"Player_Container_{playerName}");
-                playerContainer.transform.SetParent(playerRoot, false);
-                
-                // Create combat player under the player container
-                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab, playerContainer.transform);
-                combatPlayerObj.name = $"CombatPlayer_{playerName}";
+                // --- Create Combat Player ---
+                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab);
                 CombatPlayer combatPlayer = combatPlayerObj.GetComponent<CombatPlayer>();
                 if (combatPlayer == null)
                 {
-                    Debug.LogError($"[CombatManager] CombatPlayer prefab missing CombatPlayer component for {playerName}");
-                    continue;
+                    Debug.LogError($"[CombatManager] CombatPlayer prefab missing CombatPlayer component for player {player.Owner.ClientId}");
+                    continue; 
                 }
-                
                 Spawn(combatPlayerObj, player.Owner); // Assign ownership
-                
-                // Create a Hand container under the player root
-                GameObject handContainer = new GameObject($"Hand_Container_{playerName}");
-                handContainer.transform.SetParent(playerRoot, false);
-                
-                // Create player hand under the hand container
-                GameObject playerHandObj = Instantiate(playerHandPrefab, handContainer.transform);
-                playerHandObj.name = $"PlayerHand_{playerName}";
+                playerCombatPlayerObjects[player] = combatPlayerObj.GetComponent<NetworkObject>();
+                Debug.Log($"[CombatManager] Spawned CombatPlayer for {player.GetSteamName()}");
+
+                // --- Create Player Hand ---
+                GameObject playerHandObj = Instantiate(playerHandPrefab);
                 PlayerHand playerHand = playerHandObj.GetComponent<PlayerHand>();
                 if (playerHand == null)
                 {
-                    Debug.LogError($"[CombatManager] PlayerHand prefab missing PlayerHand component for {playerName}");
+                    Debug.LogError($"[CombatManager] PlayerHand prefab missing PlayerHand component for player {player.Owner.ClientId}");
                     continue;
                 }
-                
                 Spawn(playerHandObj, player.Owner); // Assign ownership to match combatPlayer
+                playerHandObjects[player] = playerHandObj.GetComponent<NetworkObject>();
+                 Debug.Log($"[CombatManager] Spawned PlayerHand for {player.GetSteamName()}");
                 
-                // Initialize CombatPlayer with correct Pet references
-                combatPlayer.Initialize(player, playerPet, opponentPet, playerHand);
-                
-                // Initialize PlayerHand with the CombatPlayer reference
+                // --- Server-side Initialization (linking references) ---
+                // Initialize CombatPlayer with Pet references (server-side logic)
+                combatPlayer.Initialize(player, playerPet, opponentPet, playerHand); 
+                // Initialize PlayerHand (server-side logic)
                 playerHand.Initialize(player, combatPlayer);
                 
                 // Store combat data
@@ -264,14 +241,22 @@ namespace Combat
                     OpponentPlayer = opponentPetOwner,
                     PlayerHand = playerHand,
                     TurnCompleted = false
-                    // CombatComplete defaults to false
                 };
                 
-                Debug.Log($"[CombatManager] Combat setup complete for {playerName} with proper hierarchy organization");
+                Debug.Log($"[CombatManager] Server-side setup complete for {player.GetSteamName()}");
+
+                // --- Send RPC to setup hierarchy and names on clients ---
+                RpcSetupCombatHierarchy(
+                    player.GetSteamName(),
+                    playerRootObjects[player].ObjectId,
+                    playerPetObjects[player].ObjectId,
+                    playerCombatPlayerObjects[player].ObjectId,
+                    playerHandObjects[player].ObjectId
+                );
             }
             
-            // Position all objects on clients
-            PositionCombatObjects();
+            // Position all objects on clients (This might need adjustment or removal if hierarchy setup handles positions)
+            // RpcPositionCombatObjects(); // Let's comment this out for now and see if hierarchy setup is enough
             
             // Show the combat UI on all clients
             RpcShowCombatCanvas();
@@ -319,12 +304,13 @@ namespace Combat
         }
         
         // Position all combat objects correctly
-        [Server]
-        private void PositionCombatObjects()
-        {
-            // This would normally use spawn points but we'll just use RPC to position them
-            RpcPositionCombatObjects();
-        }
+        // Commented out as potentially redundant after hierarchy RPC
+        // [Server]
+        // private void PositionCombatObjects()
+        // {
+        //     // This would normally use spawn points but we'll just use RPC to position them
+        //     RpcPositionCombatObjects();
+        // }
         
         // Called when a player ends their turn
         [Server]
@@ -956,6 +942,71 @@ namespace Combat
             
             // Destroy all combat-related objects
             // This happens automatically when we return to the lobby scene
+        }
+        
+        [ObserversRpc]
+        private void RpcSetupCombatHierarchy(string playerName, int rootObjId, int petObjId, int combatPlayerObjId, int handObjId)
+        {
+            Debug.Log($"[Client] Received RpcSetupCombatHierarchy for player {playerName}");
+
+            // Find the NetworkObjects using their IDs - CORRECTED API Call
+            NetworkObject rootNob = null;
+            NetworkObject petNob = null;
+            NetworkObject combatPlayerNob = null;
+            NetworkObject handNob = null;
+
+            if (InstanceFinder.ClientManager != null && InstanceFinder.ClientManager.Objects != null)
+            {
+                InstanceFinder.ClientManager.Objects.Spawned.TryGetValue(rootObjId, out rootNob);
+                InstanceFinder.ClientManager.Objects.Spawned.TryGetValue(petObjId, out petNob);
+                InstanceFinder.ClientManager.Objects.Spawned.TryGetValue(combatPlayerObjId, out combatPlayerNob);
+                InstanceFinder.ClientManager.Objects.Spawned.TryGetValue(handObjId, out handNob);
+            }
+            else
+            {
+                 Debug.LogError($"[Client] ClientManager or ClientManager.Objects is null. Cannot find NetworkObjects for player {playerName}.");
+                 return;
+            }
+
+            if (rootNob == null || petNob == null || combatPlayerNob == null || handNob == null)
+            {
+                 Debug.LogError($"[Client] Failed to find one or more NetworkObjects for player {playerName}. " +
+                               $"Root: {(rootNob != null)}, Pet: {(petNob != null)}, Player: {(combatPlayerNob != null)}, Hand: {(handNob != null)}");
+                 return;
+            }
+
+            // Rename the objects
+            rootNob.gameObject.name = $"Player_{playerName}_Root";
+            petNob.gameObject.name = $"Pet_{playerName}";
+            combatPlayerNob.gameObject.name = $"CombatPlayer_{playerName}";
+            handNob.gameObject.name = $"PlayerHand_{playerName}";
+            
+            Debug.Log($"[Client] Renamed objects for player {playerName}");
+
+            // Set the hierarchy (parenting)
+            // Note: Creating intermediate containers like before might be desirable for organization.
+            // Let's keep it simple first and parent directly to the root.
+            Transform rootTransform = rootNob.transform;
+            petNob.transform.SetParent(rootTransform, false); // Use worldPositionStays = false
+            combatPlayerNob.transform.SetParent(rootTransform, false);
+            handNob.transform.SetParent(rootTransform, false);
+
+            Debug.Log($"[Client] Set hierarchy for player {playerName}: Parented Pet, CombatPlayer, Hand under Root");
+
+            // Optional: Add containers dynamically if needed for scene organization
+            // GameObject petContainer = new GameObject($"Pet_Container_{playerName}");
+            // petContainer.transform.SetParent(rootTransform, false);
+            // petNob.transform.SetParent(petContainer.transform, false);
+            // Similar for Player and Hand containers...
+            
+            // Refresh CombatPlayer references if necessary (might be needed if Initialize relies on hierarchy/names)
+            CombatPlayer combatPlayer = combatPlayerNob.GetComponent<CombatPlayer>();
+            if (combatPlayer != null)
+            {
+                // Example: Re-run parts of initialization or specific update methods if they failed before hierarchy was set
+                // combatPlayer.FindCombatReferences(); // If such a method exists and is safe to call again
+                 Debug.Log($"[Client] Found CombatPlayer component for {playerName}. Consider if re-initialization/reference update is needed.");
+            }
         }
         
         #endregion
