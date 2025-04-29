@@ -4,8 +4,10 @@ using TMPro;
 using System.Collections.Generic;
 using DG.Tweening;
 using FishNet;
+using FishNet.Object;
 
-public class LobbyUIManager : MonoBehaviour
+[RequireComponent(typeof(NetworkObject))]
+public class LobbyUIManager : NetworkBehaviour
 {
     public static LobbyUIManager Instance { get; private set; }
 
@@ -31,7 +33,6 @@ public class LobbyUIManager : MonoBehaviour
             return;
         }
         Instance = this;
-        DontDestroyOnLoad(gameObject);
 
         // Hide player entry template
         if (playerEntryTemplate != null)
