@@ -250,15 +250,42 @@ public void ServerSetPlayerReady(NetworkConnection conn, bool isReady)
         }
         
         if (players.Count == 0)
-            return false;
+        {
+            return false; // Cannot start with 0 players
+        }
             
         foreach (PlayerInfo player in players)
         {
             if (!player.IsReady)
+            {
                 return false;
+            }
         }
         
         return true;
+    }
+
+    // Called by CombatManager when combat finishes
+    [Server]
+    public void OnCombatEnded()
+    {
+        Debug.Log("[LobbyManager] Combat has ended. Returning to Lobby state.");
+        
+        // Reset player ready states
+        foreach (PlayerInfo player in players)
+        {
+            player.IsReady = false;
+        }
+        
+        // Update player list on all clients
+        ObserversUpdatePlayerList(players);
+        
+        // Deactivate start game button
+        RpcSetStartGameButtonActive(false);
+        
+        // Set game state back to Lobby
+        if (gameManager != null)
+            gameManager.SetGameState(GameState.Lobby);
     }
 
     // New ServerRpc for clients to request starting the game

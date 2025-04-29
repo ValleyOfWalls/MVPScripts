@@ -89,3 +89,39 @@ Scene: New Scene
       - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
       - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
       - Field: NetworkObserver (NetworkObserver) = null
+- GameObject: CombatSceneCanvas (ID: -86852)
+  * Component: UnityEngine.UI.CanvasScaler
+  * Component: UnityEngine.UI.GraphicRaycaster
+    - GameObject: PlayerArea (ID: -86864)
+        - GameObject: PlayerPetContainer (ID: -86868)
+        - GameObject: PlayerHandArea (ID: -86872)
+        - GameObject: EnergyDisplay (ID: -86876)
+          * Component: TMPro.TextMeshProUGUI
+    - GameObject: OpponentArea (ID: -86884)
+        - GameObject: OpponentPetContainer (ID: -86888)
+        - GameObject: OpponentStatusArea (ID: -86892)
+          * Component: TMPro.TextMeshProUGUI
+    - GameObject: CombatControlsArea (ID: -86900)
+        - GameObject: TurnIndicator (ID: -86904)
+          * Component: TMPro.TextMeshProUGUI
+        - GameObject: EndTurnButton (ID: -86912)
+          * Component: UnityEngine.UI.Image
+          * Component: UnityEngine.UI.Button
+            - GameObject: Text (ID: -86922)
+              * Component: TMPro.TextMeshProUGUI
+    - GameObject: CombatResultPanel (ID: -86930)
+      * Component: UnityEngine.UI.Image
+        - GameObject: ResultText (ID: -86938)
+          * Component: TMPro.TextMeshProUGUI
+        - GameObject: ContinueButton (ID: -86946)
+          * Component: UnityEngine.UI.Image
+          * Component: UnityEngine.UI.Button
+            - GameObject: Text (ID: -86956)
+              * Component: TMPro.TextMeshProUGUI
+- GameObject: CombatSystem (ID: -87004)
+  * Component: Combat.CombatManager
+  * Component: FishNet.Object.NetworkObject
+      - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
+      - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
+      - Field: NetworkObserver (NetworkObserver) = null
+  * Component: Combat.CombatInitializer
