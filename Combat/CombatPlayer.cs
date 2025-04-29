@@ -198,50 +198,58 @@ namespace Combat
         private void FindCombatReferences()
         {
             Debug.Log("FindCombatReferences - Attempting to find combat elements after delay");
-            
+
+            // --- Player Hand Assignment --- 
             // Look for PlayerHand first - PRIORITIZE OWNERSHIP
-            if (playerHand == null || !playerHand.IsOwner)
+            if (playerHand == null || !playerHand.IsOwner) // Note: For non-owner, IsOwner check might be false positive if called before ownership is fully set.
             {
-                // First priority: Find any PlayerHand that we own
+                // First priority: Find any PlayerHand that we own (for the owner instance)
+                // Or find the hand matching our NetworkPlayer's owner (potentially more robust)
                 PlayerHand[] allHands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
-                playerHand = null; // Reset to ensure we don't use a non-owned reference
-                
+                PlayerHand foundHand = null; 
+
                 foreach (PlayerHand hand in allHands)
                 {
-                    if (hand.IsOwner)
+                    // Try to find the hand matching this specific CombatPlayer's controlling connection
+                    if (hand.Owner != null && this.Owner != null && hand.Owner.ClientId == this.Owner.ClientId)
                     {
-                        playerHand = hand;
-                        Debug.Log($"Found owned PlayerHand: {hand.name}");
+                        foundHand = hand;
+                        Debug.Log($"FindCombatReferences: Found hand '{hand.name}' matching Owner ClientId {this.Owner.ClientId}");
                         break;
                     }
                 }
-                
-                // If we still don't have a reference, look for a PlayerHand with matching owner state
-                if (playerHand == null && allHands.Length > 0)
+
+                // If direct owner match failed, try IsOwner (less reliable during startup)
+                if (foundHand == null)
                 {
-                    foreach (PlayerHand hand in allHands)
-                    {
-                        if (hand.IsOwner == IsOwner)
-                        {
-                            playerHand = hand;
-                            Debug.Log($"Found PlayerHand with matching owner state: {hand.name}, IsOwner: {hand.IsOwner}");
-                            break;
-                        }
-                    }
-                    
-                    // As last resort, pick any PlayerHand
-                    if (playerHand == null && allHands.Length > 0)
-                    {
-                        playerHand = allHands[0];
-                        Debug.LogWarning($"Selected first available PlayerHand as fallback: {playerHand.name}, IsOwner: {playerHand.IsOwner}");
-                    }
+                     foreach (PlayerHand hand in allHands)
+                     {
+                          if (hand.IsOwner == this.IsOwner) // Fallback check
+                          {
+                              foundHand = hand;
+                              Debug.Log($"FindCombatReferences: Found hand '{hand.name}' via IsOwner fallback ({this.IsOwner})");
+                              break;
+                          }
+                     }
+                }
+                
+                // Assign if found
+                if (foundHand != null) 
+                {
+                     playerHand = foundHand;
+                }
+                else
+                {
+                     // If we still don't have a reference after checks, log a warning
+                     Debug.LogWarning($"FindCombatReferences: Could not find matching PlayerHand for CombatPlayer {this.name} (Owner ClientId: {this.Owner?.ClientId ?? -1}, IsOwner: {this.IsOwner}). Current playerHand is {(playerHand == null ? "null" : playerHand.name)}.");
                 }
             }
             else
             {
-                Debug.Log($"Using existing PlayerHand reference: {playerHand.name}, IsOwner: {playerHand.IsOwner}");
+                Debug.Log($"FindCombatReferences: Using existing PlayerHand reference: {playerHand.name}, IsOwner: {playerHand.IsOwner}");
             }
-            
+            // --- End Player Hand Assignment ---
+
             // Get all players for reference
             NetworkPlayer[] allPlayers = FindObjectsOfType<NetworkPlayer>();
             

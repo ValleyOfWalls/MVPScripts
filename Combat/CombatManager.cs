@@ -748,6 +748,9 @@ namespace Combat
                 Debug.Log($"[CombatManager] Using first available hand as local player's: {localPlayerHand.name}");
             }
             
+            // Declare opponentPlayerHand here to ensure it's in scope for later use
+            PlayerHand opponentPlayerHand = null; 
+
             // Now assign these objects to the CombatPlayer components
             CombatPlayer localCombatPlayer = null;
             CombatPlayer opponentCombatPlayer = null;
@@ -805,16 +808,56 @@ namespace Combat
             
             if (localCombatPlayer != null && opponentCombatPlayer != null)
             {
-                Debug.Log("[CombatManager] Setting private fields via reflection...");
+                Debug.Log("[CombatManager] Setting private fields via reflection for RpcPositionCombatObjects...");
                 // Set up the local combat player with references
                 SetPrivateFieldValue(localCombatPlayer, "playerPet", localPlayerPet);
                 SetPrivateFieldValue(localCombatPlayer, "opponentPet", opponentPet);
                 SetPrivateFieldValue(localCombatPlayer, "playerHand", localPlayerHand);
                 
+                // Find the OPPONENT player hand - Note: opponentPlayerHand is already declared in the outer scope
+                // PlayerHand opponentPlayerHand = null; // REMOVE this redeclaration
+                if (opponentCombatPlayer != null && opponentCombatPlayer.Owner != null)
+                {
+                    foreach (PlayerHand hand in playerHands)
+                    {
+                        // Find the hand owned by the opponent combat player's connection
+                        if (hand.Owner != null && hand.Owner.ClientId == opponentCombatPlayer.Owner.ClientId && hand != localPlayerHand)
+                        {
+                            opponentPlayerHand = hand;
+                            Debug.Log($"[CombatManager] Found opponent player's hand: {hand.name} (Owner: {hand.Owner.ClientId})");
+                            break;
+                        }
+                    }
+                }
+                else if (opponentPet != null && opponentPet.PlayerOwner != null && opponentPet.PlayerOwner.Owner != null)
+                {
+                     // Fallback: Find hand based on opponent pet's owner if combat player owner wasn't ready
+                    foreach (PlayerHand hand in playerHands)
+                    {
+                        if (hand.Owner != null && hand.Owner.ClientId == opponentPet.PlayerOwner.Owner.ClientId && hand != localPlayerHand)
+                        {
+                             opponentPlayerHand = hand;
+                             Debug.Log($"[CombatManager] Found opponent player's hand via Pet Owner: {hand.name} (Owner: {hand.Owner.ClientId})");
+                             break;
+                        }
+                    }
+                }
+
+                if (opponentPlayerHand == null)
+                {
+                    Debug.LogWarning("[CombatManager] Could not reliably find opponent's PlayerHand.");
+                    // Attempting less reliable fallback: find the hand that isn't the local one
+                    if (playerHands.Length == 2)
+                    {
+                        opponentPlayerHand = (playerHands[0] == localPlayerHand) ? playerHands[1] : playerHands[0];
+                        Debug.LogWarning($"[CombatManager] Fallback: Assigned opponent hand to {opponentPlayerHand?.name}");
+                    }
+                }
+                
                 // Set up the opponent combat player with references (reversed pets)
                 SetPrivateFieldValue(opponentCombatPlayer, "playerPet", opponentPet);
                 SetPrivateFieldValue(opponentCombatPlayer, "opponentPet", localPlayerPet);
-                SetPrivateFieldValue(opponentCombatPlayer, "playerHand", null); // Opponent doesn't need a hand on this client
+                SetPrivateFieldValue(opponentCombatPlayer, "playerHand", opponentPlayerHand); // Assign found opponent hand
                 
                 // Log the final assignments for debugging
                 Debug.Log($"[CombatManager] Final assignments for local combat player ({localCombatPlayer.name}):" +
@@ -825,7 +868,7 @@ namespace Combat
                 Debug.Log($"[CombatManager] Final assignments for opponent combat player ({opponentCombatPlayer.name}):" +
                          $"\n  - Player Pet: {(opponentPet != null ? opponentPet.name : "null")}" +
                          $"\n  - Opponent Pet: {(localPlayerPet != null ? localPlayerPet.name : "null")}" +
-                         $"\n  - Player Hand: null");
+                         $"\n  - Player Hand: {(opponentPlayerHand != null ? opponentPlayerHand.name : "null")}"); // Log assigned opponent hand
                 
                 // Final verification check
                 if (localPlayerPet == opponentPet && localPlayerPet != null)
@@ -844,6 +887,20 @@ namespace Combat
                 return p.name + ownerInfo;
             });
             Debug.Log($"[CombatManager] Pet details: {string.Join(", ", petDetails)}");
+
+            Debug.Log($"[CombatManager-Diag] All PlayerHands Found:");
+            foreach (var hand in playerHands)
+            {
+                Debug.Log($"  - Hand: {hand.name}, Owner ClientId: {hand.Owner?.ClientId ?? -1}");
+            }
+            Debug.Log($"[CombatManager-Diag] Identified Local PlayerHand: {(localPlayerHand != null ? localPlayerHand.name : "null")}, Owner ClientId: {localPlayerHand?.Owner?.ClientId ?? -1}");
+            Debug.Log($"[CombatManager-Diag] Identified Opponent PlayerHand: {(opponentPlayerHand != null ? opponentPlayerHand.name : "null")}, Owner ClientId: {opponentPlayerHand?.Owner?.ClientId ?? -1}"); // This log should now work
+
+            Debug.Log("[CombatManager-Diag] All CombatPlayers Found:");
+            foreach (var cp in combatPlayers)
+            {
+                Debug.Log($"  - CombatPlayer: {cp.name}, NetworkPlayer: {cp.NetworkPlayer?.GetSteamName() ?? "null"}, IsOwner: {cp.IsOwner}");
+            }
         }
         
         [TargetRpc]
