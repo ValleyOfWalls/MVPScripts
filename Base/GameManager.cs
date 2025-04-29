@@ -21,6 +21,8 @@ public class GameManager : MonoBehaviour
 
     // Game state
     private GameState currentState = GameState.StartScreen;
+    public GameState CurrentGameState => currentState;
+    
     private bool isHost = false;
 
     // Network initialization tracking

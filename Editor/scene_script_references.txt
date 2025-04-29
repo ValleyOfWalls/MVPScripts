@@ -14,39 +14,6 @@ Scene: New Scene
   * Component: UnityEngine.InputSystem.UI.InputSystemUIInputModule
 - GameObject: Main Camera (ID: 47104)
   * Component: UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
-- GameObject: GameManager (ID: 47162)
-  * Component: GameManager
-      - Field: playerPrefab (GameObject) = NetworkPlayer (ID: 29898)
-- GameObject: NetworkManager (ID: 47244)
-  * Component: FishNet.Managing.NetworkManager
-  * Component: FishNet.Transporting.Tugboat.Tugboat
-  * Component: FishNet.Managing.Observing.ObserverManager
-  * Component: FishNet.Managing.Debugging.DebugManager
-- GameObject: UIManager (ID: 47256)
-  * Component: UIManager
-  * Component: FishNet.Object.NetworkObject
-      - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
-      - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
-      - Field: NetworkObserver (NetworkObserver) = null
-- GameObject: LobbyUIManager (ID: -51056)
-  * Component: LobbyUIManager
-  * Component: FishNet.Object.NetworkObject
-      - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
-      - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
-      - Field: NetworkObserver (NetworkObserver) = null
-- GameObject: LobbyManager (ID: 47072)
-  * Component: LobbyManager
-  * Component: FishNet.Object.NetworkObject
-      - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
-      - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
-      - Field: NetworkObserver (NetworkObserver) = null
-- GameObject: PlayerSpawnerPrefab (ID: 47294)
-  * Component: PlayerSpawner
-      - Field: playerPrefab (GameObject) = NetworkPlayer (ID: 29898)
-  * Component: FishNet.Object.NetworkObject
-      - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
-      - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
-      - Field: NetworkObserver (NetworkObserver) = null
 - GameObject: StartScreenCanvas (ID: 47152)
   * Component: UnityEngine.UI.CanvasScaler
   * Component: UnityEngine.UI.GraphicRaycaster
@@ -90,3 +57,35 @@ Scene: New Scene
       * Component: UnityEngine.UI.Button
         - GameObject: Text (TMP) (ID: 47140)
           * Component: TMPro.TextMeshProUGUI
+- GameObject: CombatCanvas (ID: 47210)
+  * Component: UnityEngine.UI.CanvasScaler
+  * Component: UnityEngine.UI.GraphicRaycaster
+- GameObject: GameManager (ID: 47162)
+  * Component: GameManager
+      - Field: playerPrefab (GameObject) = NetworkPlayer (ID: 29898)
+- GameObject: NetworkManager (ID: 47244)
+  * Component: FishNet.Managing.NetworkManager
+  * Component: FishNet.Transporting.Tugboat.Tugboat
+  * Component: FishNet.Managing.Observing.ObserverManager
+  * Component: FishNet.Managing.Debugging.DebugManager
+- GameObject: UIManager (ID: 47256)
+  * Component: UIManager
+- GameObject: LobbyUIManager (ID: -81130)
+  * Component: LobbyUIManager
+  * Component: FishNet.Object.NetworkObject
+      - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
+      - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
+      - Field: NetworkObserver (NetworkObserver) = null
+- GameObject: PlayerSpawnerPrefab (ID: 47294)
+  * Component: PlayerSpawner
+      - Field: playerPrefab (GameObject) = NetworkPlayer (ID: 29898)
+  * Component: FishNet.Object.NetworkObject
+      - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
+      - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
+      - Field: NetworkObserver (NetworkObserver) = null
+- GameObject: LobbyManager (ID: 47072)
+  * Component: LobbyManager
+  * Component: FishNet.Object.NetworkObject
+      - Field: InitializedParentNetworkBehaviour (NetworkBehaviour) = null
+      - Field: RuntimeParentNetworkBehaviour (NetworkBehaviour) = null
+      - Field: NetworkObserver (NetworkObserver) = null
