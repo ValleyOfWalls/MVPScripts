@@ -173,14 +173,17 @@ namespace Combat
                     continue;
                 }
 
-                // Set parent to the persistent pet BEFORE spawning
-                combatPetObj.transform.SetParent(persistentPet.transform, false); // worldPositionStays = false
-                
-                // Initialize the CombatPet with its persistent parent
-                combatPet.Initialize(persistentPet);
-                
                 // Spawn the CombatPet (now correctly parented and initialized)
-                Spawn(combatPetObj); 
+                Spawn(combatPetObj); // Spawn FIRST
+
+                // Set parent AFTER spawning
+                combatPetObj.transform.SetParent(persistentPet.transform, false);
+
+                // Initialize AFTER spawning
+                combatPet.Initialize(persistentPet);
+
+                // Create Deck AFTER initializing
+                combatPet.CreateRuntimeDeck();
                 
                 playerCombatPets[player] = combatPet;
                 playerPetObjects[player] = combatPetObj.GetComponent<NetworkObject>();
@@ -194,10 +197,15 @@ namespace Combat
                     if (petHandInstance != null)
                     {
                         petHandObj.name = $"PetHand_{player.GetSteamName()}";
-                        petHandObj.transform.SetParent(combatPetObj.transform, false); // Parent to CombatPet
+                        petHandObj.transform.SetParent(persistentPet.transform, false); // Parent to the persistent Pet
                         Spawn(petHandObj, player.Owner); // Spawn with player ownership (like PlayerHand)
-                        combatPet.AssignHand(petHandInstance); // Link hand to the pet
-                        Debug.Log($"[CombatManager] Spawned PetHand for CombatPet of Player {player.Owner.ClientId}");
+                        combatPet.AssignHand(petHandInstance); // Link hand to the combatPet (logical link remains)
+                        Debug.Log($"[CombatManager] Spawned PetHand for CombatPet of Player {player.Owner.ClientId}, parented to {persistentPet.name}");
+
+                        // --- Draw Initial Pet Hand ---
+                        petHandInstance.Initialize(combatPet); // Initialize hand with pet reference
+                        petHandInstance.DrawInitialHand(3); // Draw initial cards (adjust count as needed)
+                        Debug.Log($"[CombatManager] Drew initial hand for PetHand of Player {player.Owner.ClientId}");
                     }
                     else
                     {

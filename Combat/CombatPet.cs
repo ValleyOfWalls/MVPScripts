@@ -101,7 +101,7 @@ namespace Combat
             _isDefending.Value = false;
             
             // Create runtime deck from the persistent pet's deck
-            CreateRuntimeDeck();
+            // CreateRuntimeDeck(); // Removed: Will be called manually from CombatManager after spawning
             
             Debug.Log($"[CombatPet] Initialized with reference to persistent pet owned by {referencePet?.PlayerOwner?.GetSteamName() ?? "Unknown"}");
         }
@@ -125,6 +125,9 @@ namespace Combat
             if (referencePet != null && referencePet.persistentDeckCardIDs.Count > 0)
             {
                 Debug.Log($"[CombatPet] Creating runtime deck from persistent deck ({referencePet.persistentDeckCardIDs.Count} cards)");
+                
+                // Log the count of persistent card IDs found
+                Debug.Log($"[CombatPet] Found {referencePet.persistentDeckCardIDs.Count} card IDs in persistent Pet deck for {referencePet.PetName}");
                 
                 // Populate deck from persistent deck IDs
                 foreach (string cardID in referencePet.persistentDeckCardIDs)
