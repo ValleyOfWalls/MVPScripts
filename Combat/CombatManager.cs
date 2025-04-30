@@ -411,6 +411,10 @@ namespace Combat
             
             // Log the combat state after initialization
             LogCombatState();
+            
+            // Notify clients that combat setup is complete
+            RpcNotifyCombatReady();
+            Debug.Log("[CombatManager] Sent RpcNotifyCombatReady to observers.");
         }
         
         [Server]
@@ -639,6 +643,12 @@ namespace Combat
             return null;
         }
         
+        // Get a dictionary of all active combats (used by CombatSceneCanvas)
+        public Dictionary<NetworkPlayer, CombatData> GetActiveCombats()
+        {
+            return activeCombats;
+        }
+        
         // --- Utility Methods ---
         
         #region Utility
@@ -661,6 +671,25 @@ namespace Combat
         
         #region RPCs
         
+        // Add this RPC to notify clients when combat setup is fully complete
+        [ObserversRpc]
+        private void RpcNotifyCombatReady()
+        {
+            // Clients will implement logic in their CombatSceneCanvas (or similar) 
+            // based on receiving this signal.
+            Debug.Log($"[Client {Owner.ClientId}] Received RpcNotifyCombatReady.");
+            // Find the local canvas and trigger its initialization
+            CombatSceneCanvas canvas = FindFirstObjectByType<CombatSceneCanvas>();
+            if (canvas != null)
+            {
+                canvas.HandleCombatReady(); 
+            }
+            else
+            {
+                Debug.LogWarning("[CombatManager] RpcNotifyCombatReady: Could not find CombatSceneCanvas on client.");
+            }
+        }
+
         [ObserversRpc]
         private void RpcShowCombatCanvas()
         {

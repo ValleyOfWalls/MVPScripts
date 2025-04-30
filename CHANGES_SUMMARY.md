@@ -102,3 +102,33 @@ The new architecture maintains the existing deck system for pets but with a clea
 3. During combat, a temporary CombatPet is created with a runtime deck
 4. The CombatPet draws from its runtime deck
 5. All players can see cards in the pet's hand 
+
+# Combat Scene Canvas Enhancements
+
+## Multi-Fight View Functionality
+1. Added `CombatSceneCanvas.cs` to manage visibility of networked combat entities
+   - By default shows the local player's fight
+   - Provides ability to cycle through viewing other active fights
+   - Works with NetworkTransform and NetworkAnimation components
+   - Automatically positions combat entities in the appropriate UI containers
+
+2. Added fight cycling capabilities
+   - Added a "View Next Battle" button to the UI
+   - Button cycles through all active fights in the network
+   - Preserves the network state of all entities (only changes visibility)
+   - Updates battle info text to show current players being viewed
+
+3. Modified `CombatManager.cs` to support visibility toggling
+   - Added `GetActiveCombats()` method to expose fight data
+   - Maintains a dictionary of all active combat data
+   - Allows the canvas to determine which fights to show/hide
+
+4. Enhanced `CombatSceneCanvasBuilder.cs`
+   - Updated to create the "View Next Battle" button
+   - Positions the button in the battle info panel
+   - Automatically adds the CombatSceneCanvas component
+
+## Usage
+The CombatSceneCanvas manages the visibility of networked combat entities (players, pets, and cards) based on which fight the local player is viewing. By default, it shows the local player's fight, but players can press the "View Next Battle" button to cycle through and observe other active fights. 
+
+All entities use NetworkTransform and NetworkAnimation components, but are only visible when the player cycles to their specific fight. This approach optimizes performance while allowing players to spectate all ongoing battles. 
