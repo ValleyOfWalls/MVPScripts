@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 45f48b77b33249f4f9f556521e32e4a7, type: 3}
+  m_Name: DeckManager
+  m_EditorClassIdentifier: 
+  playerStarterDeck: {fileID: 11400000, guid: 7b420e27445bbf24983335b690c2a3c3, type: 2}
+  petStarterDecks:
+  - {fileID: 11400000, guid: 7b420e27445bbf24983335b690c2a3c3, type: 2}
+  cardPrefab: {fileID: 4814362204195705837, guid: c06443dcf92b0b548aac31403cf79f05, type: 3}

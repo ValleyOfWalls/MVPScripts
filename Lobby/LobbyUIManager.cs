@@ -260,38 +260,42 @@ public class LobbyUIManager : NetworkBehaviour
     // Helper to get the local NetworkPlayer with LobbyPlayerInfo component
     private LobbyPlayerInfo GetLocalLobbyPlayer()
     {
-        Debug.Log($"Looking for local LobbyPlayerInfo. Player count: {NetworkPlayer.Players.Count}");
-        
-        foreach (NetworkPlayer np in NetworkPlayer.Players)
+        Debug.Log("Looking for local LobbyPlayerInfo...");
+
+        // Get the local player object using FishNet's InstanceFinder
+        NetworkObject localPlayerObject = InstanceFinder.ClientManager?.Connection?.FirstObject;
+
+        if (localPlayerObject != null)
         {
-            if (np != null && np.IsOwner)
+            LobbyPlayerInfo lobbyInfo = localPlayerObject.GetComponent<LobbyPlayerInfo>();
+            if (lobbyInfo != null)
             {
-                LobbyPlayerInfo lobbyPlayer = np.GetComponent<LobbyPlayerInfo>();
-                if (lobbyPlayer != null)
+                Debug.Log($"Found local LobbyPlayerInfo on object: {localPlayerObject.name}");
+                return lobbyInfo;
+            }
+            else
+            {
+                Debug.LogError($"Local player object ({localPlayerObject.name}) does not have a LobbyPlayerInfo component!");
+            }
+        }
+        else
+        {
+            Debug.LogError("Could not find local player object via InstanceFinder.ClientManager.Connection.FirstObject.");
+            
+            // Fallback: Iterate through all LobbyPlayerInfo instances and check IsOwner
+            // This is less reliable during startup but can be a backup.
+            Debug.Log("Attempting fallback: Searching all LobbyPlayerInfo instances for IsOwner.");
+            LobbyPlayerInfo[] allLobbyInfos = FindObjectsByType<LobbyPlayerInfo>(FindObjectsSortMode.None);
+            foreach (var info in allLobbyInfos)
+            {
+                if (info.IsOwner)
                 {
-                    Debug.Log($"Found local LobbyPlayerInfo on {np.name}");
-                    return lobbyPlayer;
+                    Debug.LogWarning($"Found local LobbyPlayerInfo via fallback search: {info.gameObject.name}");
+                    return info;
                 }
             }
         }
-        
-        // Fallback attempt - try to find using ClientId
-        if (InstanceFinder.ClientManager != null && InstanceFinder.ClientManager.Connection.IsValid)
-        {
-            int localClientId = InstanceFinder.ClientManager.Connection.ClientId;
-            foreach (NetworkPlayer np in NetworkPlayer.Players)
-            {
-                if (np != null && np.Owner.ClientId == localClientId)
-                {
-                    LobbyPlayerInfo lobbyPlayer = np.GetComponent<LobbyPlayerInfo>();
-                    if (lobbyPlayer != null)
-                    {
-                        return lobbyPlayer;
-                    }
-                }
-            }
-        }
-        
+
         return null;
     }
 }

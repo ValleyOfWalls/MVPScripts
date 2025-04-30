@@ -14,9 +14,13 @@ namespace Combat
         [Header("References")]
         // Changed networkPlayer to a SyncVar
         private readonly SyncVar<NetworkPlayer> _networkPlayer = new SyncVar<NetworkPlayer>();
-        [SerializeField] private Pet playerPet;
-        [SerializeField] private Pet opponentPet;
-        [SerializeField] private PlayerHand playerHand;
+        // Removed SerializeField, assigned via Initialize
+        private CombatPet playerPet;
+        private CombatPet opponentPet;
+        private PlayerHand playerHand;
+        
+        // Reference to the player's deck
+        private RuntimeDeck playerDeck;
         
         [Header("Combat UI")]
         [SerializeField] private TextMeshProUGUI playerNameText;
@@ -37,7 +41,9 @@ namespace Combat
         // References to combat systems
         private CombatManager combatManager;
         private SpriteRenderer spriteRenderer;
-        private bool isInitialized = false;
+        
+        // Reference to the player's deck (Property for potential external access)
+        public RuntimeDeck PlayerDeck => playerDeck;
         
         private void Awake()
         {
@@ -108,219 +114,21 @@ namespace Combat
             UpdateEnergyDisplay(0, _currentEnergy.Value, false);
             UpdateTurnVisuals(false, _isMyTurn.Value, false);
             
-            // ALWAYS schedule a delayed reference search to ensure connections are made
-            Invoke("FindCombatReferences", 0.5f);
+            // Removed delayed reference search - References are now set via Initialize
+            // Invoke("FindCombatReferences", 0.5f);
             
-            // But also try to find immediate references if possible
-            if (IsOwner)
-            {
-                // Try to find references in parent or siblings first
-                if (transform.parent != null)
-                {
-                    // Attempt to find hand
-                    if (playerHand == null)
-                    {
-                        PlayerHand[] hands = transform.parent.GetComponentsInChildren<PlayerHand>();
-                        foreach (PlayerHand hand in hands)
-                        {
-                            if (hand.IsOwner)
-                            {
-                                playerHand = hand;
-                                Debug.Log($"Found owned PlayerHand in parent's children: {hand.name}");
-                                break;
-                            }
-                        }
-                    }
-
-                    // Attempt to find pets
-                    if (playerPet == null || opponentPet == null)
-                    {
-                        Pet[] allPets = transform.parent.GetComponentsInChildren<Pet>();
-                        if (allPets.Length > 0)
-                        {
-                            Debug.Log($"Found {allPets.Length} pets in parent's children.");
-                            
-                            // If we have network player information, use it to match
-                            if (_networkPlayer.Value != null)
-                            {
-                                foreach (Pet pet in allPets)
-                                {
-                                    if (pet.PlayerOwner != null)
-                                    {
-                                        if (pet.PlayerOwner.GetSteamName() == _networkPlayer.Value.GetSteamName())
-                                        {
-                                            playerPet = pet;
-                                            Debug.Log($"Assigned playerPet: {pet.name}");
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // If we found player pet but not opponent pet, assign any non-matching pet
-                            if (playerPet != null && opponentPet == null && allPets.Length >= 2)
-                            {
-                                foreach (Pet pet in allPets)
-                                {
-                                    if (pet != playerPet)
-                                    {
-                                        opponentPet = pet;
-                                        Debug.Log($"Assigned opponentPet: {pet.name}");
-                                        break;
-                                    }
-                                }
-                            }
-                            // If we didn't find any pets with matching players but have exactly 2, just assign them
-                            else if (playerPet == null && opponentPet == null && allPets.Length == 2)
-                            {
-                                playerPet = allPets[0];
-                                opponentPet = allPets[1];
-                                Debug.Log($"Assigned pets by index - playerPet: {playerPet.name}, opponentPet: {opponentPet.name}");
-                            }
-                        }
-                    }
-                }
-                
-                // Log the state of our references
-                int foundCount = (playerHand != null ? 1 : 0) + (playerPet != null ? 1 : 0) + (opponentPet != null ? 1 : 0);
-                if (foundCount == 3)
-                {
-                    Debug.Log($"Successfully found all combat references during OnStartClient!");
-                }
-                else
-                {
-                    Debug.Log($"Found {foundCount}/3 combat references during OnStartClient. Will try again after delay.");
-                }
-            }
+            // Removed immediate reference finding logic
+            // if (IsOwner)
+            // {
+            // ... (removed ~70 lines of finding logic)
+            // }
         }
         
-        // This method is called a short delay after OnStartClient
-        // to give all combat objects time to spawn
-        private void FindCombatReferences()
-        {
-            Debug.Log("FindCombatReferences - Attempting to find combat elements after delay");
-
-            // --- Player Hand Assignment --- 
-            // Look for PlayerHand first - PRIORITIZE OWNERSHIP
-            if (playerHand == null || !playerHand.IsOwner) // Note: For non-owner, IsOwner check might be false positive if called before ownership is fully set.
-            {
-                // First priority: Find any PlayerHand that we own (for the owner instance)
-                // Or find the hand matching our NetworkPlayer's owner (potentially more robust)
-                PlayerHand[] allHands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
-                PlayerHand foundHand = null; 
-
-                foreach (PlayerHand hand in allHands)
-                {
-                    // Try to find the hand matching this specific CombatPlayer's controlling connection
-                    if (hand.Owner != null && this.Owner != null && hand.Owner.ClientId == this.Owner.ClientId)
-                    {
-                        foundHand = hand;
-                        Debug.Log($"FindCombatReferences: Found hand '{hand.name}' matching Owner ClientId {this.Owner.ClientId}");
-                        break;
-                    }
-                }
-
-                // If direct owner match failed, try IsOwner (less reliable during startup)
-                if (foundHand == null)
-                {
-                     foreach (PlayerHand hand in allHands)
-                     {
-                          if (hand.IsOwner == this.IsOwner) // Fallback check
-                          {
-                              foundHand = hand;
-                              Debug.Log($"FindCombatReferences: Found hand '{hand.name}' via IsOwner fallback ({this.IsOwner})");
-                              break;
-                          }
-                     }
-                }
-                
-                // Assign if found
-                if (foundHand != null) 
-                {
-                     playerHand = foundHand;
-                }
-                else
-                {
-                     // If we still don't have a reference after checks, log a warning
-                     Debug.LogWarning($"FindCombatReferences: Could not find matching PlayerHand for CombatPlayer {this.name} (Owner ClientId: {this.Owner?.ClientId ?? -1}, IsOwner: {this.IsOwner}). Current playerHand is {(playerHand == null ? "null" : playerHand.name)}.");
-                }
-            }
-            else
-            {
-                Debug.Log($"FindCombatReferences: Using existing PlayerHand reference: {playerHand.name}, IsOwner: {playerHand.IsOwner}");
-            }
-            // --- End Player Hand Assignment ---
-
-            // Get all players for reference
-            NetworkPlayer[] allPlayers = FindObjectsOfType<NetworkPlayer>();
-            
-            // Look for pet references
-            Pet[] allPets = FindObjectsByType<Pet>(FindObjectsSortMode.None);
-            
-            // Try to match player pet by network player reference first
-            if (playerPet == null && _networkPlayer.Value != null)
-            {
-                foreach (Pet pet in allPets)
-                {
-                    if (pet.PlayerOwner != null && pet.PlayerOwner.GetSteamName() == _networkPlayer.Value.GetSteamName())
-                    {
-                        playerPet = pet;
-                        Debug.Log($"Found matching playerPet: {pet.name}");
-                        break;
-                    }
-                }
-            }
-            
-            // If we still don't have a pet reference and we have exactly 2 pets, just assign them
-            if ((playerPet == null || opponentPet == null) && allPets.Length == 2)
-            {
-                if (playerPet == null && opponentPet == null)
-                {
-                    // If no pets are assigned yet, assume first pet is yours and second is opponent's
-                    playerPet = allPets[0];
-                    opponentPet = allPets[1];
-                    Debug.Log($"Assigned pets by index - playerPet: {playerPet.name}, opponentPet: {opponentPet.name}");
-                }
-                else if (playerPet != null)
-                {
-                    // If player pet is already assigned, set other pet as opponent
-                    opponentPet = (allPets[0] == playerPet) ? allPets[1] : allPets[0];
-                    Debug.Log($"Found potential opponentPet: {opponentPet.name}");
-                }
-                else if (opponentPet != null)
-                {
-                    // If opponent pet is already assigned, set other pet as player's
-                    playerPet = (allPets[0] == opponentPet) ? allPets[1] : allPets[0];
-                    Debug.Log($"Found potential playerPet: {playerPet.name}");
-                }
-            }
-            
-            // Final validation to prevent null references
-            if (playerHand == null)
-            {
-                Debug.LogError("Failed to find a valid PlayerHand reference after delayed search");
-            }
-            
-            if (playerPet == null)
-            {
-                Debug.LogError("Failed to find a valid PlayerPet reference after delayed search");
-            }
-            
-            if (opponentPet == null)
-            {
-                Debug.LogError("Failed to find a valid OpponentPet reference after delayed search");
-            }
-            
-            // Log summary of found references
-            int foundCount = (playerHand != null ? 1 : 0) + (playerPet != null ? 1 : 0) + (opponentPet != null ? 1 : 0);
-            if (foundCount == 3)
-            {
-                Debug.Log($"Successfully found all combat references after delayed search! PlayerHand is {(playerHand.IsOwner ? "owned" : "not owned")}.");
-            }
-            else
-            {
-                Debug.LogWarning($"Found {foundCount}/3 combat references after delayed search.");
-            }
-        }
+        // Removed FindCombatReferences method entirely
+        // private void FindCombatReferences()
+        // {
+        // ... (removed ~80 lines of finding logic)
+        // }
         
         private void CreatePlaceholderIfNeeded()
         {
@@ -367,90 +175,50 @@ namespace Combat
         
         // Initialize player with references
         [Server]
-        public void Initialize(NetworkPlayer networkPlayer, Pet playerPet, Pet opponentPet, PlayerHand playerHand)
+        public void Initialize(NetworkPlayer networkPlayer, CombatPet playerPetRef, CombatPet opponentPetRef, PlayerHand playerHandRef, RuntimeDeck deck)
         {
-            if (networkPlayer == null)
-            {
-                Debug.LogError("[CombatPlayer] Cannot initialize with null NetworkPlayer");
-                return;
-            }
-
-            // Validate that we don't have the same pet assigned to both roles
-            if (playerPet == opponentPet && playerPet != null)
-            {
-                Debug.LogError($"[CombatPlayer] CRITICAL ERROR: Same pet '{playerPet.name}' assigned as both player and opponent pet!");
-                
-                // Try to find an alternative pet
-                Pet[] allPets = FindObjectsOfType<Pet>();
-                if (allPets.Length > 1)
-                {
-                    foreach (Pet pet in allPets)
-                    {
-                        if (pet != playerPet)
-                        {
-                            Debug.Log($"[CombatPlayer] Fixed duplicate pet assignment by changing opponent pet to: {pet.name}");
-                            opponentPet = pet;
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    Debug.LogError("[CombatPlayer] Could not find alternative pet to assign!");
-                }
-            }
-
-            // Debug log to show what we're initializing with
-            string playerPetName = playerPet != null ? playerPet.name : "null";
-            string playerPetOwner = playerPet != null && playerPet.PlayerOwner != null ? playerPet.PlayerOwner.GetSteamName() : "null";
-            string opponentPetName = opponentPet != null ? opponentPet.name : "null";
-            string opponentPetOwner = opponentPet != null && opponentPet.PlayerOwner != null ? opponentPet.PlayerOwner.GetSteamName() : "null";
-            string handOwnerInfo = playerHand != null && playerHand.Owner != null ? $"ClientId: {playerHand.Owner.ClientId}" : "null";
+             if (networkPlayer == null) 
+             {
+                 Debug.LogError("[CombatPlayer.Initialize] NetworkPlayer is null!");
+                 return;
+             }
+             if (playerPetRef == null)
+             {
+                 Debug.LogError($"[CombatPlayer.Initialize] PlayerPetRef is null for {networkPlayer.GetSteamName()}!");
+                 // Decide how to handle this - return? proceed? Throw exception?
+                 // return; 
+             }
+             if (opponentPetRef == null)
+             { 
+                 Debug.LogError($"[CombatPlayer.Initialize] OpponentPetRef is null for {networkPlayer.GetSteamName()}!");
+                 // return;
+             }
+             if (playerHandRef == null)
+             {
+                 Debug.LogError($"[CombatPlayer.Initialize] PlayerHandRef is null for {networkPlayer.GetSteamName()}!");
+                 // return;
+             }
             
-            Debug.Log($"[CombatPlayer] Initializing {name} with:" +
-                      $"\n  - NetworkPlayer: {networkPlayer.GetSteamName()}" +
-                      $"\n  - Player Pet: {playerPetName} (Owner: {playerPetOwner})" +
-                      $"\n  - Opponent Pet: {opponentPetName} (Owner: {opponentPetOwner})" +
-                      $"\n  - Player Hand: {(playerHand != null ? playerHand.name : "null")} (Owner: {handOwnerInfo})" +
-                      $"\n  - IsOwner: {IsOwner}");
-
-            // Verify hand ownership matches player
-            if (playerHand != null && playerHand.Owner != null && networkPlayer != null &&
-                playerHand.Owner.ClientId != networkPlayer.Owner.ClientId)
-            {
-                Debug.LogWarning($"[CombatPlayer] Player hand owner ({playerHand.Owner.ClientId}) doesn't match player ({networkPlayer.Owner.ClientId})");
-                
-                // Try to find the correct hand if available
-                PlayerHand[] allHands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
-                foreach (PlayerHand hand in allHands)
-                {
-                    if (hand.Owner.ClientId == networkPlayer.Owner.ClientId)
-                    {
-                        Debug.Log($"[CombatPlayer] Found matching player hand with correct ownership");
-                        playerHand = hand;
-                        break;
-                    }
-                }
-            }
-
             _networkPlayer.Value = networkPlayer;
-            this.playerPet = playerPet;
-            this.opponentPet = opponentPet;
-            this.playerHand = playerHand;
+            this.playerPet = playerPetRef; // Assign player pet
+            this.opponentPet = opponentPetRef; // Assign opponent pet
+            this.playerHand = playerHandRef; // Assign player hand
+            this.playerDeck = deck; // Assign the player deck
             
-            if (IsOwner)
-            {
-                // Additional setup for the local player's combat instance
-                Debug.Log("[CombatPlayer] This is the local player's combat instance");
-            }
+            Debug.Log($"[CombatPlayer.Initialize] Initialized for {networkPlayer.GetSteamName()} - PlayerPet: {(this.playerPet != null ? this.playerPet.name : "null")}, OpponentPet: {(this.opponentPet != null ? this.opponentPet.name : "null")}, Hand: {this.playerHand.name}");
             
-            // Final verification check
-            if (this.playerPet == this.opponentPet && this.playerPet != null)
-            {
-                Debug.LogError("[CombatPlayer] CRITICAL ERROR: After initialization, the same pet is still assigned to both player and opponent!");
-            }
+            // Initialize combat state
+            _maxEnergy.Value = 3; // Set max energy (or get from player data if needed)
+            _currentEnergy.Value = _maxEnergy.Value;
+            _isMyTurn.Value = false; // Will be set true by CombatManager when turn starts
             
-            isInitialized = true;
+            // Additional setup after references are assigned
+            // FindUIElements(); // Call this if UI elements are children/need finding
+            if (playerNameText != null) 
+                playerNameText.text = networkPlayer.GetSteamName();
+            
+            UpdateEnergyDisplay(0, _currentEnergy.Value, true); // Update visuals on server
+            UpdateTurnVisuals(false, _isMyTurn.Value, true);
         }
         
         // Find required UI elements, usually called if IsOwner
@@ -614,35 +382,35 @@ namespace Combat
         [Server]
         public CardData DrawCardFromDeck()
         {
-            // Create a very basic CardData object for testing
-            CardData card = ScriptableObject.CreateInstance<CardData>();
-            
-            // Determine a random card type and set appropriate values
-            int randomType = Random.Range(0, 3);
-            CardType type = (CardType)randomType;
-            
-            card.cardName = type == CardType.Attack ? "Strike" : 
-                           (type == CardType.Skill ? "Defend" : "Power Up");
-            card.description = type == CardType.Attack ? "Deal 6 damage" : 
-                              (type == CardType.Skill ? "Gain 5 block" : "Gain 1 energy next turn");
-            card.manaCost = type == CardType.Power ? 2 : 1;
-            card.cardType = type;
-            card.baseValue = type == CardType.Attack ? 6 : 5;
-            
-            // Set up a basic card effect
-            CardEffect effect = new CardEffect();
-            effect.effectType = type == CardType.Attack ? EffectType.Damage : 
-                               (type == CardType.Skill ? EffectType.Block : EffectType.DrawCard);
-            effect.effectValue = type == CardType.Attack ? 6 : 
-                                (type == CardType.Skill ? 5 : 1);
-            effect.targetType = type == CardType.Attack ? TargetType.SingleEnemy : 
-                               (type == CardType.Skill ? TargetType.Self : TargetType.Self);
-            
-            card.cardEffects = new CardEffect[] { effect };
-            
-            Debug.Log($"Created card: {card.cardName} ({card.cardType}) - Cost: {card.manaCost}");
-            
-            return card;
+            if (playerDeck == null)
+            {
+                Debug.LogError($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} cannot draw card: playerDeck is null!");
+                return null;
+            }
+
+            // Draw from the actual RuntimeDeck
+            CardData drawnCard = playerDeck.DrawCard();
+
+            // Log results
+            if (drawnCard == null)
+            {
+                Debug.LogWarning($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} drew null card (Deck empty or reshuffled?).");
+                // Handle empty deck / reshuffle if needed
+                // Potentially reshuffle discard into draw pile here if deck is empty
+                // Example: 
+                // if (playerDeck.NeedsReshuffle()) 
+                // {
+                //     playerDeck.Reshuffle(); 
+                //     drawnCard = playerDeck.DrawCard(); 
+                //     if(drawnCard != null) Debug.Log($"[Server] Reshuffled and drew {drawnCard.cardName}");
+                // }
+            }
+            else
+            {
+                 Debug.Log($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} drew card: {drawnCard.cardName}");
+            }
+
+            return drawnCard;
         }
         
         [Server]
@@ -862,7 +630,7 @@ namespace Combat
         private System.Collections.IEnumerator FindHandAndDrawCards(int count)
         {
             // Try to find combat references
-            FindCombatReferences();
+            // FindCombatReferences();
             
             // Wait for a moment to allow references to be found
             yield return new WaitForSeconds(0.5f);

@@ -156,26 +156,37 @@ namespace Combat
             }
             
             // --- Step 2: Spawn player pets ---
-            Dictionary<NetworkPlayer, Pet> allPlayerPets = new Dictionary<NetworkPlayer, Pet>();
+            Dictionary<NetworkPlayer, CombatPet> playerCombatPets = new Dictionary<NetworkPlayer, CombatPet>();
             Dictionary<NetworkPlayer, NetworkObject> playerPetObjects = new Dictionary<NetworkPlayer, NetworkObject>(); // Store NetworkObject
             foreach (NetworkPlayer player in players)
             {
-                // Instantiate pet, don't parent or rename yet
-                GameObject petObj = Instantiate(petPrefab); 
-                Pet pet = petObj.GetComponent<Pet>();
+                // Get the persistent pet reference
+                Pet persistentPet = player.playerPet.Value;
+                if (persistentPet == null)
+                {
+                    Debug.LogError($"[CombatManager] Player {player.GetSteamName()} has no persistent pet!");
+                    continue;
+                }
                 
-                if (pet != null)
+                // Create a combat pet for this player's pet
+                GameObject combatPetObj = Instantiate(petPrefab); 
+                CombatPet combatPet = combatPetObj.GetComponent<CombatPet>();
+                if (combatPet == null)
                 {
-                    Spawn(petObj); // Spawn the pet
-                    pet.Initialize(player); // Initialize (this might need adjustment if init relies on hierarchy/name)
-                    allPlayerPets[player] = pet;
-                    playerPetObjects[player] = petObj.GetComponent<NetworkObject>(); // Store the NetworkObject
-                    Debug.Log($"[CombatManager] Spawned pet for Player {player.Owner.ClientId}");
+                    // Try adding the component if it's not there
+                    combatPet = combatPetObj.AddComponent<CombatPet>();
+                    if (combatPet == null)
+                    {
+                        Debug.LogError($"[CombatManager] Could not add CombatPet component to prefab for player {player.Owner.ClientId}");
+                        Destroy(combatPetObj);
+                        continue;
+                    }
                 }
-                else
-                {
-                    Debug.LogError($"[CombatManager] Pet prefab missing Pet component for player {player.Owner.ClientId}");
-                }
+                
+                Spawn(combatPetObj); // Spawn the combat pet
+                playerCombatPets[player] = combatPet;
+                playerPetObjects[player] = combatPetObj.GetComponent<NetworkObject>();
+                Debug.Log($"[CombatManager] Spawned combat pet for Player {player.Owner.ClientId}");
             }
             
             // --- Step 2a: Assign pets to opponents --- 
@@ -198,61 +209,102 @@ namespace Combat
 
             foreach (NetworkPlayer player in players)
             {
+                // Get the NetworkPlayer who owns the pet this player will fight
                 NetworkPlayer opponentPetOwner = petAssignments[player];
-                Pet playerPet = allPlayerPets[player];
-                Pet opponentPet = allPlayerPets[opponentPetOwner];
                 
-                // --- Create Combat Player ---
-                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab);
-                CombatPlayer combatPlayer = combatPlayerObj.GetComponent<CombatPlayer>();
-                if (combatPlayer == null)
-                {
-                    Debug.LogError($"[CombatManager] CombatPlayer prefab missing CombatPlayer component for player {player.Owner.ClientId}");
-                    continue; 
+                // Get the CombatPet instances using the owners
+                CombatPet playerPet = playerCombatPets.ContainsKey(player) ? playerCombatPets[player] : null;
+                CombatPet opponentPet = playerCombatPets.ContainsKey(opponentPetOwner) ? playerCombatPets[opponentPetOwner] : null;
+
+                if (playerPet == null) {
+                    Debug.LogError($"[CombatManager] Failed to find PlayerPet for {player.GetSteamName()} during CombatPlayer setup.");
+                    continue; // Skip this player if their pet wasn't created properly
                 }
+                if (opponentPet == null) {
+                    Debug.LogError($"[CombatManager] Failed to find OpponentPet (owned by {opponentPetOwner.GetSteamName()}) for {player.GetSteamName()} during CombatPlayer setup.");
+                    continue; // Skip this player if the opponent pet wasn't created properly
+                }
+                
+                // --- Step 3a: Create Runtime Deck from player's persistent deck --- 
+                RuntimeDeck runtimePlayerDeck = null;
+                if (DeckManager.Instance != null)
+                {
+                    // Create a new empty runtime deck
+                    runtimePlayerDeck = new RuntimeDeck(player.GetSteamName() + "'s Combat Deck", DeckType.PlayerDeck);
+                    
+                    // Check if player has an initialized deck
+                    if (player.persistentDeckCardIDs.Count > 0)
+                    {
+                        Debug.Log($"[CombatManager] Creating runtime deck from {player.GetSteamName()}'s persistent deck ({player.persistentDeckCardIDs.Count} cards)");
+                        
+                        // Populate deck from persistent deck IDs
+                        foreach (string cardID in player.persistentDeckCardIDs)
+                        {
+                            CardData cardData = DeckManager.Instance.FindCardByName(cardID);
+                            if (cardData != null)
+                            {
+                                runtimePlayerDeck.AddCard(cardData);
+                                Debug.Log($"[CombatManager] Added card {cardID} to runtime deck");
+                            }
+                            else
+                            {
+                                Debug.LogWarning($"[CombatManager] Could not find CardData for {cardID}");
+                            }
+                        }
+                        
+                        // Shuffle the newly created deck
+                        runtimePlayerDeck.Shuffle();
+                        Debug.Log($"[CombatManager] Shuffled runtime deck with {runtimePlayerDeck.DrawPileCount} cards for {player.GetSteamName()}");
+                    }
+                    else
+                    {
+                        // Fallback: If player doesn't have cards in persistent deck, use starter deck
+                        Debug.LogWarning($"[CombatManager] Player {player.GetSteamName()} has no persistent deck. Using starter deck.");
+                        runtimePlayerDeck = DeckManager.Instance.GetPlayerStarterDeck(); // Ensure a valid deck
+                        if (runtimePlayerDeck != null) runtimePlayerDeck.Shuffle();
+                    }
+                }
+                else
+                {
+                    Debug.LogError("[CombatManager] DeckManager is null, cannot create runtime deck.");
+                    // Create an empty deck to prevent null reference errors
+                    runtimePlayerDeck = new RuntimeDeck(player.GetSteamName() + "'s Empty Deck", DeckType.PlayerDeck);
+                }
+
+                // --- Step 3b: Create CombatPlayer FIRST --- 
+                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab); 
+                CombatPlayer combatPlayer = combatPlayerObj.GetComponent<CombatPlayer>();
                 Spawn(combatPlayerObj, player.Owner); // Assign ownership
                 playerCombatPlayerObjects[player] = combatPlayerObj.GetComponent<NetworkObject>();
                 Debug.Log($"[CombatManager] Spawned CombatPlayer for {player.GetSteamName()}");
 
-                // --- Create Player Hand ---
-                GameObject playerHandObj = Instantiate(playerHandPrefab);
-                PlayerHand playerHand = playerHandObj.GetComponent<PlayerHand>();
-                if (playerHand == null)
-                {
-                    Debug.LogError($"[CombatManager] PlayerHand prefab missing PlayerHand component for player {player.Owner.ClientId}");
-                    continue;
-                }
-                Spawn(playerHandObj, player.Owner); // Assign ownership to match combatPlayer
+                // --- Step 3c: Create Player Hand SECOND --- 
+                GameObject playerHandObj = Instantiate(playerHandPrefab); 
+                PlayerHand hand = playerHandObj.GetComponent<PlayerHand>();
+                Spawn(playerHandObj, player.Owner); // Assign ownership
                 playerHandObjects[player] = playerHandObj.GetComponent<NetworkObject>();
-                 Debug.Log($"[CombatManager] Spawned PlayerHand for {player.GetSteamName()}");
-                
-                // --- Server-side Initialization (linking references) ---
-                // Initialize CombatPlayer with Pet references (server-side logic)
-                combatPlayer.Initialize(player, playerPet, opponentPet, playerHand); 
-                // Initialize PlayerHand (server-side logic)
-                playerHand.Initialize(player, combatPlayer);
-                
-                // Store combat data
-                activeCombats[player] = new CombatData
-                {
-                    CombatPlayer = combatPlayer,
-                    PlayerPet = playerPet,
-                    OpponentPet = opponentPet,
-                    OpponentPlayer = opponentPetOwner,
-                    PlayerHand = playerHand,
-                    TurnCompleted = false
-                };
-                
-                Debug.Log($"[CombatManager] Server-side setup complete for {player.GetSteamName()}");
+                Debug.Log($"[CombatManager] Spawned PlayerHand for {player.GetSteamName()}");
 
-                // --- Send RPC to setup hierarchy and names on clients ---
-                RpcSetupCombatHierarchy(
-                    player.GetSteamName(),
-                    playerRootObjects[player].ObjectId,
-                    playerPetObjects[player].ObjectId,
-                    playerCombatPlayerObjects[player].ObjectId,
-                    playerHandObjects[player].ObjectId
-                );
+                // --- Step 3d: Initialize PlayerHand THIRD (needs combatPlayer) ---
+                hand.Initialize(player, combatPlayer);
+
+                // --- Step 3e: Initialize CombatPlayer FOURTH (needs hand) ---
+                combatPlayer.Initialize(player, playerPet, opponentPet, hand, runtimePlayerDeck);
+                
+                // --- Step 3f: Store references in CombatData ---
+                if (!activeCombats.ContainsKey(player))
+                {
+                    activeCombats[player] = new CombatData();
+                }
+                activeCombats[player].CombatPlayer = combatPlayer;
+                activeCombats[player].PlayerPet = playerPet;
+                activeCombats[player].OpponentPet = opponentPet;
+                activeCombats[player].OpponentPlayer = opponentPetOwner; // Store the opponent player for later
+                activeCombats[player].PlayerHand = hand;
+                activeCombats[player].TurnCompleted = false;
+                activeCombats[player].CombatComplete = false;
+                
+                Debug.Log($"[CombatManager] Populated CombatData for {player.GetSteamName()}: PlayerPet={playerPet.name}, OpponentPet={opponentPet.name}");
             }
             
             // Position all objects on clients (This might need adjustment or removal if hierarchy setup handles positions)
@@ -434,21 +486,21 @@ namespace Combat
         
         // Handle a pet being defeated
         [Server]
-        public void HandlePetDefeat(Pet pet)
+        public void HandlePetDefeat(CombatPet combatPet)
         {
-            Debug.Log($"[CombatManager] Pet defeat registered");
+            Debug.Log($"[CombatManager] Combat pet defeat registered");
             
             // Find the combat data for this pet
             foreach (var kvp in activeCombats)
             {
-                if (kvp.Value.PlayerPet == pet)
+                if (kvp.Value.PlayerPet == combatPet)
                 {
                     // Player's pet was defeated, they lost
                     Debug.Log($"[CombatManager] Player {kvp.Key.GetSteamName()}'s pet was defeated (player lost)");
                     RpcShowCombatResult(kvp.Key.Owner, false);
                     kvp.Value.CombatComplete = true;
                 }
-                else if (kvp.Value.OpponentPet == pet)
+                else if (kvp.Value.OpponentPet == combatPet)
                 {
                     // Opponent's pet was defeated, player won
                     Debug.Log($"[CombatManager] Opponent's pet was defeated, player {kvp.Key.GetSteamName()} won");
@@ -497,7 +549,7 @@ namespace Combat
         }
         
         // Get a player's pet
-        public Pet GetPet(NetworkPlayer player)
+        public CombatPet GetPet(NetworkPlayer player)
         {
             if (activeCombats.TryGetValue(player, out CombatData combatData))
             {
@@ -507,7 +559,7 @@ namespace Combat
         }
         
         // Get a player's opponent's pet
-        public Pet GetOpponentPet(NetworkPlayer player)
+        public CombatPet GetOpponentPet(NetworkPlayer player)
         {
             if (activeCombats.TryGetValue(player, out CombatData combatData))
             {
@@ -1037,8 +1089,8 @@ namespace Combat
     public class CombatData
     {
         public CombatPlayer CombatPlayer;
-        public Pet PlayerPet;
-        public Pet OpponentPet;
+        public CombatPet PlayerPet;
+        public CombatPet OpponentPet;
         public NetworkPlayer OpponentPlayer;
         public PlayerHand PlayerHand;
         public bool TurnCompleted;

@@ -12,7 +12,6 @@ namespace Combat
         [Header("Hand Settings")]
         [SerializeField] private int maxHandSize = 10;
         [SerializeField] private Transform cardParent;
-        [SerializeField] private GameObject cardPrefab;
         [SerializeField] private float cardSpacing = 0.8f;
         [SerializeField] private float handCurveHeight = 100f;
         [SerializeField] private float dealAnimationDuration = 0.3f;
@@ -29,11 +28,14 @@ namespace Combat
         // Reference to owned cards
         private RuntimeDeck ownerDeck;
         
+        // Synced cards data for networked visibility
+        private readonly SyncList<string> syncedCardIDs = new SyncList<string>();
+        
         public int HandSize => cardsInHand.Count;
 
         private void Awake()
         {
-            Debug.Log($"PlayerHand Awake - Card Parent: {(cardParent != null ? "Found" : "Missing")}, Card Prefab: {(cardPrefab != null ? "Found" : "Missing")}");
+            Debug.Log($"PlayerHand Awake - Card Parent: {(cardParent != null ? "Found" : "Missing")}");
             
             // Ensure card parent exists
             if (cardParent == null)
@@ -43,26 +45,49 @@ namespace Combat
                 cardParent.SetParent(transform);
                 cardParent.localPosition = Vector3.zero;
             }
+            
+            // Register callback for synced card changes
+            syncedCardIDs.OnChange += OnSyncedCardsChanged;
         }
         
-        // Only the owner can see their own hand
+        // Always show cards, but only make them interactive for the owner
         public override void OnStartClient()
         {
             base.OnStartClient();
             
-            Debug.Log($"PlayerHand OnStartClient - IsOwner: {IsOwner}");
+            Debug.Log($"PlayerHand OnStartClient - IsOwner: {IsOwner}, PlayerName: {(owner != null ? owner.GetSteamName() : "Unknown")}");
             
-            // Only show the hand UI to the owner
+            // Always show the card parent (all players can see cards)
+            if (cardParent != null)
+                cardParent.gameObject.SetActive(true);
+            
+            // Set interactability based on ownership
             if (!IsOwner)
             {
-                if (cardParent != null)
-                    cardParent.gameObject.SetActive(false);
+                // Make cards visible but not interactive for non-owners
+                SetCardsInteractivity(false);
             }
             else
             {
-                // Make sure card parent is active for owner
-                if (cardParent != null)
-                    cardParent.gameObject.SetActive(true);
+                // Make cards fully interactive for the owner
+                SetCardsInteractivity(true);
+            }
+        }
+        
+        // Helper to set interactivity of all cards
+        private void SetCardsInteractivity(bool interactive)
+        {
+            foreach (Card card in cardsInHand)
+            {
+                if (card != null)
+                {
+                    CanvasGroup canvasGroup = card.GetComponent<CanvasGroup>();
+                    if (canvasGroup != null)
+                    {
+                        canvasGroup.interactable = interactive;
+                        canvasGroup.blocksRaycasts = interactive;
+                    }
+                }
             }
         }
         
@@ -88,10 +113,36 @@ namespace Combat
         [ServerRpc]
         public void CmdDrawCards(int count)
         {
-            // Only the owner can request cards
-            if (!IsOwner) return;
+            // Ensure owner reference is valid before proceeding
+            if (owner == null)
+            {
+                Debug.LogError("[Server] CmdDrawCards - Owner is null, cannot draw cards.");
+                return;
+            }
+
+            // Ensure combat player reference is valid
+            if (combatPlayer == null)
+            {
+                // Attempt to find it if missing (maybe Initialize wasn't called correctly?)
+                 CombatPlayer[] players = FindObjectsByType<CombatPlayer>(FindObjectsSortMode.None);
+                 foreach(var cp in players)
+                 {
+                     if (cp.NetworkPlayer == owner)
+                     {
+                         combatPlayer = cp;
+                         Debug.LogWarning("[Server] CmdDrawCards - Found missing combatPlayer reference.");
+                         break;
+                     }
+                 }
+                 
+                 if (combatPlayer == null)
+                 {
+                      Debug.LogError("[Server] CmdDrawCards - CombatPlayer reference is null even after search, cannot draw cards.");
+                      return;
+                 }
+            }
             
-            Debug.Log($"[Server] CmdDrawCards - Drawing {count} cards for player {(owner != null ? owner.GetSteamName() : "Unknown")}");
+            Debug.Log($"[Server] CmdDrawCards - Drawing {count} cards for player {owner.GetSteamName()}");
             
             // Draw the requested number of cards
             for (int i = 0; i < count; i++)
@@ -106,8 +157,14 @@ namespace Combat
                 CardData card = combatPlayer.DrawCardFromDeck();
                 if (card != null)
                 {
+                    // Add to synced cards for network visibility
+                    syncedCardIDs.Add(card.cardName);
+                    
                     // Send the card to the client
                     TargetAddCardToHand(Owner, card);
+                    
+                    // Send the card to all other clients (observers)
+                    RpcAddCardToObservers(card.cardName);
                 }
                 else
                 {
@@ -116,38 +173,74 @@ namespace Combat
             }
         }
         
+        [ObserversRpc]
+        private void RpcAddCardToObservers(string cardName)
+        {
+            // Skip this client if they're the owner (they already got the card via TargetRpc)
+            if (IsOwner)
+                return;
+                
+            // Find the card data
+            if (DeckManager.Instance == null)
+            {
+                Debug.LogError("DeckManager instance is null in RpcAddCardToObservers");
+                return;
+            }
+            
+            CardData cardData = DeckManager.Instance.FindCardByName(cardName);
+            if (cardData == null)
+            {
+                Debug.LogError($"Could not find CardData for card: {cardName} in RpcAddCardToObservers");
+                return;
+            }
+            
+            // Create the card for observer clients
+            CreateCardInHand(cardData, false); // false = not interactive
+        }
+        
         [TargetRpc]
         private void TargetAddCardToHand(NetworkConnection conn, CardData cardData)
         {
-            // This only runs on the target client
-            if (cardPrefab == null)
+            // This only runs on the target client (owner)
+            if (DeckManager.Instance == null)
             {
-                Debug.LogError("Card prefab is null in PlayerHand");
+                Debug.LogError("DeckManager instance is null. Cannot create card object.");
                 return;
             }
             
             // Log the card draw event
-            Debug.Log($"[Combat] Player {(owner != null ? owner.GetSteamName() : "Unknown")} drew card: {cardData.cardName}");
+            Debug.Log($"[Client] Received TargetAddCardToHand for card: {cardData?.cardName ?? "NULL"}");
             
+            if (cardData == null)
+            {
+                Debug.LogError("[Client] Received null CardData in TargetAddCardToHand.");
+                return;
+            }
+
+            // Create card for the owner client
+            CreateCardInHand(cardData, true); // true = interactive
+        }
+        
+        // Common method to create a card in hand (used by both owner and observers)
+        private void CreateCardInHand(CardData cardData, bool interactive)
+        {
             try
             {
-                // Instantiate a new card GameObject
-                GameObject cardObj = Instantiate(cardPrefab, cardParent);
+                // Instantiate card using DeckManager
+                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, cardParent, this, combatPlayer);
                 
                 if (cardObj == null)
                 {
-                    Debug.LogError("Failed to instantiate card prefab");
+                    Debug.LogError("DeckManager failed to create card object.");
                     return;
                 }
                 
+                // Get the Card component (already initialized by DeckManager.CreateCardObject)
                 Card card = cardObj.GetComponent<Card>();
                 
                 if (card != null)
                 {
-                    // Initialize the card with the data
-                    card.Initialize(cardData, this, combatPlayer);
-                    
-                    // Add to the hand
+                    // Add to the hand list
                     cardsInHand.Add(card);
                     
                     Debug.Log($"Card {cardData.cardName} added to hand, current hand size: {cardsInHand.Count}");
@@ -167,8 +260,10 @@ namespace Combat
                         canvasGroup = cardObj.AddComponent<CanvasGroup>();
                     }
                     
-                    // Make sure card is visible
+                    // Make sure card is visible but set interactivity based on ownership
                     canvasGroup.alpha = 1f;
+                    canvasGroup.interactable = interactive;
+                    canvasGroup.blocksRaycasts = interactive;
                     
                     // Animate the card being drawn
                     cardObj.transform.localPosition = new Vector3(0, -300, 0); // Start position (off-screen)
@@ -196,15 +291,47 @@ namespace Combat
             }
         }
         
+        // Handle synced card changes
+        private void OnSyncedCardsChanged(SyncListOperation op, int index, string oldItem, string newItem, bool asServer)
+        {
+            if (asServer) return; // Only react on clients
+            
+            // Handle different operations (Add, Remove, etc.)
+            switch (op)
+            {
+                case SyncListOperation.Add:
+                    Debug.Log($"[SyncList] Card added: {newItem}");
+                    break;
+                    
+                case SyncListOperation.RemoveAt:
+                    Debug.Log($"[SyncList] Card removed: {oldItem}");
+                    break;
+                    
+                case SyncListOperation.Clear:
+                    Debug.Log("[SyncList] Hand cleared");
+                    break;
+            }
+        }
+        
         // Called when a card is played
         public void OnCardPlayed(Card card)
         {
             if (cardsInHand.Contains(card))
             {
+                // Get the index and card name before removing
+                int cardIndex = cardsInHand.IndexOf(card);
+                string cardName = card.CardName;
+                
                 // Remove from hand
                 cardsInHand.Remove(card);
                 
                 Debug.Log($"Card {card.CardName} removed from hand, current hand size: {cardsInHand.Count}");
+                
+                // Update the synced list on server
+                if (IsOwner)
+                {
+                    CmdRemoveCardFromHand(cardIndex, cardName);
+                }
                 
                 // Add to discard pile
                 if (ownerDeck != null && card.Data != null)
@@ -212,8 +339,40 @@ namespace Combat
                     ownerDeck.DiscardCard(card.Data);
                 }
                 
-                // Re-arrange remaining cards
+                // Rearrange the remaining cards
                 ArrangeCardsInHand();
+            }
+        }
+        
+        [ServerRpc]
+        private void CmdRemoveCardFromHand(int cardIndex, string cardName)
+        {
+            // Ensure the index is valid
+            if (cardIndex >= 0 && cardIndex < syncedCardIDs.Count)
+            {
+                // Remove the card from synced list
+                syncedCardIDs.RemoveAt(cardIndex);
+                Debug.Log($"[Server] Removed card {cardName} from synced hand");
+                
+                // Notify all clients to remove the card
+                RpcRemoveCardFromHand(cardIndex, cardName);
+            }
+        }
+        
+        [ObserversRpc]
+        private void RpcRemoveCardFromHand(int cardIndex, string cardName)
+        {
+            // Skip the owner (they already handled this locally)
+            if (IsOwner)
+                return;
+                
+            if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
+            {
+                // Remove from observers' hands and rearrange
+                Destroy(cardsInHand[cardIndex].gameObject);
+                cardsInHand.RemoveAt(cardIndex);
+                ArrangeCardsInHand();
+                Debug.Log($"[Observer] Removed card {cardName} from visual hand");
             }
         }
         

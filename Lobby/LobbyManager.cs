@@ -19,7 +19,6 @@ public class LobbyManager : NetworkBehaviour
     // Lobby state
     private List<PlayerInfo> players = new List<PlayerInfo>();
     private bool isHost = false;
-    private int nextPlayerId = 0;
 
     private void Awake()
     {
@@ -44,7 +43,6 @@ public class LobbyManager : NetworkBehaviour
     {
         this.isHost = isHost;
         players.Clear();
-        nextPlayerId = 0;
         
         // Show lobby canvas
         if (lobbyCanvas != null)
@@ -62,62 +60,66 @@ public class LobbyManager : NetworkBehaviour
             lobbyCanvas.SetActive(false);
         
         players.Clear();
-        nextPlayerId = 0;
     }
 
-    // Get the next player ID to assign
-    public int GetNextPlayerId()
-    {
-        return nextPlayerId++;
-    }
-
-    public void AddPlayer(NetworkConnection conn, string playerName)
+    public void AddPlayer(NetworkConnection conn)
     {
         if (InstanceFinder.NetworkManager == null || !InstanceFinder.NetworkManager.IsServerStarted) return;
-
-        Debug.Log($"Adding player: {playerName} (ConnId: {conn.ClientId})");
-        PlayerInfo newPlayer = new PlayerInfo
-        {
-            ConnectionId = conn.ClientId,
-            PlayerName = playerName,
-            IsReady = false
-        };
         
-        // Avoid adding duplicates if client connects/disconnects rapidly
+        // Find the NetworkPlayer object for this connection
+        NetworkPlayer networkPlayer = conn.FirstObject?.GetComponent<NetworkPlayer>();
+        if (networkPlayer == null)
+        {
+            Debug.LogError($"Could not find NetworkPlayer for connection {conn.ClientId} in AddPlayer.");
+            return;
+        }
+
+        Debug.Log($"Attempting to add player: (ConnId: {conn.ClientId})");
+        
+        // Avoid adding duplicates
         if (!players.Exists(p => p.ConnectionId == conn.ClientId))
         {
+            // Create PlayerInfo but get name dynamically later
+            PlayerInfo newPlayer = new PlayerInfo
+            {
+                ConnectionId = conn.ClientId,
+                PlayerName = "Connecting...", // Temporary name
+                IsReady = false
+            };
             players.Add(newPlayer);
-            // Update player list for all clients
-            ObserversUpdatePlayerList(players);
+            Debug.Log($"Added player placeholder (ConnId: {conn.ClientId}). Current count: {players.Count}");
+            
+            // Update player list for all clients (will fetch current names)
+            UpdateAndSendPlayerList();
         }
         else
         {
-            Debug.LogWarning($"Player {playerName} (ConnId: {conn.ClientId}) already exists in the list.");
+            Debug.LogWarning($"Player (ConnId: {conn.ClientId}) already exists in the list.");
+            // Still update the list in case their name changed somehow before fully joining?
+            UpdateAndSendPlayerList();
         }
-        
-        // Update player list for all clients
-        ObserversUpdatePlayerList(players);
     }
     
     public void SetPlayerReady(NetworkConnection conn, bool isReady)
     {
         if (InstanceFinder.NetworkManager == null || !InstanceFinder.NetworkManager.IsServerStarted) return;
 
-        for (int i = 0; i < players.Count; i++)
+        PlayerInfo playerInfo = players.Find(p => p.ConnectionId == conn.ClientId);
+        if (playerInfo != null)
         {
-            if (players[i].ConnectionId == conn.ClientId)
-            {
-                players[i].IsReady = isReady;
-                Debug.Log($"Player {players[i].PlayerName} ready status set to {isReady}");
-                break;
-            }
+            playerInfo.IsReady = isReady;
+            Debug.Log($"Player (ConnId: {conn.ClientId}) ready status set to {isReady}");
+            
+            // Update player list for all clients (also fetches current names)
+            UpdateAndSendPlayerList();
+            
+            // Check if all players are ready
+            CheckAllPlayersReady();
         }
-        
-        // Update player list for all clients
-        ObserversUpdatePlayerList(players);
-        
-        // Check if all players are ready
-        CheckAllPlayersReady();
+        else
+        {
+             Debug.LogWarning($"Could not find player with ConnId {conn.ClientId} in SetPlayerReady.");
+        }
     }
     
     private void CheckAllPlayersReady()
@@ -130,17 +132,11 @@ public class LobbyManager : NetworkBehaviour
             return;
         }
             
-        bool allReady = true;
-        foreach (PlayerInfo player in players)
-        {
-            if (!player.IsReady)
-            {
-                allReady = false;
-                break;
-            }
-        }
+        // Check server's internal list
+        bool allReady = players.TrueForAll(p => p.IsReady);
         
         // Enable start game button for host if all players are ready
+        // Send the state to clients via RPC
         RpcSetStartGameButtonActive(allReady);
     }
     
@@ -163,15 +159,72 @@ public class LobbyManager : NetworkBehaviour
     public void RemovePlayer(int connectionId)
     {
         // Remove player from list
-        PlayerInfo disconnectedPlayer = players.Find(p => p.ConnectionId == connectionId);
-        if (disconnectedPlayer != null)
+        int removedCount = players.RemoveAll(p => p.ConnectionId == connectionId);
+        
+        if (removedCount > 0)
         {
-            players.Remove(disconnectedPlayer);
+            Debug.Log($"Removed player with ConnectionId {connectionId}. Current count: {players.Count}");
             // Update player list for all clients
-            ObserversUpdatePlayerList(players);
+            UpdateAndSendPlayerList();
             // Update controls in case the leaving player affected readiness
             CheckAllPlayersReady();
         }
+        else
+        {
+             Debug.LogWarning($"Tried to remove player with ConnectionId {connectionId}, but they were not found.");
+        }
+    }
+
+    [Server]
+    private void UpdateAndSendPlayerList()
+    {
+        if (InstanceFinder.NetworkManager == null || !InstanceFinder.NetworkManager.IsServerStarted) return;
+        
+        List<PlayerInfo> currentPlayersInfo = new List<PlayerInfo>();
+        
+        // Iterate through the Connection IDs stored internally
+        // Use a copy of the list to avoid modification issues if a player disconnects during iteration
+        List<PlayerInfo> playersCopy = new List<PlayerInfo>(players); 
+        
+        foreach (var playerInternalInfo in playersCopy)
+        {
+            // Find the corresponding NetworkConnection
+            if (InstanceFinder.ServerManager.Clients.TryGetValue(playerInternalInfo.ConnectionId, out NetworkConnection conn))
+            {
+                 // Find the NetworkPlayer object for this connection
+                NetworkPlayer networkPlayer = conn.FirstObject?.GetComponent<NetworkPlayer>();
+                if (networkPlayer != null)
+                {
+                    // Create a new PlayerInfo with the *current* name from NetworkPlayer
+                    currentPlayersInfo.Add(new PlayerInfo
+                    {
+                        ConnectionId = playerInternalInfo.ConnectionId,
+                        PlayerName = networkPlayer.GetSteamName(), // Fetch current name
+                        IsReady = playerInternalInfo.IsReady // Keep stored ready state
+                    });
+                }
+                else
+                {
+                     Debug.LogWarning($"Could not find NetworkPlayer for active connection {playerInternalInfo.ConnectionId} when updating list.");
+                     // Optionally add with a placeholder name or skip
+                     currentPlayersInfo.Add(new PlayerInfo {
+                         ConnectionId = playerInternalInfo.ConnectionId,
+                         PlayerName = "Unknown",
+                         IsReady = playerInternalInfo.IsReady
+                     });
+                }
+            }
+            else
+            {
+                // Connection might have dropped between adding and this update
+                Debug.LogWarning($"Connection {playerInternalInfo.ConnectionId} not found in ServerManager.Clients during list update. Removing stale entry.");
+                // Ensure the stale entry is removed from the main list
+                players.RemoveAll(p => p.ConnectionId == playerInternalInfo.ConnectionId);
+            }
+        }
+        
+        // Send the freshly constructed list to all clients
+        ObserversUpdatePlayerList(currentPlayersInfo);
     }
 
     [ObserversRpc]
@@ -186,6 +239,13 @@ public class LobbyManager : NetworkBehaviour
         {
             Debug.LogWarning("LobbyUIManager is null in ObserversUpdatePlayerList");
         }
+        
+        // Also update controls based on the received list (for clients)
+        if (!IsServerInitialized && lobbyUIManager != null)
+        {
+            bool allReady = updatedPlayers.Count > 0 && updatedPlayers.TrueForAll(p => p.IsReady);
+            lobbyUIManager.SetStartGameButtonActive(allReady && InstanceFinder.IsHost); // Show button only if host and all ready
+        }
     }
 
     [ObserversRpc]
@@ -193,8 +253,8 @@ public class LobbyManager : NetworkBehaviour
     {
         if (lobbyUIManager != null)
         {
-            // Allow any player to see the button if active
-            lobbyUIManager.SetStartGameButtonActive(active);
+            // Only show the button for the host client
+            lobbyUIManager.SetStartGameButtonActive(active && InstanceFinder.IsHost);
         }
         else
         {
@@ -215,19 +275,14 @@ public class LobbyManager : NetworkBehaviour
         if (lobbyUIManager != null)
         {
             // Send the current server-side list to all clients via RPC
-            if (InstanceFinder.NetworkManager != null && InstanceFinder.NetworkManager.IsServerStarted)
+            if (InstanceFinder.IsServerStarted) // Simplified check
             {
-                ObserversUpdatePlayerList(players);
+                 // Call the method that constructs the list with current names
+                UpdateAndSendPlayerList();
             }
         }
         else Debug.LogWarning("LobbyUIManager null in UpdatePlayerList");
     }
-
-// Inside LobbyManager.cs - make sure this method exists
-public void ServerSetPlayerReady(NetworkConnection conn, bool isReady)
-{
-    SetPlayerReady(conn, isReady);
-}
 
     public void UpdateLobbyControls()
     {
@@ -243,26 +298,19 @@ public void ServerSetPlayerReady(NetworkConnection conn, bool isReady)
 
     public bool AreAllPlayersReady(bool serverOnly = false)
     {
-        if (!serverOnly && (InstanceFinder.NetworkManager == null || !InstanceFinder.NetworkManager.IsServerStarted))
+        if (!serverOnly && !IsServerInitialized) // Use IsServerInitialized for clarity
         {
-            Debug.LogWarning("AreAllPlayersReady called on client - returning false.");
+            Debug.LogWarning("AreAllPlayersReady called on client - relying on UI state might be inaccurate.");
+            // Clients should ideally rely on the UI state driven by ObserversUpdatePlayerList/RpcSetStartGameButtonActive
+            // Returning false here might be safer than trying to guess state.
             return false; 
         }
-        
+
         if (players.Count == 0)
-        {
-            return false; // Cannot start with 0 players
-        }
-            
-        foreach (PlayerInfo player in players)
-        {
-            if (!player.IsReady)
-            {
-                return false;
-            }
-        }
-        
-        return true;
+            return false; // Cannot be ready with 0 players
+
+        // Check server's internal list
+        return players.TrueForAll(p => p.IsReady);
     }
 
     // Called by CombatManager when combat finishes

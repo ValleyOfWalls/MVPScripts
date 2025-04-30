@@ -5,6 +5,8 @@ using FishNet.Managing;
 using FishNet.Transporting;
 using FishNet;
 using System.Collections;
+using UnityEngine.SceneManagement;
+using Combat; // If needed for other references
 
 public class GameManager : MonoBehaviour
 {
@@ -28,6 +30,12 @@ public class GameManager : MonoBehaviour
     // Network initialization tracking
     private bool networkEventsSubscribed = false;
     private bool networkInitializationAttempted = false;
+
+    // Add this property to hold the pet prefab
+    public GameObject PetPrefab { get; private set; }
+
+    [SerializeField] private string lobbySceneName = "LobbyScene";
+    [SerializeField] private string combatSceneName = "CombatScene";
 
     private void Awake()
     {
@@ -401,6 +409,18 @@ public class GameManager : MonoBehaviour
         {
             Debug.LogError($"Exception in SpawnPlayerSpawner: {ex.Message}\n{ex.StackTrace}");
         }
+    }
+
+    // Add a method for the initializer script to call
+    public void SetPetPrefab(GameObject prefab)
+    {
+        if (prefab == null)
+        {
+            Debug.LogError("Attempted to set a null PetPrefab in GameManager!");
+            return;
+        }
+        PetPrefab = prefab;
+        Debug.Log($"GameManager: PetPrefab set to {prefab.name}");
     }
 }
 

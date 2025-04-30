@@ -13,6 +13,7 @@ public class GameSetup : MonoBehaviour
     [SerializeField] private GameObject gameManagerPrefab;
     [SerializeField] private GameObject uiManagerPrefab;
     [SerializeField] private GameObject eventSystemPrefab;
+    [SerializeField] private GameObject petPrefab;
     
     private NetworkSetup networkSetup;
     private GameManager gameManager;
@@ -29,6 +30,22 @@ public class GameSetup : MonoBehaviour
         EnsureManager<NetworkManager>(); // Assuming NetworkManager is part of NetworkSetup or standalone
         EnsureManager<GameManager>();
         EnsureManager<UIManager>();
+
+        // Assign Pet Prefab to GameManager
+        GameManager gm = FindFirstObjectByType<GameManager>();
+        if (gm != null && petPrefab != null)
+        {
+            gm.SetPetPrefab(petPrefab);
+            Debug.Log("GameSetup: Assigned Pet Prefab to GameManager.");
+        }
+        else if (gm == null)
+        {
+            Debug.LogError("GameSetup: GameManager not found, cannot assign Pet Prefab!");
+        }
+        else if (petPrefab == null)
+        {
+            Debug.LogWarning("GameSetup: Pet Prefab is not assigned in the inspector!");
+        }
 
         // Find and mark managers as DontDestroyOnLoad if they are root objects
         // This assumes the managers themselves don't already do this

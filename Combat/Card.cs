@@ -17,11 +17,6 @@ namespace Combat
     {
         [Header("Card Data")]
         [SerializeField] private CardData cardData;
-        [SerializeField] private string cardName;
-        [SerializeField] private string description;
-        [SerializeField] private int manaCost;
-        [SerializeField] private CardType cardType;
-        [SerializeField] private int baseValue; // For attacks: damage, for skills: block, etc.
         
         [Header("UI Elements")]
         [SerializeField] private Image cardImage;
@@ -32,11 +27,11 @@ namespace Combat
         
         // Properties
         public CardData Data => cardData;
-        public string CardName => cardData != null ? cardData.cardName : cardName;
-        public string Description => cardData != null ? cardData.description : description;
-        public int ManaCost => cardData != null ? cardData.manaCost : manaCost;
-        public CardType Type => cardData != null ? cardData.cardType : cardType;
-        public int BaseValue => cardData != null ? cardData.baseValue : baseValue;
+        public string CardName => cardData != null ? cardData.cardName : "NO_DATA";
+        public string Description => cardData != null ? cardData.description : "NO_DATA";
+        public int ManaCost => cardData != null ? cardData.manaCost : 0;
+        public CardType Type => cardData != null ? cardData.cardType : default;
+        public int BaseValue => cardData != null ? cardData.baseValue : 0;
         
         // Card state
         private bool isPlayable = true;
@@ -187,40 +182,52 @@ namespace Combat
         
         public void Initialize(CardData data, PlayerHand hand, ICombatant cardOwner)
         {
+            if (data == null)
+            {
+                Debug.LogError("Attempted to initialize Card with null CardData!");
+                return;
+            }
+            
             cardData = data;
             owningHand = hand;
             owner = cardOwner;
             
-            Debug.Log($"Initializing card with data: {data.cardName}, Type: {data.cardType}, Cost: {data.manaCost}");
+            Debug.Log($"Initializing card for PlayerHand with data: {cardData.cardName}");
             
-            // Ensure the card is visible
+            // Ensure the card is visible and potentially interactable
             if (cardCanvasGroup != null)
             {
                 cardCanvasGroup.alpha = 1f;
-                cardCanvasGroup.interactable = true;
+                cardCanvasGroup.interactable = true; // Player hands are interactable
                 cardCanvasGroup.blocksRaycasts = true;
             }
             
             UpdateCardUI();
         }
-        
-        public void Initialize(string name, string desc, int cost, CardType type, int value, PlayerHand hand)
+
+        public void Initialize(CardData data, PetHand hand, ICombatant cardOwner)
         {
-            cardName = name;
-            description = desc;
-            manaCost = cost;
-            cardType = type;
-            baseValue = value;
-            owningHand = hand;
+            if (data == null)
+            {
+                Debug.LogError("Attempted to initialize Card with null CardData!");
+                return;
+            }
             
-            Debug.Log($"Initializing card with manual values: {name}, Type: {type}, Cost: {cost}");
+            cardData = data;
+            // Note: owningHand field is PlayerHand type, cannot directly assign PetHand
+            // If common functionality is needed, consider an interface or base class for hands
+            // For now, we store the owner but not the specific PetHand reference in owningHand
+            owningHand = null; 
+            owner = cardOwner;
             
-            // Ensure the card is visible
+            Debug.Log($"Initializing card for PetHand with data: {cardData.cardName}");
+            
+            // Ensure the card is visible but not interactable
             if (cardCanvasGroup != null)
             {
                 cardCanvasGroup.alpha = 1f;
-                cardCanvasGroup.interactable = true;
-                cardCanvasGroup.blocksRaycasts = true;
+                cardCanvasGroup.interactable = false; // Pet hands are not interactable
+                cardCanvasGroup.blocksRaycasts = false;
             }
             
             UpdateCardUI();

@@ -4,6 +4,7 @@ using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using System.Collections.Generic;
 using Steamworks;
+using Combat; // Add the Combat namespace for Deck and DeckManager access
 
 public class NetworkPlayer : NetworkBehaviour
 {
@@ -13,6 +14,16 @@ public class NetworkPlayer : NetworkBehaviour
     [Header("Steam Identity")]
     private readonly SyncVar<string> _steamName = new SyncVar<string>("");
     private readonly SyncVar<ulong> _steamId = new SyncVar<ulong>(0);
+    
+    // Persistent deck - synced across the network
+    [Header("Player Deck")]
+    public readonly SyncList<string> persistentDeckCardIDs = new SyncList<string>();
+    private bool deckInitialized = false;
+
+    // Pet reference - synced across the network
+    [Header("Pet")]
+    public readonly SyncVar<Pet> playerPet = new SyncVar<Pet>();
+    private bool petInitialized = false;
     
     // Properties
     public string SteamName => _steamName.Value;
@@ -28,18 +39,17 @@ public class NetworkPlayer : NetworkBehaviour
         base.OnStartServer();
         Players.Add(this); // Add server instance to list
         
-        // If GameManager exists, update UI
-        if (GameManager.Instance != null && LobbyManager.Instance != null)
+        // Initialize player's deck if needed
+        if (!deckInitialized)
         {
-            LobbyManager.Instance.UpdatePlayerList();
-            LobbyManager.Instance.UpdateLobbyControls();
+            InitializePlayerDeck();
         }
-    }
-
-    public override void OnStopServer()
-    {
-        base.OnStopServer();
-        Players.Remove(this); // Remove server instance from list
+        
+        // Initialize player's pet if needed
+        if (!petInitialized)
+        {
+            InitializePlayerPet();
+        }
         
         // If GameManager exists, update UI
         if (GameManager.Instance != null && LobbyManager.Instance != null)
@@ -48,95 +58,98 @@ public class NetworkPlayer : NetworkBehaviour
             LobbyManager.Instance.UpdateLobbyControls();
         }
     }
-
+    
+    public override void OnStopServer()
+    {
+        base.OnStopServer();
+        Players.Remove(this); // Clean up when player leaves
+    }
+    
     public override void OnStartClient()
     {
         base.OnStartClient();
         
-        // Add player to the static list
-        if (!Players.Contains(this))
-            Players.Add(this);
-            
-        // Setup change callbacks
-        _steamName.OnChange += OnSteamNameChanged;
-        
-        if (IsOwner)
+        // Update UI if owner
+        if (IsOwner && LobbyManager.Instance != null)
         {
-            // Initialize steam info
-            if (SteamManager.Instance && SteamManager.Instance.Initialized)
+            LobbyManager.Instance.UpdatePlayerList();
+            LobbyManager.Instance.UpdateLobbyControls();
+        }
+    }
+    
+    [Server]
+    private void InitializePlayerPet()
+    {
+        if (playerPet.Value != null || petInitialized)
+            return;
+            
+        // Create a new pet for this player using the prefab from GameManager
+        GameObject petObj = null;
+        
+        if (GameManager.Instance != null && GameManager.Instance.PetPrefab != null)
+        {
+            petObj = Instantiate(GameManager.Instance.PetPrefab);
+            Debug.Log("[NetworkPlayer] Instantiating pet from GameManager.Instance.PetPrefab");
+        }
+        else
+        {
+            Debug.LogError("[NetworkPlayer] Cannot create pet: GameManager instance or PetPrefab is null!");
+            // Optional: Fallback to Resources.Load if necessary
+            // GameObject petPrefab = Resources.Load<GameObject>("Prefabs/Pet");
+            // if (petPrefab != null) petObj = Instantiate(petPrefab);
+            // else return;
+            return; // Exit if prefab is not available
+        }
+        
+        if (petObj != null)
+        {
+            Pet pet = petObj.GetComponent<Pet>();
+            if (pet != null)
             {
-                string name = SteamFriends.GetPersonaName();
-                ulong id = SteamUser.GetSteamID().m_SteamID;
-                Debug.Log($"Owner setting Steam info: Name={name}, ID={id}");
-                CmdSetSteamInfo(name, id);
+                Spawn(petObj);
+                pet.Initialize(this);
+                playerPet.Value = pet;
+                petInitialized = true;
+                Debug.Log($"[NetworkPlayer] Created persistent pet for {GetSteamName()}");
             }
             else
             {
-                Debug.LogWarning("Steam not initialized for owner. Using default name.");
-                string defaultName = PlayerPrefs.GetString("PlayerName", "Player");
-                CmdSetSteamInfo(defaultName, 0); // Use default name if Steam fails
+                Debug.LogError("[NetworkPlayer] Created pet object has no Pet component");
+                Destroy(petObj);
             }
-        }
-        
-        // Update the UI
-        if (LobbyManager.Instance != null)
-        {
-            LobbyManager.Instance.UpdatePlayerList();
-            LobbyManager.Instance.UpdateLobbyControls();
         }
     }
     
-    public override void OnStopClient()
+    // Steam ID and name methods
+    [Server]
+    public void SetSteamInfo(ulong steamId, string steamName)
     {
-        base.OnStopClient();
-        
-        // Remove player from the static list
-        Players.Remove(this);
-        
-        // Clean up callbacks
-        _steamName.OnChange -= OnSteamNameChanged;
-       
-        // Update the UI only if LobbyManager still exists
-        if (LobbyManager.Instance != null)
-        {
-            LobbyManager.Instance.UpdatePlayerList();
-            LobbyManager.Instance.UpdateLobbyControls();
-        }
-    }
-    
-    #region Server RPCs (Commands)
-    [ServerRpc]
-    public void CmdSetSteamInfo(string steamName, ulong steamId)
-    {
-        string finalName = steamName;
-        // Check if steamId is 0 (potential local test without Steam) or if name already exists
-        bool nameExists = false;
-        foreach (NetworkPlayer otherPlayer in Players)
-        {
-            // Check against other players, not itself
-            if (otherPlayer != this && otherPlayer.SteamName == steamName)
-            {
-                nameExists = true;
-                break;
-            }
-        }
-
-        if (steamId == 0 || nameExists)
-        {
-            finalName = $"{steamName} ({Owner.ClientId})";
-            Debug.Log($"Duplicate name or local test detected. Appending ClientId: {finalName}");
-        }
-
-        _steamName.Value = finalName;
         _steamId.Value = steamId;
-        Debug.Log($"Server set Steam info: Name={_steamName.Value}, ID={_steamId.Value} for ClientId {Owner.ClientId}");
-        
-        // Update UI if needed
-        if (LobbyManager.Instance != null) 
-            LobbyManager.Instance.UpdatePlayerList();
+        _steamName.Value = steamName;
+        Debug.Log($"Player {Owner.ClientId} set Steam info: {steamId} ({steamName})");
     }
-    #endregion
-
+    
+    // Add a player to the list
+    public static void AddPlayer(NetworkPlayer player)
+    {
+        if (!Players.Contains(player))
+        {
+            Players.Add(player);
+        }
+    }
+    
+    // Remove a player from the list
+    public static void RemovePlayer(NetworkPlayer player)
+    {
+        Players.Remove(player);
+    }
+    
+    // Get a formatted string with the player's name and ID
+    public string GetDisplayName()
+    {
+        return $"{SteamName} (ID: {Owner.ClientId})";
+    }
+    
     #region Client and Host Methods
     public string GetSteamName()
     {
@@ -152,6 +165,54 @@ public class NetworkPlayer : NetworkBehaviour
         {
             LobbyManager.Instance.UpdatePlayerList();
         }
+    }
+    #endregion
+
+    #region Player Deck Methods
+    [Server]
+    public void InitializePlayerDeck()
+    {
+        // Only initialize on the server and if not already initialized
+        if (!IsServerInitialized || deckInitialized)
+            return;
+            
+        // Check if DeckManager exists
+        if (DeckManager.Instance == null)
+        {
+            Debug.LogError($"[NetworkPlayer] Cannot initialize deck for {GetSteamName()} - DeckManager.Instance is null!");
+            return;
+        }
+        
+        // Clear existing deck (if any)
+        persistentDeckCardIDs.Clear();
+        
+        // Get the starter deck from DeckManager
+        Deck starterDeck = DeckManager.Instance.GetStarterDeckTemplate();
+        
+        if (starterDeck == null)
+        {
+            Debug.LogError($"[NetworkPlayer] Failed to get starter deck template from DeckManager for {GetSteamName()}");
+            return;
+        }
+        
+        // Add each card from the starter deck to the persistent deck by name/ID
+        foreach (CardData card in starterDeck.Cards)
+        {
+            if (card != null)
+            {
+                persistentDeckCardIDs.Add(card.cardName); // Using card name as ID
+                Debug.Log($"[NetworkPlayer] Added card {card.cardName} to {GetSteamName()}'s persistent deck");
+            }
+        }
+        
+        deckInitialized = true;
+        Debug.Log($"[NetworkPlayer] Initialized persistent deck for {GetSteamName()} with {persistentDeckCardIDs.Count} cards");
+    }
+    
+    // Helper method to get the number of cards in the persistent deck
+    public int GetPersistentDeckCount()
+    {
+        return persistentDeckCardIDs.Count;
     }
     #endregion
 

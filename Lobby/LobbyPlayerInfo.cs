@@ -89,28 +89,29 @@ public class LobbyPlayerInfo : NetworkBehaviour
     {
         if (sender == null) sender = Owner; // Default to owner if called by client
         
-        // Fetch the player name from the NetworkPlayer associated with the sender
-        string playerName = "Player"; // Default fallback
-        NetworkPlayer networkPlayer = sender.FirstObject?.GetComponent<NetworkPlayer>();
-        if (networkPlayer != null)
-        {
-            playerName = networkPlayer.GetSteamName(); // Use the synchronized name
-            if (string.IsNullOrEmpty(playerName))
-            {
-                 Debug.LogWarning($"NetworkPlayer found for client {sender.ClientId}, but steamName is empty. Falling back to 'Player'.");
-                 playerName = "Player"; // Fallback if name hasn't synced yet (should be rare)
-            }
-        }
-        else
-        {
-             Debug.LogError($"Could not find NetworkPlayer component for client {sender.ClientId} when joining lobby.");
-        }
+        // No longer need to fetch name here, LobbyManager will handle it
+        // string playerName = "Player"; // Default fallback
+        // NetworkPlayer networkPlayer = sender.FirstObject?.GetComponent<NetworkPlayer>();
+        // if (networkPlayer != null)
+        // {
+        //     playerName = networkPlayer.GetSteamName(); // Use the synchronized name
+        //     if (string.IsNullOrEmpty(playerName))
+        //     {
+        //          Debug.LogWarning($"NetworkPlayer found for client {sender.ClientId}, but steamName is empty. Falling back to 'Player'.");
+        //          playerName = "Player"; // Fallback if name hasn't synced yet (should be rare)
+        //     }
+        // }
+        // else
+        // {
+        //      Debug.LogError($"Could not find NetworkPlayer component for client {sender.ClientId} when joining lobby.");
+        // }
         
-        Debug.Log($"CmdJoinLobby received on server from {sender.ClientId}. Fetched name: {playerName}");
+        Debug.Log($"CmdJoinLobby received on server from {sender.ClientId}.");
         
         if (LobbyManager.Instance != null)
         {
-            LobbyManager.Instance.AddPlayer(sender, playerName);
+            // LobbyManager.AddPlayer now only needs the connection
+            LobbyManager.Instance.AddPlayer(sender); 
         }
         else
         {
