@@ -4,7 +4,6 @@ using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using System.Collections.Generic;
 using DG.Tweening;
-using UnityEngine.UI;
 
 namespace Combat
 {
@@ -360,50 +359,6 @@ namespace Combat
             // This depends on context - usually a pet is an enemy to the opponent player
             // This would be set during combat setup
             return false;
-        }
-        
-        // Control visibility and interactivity for spectator mode
-        public void SetSpectatorMode(bool isSpectating)
-        {
-            // When in spectator mode, we want to make the pet visible but possibly with visual feedback
-            // that this is not the active pet
-            
-            // Visual feedback that this is not the active combat (e.g., slight transparency)
-            SpriteRenderer petRenderer = GetComponent<SpriteRenderer>();
-            if (petRenderer != null)
-            {
-                Color color = petRenderer.color;
-                color.a = isSpectating ? 0.7f : 1.0f; // Slightly transparent when spectating
-                petRenderer.color = color;
-            }
-            
-            // If this pet has any UI elements, adjust them for spectator mode
-            Button[] petButtons = GetComponentsInChildren<Button>(true);
-            foreach (Button button in petButtons)
-            {
-                button.interactable = !isSpectating;
-            }
-            
-            // If this pet has a hand, notify it about spectator mode
-            if (petHand != null)
-            {
-                petHand.gameObject.SendMessage("OnSpectatorModeChanged", isSpectating, SendMessageOptions.DontRequireReceiver);
-            }
-        }
-        
-        // Toggle gameObject active state (usually called when cycling between combats)
-        public void SetActive(bool active)
-        {
-            if (gameObject != null)
-            {
-                gameObject.SetActive(active);
-                
-                // If this pet has a hand, also set its active state
-                if (petHand != null)
-                {
-                    petHand.gameObject.SetActive(active);
-                }
-            }
         }
     }
 } 

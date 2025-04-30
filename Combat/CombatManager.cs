@@ -21,10 +21,15 @@ namespace Combat
         [SerializeField] private GameObject combatPetPrefab;
         [SerializeField] private GameObject playerHandPrefab;
         [SerializeField] private GameObject petHandPrefab;
-        [SerializeField] private GameObject combatSceneCanvasPrefab; // Prefab for combat scene canvas
         
         [Header("References")]
-        // combatCanvas reference removed as we're using programmatically generated canvases
+        [SerializeField] private Transform petSpawnPointsParent;
+        [SerializeField] private Transform playerSpawnPointsParent;
+        [SerializeField] private GameObject combatCanvas;
+        [SerializeField] private Transform playerHandArea;
+        [SerializeField] private Transform petHandArea;
+        [SerializeField] private PlayerHand playerHand;
+        [SerializeField] private PlayerHand petHand;
         
         // List of active combats
         private readonly Dictionary<NetworkPlayer, CombatData> activeCombats = new Dictionary<NetworkPlayer, CombatData>();
@@ -38,9 +43,6 @@ namespace Combat
         // Lists of combatants
         private List<ICombatant> allies = new List<ICombatant>();
         private List<ICombatant> enemies = new List<ICombatant>();
-        
-        // List of combat scene canvases
-        private readonly List<CombatSceneCanvas> combatSceneCanvases = new List<CombatSceneCanvas>();
         
         private void Awake()
         {
@@ -60,8 +62,27 @@ namespace Combat
         {
             Debug.Log("[CombatManager] Start called");
             
-            // We no longer need a direct reference to a combat canvas
-            // since we're generating canvases programmatically using combatSceneCanvasPrefab
+            // Verify combat canvas is set up properly
+            if (combatCanvas != null)
+            {
+                Debug.Log($"[CombatManager] Combat canvas found: {combatCanvas.name}");
+                if (!combatCanvas.activeInHierarchy)
+                {
+                    Debug.LogWarning("[CombatManager] Combat canvas is inactive in hierarchy");
+                }
+                
+                // Check for canvas group for animations
+                CanvasGroup canvasGroup = combatCanvas.GetComponent<CanvasGroup>();
+                if (canvasGroup == null)
+                {
+                    Debug.LogWarning("[CombatManager] Combat canvas has no CanvasGroup component, adding one");
+                    canvasGroup = combatCanvas.AddComponent<CanvasGroup>();
+                }
+            }
+            else
+            {
+                Debug.LogError("[CombatManager] No combat canvas assigned");
+            }
         }
         
         private void ValidatePrefabs()
@@ -77,15 +98,11 @@ namespace Combat
             
             if (petHandPrefab == null)
                 Debug.LogError("[CombatManager] No petHandPrefab assigned");
-                
-            if (combatSceneCanvasPrefab == null)
-                Debug.LogError("[CombatManager] No combatSceneCanvasPrefab assigned");
             
             Debug.Log($"[CombatManager] Prefabs validated - Player: {(combatPlayerPrefab != null ? "Valid" : "Missing")}, " +
                       $"CombatPet: {(combatPetPrefab != null ? "Valid" : "Missing")}, " +
                       $"Hand: {(playerHandPrefab != null ? "Valid" : "Missing")}, " +
-                      $"PetHand: {(petHandPrefab != null ? "Valid" : "Missing")}, " +
-                      $"SceneCanvas: {(combatSceneCanvasPrefab != null ? "Valid" : "Missing")}");
+                      $"PetHand: {(petHandPrefab != null ? "Valid" : "Missing")}");
         }
         
         // --- Public Accessors ---
@@ -325,9 +342,6 @@ namespace Combat
                 activeCombats[player].CombatComplete = false;
                 
                 Debug.Log($"[CombatManager] Populated CombatData for {player.GetSteamName()}: PlayerPet={playerPet.name}, OpponentPet={opponentPet.name}");
-
-                // --- Create a dedicated CombatSceneCanvas for this combat ---
-                CreateCombatSceneCanvas(player, opponentPetOwner, playerCombatPets[player], playerCombatPets[opponentPetOwner]);
             }
             
             // Show the combat UI on all clients
@@ -350,57 +364,6 @@ namespace Combat
             
             // Log the combat state after initialization
             LogCombatState();
-        }
-        
-        [Server]
-        private void CreateCombatSceneCanvas(NetworkPlayer player, NetworkPlayer opponentPetOwner, CombatPet playerPet, CombatPet opponentPet)
-        {
-            if (combatSceneCanvasPrefab == null)
-            {
-                Debug.LogError("[CombatManager] Cannot create combat scene canvas: prefab is null");
-                return;
-            }
-            
-            // Create a new canvas for this specific combat
-            GameObject canvasObj = Instantiate(combatSceneCanvasPrefab);
-            canvasObj.name = $"CombatCanvas_{player.GetSteamName()}_vs_{opponentPetOwner.GetSteamName()}Pet";
-            
-            // Get the CombatSceneCanvas component
-            CombatSceneCanvas sceneCanvas = canvasObj.GetComponent<CombatSceneCanvas>();
-            if (sceneCanvas == null)
-            {
-                Debug.LogError("[CombatManager] CombatSceneCanvas component not found on prefab");
-                Destroy(canvasObj);
-                return;
-            }
-            
-            // Spawn the canvas with network visibility
-            Spawn(canvasObj);
-            
-            // Add to the list of canvases
-            combatSceneCanvases.Add(sceneCanvas);
-            
-            // Get the CombatPlayer for this player (from activeCombats)
-            CombatData combatData = null;
-            if (activeCombats.ContainsKey(player))
-            {
-                combatData = activeCombats[player];
-            }
-            else
-            {
-                Debug.LogWarning($"[CombatManager] No CombatData found for player {player.GetSteamName()}");
-            }
-            
-            // Initialize the canvas with combat references if data is available
-            if (combatData != null)
-            {
-                sceneCanvas.Initialize(combatData.CombatPlayer, opponentPet, player, opponentPetOwner);
-                Debug.Log($"[CombatManager] Created and initialized combat scene canvas for {player.GetSteamName()} vs {opponentPetOwner.GetSteamName()}'s pet");
-            }
-            else
-            {
-                Debug.LogError($"[CombatManager] Failed to initialize combat scene canvas: missing combat data for player {player.GetSteamName()}");
-            }
         }
         
         [Server]
@@ -656,24 +619,24 @@ namespace Combat
         {
             Debug.Log("[CombatManager] RpcShowCombatCanvas received");
             
-            // Show all combat scene canvases
-            foreach (CombatSceneCanvas canvas in combatSceneCanvases)
+            if (combatCanvas != null)
             {
-                if (canvas != null)
+                combatCanvas.SetActive(true);
+                
+                // Add animation to show the canvas
+                CanvasGroup canvasGroup = combatCanvas.GetComponent<CanvasGroup>();
+                if (canvasGroup != null)
                 {
-                    canvas.gameObject.SetActive(true);
-                    
-                    // Add animation to show the canvas
-                    CanvasGroup canvasGroup = canvas.GetComponent<CanvasGroup>();
-                    if (canvasGroup != null)
-                    {
-                        canvasGroup.alpha = 0;
-                        canvasGroup.DOFade(1, 0.5f);
-                    }
+                    canvasGroup.alpha = 0;
+                    canvasGroup.DOFade(1, 0.5f);
                 }
+                
+                Debug.Log("[CombatManager] Combat canvas activated");
             }
-            
-            Debug.Log("[CombatManager] Combat canvases activated");
+            else
+            {
+                Debug.LogError("[CombatManager] Cannot show combat canvas - reference is null");
+            }
         }
         
         [ObserversRpc]
@@ -681,28 +644,28 @@ namespace Combat
         {
             Debug.Log("[CombatManager] RpcHideCombatCanvas received");
             
-            // Hide all combat scene canvases
-            foreach (CombatSceneCanvas canvas in combatSceneCanvases)
+            if (combatCanvas != null)
             {
-                if (canvas != null)
+                // Add animation to hide the canvas
+                CanvasGroup canvasGroup = combatCanvas.GetComponent<CanvasGroup>();
+                if (canvasGroup != null)
                 {
-                    // Add animation to hide the canvas
-                    CanvasGroup canvasGroup = canvas.GetComponent<CanvasGroup>();
-                    if (canvasGroup != null)
+                    canvasGroup.DOFade(0, 0.5f).OnComplete(() => 
                     {
-                        canvasGroup.DOFade(0, 0.5f).OnComplete(() => 
-                        {
-                            canvas.gameObject.SetActive(false);
-                        });
-                    }
-                    else
-                    {
-                        canvas.gameObject.SetActive(false);
-                    }
+                        combatCanvas.SetActive(false);
+                    });
                 }
+                else
+                {
+                    combatCanvas.SetActive(false);
+                }
+                
+                Debug.Log("[CombatManager] Combat canvas hidden");
             }
-            
-            Debug.Log("[CombatManager] Combat canvases hidden");
+            else
+            {
+                Debug.LogError("[CombatManager] Cannot hide combat canvas - reference is null");
+            }
         }
         
         [TargetRpc]
@@ -738,29 +701,26 @@ namespace Combat
         {
             Debug.Log("[CombatManager] RpcEndCombat received");
             
-            // Hide all combat scene canvases
-            foreach (CombatSceneCanvas canvas in combatSceneCanvases)
+            // Hide the combat canvas
+            if (combatCanvas != null)
             {
-                if (canvas != null)
+                // Add animation to hide the canvas
+                CanvasGroup canvasGroup = combatCanvas.GetComponent<CanvasGroup>();
+                if (canvasGroup != null)
                 {
-                    // Add animation to hide the canvas
-                    CanvasGroup canvasGroup = canvas.GetComponent<CanvasGroup>();
-                    if (canvasGroup != null)
+                    canvasGroup.DOFade(0, 0.5f).OnComplete(() => 
                     {
-                        canvasGroup.DOFade(0, 0.5f).OnComplete(() => 
-                        {
-                            canvas.gameObject.SetActive(false);
-                        });
-                    }
-                    else
-                    {
-                        canvas.gameObject.SetActive(false);
-                    }
+                        combatCanvas.SetActive(false);
+                    });
+                }
+                else
+                {
+                    combatCanvas.SetActive(false);
                 }
             }
             
-            // Reset the view index
-            CombatSceneCanvas.ResetViewIndex();
+            // Destroy all combat-related objects
+            // This happens automatically when we return to the lobby scene
         }
         
         #endregion

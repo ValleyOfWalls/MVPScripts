@@ -34,6 +34,9 @@ public class GameManager : MonoBehaviour
     // Add this property to hold the pet prefab
     public GameObject PetPrefab { get; private set; }
 
+    [SerializeField] private string lobbySceneName = "LobbyScene";
+    [SerializeField] private string combatSceneName = "CombatScene";
+
     private void Awake()
     {
         if (Instance == null)

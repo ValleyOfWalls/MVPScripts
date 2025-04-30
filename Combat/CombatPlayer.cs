@@ -5,7 +5,6 @@ using FishNet.Connection;
 using DG.Tweening;
 using TMPro;
 using System.Collections;
-using UnityEngine.UI;
 
 namespace Combat
 {
@@ -690,51 +689,6 @@ namespace Combat
         {
             Debug.LogWarning("Not enough energy to play that card!");
             // Show a message to the player
-        }
-
-        // Control visibility and interactivity for spectator mode
-        public void SetSpectatorMode(bool isSpectating)
-        {
-            // When in spectator mode, we may want to disable certain UI elements or interactions
-            if (IsOwner)
-            {
-                // Only the owner needs to handle UI changes
-                if (endTurnButton != null)
-                {
-                    endTurnButton.gameObject.SetActive(!isSpectating);
-                }
-                
-                // Find any other owner-only UI elements and disable them in spectator mode
-                Button[] interactiveButtons = GetComponentsInChildren<Button>(true);
-                foreach (Button button in interactiveButtons)
-                {
-                    if (button != endTurnButton) // We already handled the end turn button
-                    {
-                        button.interactable = !isSpectating;
-                    }
-                }
-            }
-            
-            // Visual feedback that this is not the active combat (e.g., slight transparency)
-            if (spriteRenderer != null)
-            {
-                Color color = spriteRenderer.color;
-                color.a = isSpectating ? 0.7f : 1.0f; // Slightly transparent when spectating
-                spriteRenderer.color = color;
-            }
-            
-            // Notify any child objects that might need to respond to spectator mode
-            // For example, cards in hand might need to be non-interactive
-            SendMessageUpwards("OnSpectatorModeChanged", isSpectating, SendMessageOptions.DontRequireReceiver);
-        }
-        
-        // Toggle gameObject active state (usually called when cycling between combats)
-        public void SetActive(bool active)
-        {
-            if (gameObject != null)
-            {
-                gameObject.SetActive(active);
-            }
         }
     }
 } 
