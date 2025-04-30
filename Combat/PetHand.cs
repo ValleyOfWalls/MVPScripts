@@ -11,7 +11,6 @@ namespace Combat
     {
         [Header("Hand Settings")]
         [SerializeField] private int maxHandSize = 7;
-        [SerializeField] private Transform cardParent;
         [SerializeField] private float cardSpacing = 0.8f;
         [SerializeField] private float handCurveHeight = 100f;
         [SerializeField] private float dealAnimationDuration = 0.3f;
@@ -33,16 +32,7 @@ namespace Combat
 
         private void Awake()
         {
-            Debug.Log($"PetHand Awake - Card Parent: {(cardParent != null ? "Found" : "Missing")}");
-            
-            // Ensure card parent exists
-            if (cardParent == null)
-            {
-                Debug.LogWarning("No card parent assigned to PetHand, creating one");
-                cardParent = new GameObject("CardParent").transform;
-                cardParent.SetParent(transform);
-                cardParent.localPosition = Vector3.zero;
-            }
+            Debug.Log($"PetHand Awake - Initializing");
             
             // Register callback for synced card changes
             syncedCardIDs.OnChange += OnSyncedCardsChanged;
@@ -55,9 +45,7 @@ namespace Combat
             
             Debug.Log($"PetHand OnStartClient - PetOwner: {(petOwner != null ? petOwner.GetSteamName() : "Unknown")}");
             
-            // Always show the card parent (all players can see pet cards)
-            if (cardParent != null)
-                cardParent.gameObject.SetActive(true);
+            this.gameObject.SetActive(true);
             
             // Pet cards are visible but not interactive for any player
             SetCardsInteractivity(false);
@@ -189,8 +177,8 @@ namespace Combat
         {
             try
             {
-                // Instantiate card using DeckManager
-                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, cardParent, this, combatPet);
+                // Instantiate card using DeckManager, parent directly to this PetHand transform
+                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPet);
                 
                 if (cardObj == null)
                 {

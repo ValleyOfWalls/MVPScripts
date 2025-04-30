@@ -14,6 +14,7 @@ public class NetworkPlayer : NetworkBehaviour
     [Header("Steam Identity")]
     private readonly SyncVar<string> _steamName = new SyncVar<string>("");
     private readonly SyncVar<ulong> _steamId = new SyncVar<ulong>(0);
+    private readonly SyncVar<string> _syncedPlayerName = new SyncVar<string>(""); // Synced name for hierarchy
     
     // Persistent deck - synced across the network
     [Header("Player Deck")]
@@ -23,6 +24,7 @@ public class NetworkPlayer : NetworkBehaviour
     // Pet reference - synced across the network
     [Header("Pet")]
     public readonly SyncVar<Pet> playerPet = new SyncVar<Pet>();
+    private readonly SyncVar<string> _syncedPetName = new SyncVar<string>(""); // Synced name for pet hierarchy
     private bool petInitialized = false;
     
     // Properties
@@ -69,12 +71,29 @@ public class NetworkPlayer : NetworkBehaviour
     {
         base.OnStartClient();
         
+        // Register SyncVar callbacks
+        _syncedPlayerName.OnChange += OnPlayerNameChanged;
+        _syncedPetName.OnChange += OnPetNameChanged;
+
+        // Apply initial names if already set
+        OnPlayerNameChanged(string.Empty, _syncedPlayerName.Value, false);
+        OnPetNameChanged(string.Empty, _syncedPetName.Value, false);
+
         // Update UI if owner
         if (IsOwner && LobbyManager.Instance != null)
         {
             LobbyManager.Instance.UpdatePlayerList();
             LobbyManager.Instance.UpdateLobbyControls();
         }
+    }
+    
+    public override void OnStopClient()
+    {
+        base.OnStopClient();
+
+        // Unregister SyncVar callbacks
+        _syncedPlayerName.OnChange -= OnPlayerNameChanged;
+        _syncedPetName.OnChange -= OnPetNameChanged;
     }
     
     [Server]
@@ -110,7 +129,7 @@ public class NetworkPlayer : NetworkBehaviour
                 pet.Initialize(this);
                 playerPet.Value = pet;
                 petInitialized = true;
-                Debug.Log($"[NetworkPlayer] Created persistent pet for {GetSteamName()}");
+                Debug.Log($"[NetworkPlayer] Created persistent pet for {GetSteamName()} (will be renamed later)");
             }
             else
             {
@@ -127,6 +146,50 @@ public class NetworkPlayer : NetworkBehaviour
         _steamId.Value = steamId;
         _steamName.Value = steamName;
         Debug.Log($"Player {Owner.ClientId} set Steam info: {steamId} ({steamName})");
+
+        // RENAME the NetworkPlayer GameObject for clarity in hierarchy (Server Only + SyncVar)
+        string uniquePlayerName = string.IsNullOrEmpty(steamName) ? $"Player_{Owner.ClientId}" : steamName;
+        uniquePlayerName = GetUniqueGameObjectName(uniquePlayerName, Owner.ClientId);
+        gameObject.name = uniquePlayerName; // Set name on server immediately
+        _syncedPlayerName.Value = uniquePlayerName; // Sync name to clients
+        Debug.Log($"Set NetworkPlayer name to: {uniquePlayerName} (Synced)");
+
+        // RENAME the Pet GameObject now that we have the name (Server Only + SyncVar)
+        if (playerPet.Value != null)
+        {
+            string uniquePetName = string.IsNullOrEmpty(steamName) ? "Player's Pet" : $"{steamName}'s Pet";
+            uniquePetName = GetUniqueGameObjectName(uniquePetName, Owner.ClientId); 
+            playerPet.Value.gameObject.name = uniquePetName; // Set name on server immediately
+            _syncedPetName.Value = uniquePetName; // Sync name to clients
+            Debug.Log($"Set Pet object name to: {uniquePetName} (Synced)");
+        }
+        else
+        {
+            Debug.LogWarning($"SetSteamInfo: Could not rename pet for {steamName}, playerPet SyncVar is null.");
+        }
+    }
+    
+    // Helper to ensure unique GameObject names (simple approach)
+    private string GetUniqueGameObjectName(string baseName, int uniqueId)
+    {
+        int count = 0;
+        string finalName = baseName;
+        // Check against all GameObjects in the scene (can be slow in large scenes)
+        // A more optimized approach might track NetworkPlayer names specifically
+        while (GameObject.Find(finalName) != null && GameObject.Find(finalName) != gameObject) // Check if name exists AND it's not this object
+        {
+            count++;
+            finalName = $"{baseName}_{uniqueId}"; // Use ClientId for uniqueness on first collision
+            if (count > 1) // Add counter for subsequent collisions
+            {
+                 finalName = $"{baseName}_{uniqueId}_{count}";
+            }
+            if (count > 10) { // Safety break
+                 Debug.LogError($"Could not find unique name for {baseName} after {count} tries!");
+                 return $"{baseName}_{System.Guid.NewGuid()}"; // Use GUID as last resort
+            }
+        }
+        return finalName;
     }
     
     // Add a player to the list
@@ -158,6 +221,30 @@ public class NetworkPlayer : NetworkBehaviour
     #endregion
     
     #region Callbacks
+    // Called on CLIENT when synced name changes
+    private void OnPlayerNameChanged(string prevName, string newName, bool asServer)
+    {
+        if (asServer) return;
+        if (!string.IsNullOrEmpty(newName))
+        {
+             gameObject.name = newName;
+             // Optional: Add a small log for debugging client-side rename
+             // Debug.Log($"[Client] NetworkPlayer GameObject renamed to: {newName}");
+        }
+    }
+
+    // Called on CLIENT when synced pet name changes
+    private void OnPetNameChanged(string prevName, string newName, bool asServer)
+    {
+         if (asServer) return;
+         if (!string.IsNullOrEmpty(newName) && playerPet.Value != null)
+         {
+             playerPet.Value.gameObject.name = newName;
+             // Optional: Add a small log for debugging client-side rename
+             // Debug.Log($"[Client] Pet GameObject renamed to: {newName}");
+         }
+    }
+
     private void OnSteamNameChanged(string oldValue, string newValue, bool asServer)
     {
         Debug.Log($"OnSteamNameChanged: Player ID {SteamID} changed name from '{oldValue}' to '{newValue}'. IsServer: {asServer}");

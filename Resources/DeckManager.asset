@@ -14,5 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerStarterDeck: {fileID: 11400000, guid: 7b420e27445bbf24983335b690c2a3c3, type: 2}
   petStarterDecks:
-  - {fileID: 11400000, guid: 7b420e27445bbf24983335b690c2a3c3, type: 2}
+  - {fileID: 11400000, guid: e921f98d40a0ebf4a955e50774b83838, type: 2}
   cardPrefab: {fileID: 4814362204195705837, guid: c06443dcf92b0b548aac31403cf79f05, type: 3}

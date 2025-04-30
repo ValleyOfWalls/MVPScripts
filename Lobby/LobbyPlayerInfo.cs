@@ -30,8 +30,18 @@ public class LobbyPlayerInfo : NetworkBehaviour
         if (IsOwner)
         {
             Debug.Log("LobbyPlayerInfo started as owner - joining lobby");
-            // Notify LobbyManager that we've joined. Name will be fetched server-side.
-            CmdJoinLobby(); // Removed playerName argument
+            // Notify LobbyManager that we've joined. Pass SteamID.
+            if (SteamManager.Instance != null && SteamManager.Instance.Initialized)
+            {
+                ulong steamId = SteamUser.GetSteamID().m_SteamID;
+                CmdJoinLobby(steamId); 
+            }
+            else
+            {
+                 Debug.LogError("Cannot get SteamID: SteamManager not initialized!");
+                 // Optionally handle this error, maybe send 0 or a default?
+                 CmdJoinLobby(0); // Send 0 if Steam isn't ready
+            }
         }
     }
     
@@ -85,33 +95,16 @@ public class LobbyPlayerInfo : NetworkBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)] // Allow server to call this if needed
-    public void CmdJoinLobby(NetworkConnection sender = null) // Removed playerName parameter
+    public void CmdJoinLobby(ulong steamId, NetworkConnection sender = null) // Added steamId parameter
     {
         if (sender == null) sender = Owner; // Default to owner if called by client
         
-        // No longer need to fetch name here, LobbyManager will handle it
-        // string playerName = "Player"; // Default fallback
-        // NetworkPlayer networkPlayer = sender.FirstObject?.GetComponent<NetworkPlayer>();
-        // if (networkPlayer != null)
-        // {
-        //     playerName = networkPlayer.GetSteamName(); // Use the synchronized name
-        //     if (string.IsNullOrEmpty(playerName))
-        //     {
-        //          Debug.LogWarning($"NetworkPlayer found for client {sender.ClientId}, but steamName is empty. Falling back to 'Player'.");
-        //          playerName = "Player"; // Fallback if name hasn't synced yet (should be rare)
-        //     }
-        // }
-        // else
-        // {
-        //      Debug.LogError($"Could not find NetworkPlayer component for client {sender.ClientId} when joining lobby.");
-        // }
-        
-        Debug.Log($"CmdJoinLobby received on server from {sender.ClientId}.");
+        Debug.Log($"CmdJoinLobby received on server from {sender.ClientId} with SteamID {steamId}.");
         
         if (LobbyManager.Instance != null)
         {
-            // LobbyManager.AddPlayer now only needs the connection
-            LobbyManager.Instance.AddPlayer(sender); 
+            // Pass the steamId to AddPlayer
+            LobbyManager.Instance.AddPlayer(sender, steamId); 
         }
         else
         {

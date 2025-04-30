@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5ffed5487c4067d4195262b1463406d6, type: 3}
-  m_Name: Deck
+  m_Name: PlayerStarterDeck
   m_EditorClassIdentifier: 
   cards:
   - {fileID: 11400000, guid: 24bfada0033afbe429ed09c4c3a544f3, type: 2}

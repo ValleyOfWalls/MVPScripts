@@ -62,7 +62,7 @@ public class LobbyManager : NetworkBehaviour
         players.Clear();
     }
 
-    public void AddPlayer(NetworkConnection conn)
+    public void AddPlayer(NetworkConnection conn, ulong steamId)
     {
         if (InstanceFinder.NetworkManager == null || !InstanceFinder.NetworkManager.IsServerStarted) return;
         
@@ -74,20 +74,35 @@ public class LobbyManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"Attempting to add player: (ConnId: {conn.ClientId})");
+        string steamName = "Player"; // Default name
+        if (steamId != 0 && SteamManager.Instance != null && SteamManager.Instance.Initialized)
+        {
+            steamName = SteamFriends.GetFriendPersonaName(new CSteamID(steamId));
+            // Set the Steam info on the NetworkPlayer instance
+            networkPlayer.SetSteamInfo(steamId, steamName);
+             Debug.Log($"Set Steam info for ConnId {conn.ClientId}: ID={steamId}, Name={steamName}");
+        }
+        else
+        {
+            Debug.LogWarning($"Could not get Steam name for ConnId {conn.ClientId}. SteamID: {steamId}, Steam Initialized: {SteamManager.Instance?.Initialized}");
+            // Optionally set default info if needed
+            // networkPlayer.SetSteamInfo(0, "Player"); 
+        }
+
+        Debug.Log($"Attempting to add player: (ConnId: {conn.ClientId}, Name: {steamName})");
         
         // Avoid adding duplicates
         if (!players.Exists(p => p.ConnectionId == conn.ClientId))
         {
-            // Create PlayerInfo but get name dynamically later
+            // Create PlayerInfo using the fetched Steam name
             PlayerInfo newPlayer = new PlayerInfo
             {
                 ConnectionId = conn.ClientId,
-                PlayerName = "Connecting...", // Temporary name
+                PlayerName = steamName, // Use the actual name
                 IsReady = false
             };
             players.Add(newPlayer);
-            Debug.Log($"Added player placeholder (ConnId: {conn.ClientId}). Current count: {players.Count}");
+            Debug.Log($"Added player (ConnId: {conn.ClientId}, Name: {steamName}). Current count: {players.Count}");
             
             // Update player list for all clients (will fetch current names)
             UpdateAndSendPlayerList();
@@ -95,8 +110,19 @@ public class LobbyManager : NetworkBehaviour
         else
         {
             Debug.LogWarning($"Player (ConnId: {conn.ClientId}) already exists in the list.");
-            // Still update the list in case their name changed somehow before fully joining?
-            UpdateAndSendPlayerList();
+            // Optionally update their name here if it could change?
+             PlayerInfo existingPlayer = players.Find(p => p.ConnectionId == conn.ClientId);
+             if (existingPlayer != null && existingPlayer.PlayerName != steamName)
+             {
+                 existingPlayer.PlayerName = steamName; // Update name in server list
+                 Debug.Log($"Updated existing player name for ConnId {conn.ClientId} to {steamName}");
+                 UpdateAndSendPlayerList(); // Resend list with updated name
+             }
+             else
+             {
+                // Still update the list in case their name changed somehow before fully joining?
+                UpdateAndSendPlayerList();
+             }
         }
     }
     
@@ -244,7 +270,7 @@ public class LobbyManager : NetworkBehaviour
         if (!IsServerInitialized && lobbyUIManager != null)
         {
             bool allReady = updatedPlayers.Count > 0 && updatedPlayers.TrueForAll(p => p.IsReady);
-            lobbyUIManager.SetStartGameButtonActive(allReady && InstanceFinder.IsHost); // Show button only if host and all ready
+            lobbyUIManager.SetStartGameButtonActive(allReady); // Show button if all ready (removed host check)
         }
     }
 
@@ -253,8 +279,8 @@ public class LobbyManager : NetworkBehaviour
     {
         if (lobbyUIManager != null)
         {
-            // Only show the button for the host client
-            lobbyUIManager.SetStartGameButtonActive(active && InstanceFinder.IsHost);
+            // The RPC is called by the server; clients just need to obey the 'active' flag.
+            lobbyUIManager.SetStartGameButtonActive(active); // Removed host check
         }
         else
         {

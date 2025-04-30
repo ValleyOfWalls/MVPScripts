@@ -11,7 +11,6 @@ namespace Combat
     {
         [Header("Hand Settings")]
         [SerializeField] private int maxHandSize = 10;
-        [SerializeField] private Transform cardParent;
         [SerializeField] private float cardSpacing = 0.8f;
         [SerializeField] private float handCurveHeight = 100f;
         [SerializeField] private float dealAnimationDuration = 0.3f;
@@ -35,16 +34,7 @@ namespace Combat
 
         private void Awake()
         {
-            Debug.Log($"PlayerHand Awake - Card Parent: {(cardParent != null ? "Found" : "Missing")}");
-            
-            // Ensure card parent exists
-            if (cardParent == null)
-            {
-                Debug.LogWarning("No card parent assigned to PlayerHand, creating one");
-                cardParent = new GameObject("CardParent").transform;
-                cardParent.SetParent(transform);
-                cardParent.localPosition = Vector3.zero;
-            }
+            Debug.Log($"PlayerHand Awake - Initializing");
             
             // Register callback for synced card changes
             syncedCardIDs.OnChange += OnSyncedCardsChanged;
@@ -57,9 +47,7 @@ namespace Combat
             
             Debug.Log($"PlayerHand OnStartClient - IsOwner: {IsOwner}, PlayerName: {(owner != null ? owner.GetSteamName() : "Unknown")}");
             
-            // Always show the card parent (all players can see cards)
-            if (cardParent != null)
-                cardParent.gameObject.SetActive(true);
+            this.gameObject.SetActive(true);
             
             // Set interactability based on ownership
             if (!IsOwner)
@@ -226,8 +214,8 @@ namespace Combat
         {
             try
             {
-                // Instantiate card using DeckManager
-                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, cardParent, this, combatPlayer);
+                // Instantiate card using DeckManager, parent directly to this PlayerHand transform
+                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPlayer);
                 
                 if (cardObj == null)
                 {

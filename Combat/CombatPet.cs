@@ -82,20 +82,37 @@ namespace Combat
             }
         }
         
+        // New Initialize method called right after instantiation on server
         [Server]
-        public void Initialize(Pet pet, PetHand hand)
+        public void Initialize(Pet parentPet)
         {
-            referencePet = pet;
-            petHand = hand;
+            if (parentPet == null)
+            {
+                Debug.LogError("[CombatPet] Initialize called with null parentPet!");
+                // Optionally destroy self or handle error
+                // Destroy(gameObject);
+                return;
+            }
+
+            referencePet = parentPet;
             
             // Set initial health based on pet's max health
-            _currentHealth.Value = pet != null ? pet.MaxHealth : 100;
+            _currentHealth.Value = referencePet.MaxHealth;
             _isDefending.Value = false;
             
             // Create runtime deck from the persistent pet's deck
             CreateRuntimeDeck();
             
             Debug.Log($"[CombatPet] Initialized with reference to persistent pet owned by {referencePet?.PlayerOwner?.GetSteamName() ?? "Unknown"}");
+        }
+
+        // Optional: Keep this if CombatManager still needs to assign the hand later
+        // Or remove if hand assignment is handled elsewhere
+        [Server]
+        public void AssignHand(PetHand hand)
+        {
+             petHand = hand;
+             Debug.Log($"[CombatPet] Assigned hand {hand?.name ?? "null"}");
         }
         
         [Server]

@@ -152,13 +152,18 @@ namespace Combat
                 Debug.LogError("Card prefab not assigned!");
                 return null;
             }
+            if (cardData == null)
+            {
+                 Debug.LogError("CreateCardObject called with null CardData!");
+                 return null;
+            }
             
             GameObject cardObj = Instantiate(cardPrefab, parent);
             Card card = cardObj.GetComponent<Card>();
             
             if (card != null)
             {
-                // Determine hand type and initialize card appropriately
+                // Initialize the card first (this sets the internal data and UI text)
                 if (hand is PlayerHand playerHand)
                 {
                     card.Initialize(cardData, playerHand, owner);
@@ -170,6 +175,20 @@ namespace Combat
                 else
                 {
                     Debug.LogError("CreateCardObject called with unknown hand type!");
+                    // Optionally initialize with null hand if appropriate
+                    // card.Initialize(cardData, null, owner);
+                }
+
+                // RENAME the GameObject based on the card's name (which should be set in UI by Initialize)
+                if (!string.IsNullOrEmpty(card.CardName) && card.CardName != "NO_DATA")
+                {
+                     cardObj.name = card.CardName;
+                }
+                else
+                {
+                    // Fallback name if CardName isn't set correctly
+                    cardObj.name = $"Card_{cardData.cardName}_UninitializedName";
+                    Debug.LogWarning($"Could not get valid CardName from Card component after Initialize. Using fallback name: {cardObj.name}");
                 }
             }
             else
