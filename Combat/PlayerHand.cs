@@ -44,8 +44,9 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
+            Debug.Log($"[PlayerHand] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
             
-            Debug.Log($"PlayerHand OnStartClient - IsOwner: {IsOwner}, PlayerName: {(owner != null ? owner.GetSteamName() : "Unknown")}");
+            // Debug.Log($"PlayerHand OnStartClient - IsOwner: {IsOwner}, OwnerNetworkPlayer: {(owner != null ? owner.GetSteamName() : "Unknown")}");
             
             this.gameObject.SetActive(true);
             
@@ -231,7 +232,7 @@ namespace Combat
                     // Add to the hand list
                     cardsInHand.Add(card);
                     
-                    Debug.Log($"Card {cardData.cardName} added to hand, current hand size: {cardsInHand.Count}");
+                    // Debug.Log($"Card {cardData.cardName} added to hand, current hand size: {cardsInHand.Count}"); // COMMENT OUT
                     
                     // Setup the card's Canvas and CanvasGroup if needed
                     Canvas cardCanvas = cardObj.GetComponent<Canvas>();
@@ -264,7 +265,7 @@ namespace Combat
                     // Position the cards in the hand after a slight delay
                     DOVirtual.DelayedCall(dealAnimationDuration * 0.5f, () => {
                         ArrangeCardsInHand();
-                        Debug.Log($"Hand arranged with {cardsInHand.Count} cards");
+                        // Debug.Log($"Hand arranged with {cardsInHand.Count} cards"); // COMMENT OUT
                     });
                 }
                 else
@@ -282,23 +283,52 @@ namespace Combat
         // Handle synced card changes
         private void OnSyncedCardsChanged(SyncListOperation op, int index, string oldItem, string newItem, bool asServer)
         {
-            if (asServer) return; // Only react on clients
-            
-            // Handle different operations (Add, Remove, etc.)
-            switch (op)
+            // Debug.Log($"[SyncList] PlayerHand card operation: {op}, Index: {index}, New: {newItem}, Old: {oldItem}"); // COMMENT OUT
+              
+            // This callback is primarily for observers (non-owners) to update their visual hand
+            // Owner manages their visual hand via TargetRPCs
+            if (!IsOwner)
             {
-                case SyncListOperation.Add:
-                    Debug.Log($"[SyncList] Card added: {newItem}");
-                    break;
-                    
-                case SyncListOperation.RemoveAt:
-                    Debug.Log($"[SyncList] Card removed: {oldItem}");
-                    break;
-                    
-                case SyncListOperation.Clear:
-                    Debug.Log("[SyncList] Hand cleared");
-                    break;
+                UpdateVisualHandFromSyncList();
             }
+        }
+        
+        // Called on observers to rebuild their visual hand based on the synced list
+        private void UpdateVisualHandFromSyncList()
+        {
+            // Clear existing cards (only visual ones)
+            foreach (Card card in cardsInHand)
+            {
+                if (card != null)
+                {
+                    Destroy(card.gameObject);
+                }
+            }
+            cardsInHand.Clear();
+
+            // Recreate cards based on synced IDs
+            foreach (string cardID in syncedCardIDs)
+            {            
+                if (DeckManager.Instance == null)
+                {
+                    Debug.LogError("[Observer] DeckManager instance is null in UpdateVisualHandFromSyncList");
+                    continue;
+                }
+
+                CardData cardData = DeckManager.Instance.FindCardByName(cardID);
+                if (cardData != null)
+                {                    
+                    // Create non-interactive card for observer
+                    CreateCardInHand(cardData, false); 
+                }
+                else
+                {
+                    Debug.LogWarning($"[Observer] Could not find CardData for {cardID} while rebuilding hand.");
+                }
+            }
+
+            // Arrange the newly created cards (might need a slight delay if CreateCardInHand has animations)
+            ArrangeCardsInHand(); 
         }
         
         // Called when a card is played
@@ -376,9 +406,11 @@ namespace Combat
         // Update the visual position of all cards in hand
         private void ArrangeCardsInHand()
         {
+            // Debug.Log($"Arranging {cardsInHand.Count} cards in hand"); // COMMENT OUT
+            
             if (cardsInHand.Count == 0) return;
             
-            Debug.Log($"Arranging {cardsInHand.Count} cards in hand");
+            // Debug.Log($"Arranging {cardsInHand.Count} cards in hand"); // COMMENT OUT - Remove duplicate log if present
             
             // Calculate total width
             float totalWidth = cardSpacing * (cardsInHand.Count - 1);
@@ -423,6 +455,8 @@ namespace Combat
                     cardCanvas.sortingOrder = 100 + i;
                 }
             }
+            
+            // Debug.Log($"Hand arranged with {cardsInHand.Count} cards"); // COMMENT OUT
         }
         
         // Calculate a point on a curve for card positioning (simple parabola)
@@ -528,6 +562,28 @@ namespace Combat
                     canvas.sortingOrder = cardCount - i;
                 }
             }
+        }
+
+        // --- Parenting RPC --- 
+        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
+        public void RpcSetParent(NetworkObject parentNetworkObject)
+        {
+             if (parentNetworkObject == null)
+             {
+                 Debug.LogError($"[PlayerHand:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
+                 return;
+             }
+
+             Transform parentTransform = parentNetworkObject.transform;
+             if (parentTransform != null)
+             {
+                 transform.SetParent(parentTransform, false);
+                 Debug.Log($"[PlayerHand:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
+             }
+             else
+             {
+                  Debug.LogError($"[PlayerHand:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
+             }
         }
     }
 } 

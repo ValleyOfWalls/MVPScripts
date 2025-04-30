@@ -42,8 +42,9 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
+            Debug.Log($"[PetHand] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
             
-            Debug.Log($"PetHand OnStartClient - PetOwner: {(petOwner != null ? petOwner.GetSteamName() : "Unknown")}");
+            // Debug.Log($"PetHand OnStartClient - PetOwner: {(petOwner != null ? petOwner.GetSteamName() : "Unknown")}");
             
             this.gameObject.SetActive(true);
             
@@ -194,7 +195,7 @@ namespace Combat
                     // Add to the hand list
                     cardsInHand.Add(card);
                     
-                    Debug.Log($"Card {cardData.cardName} added to pet hand, current hand size: {cardsInHand.Count}");
+                    // Debug.Log($"Card {cardData.cardName} added to pet hand, current hand size: {cardsInHand.Count}"); // COMMENT OUT
                     
                     // Setup the card's Canvas and CanvasGroup
                     Canvas cardCanvas = cardObj.GetComponent<Canvas>();
@@ -227,7 +228,7 @@ namespace Combat
                     // Position the cards in the hand after a slight delay
                     DOVirtual.DelayedCall(dealAnimationDuration * 0.5f, () => {
                         ArrangeCardsInHand();
-                        Debug.Log($"Pet hand arranged with {cardsInHand.Count} cards");
+                        // Debug.Log($"Pet hand arranged with {cardsInHand.Count} cards"); // COMMENT OUT
                     });
                 }
                 else
@@ -247,21 +248,23 @@ namespace Combat
         {
             if (asServer) return; // Only react on clients
             
+            // Debug.Log($"[SyncList] PetHand Change: Op={op}, Index={index}, Old='{oldItem}', New='{newItem}'"); // COMMENT OUT
+            
             // Handle different operations (Add, Remove, etc.)
-            switch (op)
-            {
-                case SyncListOperation.Add:
-                    Debug.Log($"[SyncList] Pet card added: {newItem}");
-                    break;
+            // switch (op)
+            // {
+            //     case SyncListOperation.Add:
+            //         Debug.Log($"[SyncList] Pet card added: {newItem}");
+            //         break;
                     
-                case SyncListOperation.RemoveAt:
-                    Debug.Log($"[SyncList] Pet card removed: {oldItem}");
-                    break;
+            //     case SyncListOperation.RemoveAt:
+            //         Debug.Log($"[SyncList] Pet card removed: {oldItem}");
+            //         break;
                     
-                case SyncListOperation.Clear:
-                    Debug.Log("[SyncList] Pet hand cleared");
-                    break;
-            }
+            //     case SyncListOperation.Clear:
+            //         Debug.Log("[SyncList] Pet hand cleared");
+            //         break;
+            // }
         }
         
         // Called when a pet plays a card
@@ -370,7 +373,29 @@ namespace Combat
         public void SetDeck(RuntimeDeck deck)
         {
             petDeck = deck;
-            Debug.Log($"[Server] PetHand deck set with {deck.DrawPileCount} cards");
+            // Debug.Log($"[Server] PetHand deck set with {deck.DrawPileCount} cards"); // Less important log
+        }
+
+        // --- Parenting RPC --- 
+        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
+        public void RpcSetParent(NetworkObject parentNetworkObject)
+        {
+            if (parentNetworkObject == null)
+            {
+                Debug.LogError($"[PetHand:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
+                return;
+            }
+
+            Transform parentTransform = parentNetworkObject.transform;
+            if (parentTransform != null)
+            {
+                transform.SetParent(parentTransform, false);
+                Debug.Log($"[PetHand:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
+            }
+            else
+            {
+                 Debug.LogError($"[PetHand:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
+            }
         }
     }
 } 

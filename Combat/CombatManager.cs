@@ -174,10 +174,9 @@ namespace Combat
                 }
 
                 // Spawn the CombatPet (now correctly parented and initialized)
-                Spawn(combatPetObj); // Spawn FIRST
-
-                // Set parent AFTER spawning
-                combatPetObj.transform.SetParent(persistentPet.transform, false);
+                Spawn(combatPetObj); // Spawn AFTER parenting
+                NetworkObject combatPetNob = combatPetObj.GetComponent<NetworkObject>();
+                combatPet.RpcSetParent(persistentPet.GetComponent<NetworkObject>()); // Set parent via RPC
 
                 // Initialize AFTER spawning
                 combatPet.Initialize(persistentPet);
@@ -197,8 +196,9 @@ namespace Combat
                     if (petHandInstance != null)
                     {
                         petHandObj.name = $"PetHand_{player.GetSteamName()}";
-                        petHandObj.transform.SetParent(persistentPet.transform, false); // Parent to the persistent Pet
-                        Spawn(petHandObj, player.Owner); // Spawn with player ownership (like PlayerHand)
+                        Spawn(petHandObj, player.Owner); // Spawn AFTER parenting, with player ownership (like PlayerHand)
+                        NetworkObject petHandNob = petHandObj.GetComponent<NetworkObject>();
+                        petHandInstance.RpcSetParent(persistentPet.GetComponent<NetworkObject>()); // Set parent via RPC
                         combatPet.AssignHand(petHandInstance); // Link hand to the combatPet (logical link remains)
                         Debug.Log($"[CombatManager] Spawned PetHand for CombatPet of Player {player.Owner.ClientId}, parented to {persistentPet.name}");
 
@@ -258,76 +258,123 @@ namespace Combat
                     continue; // Skip this player if the opponent pet wasn't created properly
                 }
                 
-                // --- Step 3a: Create Runtime Deck from player's persistent deck --- 
-                RuntimeDeck runtimePlayerDeck = null;
-                if (DeckManager.Instance != null)
+                // Declare variables needed in broader scope
+                PlayerHand playerHandInstance = null;
+                RuntimeDeck playerDeck = null;
+
+                // --- Create Player Runtime Deck ---
+                 if (DeckManager.Instance != null)
+                 {
+                     // Create a new empty runtime deck
+                     playerDeck = new RuntimeDeck(player.GetSteamName() + "'s Combat Deck", DeckType.PlayerDeck);
+                     
+                     // Check if player has an initialized deck
+                     if (player.persistentDeckCardIDs.Count > 0)
+                     {
+                         Debug.Log($"[CombatManager] Creating runtime deck from {player.GetSteamName()}'s persistent deck ({player.persistentDeckCardIDs.Count} cards)");
+                         
+                         // Populate deck from persistent deck IDs
+                         foreach (string cardID in player.persistentDeckCardIDs)
+                         {
+                             CardData cardData = DeckManager.Instance.FindCardByName(cardID);
+                             if (cardData != null)
+                             {
+                                 playerDeck.AddCard(cardData);
+                                 // Debug.Log($"[CombatManager] Added card {cardID} to runtime deck"); // Optional log
+                             }
+                             else
+                             {
+                                 Debug.LogWarning($"[CombatManager] Could not find CardData for {cardID}");
+                             }
+                         }
+                         
+                         // Shuffle the newly created deck
+                         playerDeck.Shuffle();
+                         Debug.Log($"[CombatManager] Shuffled runtime deck with {playerDeck.DrawPileCount} cards for {player.GetSteamName()}");
+                     }
+                     else
+                     {
+                         // Fallback: If player doesn't have cards in persistent deck, use starter deck
+                         Debug.LogWarning($"[CombatManager] Player {player.GetSteamName()} has no persistent deck. Using starter deck.");
+                         playerDeck = DeckManager.Instance.GetPlayerStarterDeck(); // Ensure a valid deck
+                         if (playerDeck != null) playerDeck.Shuffle();
+                     }
+                 }
+                 else
+                 {
+                     Debug.LogError("[CombatManager] DeckManager is null, cannot create runtime deck.");
+                     // Create an empty deck to prevent null reference errors
+                     playerDeck = new RuntimeDeck(player.GetSteamName() + "'s Empty Deck", DeckType.PlayerDeck);
+                 }
+
+                // Ensure CombatPlayer prefab is assigned
+                if (combatPlayerPrefab == null)
                 {
-                    // Create a new empty runtime deck
-                    runtimePlayerDeck = new RuntimeDeck(player.GetSteamName() + "'s Combat Deck", DeckType.PlayerDeck);
-                    
-                    // Check if player has an initialized deck
-                    if (player.persistentDeckCardIDs.Count > 0)
-                    {
-                        Debug.Log($"[CombatManager] Creating runtime deck from {player.GetSteamName()}'s persistent deck ({player.persistentDeckCardIDs.Count} cards)");
-                        
-                        // Populate deck from persistent deck IDs
-                        foreach (string cardID in player.persistentDeckCardIDs)
-                        {
-                            CardData cardData = DeckManager.Instance.FindCardByName(cardID);
-                            if (cardData != null)
-                            {
-                                runtimePlayerDeck.AddCard(cardData);
-                                Debug.Log($"[CombatManager] Added card {cardID} to runtime deck");
-                            }
-                            else
-                            {
-                                Debug.LogWarning($"[CombatManager] Could not find CardData for {cardID}");
-                            }
-                        }
-                        
-                        // Shuffle the newly created deck
-                        runtimePlayerDeck.Shuffle();
-                        Debug.Log($"[CombatManager] Shuffled runtime deck with {runtimePlayerDeck.DrawPileCount} cards for {player.GetSteamName()}");
-                    }
-                    else
-                    {
-                        // Fallback: If player doesn't have cards in persistent deck, use starter deck
-                        Debug.LogWarning($"[CombatManager] Player {player.GetSteamName()} has no persistent deck. Using starter deck.");
-                        runtimePlayerDeck = DeckManager.Instance.GetPlayerStarterDeck(); // Ensure a valid deck
-                        if (runtimePlayerDeck != null) runtimePlayerDeck.Shuffle();
-                    }
+                    Debug.LogError($"[CombatManager] combatPlayerPrefab is not assigned in the inspector for player {player.Owner.ClientId}");
+                    continue;
+                }
+
+                // Instantiate CombatPlayer
+                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab);
+                CombatPlayer combatPlayer = combatPlayerObj.GetComponent<CombatPlayer>();
+                
+                if (combatPlayer == null)
+                {
+                     Debug.LogError($"[CombatManager] combatPlayerPrefab is missing the CombatPlayer component for player {player.Owner.ClientId}");
+                     Destroy(combatPlayerObj);
+                     continue;
+                }
+
+                // Spawn CombatPlayer with ownership
+                Spawn(combatPlayerObj, player.Owner); // Spawn AFTER parenting
+                NetworkObject combatPlayerNob = combatPlayerObj.GetComponent<NetworkObject>();
+                playerCombatPlayerObjects[player] = combatPlayerNob;
+                combatPlayer.RpcSetParent(player.GetComponent<NetworkObject>()); // Set parent via RPC
+
+                // --- Spawn PlayerHand ---
+                if (playerHandPrefab == null)
+                {
+                    Debug.LogError($"[CombatManager] playerHandPrefab is not assigned in the inspector for player {player.Owner.ClientId}! Cannot spawn PlayerHand.");
+                    // continue; // Decide if combat can proceed without a hand
                 }
                 else
                 {
-                    Debug.LogError("[CombatManager] DeckManager is null, cannot create runtime deck.");
-                    // Create an empty deck to prevent null reference errors
-                    runtimePlayerDeck = new RuntimeDeck(player.GetSteamName() + "'s Empty Deck", DeckType.PlayerDeck);
+                     GameObject playerHandObj = Instantiate(playerHandPrefab);
+                     playerHandInstance = playerHandObj.GetComponent<PlayerHand>(); // Assign to outer scope variable
+                     if (playerHandInstance != null)
+                     {
+                        playerHandObj.name = $"PlayerHand_{player.GetSteamName()}";
+                        Spawn(playerHandObj, player.Owner); // Spawn AFTER parenting
+                        NetworkObject playerHandNob = playerHandObj.GetComponent<NetworkObject>();
+                        playerHandObjects[player] = playerHandNob;
+                        playerHandInstance.RpcSetParent(player.GetComponent<NetworkObject>()); // Set parent via RPC
+                        
+                        Debug.Log($"[CombatManager] Spawned PlayerHand for Player {player.Owner.ClientId}, parented to {playerTransform.name}");
+
+                        // Create the runtime deck for the player - MOVED EARLIER
+                        // RuntimeDeck playerDeck = CreatePlayerRuntimeDeck(player); 
+                        
+                        // Initialize CombatPlayer with all references AFTER spawning everything
+                        combatPlayer.Initialize(player, playerPet, opponentPet, playerHandInstance, playerDeck);
+
+                        // Initialize the PlayerHand with references - check for null first
+                        if (playerHandInstance != null)
+                        {
+                            playerHandInstance.Initialize(player, combatPlayer); // Pass CombatPlayer ref
+                        }
+                        
+                        // --- Draw Initial Player Hand ---
+                        // Moved drawing to CombatPlayer.StartTurn or similar appropriate place
+                        // playerHandInstance.DrawInitialHand(5); // Draw initial cards
+                        // Debug.Log($"[CombatManager] Initial hand drawn for Player {player.Owner.ClientId}");
+                     }
+                     else
+                     {
+                        Debug.LogError($"[CombatManager] playerHandPrefab is missing the PlayerHand component for player {player.Owner.ClientId}!");
+                        Destroy(playerHandObj);
+                     }
                 }
 
-                // --- Step 3b: Create CombatPlayer FIRST --- 
-                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab); 
-                CombatPlayer combatPlayer = combatPlayerObj.GetComponent<CombatPlayer>();
-                combatPlayerObj.name = $"CombatPlayer_{player.GetSteamName()}"; // Name it on server for clarity
-                combatPlayerObj.transform.SetParent(playerTransform, false); // Set parent BEFORE spawning
-                Spawn(combatPlayerObj, player.Owner); // Assign ownership
-                playerCombatPlayerObjects[player] = combatPlayerObj.GetComponent<NetworkObject>();
-                Debug.Log($"[CombatManager] Spawned CombatPlayer for {player.GetSteamName()} under {playerTransform.name}");
-
-                // --- Step 3c: Create Player Hand SECOND --- 
-                GameObject playerHandObj = Instantiate(playerHandPrefab); 
-                PlayerHand hand = playerHandObj.GetComponent<PlayerHand>();
-                playerHandObj.name = $"PlayerHand_{player.GetSteamName()}"; // Name it on server
-                playerHandObj.transform.SetParent(playerTransform, false); // Set parent BEFORE spawning
-                Spawn(playerHandObj, player.Owner); // Assign ownership
-                playerHandObjects[player] = playerHandObj.GetComponent<NetworkObject>();
-                Debug.Log($"[CombatManager] Spawned PlayerHand for {player.GetSteamName()} under {playerTransform.name}");
-
-                // --- Step 3d: Initialize PlayerHand THIRD (needs combatPlayer) ---
-                hand.Initialize(player, combatPlayer);
-
-                // --- Step 3e: Initialize CombatPlayer FOURTH (needs hand) ---
-                combatPlayer.Initialize(player, playerPet, opponentPet, hand, runtimePlayerDeck);
-                
                 // --- Step 3f: Store references in CombatData ---
                 if (!activeCombats.ContainsKey(player))
                 {
@@ -337,7 +384,7 @@ namespace Combat
                 activeCombats[player].PlayerPet = playerPet;
                 activeCombats[player].OpponentPet = opponentPet;
                 activeCombats[player].OpponentPlayer = opponentPetOwner; // Store the opponent player for later
-                activeCombats[player].PlayerHand = hand;
+                activeCombats[player].PlayerHand = playerHandInstance;
                 activeCombats[player].TurnCompleted = false;
                 activeCombats[player].CombatComplete = false;
                 

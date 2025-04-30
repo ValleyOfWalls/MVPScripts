@@ -67,6 +67,10 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
+            Debug.Log($"[CombatPet] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
+
+            if (!IsOwner)
+                return; // Initialize only for owner
             
             // Initial UI update
             UpdateHealthDisplay(_currentHealth.Value, _currentHealth.Value, false);
@@ -359,6 +363,28 @@ namespace Combat
             // This depends on context - usually a pet is an enemy to the opponent player
             // This would be set during combat setup
             return false;
+        }
+        
+        // --- Parenting RPC --- 
+        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
+        public void RpcSetParent(NetworkObject parentNetworkObject)
+        {
+            if (parentNetworkObject == null)
+            {
+                Debug.LogError($"[CombatPet:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
+                return;
+            }
+            
+            Transform parentTransform = parentNetworkObject.transform;
+            if (parentTransform != null)
+            {
+                transform.SetParent(parentTransform, false);
+                Debug.Log($"[CombatPet:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
+            }
+            else
+            {
+                 Debug.LogError($"[CombatPet:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
+            }
         }
     }
 } 

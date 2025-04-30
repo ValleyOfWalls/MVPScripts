@@ -92,6 +92,7 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
+            Debug.Log($"[CombatPlayer] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}"); // RE-ADD Log
             
             Debug.Log($"CombatPlayer OnStartClient - IsOwner: {IsOwner}, NetworkPlayer: {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "null")}");
             
@@ -689,6 +690,28 @@ namespace Combat
         {
             Debug.LogWarning("Not enough energy to play that card!");
             // Show a message to the player
+        }
+
+        // --- Parenting RPC --- 
+        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
+        public void RpcSetParent(NetworkObject parentNetworkObject)
+        {
+             if (parentNetworkObject == null)
+             {
+                 Debug.LogError($"[CombatPlayer:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
+                 return;
+             }
+
+             Transform parentTransform = parentNetworkObject.transform;
+             if (parentTransform != null)
+             {
+                 transform.SetParent(parentTransform, false);
+                 Debug.Log($"[CombatPlayer:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
+             }
+             else
+             {
+                  Debug.LogError($"[CombatPlayer:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
+             }
         }
     }
 } 
