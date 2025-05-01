@@ -128,9 +128,8 @@ namespace Combat
         // Called when the synced GameObject name changes
         private void OnSyncedCardObjectNameChanged(string prevName, string newName, bool asServer)
         {
-            if (asServer) return; // Server sets the value, clients react
-
-            Debug.Log($"[Card:{NetworkObject.ObjectId}] OnSyncedCardObjectNameChanged fired. IsOwner: {IsOwner}, Prev: '{prevName}', New: '{newName}'");
+            // Both server AND clients should update their GameObject name
+            Debug.Log($"[Card:{NetworkObject.ObjectId}] OnSyncedCardObjectNameChanged fired. IsOwner: {IsOwner}, IsServer: {IsServer}, Prev: '{prevName}', New: '{newName}'");
 
             if (!string.IsNullOrEmpty(newName))
             {
@@ -292,6 +291,14 @@ namespace Combat
             {
                 Debug.LogError($"[Server - OnStartServer] CardData is null for Card (ObjectId: {NetworkObject.ObjectId})! Cannot ensure SyncVar.");
             }
+            
+            // Make sure name is properly set on the host too
+            if (!string.IsNullOrEmpty(_syncedCardObjectName.Value) && gameObject.name.Contains("PreSpawn"))
+            {
+                // The host also needs to update its GameObject name
+                gameObject.name = _syncedCardObjectName.Value;
+                Debug.Log($"[Server - OnStartServer] Updated host's GameObject name from PreSpawn to: {gameObject.name}");
+            }
         }
 
         // Server-side method to set the card's object name (called after spawning, before parenting RPC)
@@ -314,9 +321,10 @@ namespace Combat
             // Set the synced name that clients will receive
             _syncedCardObjectName.Value = uniqueName;
             
-            // Set server-side GameObject name immediately
+            // The server's callback won't fire for its own changes, so we need to explicitly update it
+            // This ensures host and clients have consistent naming
             gameObject.name = uniqueName;
-            Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Set local gameObject.name to: {uniqueName}");
+            Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Manually set server GameObject.name to: {uniqueName}");
         }
 
         // --- Parenting RPC --- 

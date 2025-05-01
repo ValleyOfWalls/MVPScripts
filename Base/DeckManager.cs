@@ -221,7 +221,7 @@ namespace Combat
                 // Instantiate the card - initially WITHOUT a parent to avoid potential scaling issues
                 GameObject cardObj = Instantiate(cardPrefab);
                 
-                // Set the gameObject name immediately on creation to help with debugging
+                // Set temporary name for debugging during initialization
                 cardObj.name = $"Card_{cardData.cardName}_PreSpawn";
                 
                 // Get the Card component
@@ -241,17 +241,21 @@ namespace Combat
                     else
                     {
                         Debug.LogError($"CreateCardObject called with unknown hand type: {hand.GetType().Name}");
-                         Destroy(cardObj);
-                         return null;
+                        Destroy(cardObj);
+                        return null;
                     }
-                    
-                    // Set the card object name BEFORE spawning to ensure NetworkObject.ObjectId is valid
-                    // This sets the _syncedCardObjectName SyncVar which will be synchronized to clients
-                    Debug.Log($"[Server DeckManager] Setting card object name for {cardData.cardName} NetworkObject ID: {card.NetworkObject.ObjectId}");
-                    card.SetCardObjectName(cardData.cardName);
                     
                     // Spawn the networked card - Owner should be the hand's owner
                     InstanceFinder.ServerManager.Spawn(cardObj, hand.Owner);
+                    
+                    // Now that the card is spawned and has a valid NetworkObject.ObjectId, set the final name
+                    // This ensures the name format is consistent between host and client
+                    string finalCardName = $"Card_{card.NetworkObject.ObjectId}_{cardData.cardName.Replace(' ', '_')}";
+                    card.SetCardObjectName(cardData.cardName);
+                    
+                    // Manually update the GameObject name on the host now to match what clients will see
+                    cardObj.name = finalCardName;
+                    Debug.Log($"[Server] Updated host GameObject name to: {finalCardName}");
                     
                     // Set parent AFTER spawning using the RPC
                     card.RpcSetParent(hand.NetworkObject);
