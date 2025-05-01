@@ -83,7 +83,7 @@ namespace Combat
 
         private void UpdateCardUI()
         {
-            Debug.Log($"Updating UI for card: {CardName}");
+            // Debug.Log($"Updating UI for card: {CardName}");
             
             // Set up card UI
             if (nameText != null) nameText.text = CardName;

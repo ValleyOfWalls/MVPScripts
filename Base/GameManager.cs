@@ -34,9 +34,6 @@ public class GameManager : MonoBehaviour
     // Add this property to hold the pet prefab
     public GameObject PetPrefab { get; private set; }
 
-    [SerializeField] private string lobbySceneName = "LobbyScene";
-    [SerializeField] private string combatSceneName = "CombatScene";
-
     private void Awake()
     {
         if (Instance == null)
@@ -94,7 +91,7 @@ public class GameManager : MonoBehaviour
         
         while (attempts < maxAttempts)
         {
-            Debug.Log($"Attempt {attempts+1}: Looking for NetworkManager components...");
+            // Debug.Log($"Attempt {attempts+1}: Looking for NetworkManager components...");
             
             if (networkManager != null)
             {
@@ -420,7 +417,7 @@ public class GameManager : MonoBehaviour
             return;
         }
         PetPrefab = prefab;
-        Debug.Log($"GameManager: PetPrefab set to {prefab.name}");
+        // Debug.Log($"GameManager: PetPrefab set to {prefab.name}");
     }
 }
 

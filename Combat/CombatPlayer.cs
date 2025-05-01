@@ -5,6 +5,7 @@ using FishNet.Connection;
 using DG.Tweening;
 using TMPro;
 using System.Collections;
+using FishNet.Transporting; // For RPCs
 
 namespace Combat
 {
@@ -33,6 +34,8 @@ namespace Combat
         private readonly SyncVar<int> _maxEnergy = new SyncVar<int>(3); // Initialize default value
         
         // Public properties
+        public SyncVar<bool> SyncIsMyTurn => _isMyTurn;
+        public SyncVar<int> SyncEnergy => _currentEnergy;
         public NetworkPlayer NetworkPlayer => _networkPlayer.Value;
         public bool IsMyTurn => _isMyTurn.Value;
         public int CurrentEnergy => _currentEnergy.Value;
@@ -320,8 +323,8 @@ namespace Combat
         }
         
         // Server command to end turn
-        [ServerRpc]
-        private void CmdEndTurn()
+        [ServerRpc(RequireOwnership = true)]
+        public void CmdEndTurn()
         {
             if (!IsOwner || !_isMyTurn.Value) return;
             
@@ -492,7 +495,7 @@ namespace Combat
                  playerNameText.text = next.GetSteamName() + (IsMyTurn ? " (Your Turn)" : "");
                  UpdateTurnVisuals(false, IsMyTurn, asServer); // Re-apply turn visuals with the correct name
                  
-                 Debug.Log($"Updated player name to {next.GetSteamName()}");
+                 // Debug.Log($"Updated player name to {next.GetSteamName()}");
             }
         }
         
@@ -549,7 +552,7 @@ namespace Combat
                 }
             }
             
-            Debug.Log($"Updated turn visuals: {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "Unknown")} - IsMyTurn: {next}");
+            // Debug.Log($"Updated turn visuals: {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "Unknown")} - IsMyTurn: {next}");
         }
         
         // --- RPCs ---
@@ -557,7 +560,7 @@ namespace Combat
         [TargetRpc]
         private void TargetDrawCards(NetworkConnection conn, int count)
         {
-            Debug.Log("TargetDrawCards called, attempting to draw " + count + " cards");
+            // Debug.Log("TargetDrawCards called, attempting to draw " + count + " cards");
             
             if (playerHand == null)
             {
@@ -613,13 +616,13 @@ namespace Combat
             }
             
             // If we reach here, we have a non-null playerHand that should be properly owned
-            Debug.Log("Using PlayerHand " + playerHand.name + " with IsOwner: " + playerHand.IsOwner + " to draw cards");
+            // Debug.Log("Using PlayerHand " + playerHand.name + " with IsOwner: " + playerHand.IsOwner + " to draw cards");
             
             // Call the ServerRpc on PlayerHand to request cards from the server
             try 
             {
                 playerHand.CmdDrawCards(count);
-                Debug.Log("Successfully called CmdDrawCards for " + count + " cards");
+                // Debug.Log("Successfully called CmdDrawCards for " + count + " cards");
             }
             catch (System.Exception e)
             {

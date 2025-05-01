@@ -21,7 +21,7 @@ public class GameSetup : MonoBehaviour
     
     private void Awake()
     {
-        Debug.Log("GameSetup: Ensuring core components exist...");
+        // Debug.Log("GameSetup: Ensuring core components exist...");
 
         // Make sure we have an EventSystem
         EnsureEventSystem();
@@ -36,7 +36,7 @@ public class GameSetup : MonoBehaviour
         if (gm != null && petPrefab != null)
         {
             gm.SetPetPrefab(petPrefab);
-            Debug.Log("GameSetup: Assigned Pet Prefab to GameManager.");
+            // Debug.Log("GameSetup: Assigned Pet Prefab to GameManager.");
         }
         else if (gm == null)
         {
@@ -61,7 +61,7 @@ public class GameSetup : MonoBehaviour
     {
         if (FindFirstObjectByType<EventSystem>() == null)
         {
-            Debug.Log("GameSetup: No EventSystem found, creating one...");
+            // Debug.Log("GameSetup: No EventSystem found, creating one...");
             if (eventSystemPrefab != null)
             {
                 Instantiate(eventSystemPrefab); // Prefab likely handles DontDestroyOnLoad
@@ -76,7 +76,7 @@ public class GameSetup : MonoBehaviour
         }
          else
         {
-             Debug.Log("GameSetup: EventSystem already exists.");
+             // Debug.Log("GameSetup: EventSystem already exists.");
         }
     }
 
@@ -88,7 +88,7 @@ public class GameSetup : MonoBehaviour
         }
          else
         {
-             Debug.Log($"GameSetup: Manager {typeof(T).Name} found.");
+             // Debug.Log($"GameSetup: Manager {typeof(T).Name} found.");
         }
     }
 
@@ -102,7 +102,7 @@ public class GameSetup : MonoBehaviour
               // We rely on the manager's own Awake to handle it or apply it here cautiously.
               // A common pattern is for singletons to handle their own persistence.
               // If managers handle their own DontDestroyOnLoad, this call might be redundant or log a warning.
-             Debug.Log($"GameSetup: Ensuring {typeof(T).Name} is marked DontDestroyOnLoad (if it's a root object).");
+             // Debug.Log($"GameSetup: Ensuring {typeof(T).Name} is marked DontDestroyOnLoad (if it's a root object).");
              DontDestroyOnLoad(manager.gameObject); 
          }
      }

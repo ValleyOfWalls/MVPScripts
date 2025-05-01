@@ -4,6 +4,7 @@ using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using System.Collections.Generic;
 using DG.Tweening;
+using FishNet.Transporting; // Needed for ObserversRpc
 
 namespace Combat
 {
@@ -12,6 +13,9 @@ namespace Combat
         [Header("Combat Stats")]
         private readonly SyncVar<int> _currentHealth = new SyncVar<int>();
         private readonly SyncVar<bool> _isDefending = new SyncVar<bool>();
+        
+        // Public accessor for health SyncVar needed by UI
+        public SyncVar<int> SyncHealth => _currentHealth;
         
         [Header("References")]
         [SerializeField] private Pet referencePet; // The persistent pet this combat pet represents

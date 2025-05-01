@@ -38,13 +38,7 @@ namespace Combat
 
             // --- Next Battle Button ---
             GameObject nextBattleButtonGO = CreateButton("NextBattleButton", battleInfoPanelGO.transform, "View Next Battle");
-            // Add icon or visual indicator for cycling
-            Image buttonImage = nextBattleButtonGO.GetComponent<Image>();
-            buttonImage.color = new Color(0.2f, 0.6f, 0.9f); // Blue color for visibility
-            // Position the button to the right of the battle info text
-            RectTransform buttonRect = nextBattleButtonGO.GetComponent<RectTransform>();
-            SetupRectTransform(buttonRect, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(150, 40));
-            buttonRect.anchoredPosition = new Vector2(-80, 0); // Offset from right edge
+            // Adjust button position/size if needed via its RectTransform
 
 
             // --- Battle View Container ---
@@ -70,10 +64,6 @@ namespace Combat
             Debug.Log("CombatSceneCanvas hierarchy created in the current scene. Remember to adjust layout, styling, and create a prefab.");
              // Optional: Select the created root object
             Selection.activeGameObject = combatSceneCanvasGO;
-
-            // --- Add Combat Scene Canvas Component ---
-            // This is the script we created to manage cycling through battles
-            combatSceneCanvasGO.AddComponent<Combat.CombatSceneCanvas>();
         }
 
         // Helper to create a basic panel GameObject with a RectTransform

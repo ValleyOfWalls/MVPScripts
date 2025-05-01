@@ -9,9 +9,20 @@ using System.Linq;
 using System.Reflection;
 using FishNet.Managing.Scened;
 using FishNet;
+using System; // Added for Action
+using System.Diagnostics; // Added for Conditional attribute
 
 namespace Combat
 {
+    // Helper struct for Inspector visualization of combat assignments
+    [System.Serializable]
+    public struct CombatAssignmentInfo
+    {
+        public CombatPlayer Player;
+        public CombatPet AssignedOpponentPet;
+        public NetworkPlayer PlayerNetworkIdentity; // Optional: Add NetworkPlayer for easier identification
+    }
+
     public class CombatManager : NetworkBehaviour
     {
         public static CombatManager Instance { get; private set; }
@@ -23,13 +34,7 @@ namespace Combat
         [SerializeField] private GameObject petHandPrefab;
         
         [Header("References")]
-        [SerializeField] private Transform petSpawnPointsParent;
-        [SerializeField] private Transform playerSpawnPointsParent;
         [SerializeField] private GameObject combatCanvas;
-        [SerializeField] private Transform playerHandArea;
-        [SerializeField] private Transform petHandArea;
-        [SerializeField] private PlayerHand playerHand;
-        [SerializeField] private PlayerHand petHand;
         
         // List of active combats
         private readonly Dictionary<NetworkPlayer, CombatData> activeCombats = new Dictionary<NetworkPlayer, CombatData>();
@@ -44,65 +49,68 @@ namespace Combat
         private List<ICombatant> allies = new List<ICombatant>();
         private List<ICombatant> enemies = new List<ICombatant>();
         
+        // List for Inspector visibility
+        [SerializeField] private List<CombatAssignmentInfo> inspectorCombatAssignments = new List<CombatAssignmentInfo>();
+        
         private void Awake()
         {
             if (Instance != null && Instance != this)
             {
-                Debug.LogError("Multiple CombatManagers detected. Destroying duplicate.");
+                UnityEngine.Debug.LogError("Multiple CombatManagers detected. Destroying duplicate.");
                 Destroy(gameObject);
                 return;
             }
             Instance = this;
             
-            Debug.Log("[CombatManager] Awake called");
+            // UnityEngine.Debug.Log("[CombatManager] Awake called");
             ValidatePrefabs();
         }
         
         private void Start()
         {
-            Debug.Log("[CombatManager] Start called");
+            UnityEngine.Debug.Log("[CombatManager] Start called");
             
             // Verify combat canvas is set up properly
             if (combatCanvas != null)
             {
-                Debug.Log($"[CombatManager] Combat canvas found: {combatCanvas.name}");
+                UnityEngine.Debug.Log($"[CombatManager] Combat canvas found: {combatCanvas.name}");
                 if (!combatCanvas.activeInHierarchy)
                 {
-                    Debug.LogWarning("[CombatManager] Combat canvas is inactive in hierarchy");
+                    UnityEngine.Debug.LogWarning("[CombatManager] Combat canvas is inactive in hierarchy");
                 }
                 
                 // Check for canvas group for animations
                 CanvasGroup canvasGroup = combatCanvas.GetComponent<CanvasGroup>();
                 if (canvasGroup == null)
                 {
-                    Debug.LogWarning("[CombatManager] Combat canvas has no CanvasGroup component, adding one");
+                    UnityEngine.Debug.LogWarning("[CombatManager] Combat canvas has no CanvasGroup component, adding one");
                     canvasGroup = combatCanvas.AddComponent<CanvasGroup>();
                 }
             }
             else
             {
-                Debug.LogError("[CombatManager] No combat canvas assigned");
+                UnityEngine.Debug.LogError("[CombatManager] No combat canvas assigned");
             }
         }
         
         private void ValidatePrefabs()
         {
             if (combatPlayerPrefab == null)
-                Debug.LogError("[CombatManager] No combatPlayerPrefab assigned");
+                UnityEngine.Debug.LogError("[CombatManager] No combatPlayerPrefab assigned");
             
             if (combatPetPrefab == null)
-                Debug.LogError("[CombatManager] No combatPetPrefab assigned");
+                UnityEngine.Debug.LogError("[CombatManager] No combatPetPrefab assigned");
             
             if (playerHandPrefab == null)
-                Debug.LogError("[CombatManager] No playerHandPrefab assigned");
+                UnityEngine.Debug.LogError("[CombatManager] No playerHandPrefab assigned");
             
             if (petHandPrefab == null)
-                Debug.LogError("[CombatManager] No petHandPrefab assigned");
+                UnityEngine.Debug.LogError("[CombatManager] No petHandPrefab assigned");
             
-            Debug.Log($"[CombatManager] Prefabs validated - Player: {(combatPlayerPrefab != null ? "Valid" : "Missing")}, " +
-                      $"CombatPet: {(combatPetPrefab != null ? "Valid" : "Missing")}, " +
-                      $"Hand: {(playerHandPrefab != null ? "Valid" : "Missing")}, " +
-                      $"PetHand: {(petHandPrefab != null ? "Valid" : "Missing")}");
+            // UnityEngine.Debug.Log($"[CombatManager] Prefabs validated - Player: {(combatPlayerPrefab != null ? "Valid" : "Missing")}, " +
+            //           $"CombatPet: {(combatPetPrefab != null ? "Valid" : "Missing")}, " +
+            //           $"Hand: {(playerHandPrefab != null ? "Valid" : "Missing")}, " +
+            //           $"PetHand: {(petHandPrefab != null ? "Valid" : "Missing")}");
         }
         
         // --- Public Accessors ---
@@ -127,317 +135,440 @@ namespace Combat
         {
             if (combatStarted) 
             {
-                Debug.LogWarning("[CombatManager] Combat already started, ignoring duplicate call");
+                UnityEngine.Debug.LogWarning("[CombatManager] Combat already started, ignoring duplicate call");
                 return;
             }
             
             // Validate inputs
             if (players == null || players.Count < 2)
             {
-                Debug.LogError($"[CombatManager] Cannot start combat with less than 2 players. Players: {(players != null ? players.Count : 0)}");
+                UnityEngine.Debug.LogError($"[CombatManager] Cannot start combat with less than 2 players. Players: {(players != null ? players.Count : 0)}");
                 return;
             }
             
-            Debug.Log($"[CombatManager] Starting combat for {players.Count} players");
+            UnityEngine.Debug.Log($"[CombatManager] Starting combat for {players.Count} players");
+            playersInCombat.Clear(); // Clear previous list if any
             playersInCombat.AddRange(players);
+            activeCombats.Clear(); // Clear previous combat data
             combatStarted = true;
             
-            // --- Step 2: Spawn player pets ---
-            Dictionary<NetworkPlayer, CombatPet> playerCombatPets = new Dictionary<NetworkPlayer, CombatPet>();
-            Dictionary<NetworkPlayer, NetworkObject> playerPetObjects = new Dictionary<NetworkPlayer, NetworkObject>(); // Store NetworkObject
+            // --- Dictionaries to hold temporary references during setup ---
+            Dictionary<NetworkPlayer, GameObject> combatPlayerObjs = new Dictionary<NetworkPlayer, GameObject>();
+            Dictionary<NetworkPlayer, GameObject> playerHandObjs = new Dictionary<NetworkPlayer, GameObject>();
+            Dictionary<NetworkPlayer, GameObject> combatPetObjs = new Dictionary<NetworkPlayer, GameObject>();
+            Dictionary<NetworkPlayer, GameObject> petHandObjs = new Dictionary<NetworkPlayer, GameObject>();
+            
+            Dictionary<NetworkPlayer, CombatPlayer> combatPlayers = new Dictionary<NetworkPlayer, CombatPlayer>();
+            Dictionary<NetworkPlayer, PlayerHand> playerHands = new Dictionary<NetworkPlayer, PlayerHand>();
+            Dictionary<NetworkPlayer, CombatPet> combatPets = new Dictionary<NetworkPlayer, CombatPet>();
+            Dictionary<NetworkPlayer, PetHand> petHands = new Dictionary<NetworkPlayer, PetHand>();
+            Dictionary<NetworkPlayer, RuntimeDeck> playerDecks = new Dictionary<NetworkPlayer, RuntimeDeck>();
+            Dictionary<NetworkPlayer, RuntimeDeck> petDecks = new Dictionary<NetworkPlayer, RuntimeDeck>();
+
+
+            // --- Step 1: Instantiate all prefabs ---
+            UnityEngine.Debug.Log("[CombatManager] Phase 1: Instantiating all prefabs...");
             foreach (NetworkPlayer player in players)
             {
-                // Get the persistent pet reference
+                // --- Instantiate CombatPet ---
                 Pet persistentPet = player.playerPet.Value;
-                if (persistentPet == null)
-                {
-                    Debug.LogError($"[CombatManager] Player {player.GetSteamName()} has no persistent pet!");
+                if (persistentPet == null) {
+                    UnityEngine.Debug.LogError($"[CombatManager] Player {player.GetSteamName()} has no persistent pet! Cannot instantiate CombatPet.");
                     continue;
                 }
-                
-                // Ensure CombatPet prefab is assigned
-                if (combatPetPrefab == null)
-                {
-                    Debug.LogError($"[CombatManager] CombatPet Prefab is not assigned in the inspector for player {player.Owner.ClientId}");
+                if (combatPetPrefab == null) {
+                    UnityEngine.Debug.LogError($"[CombatManager] combatPetPrefab is null! Cannot instantiate CombatPet for {player.GetSteamName()}.");
                     continue;
                 }
-
-                // Create a combat pet for this player's persistent pet using the correct prefab
                 GameObject combatPetObj = Instantiate(combatPetPrefab); 
                 CombatPet combatPet = combatPetObj.GetComponent<CombatPet>();
-                
-                if (combatPet == null)
-                {
-                    Debug.LogError($"[CombatManager] CombatPet Prefab does not contain a CombatPet component for player {player.Owner.ClientId}");
+                if (combatPet == null) {
+                    UnityEngine.Debug.LogError($"[CombatManager] combatPetPrefab is missing CombatPet component! Cannot instantiate for {player.GetSteamName()}.");
                     Destroy(combatPetObj);
                     continue;
                 }
+                combatPetObj.name = $"CombatPet_{persistentPet.PetName}_{player.GetSteamName()}";
+                combatPetObjs[player] = combatPetObj;
+                combatPets[player] = combatPet;
 
-                // Spawn the CombatPet (now correctly parented and initialized)
-                Spawn(combatPetObj); // Spawn AFTER parenting
-                NetworkObject combatPetNob = combatPetObj.GetComponent<NetworkObject>();
-                combatPet.RpcSetParent(persistentPet.GetComponent<NetworkObject>()); // Set parent via RPC
-
-                // Initialize AFTER spawning
-                combatPet.Initialize(persistentPet);
-
-                // Create Deck AFTER initializing
-                combatPet.CreateRuntimeDeck();
-                
-                playerCombatPets[player] = combatPet;
-                playerPetObjects[player] = combatPetObj.GetComponent<NetworkObject>();
-                Debug.Log($"[CombatManager] Spawned combat pet for Player {player.Owner.ClientId} as child of {persistentPet.name}");
-
-                // --- Spawn PetHand for the CombatPet ---
-                if (petHandPrefab != null)
+                // --- Instantiate PetHand ---
+                 if (petHandPrefab == null) {
+                    UnityEngine.Debug.LogError($"[CombatManager] petHandPrefab is null! Cannot instantiate PetHand for {player.GetSteamName()}.");
+                    // continue; // Decide if we proceed without pet hand
+                }
+                else
                 {
                     GameObject petHandObj = Instantiate(petHandPrefab);
-                    PetHand petHandInstance = petHandObj.GetComponent<PetHand>();
-                    if (petHandInstance != null)
+                    PetHand petHand = petHandObj.GetComponent<PetHand>();
+                    if (petHand == null) {
+                        UnityEngine.Debug.LogError($"[CombatManager] petHandPrefab is missing PetHand component! Cannot instantiate for {player.GetSteamName()}.");
+                        Destroy(petHandObj);
+                        // continue; 
+                    }
+                    else 
                     {
                         petHandObj.name = $"PetHand_{player.GetSteamName()}";
-                        Spawn(petHandObj, player.Owner); // Spawn AFTER parenting, with player ownership (like PlayerHand)
-                        NetworkObject petHandNob = petHandObj.GetComponent<NetworkObject>();
-                        petHandInstance.RpcSetParent(persistentPet.GetComponent<NetworkObject>()); // Set parent via RPC
-                        combatPet.AssignHand(petHandInstance); // Link hand to the combatPet (logical link remains)
-                        Debug.Log($"[CombatManager] Spawned PetHand for CombatPet of Player {player.Owner.ClientId}, parented to {persistentPet.name}");
+                        petHandObjs[player] = petHandObj;
+                        petHands[player] = petHand;
+                    }
+                }
 
-                        // --- Draw Initial Pet Hand ---
-                        petHandInstance.Initialize(combatPet); // Initialize hand with pet reference
-                        petHandInstance.DrawInitialHand(3); // Draw initial cards (adjust count as needed)
-                        Debug.Log($"[CombatManager] Drew initial hand for PetHand of Player {player.Owner.ClientId}");
+                // --- Instantiate CombatPlayer ---
+                 if (combatPlayerPrefab == null) {
+                    UnityEngine.Debug.LogError($"[CombatManager] combatPlayerPrefab is null! Cannot instantiate CombatPlayer for {player.GetSteamName()}.");
+                    continue;
+                }
+                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab);
+                CombatPlayer combatPlayer = combatPlayerObj.GetComponent<CombatPlayer>();
+                 if (combatPlayer == null) {
+                    UnityEngine.Debug.LogError($"[CombatManager] combatPlayerPrefab is missing CombatPlayer component! Cannot instantiate for {player.GetSteamName()}.");
+                    Destroy(combatPlayerObj);
+                    continue;
+                }
+                combatPlayerObj.name = $"CombatPlayer_{player.GetSteamName()}";
+                combatPlayerObjs[player] = combatPlayerObj;
+                combatPlayers[player] = combatPlayer;
+
+                // --- Instantiate PlayerHand ---
+                 if (playerHandPrefab == null) {
+                    UnityEngine.Debug.LogError($"[CombatManager] playerHandPrefab is null! Cannot instantiate PlayerHand for {player.GetSteamName()}.");
+                    // continue; // Decide if we proceed without player hand
                     }
                     else
                     {
-                         Debug.LogError($"[CombatManager] petHandPrefab is missing the PetHand component for player {player.Owner.ClientId}!");
-                         Destroy(petHandObj);
+                    GameObject playerHandObj = Instantiate(playerHandPrefab);
+                    PlayerHand playerHand = playerHandObj.GetComponent<PlayerHand>();
+                     if (playerHand == null) {
+                        UnityEngine.Debug.LogError($"[CombatManager] playerHandPrefab is missing PlayerHand component! Cannot instantiate for {player.GetSteamName()}.");
+                        Destroy(playerHandObj);
+                        // continue;
+                }
+                else
+                {
+                        playerHandObj.name = $"PlayerHand_{player.GetSteamName()}";
+                        playerHandObjs[player] = playerHandObj;
+                        playerHands[player] = playerHand;
                     }
                 }
-                else
-                {
-                    Debug.LogError($"[CombatManager] petHandPrefab is not assigned in the inspector for player {player.Owner.ClientId}! Cannot spawn PetHand.");
-                }
+                
+                // --- Create Runtime Decks (Can happen during instantiation phase) ---
+                playerDecks[player] = CreatePlayerRuntimeDeck(player);
+                
+                // We need the CombatPet to create its deck, but CombatPet Initialize isn't called yet.
+                // We'll create the pet deck during the Reference Linking phase after CombatPet is initialized.
+                 // petDecks[player] = CreatePetRuntimeDeck(combatPet); // Moved later
             }
-            
-            // --- Step 2a: Assign pets to opponents --- 
-            Dictionary<NetworkPlayer, NetworkPlayer> petAssignments = new Dictionary<NetworkPlayer, NetworkPlayer>();
-            List<NetworkPlayer> shuffledPlayers = new List<NetworkPlayer>(players);
-            ShuffleList(shuffledPlayers);
-            
-            Debug.Log("[CombatManager] Assigning pets to opponents:");
-            for (int i = 0; i < shuffledPlayers.Count; i++)
-            {
-                NetworkPlayer player = shuffledPlayers[i];
-                NetworkPlayer opponentOwner = shuffledPlayers[(i + 1) % shuffledPlayers.Count];
-                petAssignments[player] = opponentOwner;
-                Debug.Log($"  - {player.GetSteamName()} will fight against {opponentOwner.GetSteamName()}'s pet");
-            }
-            
-            // --- Step 3: Create CombatPlayers and PlayerHands --- 
-            Dictionary<NetworkPlayer, NetworkObject> playerCombatPlayerObjects = new Dictionary<NetworkPlayer, NetworkObject>();
-            Dictionary<NetworkPlayer, NetworkObject> playerHandObjects = new Dictionary<NetworkPlayer, NetworkObject>();
+            UnityEngine.Debug.Log("[CombatManager] Phase 1: Instantiation Complete.");
 
+
+            // --- Step 2: Spawn NetworkObjects ---
+            UnityEngine.Debug.Log("[CombatManager] Phase 2: Spawning Network Objects...");
             foreach (NetworkPlayer player in players)
             {
-                // Get the player's transform to use as parent
-                Transform playerTransform = player.transform; 
+                // Check if object exists before spawning
+                if (combatPetObjs.TryGetValue(player, out GameObject cpObj)) Spawn(cpObj); else UnityEngine.Debug.LogError($"Missing CombatPet GameObject for {player.GetSteamName()} during spawn.");
+                if (petHandObjs.TryGetValue(player, out GameObject phObj)) Spawn(phObj, player.Owner); else UnityEngine.Debug.LogWarning($"Missing PetHand GameObject for {player.GetSteamName()} during spawn."); // Warn because optional
+                if (combatPlayerObjs.TryGetValue(player, out GameObject cplObj)) Spawn(cplObj, player.Owner); else UnityEngine.Debug.LogError($"Missing CombatPlayer GameObject for {player.GetSteamName()} during spawn.");
+                if (playerHandObjs.TryGetValue(player, out GameObject plhObj)) Spawn(plhObj, player.Owner); else UnityEngine.Debug.LogWarning($"Missing PlayerHand GameObject for {player.GetSteamName()} during spawn."); // Warn because optional
+            }
+            UnityEngine.Debug.Log("[CombatManager] Phase 2: Spawning Complete.");
 
-                // Get the NetworkPlayer who owns the pet this player will fight
-                NetworkPlayer opponentPetOwner = petAssignments[player];
-                
-                // Get the CombatPet instances using the owners
-                CombatPet playerPet = playerCombatPets.ContainsKey(player) ? playerCombatPets[player] : null;
-                CombatPet opponentPet = playerCombatPets.ContainsKey(opponentPetOwner) ? playerCombatPets[opponentPetOwner] : null;
 
-                if (playerPet == null) {
-                    Debug.LogError($"[CombatManager] Failed to find PlayerPet for {player.GetSteamName()} during CombatPlayer setup.");
-                    continue; // Skip this player if their pet wasn't created properly
-                }
-                if (opponentPet == null) {
-                    Debug.LogError($"[CombatManager] Failed to find OpponentPet (owned by {opponentPetOwner.GetSteamName()}) for {player.GetSteamName()} during CombatPlayer setup.");
-                    continue; // Skip this player if the opponent pet wasn't created properly
-                }
-                
-                // Declare variables needed in broader scope
-                PlayerHand playerHandInstance = null;
-                RuntimeDeck playerDeck = null;
+            // --- Step 3: Reparent NetworkObjects ---
+            // Requires NetworkObjects to be spawned first.
+            // We might need a small delay or yield here if parenting fails immediately after spawn.
+            // Consider using a coroutine or delayed callback if RpcSetParent doesn't work reliably immediately.
+            // For now, assume immediate parenting works.
+            UnityEngine.Debug.Log("[CombatManager] Phase 3: Reparenting Network Objects...");
+            foreach (NetworkPlayer player in players)
+            {
+                Pet persistentPet = player.playerPet.Value;
+                NetworkObject playerNob = player.GetComponent<NetworkObject>();
+                NetworkObject petNob = persistentPet?.GetComponent<NetworkObject>();
 
-                // --- Create Player Runtime Deck ---
-                 if (DeckManager.Instance != null)
-                 {
-                     // Create a new empty runtime deck
-                     playerDeck = new RuntimeDeck(player.GetSteamName() + "'s Combat Deck", DeckType.PlayerDeck);
-                     
-                     // Check if player has an initialized deck
-                     if (player.persistentDeckCardIDs.Count > 0)
-                     {
-                         Debug.Log($"[CombatManager] Creating runtime deck from {player.GetSteamName()}'s persistent deck ({player.persistentDeckCardIDs.Count} cards)");
-                         
-                         // Populate deck from persistent deck IDs
-                         foreach (string cardID in player.persistentDeckCardIDs)
-                         {
-                             CardData cardData = DeckManager.Instance.FindCardByName(cardID);
-                             if (cardData != null)
-                             {
-                                 playerDeck.AddCard(cardData);
-                                 // Debug.Log($"[CombatManager] Added card {cardID} to runtime deck"); // Optional log
-                             }
-                             else
-                             {
-                                 Debug.LogWarning($"[CombatManager] Could not find CardData for {cardID}");
-                             }
-                         }
-                         
-                         // Shuffle the newly created deck
-                         playerDeck.Shuffle();
-                         Debug.Log($"[CombatManager] Shuffled runtime deck with {playerDeck.DrawPileCount} cards for {player.GetSteamName()}");
-                     }
-                     else
-                     {
-                         // Fallback: If player doesn't have cards in persistent deck, use starter deck
-                         Debug.LogWarning($"[CombatManager] Player {player.GetSteamName()} has no persistent deck. Using starter deck.");
-                         playerDeck = DeckManager.Instance.GetPlayerStarterDeck(); // Ensure a valid deck
-                         if (playerDeck != null) playerDeck.Shuffle();
-                     }
-                 }
-                 else
-                 {
-                     Debug.LogError("[CombatManager] DeckManager is null, cannot create runtime deck.");
-                     // Create an empty deck to prevent null reference errors
-                     playerDeck = new RuntimeDeck(player.GetSteamName() + "'s Empty Deck", DeckType.PlayerDeck);
-                 }
-
-                // Ensure CombatPlayer prefab is assigned
-                if (combatPlayerPrefab == null)
-                {
-                    Debug.LogError($"[CombatManager] combatPlayerPrefab is not assigned in the inspector for player {player.Owner.ClientId}");
-                    continue;
-                }
-
-                // Instantiate CombatPlayer
-                GameObject combatPlayerObj = Instantiate(combatPlayerPrefab);
-                CombatPlayer combatPlayer = combatPlayerObj.GetComponent<CombatPlayer>();
-                
-                if (combatPlayer == null)
-                {
-                     Debug.LogError($"[CombatManager] combatPlayerPrefab is missing the CombatPlayer component for player {player.Owner.ClientId}");
-                     Destroy(combatPlayerObj);
+                if (playerNob == null) {
+                     UnityEngine.Debug.LogError($"Player {player.GetSteamName()} missing NetworkObject for parenting!");
                      continue;
                 }
-
-                // Spawn CombatPlayer with ownership
-                Spawn(combatPlayerObj, player.Owner); // Spawn AFTER parenting
-                NetworkObject combatPlayerNob = combatPlayerObj.GetComponent<NetworkObject>();
-                playerCombatPlayerObjects[player] = combatPlayerNob;
-                combatPlayer.RpcSetParent(player.GetComponent<NetworkObject>()); // Set parent via RPC
-
-                // --- Spawn PlayerHand ---
-                if (playerHandPrefab == null)
-                {
-                    Debug.LogError($"[CombatManager] playerHandPrefab is not assigned in the inspector for player {player.Owner.ClientId}! Cannot spawn PlayerHand.");
-                    // continue; // Decide if combat can proceed without a hand
+                 if (petNob == null) {
+                     UnityEngine.Debug.LogError($"Persistent Pet for {player.GetSteamName()} missing NetworkObject for parenting!");
+                     // continue; // Can't parent pet things if petNob is null
                 }
-                else
-                {
-                     GameObject playerHandObj = Instantiate(playerHandPrefab);
-                     playerHandInstance = playerHandObj.GetComponent<PlayerHand>(); // Assign to outer scope variable
-                     if (playerHandInstance != null)
-                     {
-                        playerHandObj.name = $"PlayerHand_{player.GetSteamName()}";
-                        Spawn(playerHandObj, player.Owner); // Spawn AFTER parenting
-                        NetworkObject playerHandNob = playerHandObj.GetComponent<NetworkObject>();
-                        playerHandObjects[player] = playerHandNob;
-                        playerHandInstance.RpcSetParent(player.GetComponent<NetworkObject>()); // Set parent via RPC
-                        
-                        Debug.Log($"[CombatManager] Spawned PlayerHand for Player {player.Owner.ClientId}, parented to {playerTransform.name}");
-
-                        // Create the runtime deck for the player - MOVED EARLIER
-                        // RuntimeDeck playerDeck = CreatePlayerRuntimeDeck(player); 
-                        
-                        // Initialize CombatPlayer with all references AFTER spawning everything
-                        combatPlayer.Initialize(player, playerPet, opponentPet, playerHandInstance, playerDeck);
-
-                        // Initialize the PlayerHand with references - check for null first
-                        if (playerHandInstance != null)
-                        {
-                            playerHandInstance.Initialize(player, combatPlayer); // Pass CombatPlayer ref
-                        }
-                        
-                        // --- Draw Initial Player Hand ---
-                        // Moved drawing to CombatPlayer.StartTurn or similar appropriate place
-                        // playerHandInstance.DrawInitialHand(5); // Draw initial cards
-                        // Debug.Log($"[CombatManager] Initial hand drawn for Player {player.Owner.ClientId}");
-                     }
-                     else
-                     {
-                        Debug.LogError($"[CombatManager] playerHandPrefab is missing the PlayerHand component for player {player.Owner.ClientId}!");
-                        Destroy(playerHandObj);
-                     }
-                }
-
-                // --- Step 3f: Store references in CombatData ---
-                if (!activeCombats.ContainsKey(player))
-                {
-                    activeCombats[player] = new CombatData();
-                }
-                activeCombats[player].CombatPlayer = combatPlayer;
-                activeCombats[player].PlayerPet = playerPet;
-                activeCombats[player].OpponentPet = opponentPet;
-                activeCombats[player].OpponentPlayer = opponentPetOwner; // Store the opponent player for later
-                activeCombats[player].PlayerHand = playerHandInstance;
-                activeCombats[player].TurnCompleted = false;
-                activeCombats[player].CombatComplete = false;
                 
-                Debug.Log($"[CombatManager] Populated CombatData for {player.GetSteamName()}: PlayerPet={playerPet.name}, OpponentPet={opponentPet.name}");
+                // Reparent CombatPet (Child of Persistent Pet)
+                 if (combatPets.TryGetValue(player, out CombatPet combatPet) && petNob != null) {
+                     combatPet.RpcSetParent(petNob);
+                     UnityEngine.Debug.Log($"Reparenting CombatPet for {player.GetSteamName()} under {persistentPet.name}");
+                 } else if (petNob == null) {
+                     UnityEngine.Debug.LogWarning($"Cannot reparent CombatPet for {player.GetSteamName()} - Persistent Pet NetworkObject missing.");
+                 }
+
+                // Reparent PetHand (Child of Persistent Pet)
+                 if (petHands.TryGetValue(player, out PetHand petHand) && petNob != null) {
+                     petHand.RpcSetParent(petNob);
+                     UnityEngine.Debug.Log($"Reparenting PetHand for {player.GetSteamName()} under {persistentPet.name}");
+                 } else if (petHands.ContainsKey(player) && petNob == null) { // Only warn if pethand exists but petNob is null
+                     UnityEngine.Debug.LogWarning($"Cannot reparent PetHand for {player.GetSteamName()} - Persistent Pet NetworkObject missing.");
+                 }
+
+                // Reparent CombatPlayer (Child of NetworkPlayer)
+                 if (combatPlayers.TryGetValue(player, out CombatPlayer combatPlayer)) {
+                     combatPlayer.RpcSetParent(playerNob);
+                     UnityEngine.Debug.Log($"Reparenting CombatPlayer for {player.GetSteamName()} under {player.name}");
+                 }
+
+                // Reparent PlayerHand (Child of NetworkPlayer)
+                 if (playerHands.TryGetValue(player, out PlayerHand playerHand)) {
+                     playerHand.RpcSetParent(playerNob);
+                     UnityEngine.Debug.Log($"Reparenting PlayerHand for {player.GetSteamName()} under {player.name}");
+                 }
             }
+             UnityEngine.Debug.Log("[CombatManager] Phase 3: Reparenting Complete. (Note: May require delay if issues occur)");
             
-            // Show the combat UI on all clients
-            RpcShowCombatCanvas();
+            // --- Step 4: Assign Opponent Pets ---
+            UnityEngine.Debug.Log("[CombatManager] Phase 4: Assigning Opponent Pets...");
+            Dictionary<NetworkPlayer, NetworkPlayer> opponentAssignments = new Dictionary<NetworkPlayer, NetworkPlayer>();
+            List<NetworkPlayer> shuffledPlayers = new List<NetworkPlayer>(players); // Use the actual players in combat
+            ShuffleList(shuffledPlayers); // Ensure random assignment
             
-            // Start the combat for all players
+            for (int i = 0; i < shuffledPlayers.Count; i++)
+            {
+                NetworkPlayer currentPlayer = shuffledPlayers[i];
+                NetworkPlayer opponentPlayer = shuffledPlayers[(i + 1) % shuffledPlayers.Count]; // Next player in shuffled list wraps around
+                opponentAssignments[currentPlayer] = opponentPlayer;
+                UnityEngine.Debug.Log($"  - {currentPlayer.GetSteamName()} will fight against {opponentPlayer.GetSteamName()}'s pet.");
+            }
+             UnityEngine.Debug.Log("[CombatManager] Phase 4: Opponent Assignment Complete.");
+
+
+            // --- Step 5: Link References & Initialize ---
+            // Now that everything is spawned and (hopefully) reparented, link everything up.
+             UnityEngine.Debug.Log("[CombatManager] Phase 5: Linking References and Initializing Components...");
             foreach (NetworkPlayer player in players)
             {
-                // Start the player's turn
-                if (activeCombats.TryGetValue(player, out CombatData combatData))
+                // Get own components (handle potential missing components from instantiation phase)
+                CombatPlayer ownCombatPlayer = combatPlayers.ContainsKey(player) ? combatPlayers[player] : null;
+                PlayerHand ownPlayerHand = playerHands.ContainsKey(player) ? playerHands[player] : null;
+                CombatPet ownCombatPet = combatPets.ContainsKey(player) ? combatPets[player] : null;
+                PetHand ownPetHand = petHands.ContainsKey(player) ? petHands[player] : null;
+                Pet persistentPet = player.playerPet.Value; // Already checked non-null during instantiation
+                
+                // Get opponent components using the assignment map
+                NetworkPlayer opponentPlayer = opponentAssignments[player];
+                CombatPet opponentCombatPet = combatPets.ContainsKey(opponentPlayer) ? combatPets[opponentPlayer] : null;
+                PetHand opponentPetHand = petHands.ContainsKey(opponentPlayer) ? petHands[opponentPlayer] : null;
+
+                 // --- Create Pet Runtime Deck (Now that CombatPet exists) ---
+                 if (ownCombatPet != null)
+                 {
+                    // Initialize CombatPet first (needs referencePet)
+                     ownCombatPet.Initialize(persistentPet); 
+                     // Now create the deck
+                     ownCombatPet.CreateRuntimeDeck(); 
+                     petDecks[player] = ownCombatPet.PetDeck; // Store deck reference if needed elsewhere
+                     UnityEngine.Debug.Log($"Created runtime deck for {player.GetSteamName()}'s pet.");
+
+                    // Assign PetHand to CombatPet (Logical link)
+                     if (ownPetHand != null) {
+                         ownCombatPet.AssignHand(ownPetHand); // This method exists on CombatPet
+                     }
+                 }
+                 else {
+                     UnityEngine.Debug.LogError($"Cannot initialize or create deck for {player.GetSteamName()}'s pet - CombatPet instance is missing.");
+                 }
+
+
+                 // --- Initialize Hands ---
+                 if (ownPlayerHand != null && ownCombatPlayer != null) {
+                    // PlayerHand Initialize might need CombatPlayer reference
+                     ownPlayerHand.Initialize(player, ownCombatPlayer); 
+                     UnityEngine.Debug.Log($"Initialized PlayerHand for {player.GetSteamName()}.");
+                 } else {
+                     UnityEngine.Debug.LogWarning($"Could not initialize PlayerHand for {player.GetSteamName()} - PlayerHand or CombatPlayer missing.");
+                 }
+                 
+                 if (ownPetHand != null && ownCombatPet != null) {
+                     ownPetHand.Initialize(ownCombatPet); // Initialize PetHand with CombatPet reference
+                     ownPetHand.DrawInitialHand(3); // Draw initial pet hand
+                     UnityEngine.Debug.Log($"Initialized and drew initial PetHand for {player.GetSteamName()}.");
+                 } else {
+                      UnityEngine.Debug.LogWarning($"Could not initialize PetHand for {player.GetSteamName()} - PetHand or CombatPet missing.");
+                 }
+
+                 // --- Initialize CombatPlayer ---
+                 RuntimeDeck playerDeck = playerDecks.ContainsKey(player) ? playerDecks[player] : null;
+                 if (ownCombatPlayer != null) {
+                     ownCombatPlayer.Initialize(player, ownCombatPet, opponentCombatPet, ownPlayerHand, playerDeck);
+                     UnityEngine.Debug.Log($"Initialized CombatPlayer for {player.GetSteamName()}.");
+                 } else {
+                      UnityEngine.Debug.LogError($"Could not initialize CombatPlayer for {player.GetSteamName()} - CombatPlayer instance missing.");
+                 }
+
+                // --- Store references in CombatData ---
+                // We still use CombatData for turn management, even with references on NetworkPlayer
+                if (!activeCombats.ContainsKey(player)) {
+                    activeCombats[player] = new CombatData();
+                }
+                // Populate CombatData (use the retrieved components)
+                activeCombats[player].CombatPlayer = ownCombatPlayer;
+                activeCombats[player].PlayerPet = ownCombatPet; // Renamed from PlayerPet for clarity if needed, but using existing name
+                activeCombats[player].OpponentPet = opponentCombatPet;
+                activeCombats[player].OpponentPlayer = opponentPlayer; 
+                activeCombats[player].PlayerHand = ownPlayerHand; // Add player hand if not present
+                activeCombats[player].PetHand = ownPetHand; // Add pet hand if needed
+                activeCombats[player].TurnCompleted = false;
+                activeCombats[player].CombatComplete = false;
+                 UnityEngine.Debug.Log($"Populated CombatData for {player.GetSteamName()}.");
+
+
+                // --- Link references on NetworkPlayer itself ---
+                player.SetCombatReferences(
+                    ownCombatPlayer,
+                    ownPlayerHand,
+                    ownCombatPet,
+                    ownPetHand,
+                    opponentPlayer,
+                    opponentCombatPet,
+                    opponentPetHand
+                );
+            }
+            UnityEngine.Debug.Log("[CombatManager] Phase 5: Linking and Initialization Complete.");
+
+            // --- Populate Inspector List ---
+            PopulateInspectorAssignments();
+
+            // --- Step 6: Show Combat Canvas ---
+            UnityEngine.Debug.Log("[CombatManager] Phase 6: Showing Combat Canvas...");
+            RpcShowCombatCanvas();
+            UnityEngine.Debug.Log("[CombatManager] Phase 6: Canvas Shown.");
+            
+            // --- Step 7: Start First Turns ---
+            UnityEngine.Debug.Log("[CombatManager] Phase 7: Starting First Turns...");
+            foreach (NetworkPlayer player in players) // Iterate through original player list for turn start
+            {
+                if (activeCombats.TryGetValue(player, out CombatData combatData) && combatData.CombatPlayer != null)
                 {
-                    combatData.CombatPlayer.StartTurn();
-                    Debug.Log($"[CombatManager] Started turn for {player.GetSteamName()}");
+                    combatData.CombatPlayer.StartTurn(); // StartTurn likely handles drawing the initial player hand now
+                    UnityEngine.Debug.Log($"[CombatManager] Started turn for {player.GetSteamName()}.");
                 }
                 else
                 {
-                    Debug.LogError($"[CombatManager] No combat data found for {player.GetSteamName()} when starting turn");
+                    UnityEngine.Debug.LogError($"[CombatManager] No combat data or CombatPlayer found for {player.GetSteamName()} when starting turn.");
                 }
             }
+            UnityEngine.Debug.Log("[CombatManager] Phase 7: First Turns Started.");
             
-            // Log the combat state after initialization
+            // Log the final combat state
             LogCombatState();
-            
-            // Notify clients that combat setup is complete
-            RpcNotifyCombatReady();
-            Debug.Log("[CombatManager] Sent RpcNotifyCombatReady to observers.");
+            UnityEngine.Debug.Log("[CombatManager] Combat Setup Complete.");
         }
+
+        // Helper method to update the inspector list based on activeCombats
+        [Server]
+        private void PopulateInspectorAssignments()
+        {
+            inspectorCombatAssignments.Clear();
+            foreach (var kvp in activeCombats)
+            {
+                if (kvp.Key != null && kvp.Value != null && kvp.Value.CombatPlayer != null && kvp.Value.OpponentPet != null)
+                {
+                    inspectorCombatAssignments.Add(new CombatAssignmentInfo 
+                    { 
+                        Player = kvp.Value.CombatPlayer, 
+                        AssignedOpponentPet = kvp.Value.OpponentPet,
+                        PlayerNetworkIdentity = kvp.Key // Add the NetworkPlayer reference
+                    });
+                }
+                else {
+                    UnityEngine.Debug.LogWarning("[CombatManager] Skipping null entry when populating inspector assignments.");
+                }
+            }
+            UnityEngine.Debug.Log($"[CombatManager] Updated Inspector assignment list with {inspectorCombatAssignments.Count} entries.");
+        }
+
+        // Helper to create player runtime deck (extracted logic)
+        [Server]
+        private RuntimeDeck CreatePlayerRuntimeDeck(NetworkPlayer player)
+        {
+            RuntimeDeck deck = null;
+            if (DeckManager.Instance != null)
+            {
+                deck = new RuntimeDeck(player.GetSteamName() + "'s Combat Deck", DeckType.PlayerDeck);
+                if (player.persistentDeckCardIDs.Count > 0)
+                {
+                    foreach (string cardID in player.persistentDeckCardIDs)
+                    {
+                        CardData cardData = DeckManager.Instance.FindCardByName(cardID);
+                        if (cardData != null) deck.AddCard(cardData);
+                        else UnityEngine.Debug.LogWarning($"[CombatManager] Could not find CardData for ID {cardID}");
+                    }
+                    deck.Shuffle();
+                    UnityEngine.Debug.Log($"[CombatManager] Created runtime deck with {deck.DrawPileCount} cards for {player.GetSteamName()} from persistent data.");
+                }
+                else
+                {
+                    UnityEngine.Debug.LogWarning($"[CombatManager] Player {player.GetSteamName()} has no persistent deck. Using starter deck.");
+                    deck = DeckManager.Instance.GetPlayerStarterDeck(); // Returns a shuffled deck
+                    if (deck == null) { // Handle case where starter deck is also missing
+                         UnityEngine.Debug.LogError($"[CombatManager] Player starter deck is null in DeckManager!");
+                         deck = new RuntimeDeck(player.GetSteamName() + "'s Empty Deck", DeckType.PlayerDeck);
+                    }
+                }
+            }
+            else
+            {
+                UnityEngine.Debug.LogError("[CombatManager] DeckManager is null, cannot create player runtime deck.");
+                deck = new RuntimeDeck(player.GetSteamName() + "'s Empty Deck", DeckType.PlayerDeck);
+            }
+            return deck;
+        }
+        
+        // Helper to create pet runtime deck (extracted logic) - Now called after CombatPet Initialize
+        // [Server] // No longer needed here, called within the main loop
+        // private RuntimeDeck CreatePetRuntimeDeck(CombatPet combatPet)
+        // {
+        //     if (combatPet == null || combatPet.ReferencePet == null) {
+        //          UnityEngine.Debug.LogError("[CombatManager] Cannot create pet deck - CombatPet or ReferencePet is null.");
+        //          return new RuntimeDeck("Empty Pet Deck", DeckType.PetDeck);
+        //     }
+             
+        //     RuntimeDeck deck = null;
+        //     if (DeckManager.Instance != null) {
+        //         deck = combatPet.ReferencePet.CreateRuntimeDeck(); // Assuming Pet has this method
+        //         if(deck == null || deck.TotalCardCount == 0) { // Fallback if persistent pet deck is empty
+        //             UnityEngine.Debug.LogWarning($"[CombatManager] Persistent pet deck for {combatPet.name} is empty or null. Using random starter pet deck.");
+        //             deck = DeckManager.Instance.GetRandomPetStarterDeck();
+        //         }
+        //         deck.Shuffle(); // Ensure it's shuffled
+        //         UnityEngine.Debug.Log($"[CombatManager] Created runtime deck for {combatPet.name} with {deck.DrawPileCount} cards.");
+        //     } else {
+        //         UnityEngine.Debug.LogError("[CombatManager] DeckManager is null, cannot create pet runtime deck.");
+        //         deck = new RuntimeDeck("Empty Pet Deck", DeckType.PetDeck);
+        //     }
+        //     return deck;
+        // }
         
         [Server]
         private void LogCombatState()
         {
-            Debug.Log("[Combat] === Combat State After Initialization ===");
-            Debug.Log($"[Combat] Total players in combat: {playersInCombat.Count}");
-            Debug.Log($"[Combat] Total active combats: {activeCombats.Count}");
+            UnityEngine.Debug.Log("[Combat] === Combat State After Initialization ===");
+            UnityEngine.Debug.Log($"[Combat] Total players in combat: {playersInCombat.Count}");
+            UnityEngine.Debug.Log($"[Combat] Total active combats: {activeCombats.Count}");
             
             foreach (var kvp in activeCombats)
             {
                 NetworkPlayer player = kvp.Key;
                 CombatData data = kvp.Value;
                 
-                Debug.Log($"[Combat] Player: {player.GetSteamName()}");
-                Debug.Log($"[Combat] - Opponent: {data.OpponentPlayer.GetSteamName()}");
-                Debug.Log($"[Combat] - Player Pet HP: {data.PlayerPet.CurrentHealth}/{data.PlayerPet.MaxHealth}");
-                Debug.Log($"[Combat] - Opponent Pet HP: {data.OpponentPet.CurrentHealth}/{data.OpponentPet.MaxHealth}");
-                Debug.Log($"[Combat] - Is Turn Active: {data.CombatPlayer.IsMyTurn}");
-                Debug.Log($"[Combat] - Energy: {data.CombatPlayer.CurrentEnergy}/{data.CombatPlayer.MaxEnergy}");
+                UnityEngine.Debug.Log($"[Combat] Player: {player.GetSteamName()}");
+                UnityEngine.Debug.Log($"[Combat] - Opponent: {data.OpponentPlayer.GetSteamName()}");
+                UnityEngine.Debug.Log($"[Combat] - Player Pet HP: {data.PlayerPet.CurrentHealth}/{data.PlayerPet.MaxHealth}");
+                UnityEngine.Debug.Log($"[Combat] - Opponent Pet HP: {data.OpponentPet.CurrentHealth}/{data.OpponentPet.MaxHealth}");
+                UnityEngine.Debug.Log($"[Combat] - Is Turn Active: {data.CombatPlayer.IsMyTurn}");
+                UnityEngine.Debug.Log($"[Combat] - Energy: {data.CombatPlayer.CurrentEnergy}/{data.CombatPlayer.MaxEnergy}");
             }
             
-            Debug.Log("[Combat] === End Combat State ===");
+            UnityEngine.Debug.Log("[Combat] === End Combat State ===");
         }
         
         // Called when a player ends their turn
@@ -457,11 +588,11 @@ namespace Combat
             
             if (networkPlayer == null)
             {
-                Debug.LogError("[CombatManager] Could not find NetworkPlayer for CombatPlayer that ended turn");
+                UnityEngine.Debug.LogError("[CombatManager] Could not find NetworkPlayer for CombatPlayer that ended turn");
                 return;
             }
             
-            Debug.Log($"[CombatManager] Player {networkPlayer.GetSteamName()} ended their turn");
+            UnityEngine.Debug.Log($"[CombatManager] Player {networkPlayer.GetSteamName()} ended their turn");
             
             // Mark this player's turn as completed
             if (activeCombats.TryGetValue(networkPlayer, out CombatData combatData))
@@ -473,11 +604,11 @@ namespace Combat
                 if (activeCombats.TryGetValue(opponentPlayer, out CombatData opponentData))
                 {
                     opponentData.CombatPlayer.StartTurn();
-                    Debug.Log($"[CombatManager] Started turn for opponent {opponentPlayer.GetSteamName()}");
+                    UnityEngine.Debug.Log($"[CombatManager] Started turn for opponent {opponentPlayer.GetSteamName()}");
                 }
                 else
                 {
-                    Debug.LogError($"[CombatManager] No combat data found for opponent {opponentPlayer.GetSteamName()}");
+                    UnityEngine.Debug.LogError($"[CombatManager] No combat data found for opponent {opponentPlayer.GetSteamName()}");
                 }
             }
         }
@@ -488,11 +619,11 @@ namespace Combat
         {
             if (!activeCombats.ContainsKey(player))
             {
-                Debug.LogError($"[CombatManager] Tried to complete combat for player {player.GetSteamName()}, but no active combat found");
+                UnityEngine.Debug.LogError($"[CombatManager] Tried to complete combat for player {player.GetSteamName()}, but no active combat found");
                 return;
             }
             
-            Debug.Log($"[CombatManager] Completing combat for player {player.GetSteamName()}, Victory: {victory}");
+            UnityEngine.Debug.Log($"[CombatManager] Completing combat for player {player.GetSteamName()}, Victory: {victory}");
             
             // Show the result to the player
             RpcShowCombatResult(player.Owner, victory);
@@ -515,14 +646,14 @@ namespace Combat
                 // Show the result UI to this player
                 RpcShowCombatResult(player.Owner, win);
                 
-                Debug.Log($"[CombatManager] Marked combat as complete for {player.GetSteamName()}, Win: {win}");
+                UnityEngine.Debug.Log($"[CombatManager] Marked combat as complete for {player.GetSteamName()}, Win: {win}");
                 
                 // Check if all combats have ended
                 CheckCombatEndState();
             }
             else
             {
-                Debug.LogError($"[CombatManager] No combat data found for {player.GetSteamName()} when marking complete");
+                UnityEngine.Debug.LogError($"[CombatManager] No combat data found for {player.GetSteamName()} when marking complete");
             }
         }
         
@@ -536,7 +667,7 @@ namespace Combat
             // Apply damage to player's pet
             combatData.PlayerPet.TakeDamage(damage);
             
-            Debug.Log($"[CombatManager] Player {player.GetSteamName()}'s pet took {damage} damage. " +
+            UnityEngine.Debug.Log($"[CombatManager] Player {player.GetSteamName()}'s pet took {damage} damage. " +
                       $"Health: {combatData.PlayerPet.CurrentHealth}/{combatData.PlayerPet.MaxHealth}");
             
             // Check if player's pet is defeated
@@ -547,7 +678,7 @@ namespace Combat
                 // Mark combat as complete for this player
                 combatData.CombatComplete = true; 
                 
-                Debug.Log($"[CombatManager] Player {player.GetSteamName()}'s pet was defeated");
+                UnityEngine.Debug.Log($"[CombatManager] Player {player.GetSteamName()}'s pet was defeated");
                 
                 // Check if all combats have ended
                 CheckCombatEndState();
@@ -564,7 +695,7 @@ namespace Combat
         [Server]
         public void HandlePetDefeat(CombatPet combatPet)
         {
-            Debug.Log($"[CombatManager] Combat pet defeat registered");
+            UnityEngine.Debug.Log($"[CombatManager] Combat pet defeat registered");
             
             // Find the combat data for this pet
             foreach (var kvp in activeCombats)
@@ -572,14 +703,14 @@ namespace Combat
                 if (kvp.Value.PlayerPet == combatPet)
                 {
                     // Player's pet was defeated, they lost
-                    Debug.Log($"[CombatManager] Player {kvp.Key.GetSteamName()}'s pet was defeated (player lost)");
+                    UnityEngine.Debug.Log($"[CombatManager] Player {kvp.Key.GetSteamName()}'s pet was defeated (player lost)");
                     RpcShowCombatResult(kvp.Key.Owner, false);
                     kvp.Value.CombatComplete = true;
                 }
                 else if (kvp.Value.OpponentPet == combatPet)
                 {
                     // Opponent's pet was defeated, player won
-                    Debug.Log($"[CombatManager] Opponent's pet was defeated, player {kvp.Key.GetSteamName()} won");
+                    UnityEngine.Debug.Log($"[CombatManager] Opponent's pet was defeated, player {kvp.Key.GetSteamName()} won");
                     RpcShowCombatResult(kvp.Key.Owner, true);
                     kvp.Value.CombatComplete = true;
                 }
@@ -606,13 +737,23 @@ namespace Combat
             
             if (allComplete)
             {
-                Debug.Log("[CombatManager] All combats complete, ending combat phase");
+                UnityEngine.Debug.Log("[CombatManager] All combats complete, ending combat phase");
                 RpcEndCombat();
                 
                 // Reset combat state
                 combatStarted = false;
+                
+                // Clear references on NetworkPlayers involved
+                foreach(NetworkPlayer p in playersInCombat)
+                {
+                    if (p != null) {
+                        p.ClearCombatReferences();
+                    }
+                }
+                
                 activeCombats.Clear();
                 playersInCombat.Clear();
+                inspectorCombatAssignments.Clear(); // Clear the inspector list too
                 
                 // On server, notify LobbyManager that combat is over
                 // This would typically be done via a more formal event system
@@ -636,17 +777,26 @@ namespace Combat
         // Get a player's opponent's pet
         public CombatPet GetOpponentPet(NetworkPlayer player)
         {
+            // --- Option 1: Use NetworkPlayer reference (if it's reliable) ---
+             if (player != null && player.OpponentCombatPet != null) {
+                 return player.OpponentCombatPet;
+             }
+
+            // --- Option 2: Fallback to activeCombats dictionary (existing method) ---
             if (activeCombats.TryGetValue(player, out CombatData combatData))
             {
                 return combatData.OpponentPet;
             }
+            
+            // --- Option 3: Look up opponent via assignment and then their pet ---
+            // This requires opponentAssignments to be stored if needed outside StartCombat
+            // if (opponentAssignments.TryGetValue(player, out NetworkPlayer opponent) && 
+            //     combatPets.TryGetValue(opponent, out CombatPet oppPet)) {
+            //     return oppPet;
+            // }
+
+            UnityEngine.Debug.LogWarning($"[CombatManager] Could not find opponent pet for {player?.GetSteamName()} using any method.");
             return null;
-        }
-        
-        // Get a dictionary of all active combats (used by CombatSceneCanvas)
-        public Dictionary<NetworkPlayer, CombatData> GetActiveCombats()
-        {
-            return activeCombats;
         }
         
         // --- Utility Methods ---
@@ -660,7 +810,7 @@ namespace Combat
             while (n > 1)
             {
                 n--;
-                int k = Random.Range(0, n + 1);
+                int k = UnityEngine.Random.Range(0, n + 1); // Explicitly use UnityEngine.Random
                 T value = list[k];
                 list[k] = list[n];
                 list[n] = value;
@@ -671,29 +821,10 @@ namespace Combat
         
         #region RPCs
         
-        // Add this RPC to notify clients when combat setup is fully complete
-        [ObserversRpc]
-        private void RpcNotifyCombatReady()
-        {
-            // Clients will implement logic in their CombatSceneCanvas (or similar) 
-            // based on receiving this signal.
-            Debug.Log($"[Client {Owner.ClientId}] Received RpcNotifyCombatReady.");
-            // Find the local canvas and trigger its initialization
-            CombatSceneCanvas canvas = FindFirstObjectByType<CombatSceneCanvas>();
-            if (canvas != null)
-            {
-                canvas.HandleCombatReady(); 
-            }
-            else
-            {
-                Debug.LogWarning("[CombatManager] RpcNotifyCombatReady: Could not find CombatSceneCanvas on client.");
-            }
-        }
-
         [ObserversRpc]
         private void RpcShowCombatCanvas()
         {
-            Debug.Log("[CombatManager] RpcShowCombatCanvas received");
+            UnityEngine.Debug.Log("[CombatManager] RpcShowCombatCanvas received");
             
             if (combatCanvas != null)
             {
@@ -707,18 +838,18 @@ namespace Combat
                     canvasGroup.DOFade(1, 0.5f);
                 }
                 
-                Debug.Log("[CombatManager] Combat canvas activated");
+                UnityEngine.Debug.Log("[CombatManager] Combat canvas activated");
             }
             else
             {
-                Debug.LogError("[CombatManager] Cannot show combat canvas - reference is null");
+                UnityEngine.Debug.LogError("[CombatManager] Cannot show combat canvas - reference is null");
             }
         }
         
         [ObserversRpc]
         private void RpcHideCombatCanvas()
         {
-            Debug.Log("[CombatManager] RpcHideCombatCanvas received");
+            UnityEngine.Debug.Log("[CombatManager] RpcHideCombatCanvas received");
             
             if (combatCanvas != null)
             {
@@ -736,18 +867,18 @@ namespace Combat
                     combatCanvas.SetActive(false);
                 }
                 
-                Debug.Log("[CombatManager] Combat canvas hidden");
+                UnityEngine.Debug.Log("[CombatManager] Combat canvas hidden");
             }
             else
             {
-                Debug.LogError("[CombatManager] Cannot hide combat canvas - reference is null");
+                UnityEngine.Debug.LogError("[CombatManager] Cannot hide combat canvas - reference is null");
             }
         }
         
         [TargetRpc]
         private void RpcShowOpponentAttacking(NetworkConnection conn, int damage)
         {
-            Debug.Log($"[CombatManager] RpcShowOpponentAttacking received with damage: {damage}");
+            UnityEngine.Debug.Log($"[CombatManager] RpcShowOpponentAttacking received with damage: {damage}");
             // Implement client-side animation showing opponent attacking
         }
         
@@ -755,27 +886,25 @@ namespace Combat
         private void RpcShowCombatResult(NetworkConnection conn, bool victory)
         {
             string result = victory ? "Victory" : "Defeat";
-            Debug.Log($"[CombatManager] RpcShowCombatResult received: {result}");
+            UnityEngine.Debug.Log($"[CombatManager] RpcShowCombatResult received: {result}");
             
-            /* // Temporarily commented out due to missing CombatCanvasManager.cs
             // Find the combat canvas manager
-            CombatCanvasManager canvasManager = FindFirstObjectByType<CombatCanvasManager>();
+            CombatCanvasManager canvasManager = FindFirstObjectByType<CombatCanvasManager>(); // <--- Find the manager
             if (canvasManager != null)
             {
-                canvasManager.ShowCombatResult(victory);
-                Debug.Log($"[CombatManager] Showing combat result UI: {result}");
+                canvasManager.ShowCombatResult(victory); // <--- Call the method
+                UnityEngine.Debug.Log($"[CombatManager] Showing combat result UI: {result}");
             }
             else
             {
-                Debug.LogError("[CombatManager] Cannot show combat result - CombatCanvasManager not found");
+                UnityEngine.Debug.LogError("[CombatManager] Cannot show combat result - CombatCanvasManager not found");
             }
-            */
         }
         
         [ObserversRpc]
         private void RpcEndCombat()
         {
-            Debug.Log("[CombatManager] RpcEndCombat received");
+            UnityEngine.Debug.Log("[CombatManager] RpcEndCombat received");
             
             // Hide the combat canvas
             if (combatCanvas != null)
@@ -812,5 +941,6 @@ namespace Combat
         public PlayerHand PlayerHand;
         public bool TurnCompleted;
         public bool CombatComplete;
+        public PetHand PetHand;
     }
 } 
