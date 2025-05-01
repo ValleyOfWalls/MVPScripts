@@ -67,15 +67,24 @@ namespace Combat
         // Find a CardData by its name/ID
         public CardData FindCardByName(string cardName)
         {
-            Debug.Log($"[DeckManager] Searching for CardData with name: '{cardName}'");
+            if (string.IsNullOrWhiteSpace(cardName))
+            {
+                Debug.LogError("[DeckManager] FindCardByName called with null or empty cardName");
+                return null;
+            }
+            
+            // Normalize the search name (trim and convert to lowercase for case-insensitive comparison)
+            string normalizedName = cardName.Trim();
+            Debug.Log($"[DeckManager] Searching for CardData with name: '{normalizedName}'");
             
             // First check the player starter deck
             if (playerStarterDeck != null)
             {
                 foreach (CardData card in playerStarterDeck.Cards)
                 {
-                    if (card != null && card.cardName == cardName)
+                    if (card != null && string.Equals(card.cardName, normalizedName, System.StringComparison.OrdinalIgnoreCase))
                     {
+                        Debug.Log($"[DeckManager] Found card '{card.cardName}' in player starter deck");
                         return card;
                     }
                 }
@@ -88,16 +97,49 @@ namespace Combat
                 {
                     foreach (CardData card in petDeck.Cards)
                     {
-                        if (card != null && card.cardName == cardName)
+                        if (card != null && string.Equals(card.cardName, normalizedName, System.StringComparison.OrdinalIgnoreCase))
                         {
+                            Debug.Log($"[DeckManager] Found card '{card.cardName}' in pet deck '{petDeck.DeckName}'");
                             return card;
                         }
                     }
                 }
             }
             
-            // Card not found
-            Debug.LogWarning($"Could not find CardData with name: {cardName}");
+            // Try one more time with a partial name match
+            Debug.Log($"[DeckManager] Exact match not found for '{normalizedName}', trying with partial match");
+            
+            // Check player deck with partial match
+            if (playerStarterDeck != null)
+            {
+                foreach (CardData card in playerStarterDeck.Cards)
+                {
+                    if (card != null && card.cardName.IndexOf(normalizedName, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        Debug.Log($"[DeckManager] Found partial match '{card.cardName}' in player starter deck");
+                        return card;
+                    }
+                }
+            }
+            
+            // Check pet decks with partial match
+            foreach (Deck petDeck in petStarterDecks)
+            {
+                if (petDeck != null)
+                {
+                    foreach (CardData card in petDeck.Cards)
+                    {
+                        if (card != null && card.cardName.IndexOf(normalizedName, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            Debug.Log($"[DeckManager] Found partial match '{card.cardName}' in pet deck '{petDeck.DeckName}'");
+                            return card;
+                        }
+                    }
+                }
+            }
+            
+            // Card not found after all attempts
+            Debug.LogWarning($"[DeckManager] Could not find any card matching name: '{normalizedName}'");
             return null;
         }
         
@@ -179,6 +221,9 @@ namespace Combat
                 // Instantiate the card - initially WITHOUT a parent to avoid potential scaling issues
                 GameObject cardObj = Instantiate(cardPrefab);
                 
+                // Set the gameObject name immediately on creation to help with debugging
+                cardObj.name = $"Card_{cardData.cardName}_PreSpawn";
+                
                 // Get the Card component
                 Card card = cardObj.GetComponent<Card>();
                 
@@ -200,9 +245,10 @@ namespace Combat
                          return null;
                     }
                     
-                    // NOW set the object name using the valid ObjectId
-                    Debug.Log($"[Server DeckManager] Calling SetCardObjectName for {cardData.cardName} on NO Id: {card.NetworkObject.ObjectId}");
-                    card.SetCardObjectName(cardData.cardName); // Sets the _syncedCardObjectName SyncVar
+                    // Set the card object name BEFORE spawning to ensure NetworkObject.ObjectId is valid
+                    // This sets the _syncedCardObjectName SyncVar which will be synchronized to clients
+                    Debug.Log($"[Server DeckManager] Setting card object name for {cardData.cardName} NetworkObject ID: {card.NetworkObject.ObjectId}");
+                    card.SetCardObjectName(cardData.cardName);
                     
                     // Spawn the networked card - Owner should be the hand's owner
                     InstanceFinder.ServerManager.Spawn(cardObj, hand.Owner);
@@ -210,7 +256,7 @@ namespace Combat
                     // Set parent AFTER spawning using the RPC
                     card.RpcSetParent(hand.NetworkObject);
 
-                    Debug.Log($"[Server] Card {cardData.cardName} spawned (ID: {card.NetworkObject.ObjectId}), name set, and RpcSetParent called for {hand.name} ({hand.NetworkObject.ObjectId}).");
+                    Debug.Log($"[Server] Card {cardData.cardName} spawned successfully. GameObject.name: {cardObj.name}, NetworkObject ID: {card.NetworkObject.ObjectId}");
                     
                     return cardObj;
                 }

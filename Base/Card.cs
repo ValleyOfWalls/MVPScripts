@@ -130,17 +130,24 @@ namespace Combat
         {
             if (asServer) return; // Server sets the value, clients react
 
-            // --- Add detailed log here ---
-            Debug.Log($"[Card:{NetworkObject.ObjectId}] OnSyncedCardObjectNameChanged fired. IsOwner: {IsOwner}. Prev: '{prevName}', New: '{newName}'");
+            Debug.Log($"[Card:{NetworkObject.ObjectId}] OnSyncedCardObjectNameChanged fired. IsOwner: {IsOwner}, Prev: '{prevName}', New: '{newName}'");
 
             if (!string.IsNullOrEmpty(newName))
             {
+                // Ensure we update the actual GameObject name
                 gameObject.name = newName;
-                Debug.Log($"[Card:{NetworkObject.ObjectId}] --- Set gameObject.name to: {newName}");
+                Debug.Log($"[Card:{NetworkObject.ObjectId}] Updated gameObject.name to: {newName}");
+                
+                // Force UI update if card data is already set
+                if (cardData != null)
+                {
+                    Debug.Log($"[Card:{NetworkObject.ObjectId}] Card data exists, updating UI after name change");
+                    UpdateCardUI();
+                }
             }
             else
             {
-                Debug.LogWarning($"[Card:{NetworkObject.ObjectId}] --- Synced object name was null or empty, not setting name.");
+                Debug.LogWarning($"[Card:{NetworkObject.ObjectId}] Synced object name was null or empty, not setting name.");
             }
         }
         
@@ -165,11 +172,24 @@ namespace Combat
             if (this.cardData == null)
             {
                 Debug.LogError($"[Client {NetworkObject.ObjectId}] FindCardByName FAILED for name: '{cardName}'");
-                // Optionally create a placeholder UI here
+                // Create a placeholder UI to show something is wrong
+                nameText.text = "CARD NOT FOUND";
+                descriptionText.text = $"Missing card: {cardName}";
+                costText.text = "?";
             }
             else
             {
                 Debug.Log($"[Client {NetworkObject.ObjectId}] FindCardByName SUCCESS for '{cardName}'. Updating UI and Interactivity.");
+                
+                // Ensure we have the correct name displayed in the inspector
+                if (!gameObject.name.Contains(cardData.cardName))
+                {
+                    string newName = $"Card_{NetworkObject.ObjectId}_{cardData.cardName.Replace(' ', '_')}";
+                    Debug.Log($"[Client {NetworkObject.ObjectId}] Updating local GameObject name to match card data: {newName}");
+                    gameObject.name = newName;
+                }
+                
+                // Update the UI with the found card data
                 UpdateCardUI();
                 UpdateInteractivity(); // Update based on ownership
             }
@@ -239,16 +259,18 @@ namespace Combat
             // We don't store PetHand reference in owningHand field
             
             // Set the synced data name immediately on the server
-            // This ensures the SyncVar is set *before* OnStartServer might be called
-            // If cardData is null, something went wrong earlier.
-            if(this.cardData != null)
+            if (this.cardData != null)
             {
-                 syncedCardDataName.Value = this.cardData.cardName;
-                 Debug.Log($"[Server Initialize Method] Set syncedCardDataName for {data.cardName}");
+                // Make sure we set the syncedCardDataName first
+                syncedCardDataName.Value = this.cardData.cardName;
+                Debug.Log($"[Server] Set syncedCardDataName to {this.cardData.cardName} for card {this.NetworkObject.ObjectId}");
+                
+                // Also update our local UI immediately on server
+                UpdateCardUI();
             }
             else
             {
-                Debug.LogError($"[Server Initialize Method] CardData is NULL when trying to set syncedCardDataName!");
+                Debug.LogError($"[Server] CardData is NULL when trying to set syncedCardDataName!");
             }
         }
         
@@ -281,12 +303,20 @@ namespace Combat
                 Debug.LogWarning($"[Server Card:{NetworkObject.ObjectId}] SetCardObjectName called with empty name.");
                 name = "UnnamedCard";
             }
-            string uniqueName = $"Card_{NetworkObject.ObjectId}_{name.Replace(' ', '_')}"; // Ensure unique name in hierarchy
-            Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Preparing to set _syncedCardObjectName to: {uniqueName}"); // Log before setting
+            
+            // Set the synced card data name first to ensure clients have access to the proper card data
+            syncedCardDataName.Value = name;
+            
+            // Set the object name with a unique identifier to avoid name conflicts
+            string uniqueName = $"Card_{NetworkObject.ObjectId}_{name.Replace(' ', '_')}"; 
+            Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Setting _syncedCardObjectName to: {uniqueName}");
+            
+            // Set the synced name that clients will receive
             _syncedCardObjectName.Value = uniqueName;
-            // Set server-side name immediately too, client callback will handle clients
+            
+            // Set server-side GameObject name immediately
             gameObject.name = uniqueName;
-             Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Set synced card object name to: {uniqueName}");
+            Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Set local gameObject.name to: {uniqueName}");
         }
 
         // --- Parenting RPC --- 
