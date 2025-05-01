@@ -2,6 +2,10 @@ using UnityEngine;
 using UnityEngine.UI;
 using DG.Tweening;
 using TMPro;
+using FishNet.Object;
+using FishNet.Object.Synchronizing;
+using FishNet.Component.Transforming;
+using System.Collections;
 
 namespace Combat
 {
@@ -13,10 +17,11 @@ namespace Combat
         Power
     }
     
-    public class Card : MonoBehaviour
+    public class Card : NetworkBehaviour
     {
         [Header("Card Data")]
-        [SerializeField] private CardData cardData;
+        // This will be assigned locally on each client based on syncedCardName
+        private CardData cardData;
         
         [Header("UI Elements")]
         [SerializeField] private Image cardImage;
@@ -25,9 +30,15 @@ namespace Combat
         [SerializeField] private TextMeshProUGUI costText;
         [SerializeField] private Image cardTypeIcon;
         
-        // Properties
+        // Synced variable to identify the card across the network
+        private readonly SyncVar<string> syncedCardName = new SyncVar<string>();
+        
+        // Network Component
+        private NetworkTransform networkTransform;
+        
+        // Properties - Now read directly from the locally assigned cardData
         public CardData Data => cardData;
-        public string CardName => cardData != null ? cardData.cardName : "NO_DATA";
+        public string CardName => cardData != null ? cardData.cardName : (syncedCardName.Value ?? "NO_NAME_SYNC"); // Fallback to synced name
         public string Description => cardData != null ? cardData.description : "NO_DATA";
         public int ManaCost => cardData != null ? cardData.manaCost : 0;
         public CardType Type => cardData != null ? cardData.cardType : default;
@@ -65,22 +76,169 @@ namespace Combat
                 cardCanvasGroup = gameObject.AddComponent<CanvasGroup>();
             }
             
-            Debug.Log($"Card Awake - Name: {CardName}, Image: {(cardImage != null ? "Found" : "Missing")}, NameText: {(nameText != null ? "Found" : "Missing")}");
+            // Get or add NetworkTransform component
+            networkTransform = GetComponent<NetworkTransform>();
+            if (networkTransform == null)
+            {
+                networkTransform = gameObject.AddComponent<NetworkTransform>();
+                // Configure NetworkTransform using the correct properties
+            }
+            
+            // Register SyncVar callback
+            syncedCardName.OnChange += OnSyncedCardNameChanged;
+            
+            // Initial UI update attempt (might not have data yet)
+            // UpdateCardUI(); // Moved to OnStartClient / OnChange
+        }
+
+        private void OnDestroy()
+        {
+            // Unregister SyncVar callback
+            syncedCardName.OnChange -= OnSyncedCardNameChanged;
         }
         
-        private void Start()
+        // Called when the syncedCardName changes
+        private void OnSyncedCardNameChanged(string prev, string next, bool asServer)
         {
-            UpdateCardUI();
-            
-            // Ensure card is visible
-            if (cardCanvasGroup != null)
+            // Only clients need to react to find the CardData
+            if (!asServer)
             {
-                cardCanvasGroup.alpha = 1f;
-                cardCanvasGroup.interactable = true;
-                cardCanvasGroup.blocksRaycasts = true;
+                // More detailed log
+                Debug.Log($"[Client {NetworkObject.ObjectId}] OnSyncedCardNameChanged: Prev='{prev}', Next='{next}'. IsOwner={IsOwner}");
+                
+                // Check DeckManager availability right here
+                if (DeckManager.Instance == null)
+                {
+                    Debug.LogError($"[Client {NetworkObject.ObjectId}] DeckManager.Instance is NULL inside OnSyncedCardNameChanged!");
+                    return;
+                }
+                
+                FindCardDataAndUpdateUI(next);
+            }
+        }
+        
+        // Helper to find CardData and update UI
+        private void FindCardDataAndUpdateUI(string cardName)
+        {
+            if (string.IsNullOrEmpty(cardName))
+            {
+                Debug.LogWarning($"[Client {NetworkObject.ObjectId}] Synced card name is empty in FindCardDataAndUpdateUI.");
+                return;
+            }
+
+            if (DeckManager.Instance == null)
+            {
+                Debug.LogError($"[Client {NetworkObject.ObjectId}] DeckManager instance is null in FindCardDataAndUpdateUI. Cannot find CardData for '{cardName}'.");
+                return;
+            }
+            
+            Debug.Log($"[Client {NetworkObject.ObjectId}] Attempting to find CardData for name: '{cardName}' using DeckManager.");
+            this.cardData = DeckManager.Instance.FindCardByName(cardName);
+            
+            if (this.cardData == null)
+            {
+                Debug.LogError($"[Client {NetworkObject.ObjectId}] FindCardByName FAILED for name: '{cardName}'");
+                // Optionally create a placeholder UI here
+            }
+            else
+            {
+                Debug.Log($"[Client {NetworkObject.ObjectId}] FindCardByName SUCCESS for '{cardName}'. Updating UI and Interactivity.");
+                UpdateCardUI();
+                UpdateInteractivity(); // Update based on ownership
             }
         }
 
+        public override void OnStartNetwork()
+        {
+            base.OnStartNetwork();
+            // IsOwner check removed as per previous fix (use base.Owner.IsLocalClient)
+        }
+        
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            Debug.Log($"[Client] Card {syncedCardName.Value ?? "NAME_PENDING"} OnStartClient - IsOwner: {IsOwner}");
+            
+            // Initial attempt to find data if SyncVar already arrived
+            if (!string.IsNullOrEmpty(syncedCardName.Value))
+            {
+                 FindCardDataAndUpdateUI(syncedCardName.Value);
+            }
+            else
+            {
+                Debug.Log($"[Client] Card {gameObject.name} waiting for syncedCardName...");
+            }
+
+            // Register with parent PlayerHand if available
+            // We might need a small delay here if the hand isn't ready yet
+            StartCoroutine(RegisterWithHandAfterDelay());
+        }
+
+        private IEnumerator RegisterWithHandAfterDelay()
+        {
+            yield return new WaitForSeconds(0.1f); // Small delay
+            PlayerHand playerHand = GetComponentInParent<PlayerHand>();
+            if (playerHand != null)
+            {
+                playerHand.RegisterNetworkedCard(this);
+                // Debug.Log($"[Client] Card {CardName} registered with PlayerHand"); // Log inside RegisterNetworkedCard
+            }
+            // TODO: Add similar logic for PetHand if necessary
+        }
+
+        public void ServerInitialize(CardData data, ICombatant cardOwner, PlayerHand hand = null, PetHand petHand = null)
+        {
+            if (data == null)
+            {
+                Debug.LogError("[Server] Attempted to initialize Card with null CardData!");
+                return;
+            }
+            
+            // Set server-side references (needed before OnStartServer potentially)
+            this.cardData = data; 
+            this.owner = cardOwner;
+            this.owningHand = hand; // Store player hand if applicable
+            // We don't store PetHand reference in owningHand field
+            
+            Debug.Log($"[Server Initialize Method] Stored initial data for card {data.cardName}. SyncVar will be set in OnStartServer.");
+        }
+        
+        // REMOVED RpcInitializeCard - Replaced by SyncVar + OnStartClient logic
+
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+            
+            // Now that the object is spawned, set the SyncVar
+            if (this.cardData != null)
+            {
+                syncedCardName.Value = this.cardData.cardName;
+                Debug.Log($"[Server - OnStartServer] Set syncedCardName for {this.cardData.cardName} (ObjectId: {NetworkObject.ObjectId})");
+            }
+            else
+            {
+                Debug.LogError($"[Server - OnStartServer] CardData is null for Card (ObjectId: {NetworkObject.ObjectId})! Cannot set SyncVar.");
+                // Optionally destroy the card if data is missing
+                // InstanceFinder.ServerManager.Despawn(NetworkObject, DespawnType.Destroy);
+            }
+        }
+
+        private void UpdateInteractivity()
+        {
+            // Only the owner should interact with their cards in PlayerHand
+            bool isPlayerCard = owningHand != null; 
+            bool canInteract = isPlayerCard && IsOwner;
+
+            if (cardCanvasGroup != null)
+            {
+                cardCanvasGroup.interactable = canInteract;
+                cardCanvasGroup.blocksRaycasts = canInteract;
+                // Keep alpha at 1, use SetPlayable for visual state
+                // cardCanvasGroup.alpha = 1f; 
+            }
+            Debug.Log($"[Client] Card {CardName} interactivity set: {canInteract} (IsOwner: {IsOwner}, IsPlayerCard: {isPlayerCard})");
+        }
+        
         private void UpdateCardUI()
         {
             // Debug.Log($"Updating UI for card: {CardName}");
@@ -178,59 +336,6 @@ namespace Combat
             cardImage.sprite = placeholder;
             
             Debug.Log("Created placeholder sprite for card background");
-        }
-        
-        public void Initialize(CardData data, PlayerHand hand, ICombatant cardOwner)
-        {
-            if (data == null)
-            {
-                Debug.LogError("Attempted to initialize Card with null CardData!");
-                return;
-            }
-            
-            cardData = data;
-            owningHand = hand;
-            owner = cardOwner;
-            
-            Debug.Log($"Initializing card for PlayerHand with data: {cardData.cardName}");
-            
-            // Ensure the card is visible and potentially interactable
-            if (cardCanvasGroup != null)
-            {
-                cardCanvasGroup.alpha = 1f;
-                cardCanvasGroup.interactable = true; // Player hands are interactable
-                cardCanvasGroup.blocksRaycasts = true;
-            }
-            
-            UpdateCardUI();
-        }
-
-        public void Initialize(CardData data, PetHand hand, ICombatant cardOwner)
-        {
-            if (data == null)
-            {
-                Debug.LogError("Attempted to initialize Card with null CardData!");
-                return;
-            }
-            
-            cardData = data;
-            // Note: owningHand field is PlayerHand type, cannot directly assign PetHand
-            // If common functionality is needed, consider an interface or base class for hands
-            // For now, we store the owner but not the specific PetHand reference in owningHand
-            owningHand = null; 
-            owner = cardOwner;
-            
-            Debug.Log($"Initializing card for PetHand with data: {cardData.cardName}");
-            
-            // Ensure the card is visible but not interactable
-            if (cardCanvasGroup != null)
-            {
-                cardCanvasGroup.alpha = 1f;
-                cardCanvasGroup.interactable = false; // Pet hands are not interactable
-                cardCanvasGroup.blocksRaycasts = false;
-            }
-            
-            UpdateCardUI();
         }
         
         private void UpdateCardTypeIcon()

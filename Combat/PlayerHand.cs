@@ -4,6 +4,8 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using DG.Tweening;
+using System.Collections;
+using FishNet;
 
 namespace Combat
 {
@@ -21,23 +23,17 @@ namespace Combat
         [SerializeField] private NetworkPlayer owner;
         [SerializeField] private CombatPlayer combatPlayer;
         
-        // Current hand of cards
+        // Current hand of cards - populated by Card.OnStartClient -> RegisterNetworkedCard
         private readonly List<Card> cardsInHand = new List<Card>();
         
-        // Reference to owned cards
+        // Reference to owned cards deck (Set via SetDeck method)
         private RuntimeDeck ownerDeck;
-        
-        // Synced cards data for networked visibility
-        private readonly SyncList<string> syncedCardIDs = new SyncList<string>();
         
         public int HandSize => cardsInHand.Count;
 
         private void Awake()
         {
             Debug.Log($"PlayerHand Awake - Initializing");
-            
-            // Register callback for synced card changes
-            syncedCardIDs.OnChange += OnSyncedCardsChanged;
         }
         
         // Always show cards, but only make them interactive for the owner
@@ -45,8 +41,6 @@ namespace Combat
         {
             base.OnStartClient();
             Debug.Log($"[PlayerHand] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
-            
-            // Debug.Log($"PlayerHand OnStartClient - IsOwner: {IsOwner}, OwnerNetworkPlayer: {(owner != null ? owner.GetSteamName() : "Unknown")}");
             
             this.gameObject.SetActive(true);
             
@@ -61,6 +55,18 @@ namespace Combat
                 // Make cards fully interactive for the owner
                 SetCardsInteractivity(true);
             }
+            
+            // Schedule card discovery after a short delay to ensure all objects are spawned
+            StartCoroutine(DelayedCardDiscovery());
+        }
+        
+        private System.Collections.IEnumerator DelayedCardDiscovery()
+        {
+            // Wait for a short time to ensure all objects are spawned
+            yield return new WaitForSeconds(0.5f);
+            
+            // Discover and arrange cards
+            DiscoverCardObjects();
         }
         
         // Helper to set interactivity of all cards
@@ -146,14 +152,9 @@ namespace Combat
                 CardData card = combatPlayer.DrawCardFromDeck();
                 if (card != null)
                 {
-                    // Add to synced cards for network visibility
-                    syncedCardIDs.Add(card.cardName);
-                    
-                    // Send the card to the client
-                    TargetAddCardToHand(Owner, card);
-                    
-                    // Send the card to all other clients (observers)
-                    RpcAddCardToObservers(card.cardName);
+                    // Create and Spawn the Card NetworkObject using DeckManager
+                    // The Card's OnStartClient will handle client-side setup
+                    DeckManager.Instance.CreateCardObject(card, this.transform, this, combatPlayer);
                 }
                 else
                 {
@@ -162,235 +163,128 @@ namespace Combat
             }
         }
         
-        [ObserversRpc]
-        private void RpcAddCardToObservers(string cardName)
+        // This should be called when a networked card is added to the hand
+        public void RegisterNetworkedCard(Card card)
         {
-            // Skip this client if they're the owner (they already got the card via TargetRpc)
-            if (IsOwner)
-                return;
+            if (card == null) return;
+            
+            // Make sure it's not already in the list
+            if (!cardsInHand.Contains(card))
+            {
+                cardsInHand.Add(card);
+                Debug.Log($"[{(IsServer ? "Server" : "Client")}] Registered networked card {card.CardName} to hand, current hand size: {cardsInHand.Count}");
                 
-            // Find the card data
-            if (DeckManager.Instance == null)
-            {
-                Debug.LogError("DeckManager instance is null in RpcAddCardToObservers");
-                return;
+                // Arrange cards in hand
+                ArrangeCardsInHand();
             }
-            
-            CardData cardData = DeckManager.Instance.FindCardByName(cardName);
-            if (cardData == null)
-            {
-                Debug.LogError($"Could not find CardData for card: {cardName} in RpcAddCardToObservers");
-                return;
-            }
-            
-            // Create the card for observer clients
-            CreateCardInHand(cardData, false); // false = not interactive
         }
         
-        [TargetRpc]
-        private void TargetAddCardToHand(NetworkConnection conn, CardData cardData)
+        // Improved method to discover card objects spawned into this hand
+        public void DiscoverCardObjects()
         {
-            // This only runs on the target client (owner)
-            if (DeckManager.Instance == null)
-            {
-                Debug.LogError("DeckManager instance is null. Cannot create card object.");
-                return;
-            }
+            // Find all Card components that are children of this hand
+            Card[] cards = GetComponentsInChildren<Card>(true); // Include inactive cards
             
-            // Log the card draw event
-            Debug.Log($"[Client] Received TargetAddCardToHand for card: {cardData?.cardName ?? "NULL"}");
+            Debug.Log($"[{(IsServer ? "Server" : "Client")}] Discovering cards in hand: found {cards.Length}");
             
-            if (cardData == null)
+            // Register any cards not already in our list
+            foreach (Card card in cards)
             {
-                Debug.LogError("[Client] Received null CardData in TargetAddCardToHand.");
-                return;
-            }
-
-            // Create card for the owner client
-            CreateCardInHand(cardData, true); // true = interactive
-        }
-        
-        // Common method to create a card in hand (used by both owner and observers)
-        private void CreateCardInHand(CardData cardData, bool interactive)
-        {
-            try
-            {
-                // Instantiate card using DeckManager, parent directly to this PlayerHand transform
-                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPlayer);
-                
-                if (cardObj == null)
+                if (card != null && !cardsInHand.Contains(card))
                 {
-                    Debug.LogError("DeckManager failed to create card object.");
-                    return;
-                }
-                
-                // Get the Card component (already initialized by DeckManager.CreateCardObject)
-                Card card = cardObj.GetComponent<Card>();
-                
-                if (card != null)
-                {
-                    // Add to the hand list
                     cardsInHand.Add(card);
-                    
-                    // Debug.Log($"Card {cardData.cardName} added to hand, current hand size: {cardsInHand.Count}"); // COMMENT OUT
-                    
-                    // Setup the card's Canvas and CanvasGroup if needed
-                    Canvas cardCanvas = cardObj.GetComponent<Canvas>();
-                    if (cardCanvas == null)
-                    {
-                        cardCanvas = cardObj.AddComponent<Canvas>();
-                        cardCanvas.overrideSorting = true;
-                        cardCanvas.sortingOrder = 100;
-                    }
-                    
-                    CanvasGroup canvasGroup = cardObj.GetComponent<CanvasGroup>();
-                    if (canvasGroup == null)
-                    {
-                        canvasGroup = cardObj.AddComponent<CanvasGroup>();
-                    }
-                    
-                    // Make sure card is visible but set interactivity based on ownership
-                    canvasGroup.alpha = 1f;
-                    canvasGroup.interactable = interactive;
-                    canvasGroup.blocksRaycasts = interactive;
-                    
-                    // Animate the card being drawn
-                    cardObj.transform.localPosition = new Vector3(0, -300, 0); // Start position (off-screen)
-                    cardObj.transform.localScale = Vector3.zero;
-                    
-                    // First show the card
-                    cardObj.transform.DOScale(Vector3.one, dealAnimationDuration)
-                        .SetEase(Ease.OutBack);
-                    
-                    // Position the cards in the hand after a slight delay
-                    DOVirtual.DelayedCall(dealAnimationDuration * 0.5f, () => {
-                        ArrangeCardsInHand();
-                        // Debug.Log($"Hand arranged with {cardsInHand.Count} cards"); // COMMENT OUT
-                    });
-                }
-                else
-                {
-                    Debug.LogError("Card component not found on card prefab");
-                    Destroy(cardObj);
+                    Debug.Log($"[{(IsServer ? "Server" : "Client")}] Discovered card: {card.CardName}");
                 }
             }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"Error adding card to hand: {e.Message}\n{e.StackTrace}");
-            }
-        }
-        
-        // Handle synced card changes
-        private void OnSyncedCardsChanged(SyncListOperation op, int index, string oldItem, string newItem, bool asServer)
-        {
-            // Debug.Log($"[SyncList] PlayerHand card operation: {op}, Index: {index}, New: {newItem}, Old: {oldItem}"); // COMMENT OUT
-              
-            // This callback is primarily for observers (non-owners) to update their visual hand
-            // Owner manages their visual hand via TargetRPCs
-            if (!IsOwner)
-            {
-                UpdateVisualHandFromSyncList();
-            }
-        }
-        
-        // Called on observers to rebuild their visual hand based on the synced list
-        private void UpdateVisualHandFromSyncList()
-        {
-            // Clear existing cards (only visual ones)
-            foreach (Card card in cardsInHand)
-            {
-                if (card != null)
-                {
-                    Destroy(card.gameObject);
-                }
-            }
-            cardsInHand.Clear();
-
-            // Recreate cards based on synced IDs
-            foreach (string cardID in syncedCardIDs)
-            {            
-                if (DeckManager.Instance == null)
-                {
-                    Debug.LogError("[Observer] DeckManager instance is null in UpdateVisualHandFromSyncList");
-                    continue;
-                }
-
-                CardData cardData = DeckManager.Instance.FindCardByName(cardID);
-                if (cardData != null)
-                {                    
-                    // Create non-interactive card for observer
-                    CreateCardInHand(cardData, false); 
-                }
-                else
-                {
-                    Debug.LogWarning($"[Observer] Could not find CardData for {cardID} while rebuilding hand.");
-                }
-            }
-
-            // Arrange the newly created cards (might need a slight delay if CreateCardInHand has animations)
-            ArrangeCardsInHand(); 
+            
+            // Arrange cards in hand after discovery
+            ArrangeCardsInHand();
         }
         
         // Called when a card is played
         public void OnCardPlayed(Card card)
         {
-            if (cardsInHand.Contains(card))
+            if (card == null) return;
+            
+            // Find the index of the card in the hand
+            int cardIndex = cardsInHand.IndexOf(card);
+            
+            if (cardIndex != -1)
             {
-                // Get the index and card name before removing
-                int cardIndex = cardsInHand.IndexOf(card);
+                // Get the card name
                 string cardName = card.CardName;
                 
-                // Remove from hand
-                cardsInHand.Remove(card);
+                // Log card play
+                Debug.Log($"[{(IsServer ? "Server" : "Client")}] Card played: {cardName} from index {cardIndex}");
                 
-                Debug.Log($"Card {card.CardName} removed from hand, current hand size: {cardsInHand.Count}");
-                
-                // Update the synced list on server
+                // Only the owner should tell the server about played cards
                 if (IsOwner)
                 {
+                    // Tell server to remove card from hand
                     CmdRemoveCardFromHand(cardIndex, cardName);
+                    
+                    // Get card type and base value to send to server
+                    CardType cardType = card.Type;
+                    int baseValue = card.BaseValue;
+                    
+                    // Tell server to play this card's effect
+                    CmdPlayCard(cardIndex, cardName, cardType, baseValue);
                 }
                 
-                // Add to discard pile
-                if (ownerDeck != null && card.Data != null)
-                {
-                    ownerDeck.DiscardCard(card.Data);
-                }
-                
-                // Rearrange the remaining cards
-                ArrangeCardsInHand();
+                // If we're the server, we don't need to remove the card here
+                // since CmdRemoveCardFromHand will handle that
+            }
+            else
+            {
+                Debug.LogError($"Card {card.CardName} not found in hand");
             }
         }
         
         [ServerRpc]
         private void CmdRemoveCardFromHand(int cardIndex, string cardName)
         {
-            // Ensure the index is valid
-            if (cardIndex >= 0 && cardIndex < syncedCardIDs.Count)
+            if (cardIndex < 0 || cardIndex >= cardsInHand.Count)
             {
-                // Remove the card from synced list
-                syncedCardIDs.RemoveAt(cardIndex);
-                Debug.Log($"[Server] Removed card {cardName} from synced hand");
-                
-                // Notify all clients to remove the card
-                RpcRemoveCardFromHand(cardIndex, cardName);
+                Debug.LogError($"Invalid card index {cardIndex} for hand with {cardsInHand.Count} cards");
+                return;
             }
+            
+            // Get the card reference
+            Card card = cardsInHand[cardIndex];
+            
+            // Remove from list
+            cardsInHand.RemoveAt(cardIndex);
+            
+            // Tell all clients to remove the card
+            RpcRemoveCardFromHand(cardIndex, cardName);
+            
+            // Destroy the networked card GameObject
+            if (card != null)
+            {
+                // Despawn the networked object
+                InstanceFinder.ServerManager.Despawn(card.gameObject);
+            }
+            
+            // Arrange remaining cards
+            ArrangeCardsInHand();
         }
         
         [ObserversRpc]
         private void RpcRemoveCardFromHand(int cardIndex, string cardName)
         {
-            // Skip the owner (they already handled this locally)
-            if (IsOwner)
-                return;
-                
+            // Skip for the server, as it already handled removal
+            if (IsServer) return;
+            
+            // Skip for owners, as they'll see the card removal through network sync
+            if (IsOwner) return;
+            
             if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
             {
-                // Remove from observers' hands and rearrange
-                Destroy(cardsInHand[cardIndex].gameObject);
+                // Remove from local list - the card GameObject will be despawned by the server
                 cardsInHand.RemoveAt(cardIndex);
+                
+                // Arrange remaining cards
                 ArrangeCardsInHand();
-                Debug.Log($"[Observer] Removed card {cardName} from visual hand");
             }
         }
         
@@ -406,64 +300,55 @@ namespace Combat
         // Update the visual position of all cards in hand
         private void ArrangeCardsInHand()
         {
-            // Debug.Log($"Arranging {cardsInHand.Count} cards in hand"); // COMMENT OUT
+            int cardCount = cardsInHand.Count;
+            if (cardCount == 0) return;
             
-            if (cardsInHand.Count == 0) return;
+            // Width of the hand area
+            float width = arcWidth;
             
-            // Debug.Log($"Arranging {cardsInHand.Count} cards in hand"); // COMMENT OUT - Remove duplicate log if present
-            
-            // Calculate total width
-            float totalWidth = cardSpacing * (cardsInHand.Count - 1);
-            float startX = -totalWidth / 2f;
-            
-            for (int i = 0; i < cardsInHand.Count; i++)
+            // Calculate card positions in an arc
+            for (int i = 0; i < cardCount; i++)
             {
                 Card card = cardsInHand[i];
-                if (card == null)
+                if (card == null) continue;
+                
+                // Calculate a normalized position for this card along the arc (0 to 1)
+                float normalizedPos = cardCount > 1 ? (float)i / (cardCount - 1) : 0.5f;
+                
+                // Convert to an angle (-80 to 80 degrees for a nice arc spread)
+                float angle = Mathf.Lerp(-80f, 80f, normalizedPos);
+                
+                // Calculate position on arc
+                float radians = angle * Mathf.Deg2Rad;
+                
+                // Calculate the final position in local space
+                Vector3 targetPosition = new Vector3(
+                    Mathf.Sin(radians) * (width / 2), // X position along arc
+                    handCurveHeight + Mathf.Abs(Mathf.Cos(radians) * arcHeight), // Y position with height
+                    0
+                );
+                
+                // Calculate rotation to make cards fan out
+                Quaternion targetRotation = Quaternion.Euler(0, 0, angle * 0.5f); // Small rotation relative to angle
+                
+                // Only the server should directly modify transforms for network sync
+                if (IsServer)
                 {
-                    Debug.LogWarning($"Null card at index {i} in cardsInHand");
-                    continue;
+                    // Animate position with DOTween
+                    card.transform.DOLocalMove(targetPosition, dealAnimationDuration)
+                        .SetEase(Ease.OutBack);
+                    
+                    card.transform.DOLocalRotate(targetRotation.eulerAngles, dealAnimationDuration)
+                        .SetEase(Ease.OutBack);
                 }
                 
-                float xPos = startX + (i * cardSpacing);
-                
-                // Calculate position on a curve
-                float normalizedPos = cardsInHand.Count > 1 ? (float)i / (cardsInHand.Count - 1) : 0.5f;
-                float yPos = CalculateHandCurve(normalizedPos) * handCurveHeight;
-                
-                // Calculate rotation (cards fan outward)
-                float rotation = Mathf.Lerp(-10f, 10f, normalizedPos);
-                
-                // Animate to position
-                card.transform.DOLocalMove(new Vector3(xPos, yPos, 0), 0.3f)
-                    .SetEase(Ease.OutQuint);
-                
-                card.transform.DOLocalRotate(new Vector3(0, 0, rotation), 0.3f)
-                    .SetEase(Ease.OutQuint);
-                
-                // Ensure card is visible (reset opacity)
-                CanvasGroup canvasGroup = card.GetComponent<CanvasGroup>();
-                if (canvasGroup != null)
-                {
-                    canvasGroup.alpha = 1f;
-                }
-                
-                // Set the sorting order based on position (left to right, increasing)
+                // Update sorting order for all clients
                 Canvas cardCanvas = card.GetComponent<Canvas>();
                 if (cardCanvas != null)
                 {
                     cardCanvas.sortingOrder = 100 + i;
                 }
             }
-            
-            // Debug.Log($"Hand arranged with {cardsInHand.Count} cards"); // COMMENT OUT
-        }
-        
-        // Calculate a point on a curve for card positioning (simple parabola)
-        private float CalculateHandCurve(float t)
-        {
-            // Simple parabola curve that peaks at t=0.5
-            return -4 * (t - 0.5f) * (t - 0.5f) + 1;
         }
         
         // Discard the entire hand
@@ -584,6 +469,16 @@ namespace Combat
              {
                   Debug.LogError($"[PlayerHand:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
              }
+        }
+
+        public override void OnOwnershipClient(NetworkConnection prevOwner)
+        {
+            base.OnOwnershipClient(prevOwner);
+            
+            // When ownership changes, make sure interactivity is updated
+            SetCardsInteractivity(IsOwner);
+            
+            Debug.Log($"[Client] PlayerHand ownership changed to {(IsOwner ? "self" : "someone else")}");
         }
     }
 } 

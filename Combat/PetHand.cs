@@ -129,25 +129,43 @@ namespace Combat
             // Draw the requested number of cards
             for (int i = 0; i < count; i++)
             {
-                if (cardsInHand.Count >= maxHandSize)
-                {
-                    Debug.Log($"Pet hand is full ({maxHandSize} cards), stopping draw");
-                    break;
-                }
+                // TODO: Check if hand is full based on NetworkObjects, not local list
+                // if (cardsInHand.Count >= maxHandSize)
+                // {
+                //     Debug.Log($"Pet hand is full ({maxHandSize} cards), stopping draw");
+                //     break;
+                // }
                 
                 // Get a card from the combat pet's deck
-                CardData card = combatPet.DrawCardFromDeck();
-                if (card != null)
+                CardData cardData = combatPet.DrawCardFromDeck();
+                if (cardData != null)
                 {
-                    // Add to synced cards for network visibility
-                    syncedCardIDs.Add(card.cardName);
+                    // SERVER: Create and spawn the card object
+                    if (DeckManager.Instance != null)
+                    {
+                        // Instantiate/Spawn the card, parented to this PetHand
+                        GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPet);
+                        if (cardObj == null)
+                        {
+                             Debug.LogError($"[Server] DeckManager failed to create/spawn card object '{cardData.cardName}' for pet hand.");
+                        }
+                        // else: Card successfully created and spawned by DeckManager
+                    }
+                    else
+                    {
+                         Debug.LogError("[Server] DeckManager instance is null in PetHand.DrawCards!");
+                    }
+
+                    // REMOVED: SyncList add - CardData now synced via Card's SyncVar
+                    // syncedCardIDs.Add(cardData.cardName);
                     
-                    // Create card for all clients
-                    RpcAddCardToHand(card.cardName);
+                    // REMOVED: RPC call - Clients will get the card via spawn message
+                    // RpcAddCardToHand(cardData.cardName);
                 }
                 else
                 {
-                    Debug.LogError("Pet drew null card");
+                    Debug.LogWarning("[Server] Pet drew null card (Deck empty?)");
+                    break; // Stop drawing if deck is empty
                 }
             }
         }
@@ -155,92 +173,28 @@ namespace Combat
         [ObserversRpc]
         private void RpcAddCardToHand(string cardName)
         {
-            // Find the card data
-            if (DeckManager.Instance == null)
-            {
-                Debug.LogError("DeckManager instance is null in RpcAddCardToHand");
-                return;
-            }
+            // OBSOLETE: Clients no longer create cards here. 
+            // They rely on the spawned NetworkObject and Card.OnStartClient.
+            // The server manages card object creation and parenting.
+            Debug.Log($"[Client] PetHand RpcAddCardToHand received for card: {cardName}. Waiting for Card object spawn.");
             
-            CardData cardData = DeckManager.Instance.FindCardByName(cardName);
-            if (cardData == null)
-            {
-                Debug.LogError($"Could not find CardData for card: {cardName} in RpcAddCardToHand");
-                return;
-            }
-            
-            // Create the card visually for all clients
-            CreateCardInHand(cardData);
-        }
-        
-        // Create a card in the pet's hand
-        private void CreateCardInHand(CardData cardData)
-        {
-            try
-            {
-                // Instantiate card using DeckManager, parent directly to this PetHand transform
-                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPet);
-                
-                if (cardObj == null)
-                {
-                    Debug.LogError("DeckManager failed to create card object for pet.");
-                    return;
-                }
-                
-                // Get the Card component
-                Card card = cardObj.GetComponent<Card>();
-                
-                if (card != null)
-                {
-                    // Add to the hand list
-                    cardsInHand.Add(card);
-                    
-                    // Debug.Log($"Card {cardData.cardName} added to pet hand, current hand size: {cardsInHand.Count}"); // COMMENT OUT
-                    
-                    // Setup the card's Canvas and CanvasGroup
-                    Canvas cardCanvas = cardObj.GetComponent<Canvas>();
-                    if (cardCanvas == null)
-                    {
-                        cardCanvas = cardObj.AddComponent<Canvas>();
-                        cardCanvas.overrideSorting = true;
-                        cardCanvas.sortingOrder = 100;
-                    }
-                    
-                    CanvasGroup canvasGroup = cardObj.GetComponent<CanvasGroup>();
-                    if (canvasGroup == null)
-                    {
-                        canvasGroup = cardObj.AddComponent<CanvasGroup>();
-                    }
-                    
-                    // Make cards visible but not interactive
-                    canvasGroup.alpha = 1f;
-                    canvasGroup.interactable = false;
-                    canvasGroup.blocksRaycasts = false;
-                    
-                    // Animate the card being drawn
-                    cardObj.transform.localPosition = new Vector3(0, -300, 0); // Start position (off-screen)
-                    cardObj.transform.localScale = Vector3.zero;
-                    
-                    // First show the card
-                    cardObj.transform.DOScale(Vector3.one, dealAnimationDuration)
-                        .SetEase(Ease.OutBack);
-                    
-                    // Position the cards in the hand after a slight delay
-                    DOVirtual.DelayedCall(dealAnimationDuration * 0.5f, () => {
-                        ArrangeCardsInHand();
-                        // Debug.Log($"Pet hand arranged with {cardsInHand.Count} cards"); // COMMENT OUT
-                    });
-                }
-                else
-                {
-                    Debug.LogError("Card component not found on card prefab for pet");
-                    Destroy(cardObj);
-                }
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"Error adding card to pet hand: {e.Message}\n{e.StackTrace}");
-            }
+            // OLD CODE REMOVED:
+            // // Find the card data
+            // if (DeckManager.Instance == null)
+            // {
+            //     Debug.LogError("DeckManager instance is null in RpcAddCardToHand");
+            //     return;
+            // }
+            // 
+            // CardData cardData = DeckManager.Instance.FindCardByName(cardName);
+            // if (cardData == null)
+            // {
+            //     Debug.LogError($"Could not find CardData for card: {cardName} in RpcAddCardToHand");
+            //     return;
+            // }
+            // 
+            // // Create the card visually for all clients
+            // CreateCardInHand(cardData);
         }
         
         // Handle synced card changes

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using FishNet.Object;
+using FishNet;
 
 namespace Combat
 {
@@ -66,6 +67,8 @@ namespace Combat
         // Find a CardData by its name/ID
         public CardData FindCardByName(string cardName)
         {
+            Debug.Log($"[DeckManager] Searching for CardData with name: '{cardName}'");
+            
             // First check the player starter deck
             if (playerStarterDeck != null)
             {
@@ -158,45 +161,57 @@ namespace Combat
                  return null;
             }
             
-            GameObject cardObj = Instantiate(cardPrefab, parent);
-            Card card = cardObj.GetComponent<Card>();
-            
-            if (card != null)
+            // Only the server should create and spawn network objects
+            if (hand.IsServer)
             {
-                // Initialize the card first (this sets the internal data and UI text)
-                if (hand is PlayerHand playerHand)
+                Debug.Log($"[Server] Creating card object for {cardData.cardName}");
+                
+                // Instantiate the card
+                GameObject cardObj = Instantiate(cardPrefab, parent);
+                
+                // Get the Card component
+                Card card = cardObj.GetComponent<Card>();
+                
+                if (card != null)
                 {
-                    card.Initialize(cardData, playerHand, owner);
-                }
-                else if (hand is PetHand petHand)
-                {
-                    card.Initialize(cardData, petHand, owner);
+                    // Initialize the card on the Server - This will set the SyncVar
+                    if (hand is PlayerHand playerHand)
+                    {
+                        card.ServerInitialize(cardData, owner, playerHand, null);
+                    }
+                    else if (hand is PetHand petHand)
+                    {
+                        card.ServerInitialize(cardData, owner, null, petHand);
+                    }
+                    else
+                    {
+                        Debug.LogError("CreateCardObject called with unknown hand type!");
+                         Destroy(cardObj);
+                         return null;
+                    }
+                    
+                    // Set the GameObject name (can use the name from CardData directly now)
+                    cardObj.name = cardData.cardName;
+                    
+                    // Spawn the networked card
+                    InstanceFinder.ServerManager.Spawn(cardObj, hand.Owner);
+                    
+                    Debug.Log($"[Server] Card {cardData.cardName} spawned with NetworkObject ID: {card.NetworkObject.ObjectId}");
+                    
+                    return cardObj;
                 }
                 else
                 {
-                    Debug.LogError("CreateCardObject called with unknown hand type!");
-                    // Optionally initialize with null hand if appropriate
-                    // card.Initialize(cardData, null, owner);
-                }
-
-                // RENAME the GameObject based on the card's name (which should be set in UI by Initialize)
-                if (!string.IsNullOrEmpty(card.CardName) && card.CardName != "NO_DATA")
-                {
-                     cardObj.name = card.CardName;
-                }
-                else
-                {
-                    // Fallback name if CardName isn't set correctly
-                    cardObj.name = $"Card_{cardData.cardName}_UninitializedName";
-                    Debug.LogWarning($"Could not get valid CardName from Card component after Initialize. Using fallback name: {cardObj.name}");
+                    Debug.LogError("Card component not found on card prefab!");
+                    Destroy(cardObj);
+                    return null;
                 }
             }
             else
             {
-                Debug.LogError("Card component not found on card prefab!");
+                Debug.LogWarning("CreateCardObject called from client. Only the server should create and spawn networked cards.");
+                return null;
             }
-            
-            return cardObj;
         }
     }
 } 
