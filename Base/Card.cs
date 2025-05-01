@@ -6,6 +6,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using FishNet.Component.Transforming;
 using System.Collections;
+using FishNet.Connection;
 
 namespace Combat
 {
@@ -31,14 +32,17 @@ namespace Combat
         [SerializeField] private Image cardTypeIcon;
         
         // Synced variable to identify the card across the network
-        private readonly SyncVar<string> syncedCardName = new SyncVar<string>();
+        private readonly SyncVar<string> syncedCardDataName = new SyncVar<string>();
+        
+        // Synced variable for GameObject name
+        private readonly SyncVar<string> _syncedCardObjectName = new SyncVar<string>();
         
         // Network Component
         private NetworkTransform networkTransform;
         
         // Properties - Now read directly from the locally assigned cardData
         public CardData Data => cardData;
-        public string CardName => cardData != null ? cardData.cardName : (syncedCardName.Value ?? "NO_NAME_SYNC"); // Fallback to synced name
+        public string CardName => cardData != null ? cardData.cardName : (syncedCardDataName.Value ?? "NO_DATA_NAME");
         public string Description => cardData != null ? cardData.description : "NO_DATA";
         public int ManaCost => cardData != null ? cardData.manaCost : 0;
         public CardType Type => cardData != null ? cardData.cardType : default;
@@ -84,8 +88,9 @@ namespace Combat
                 // Configure NetworkTransform using the correct properties
             }
             
-            // Register SyncVar callback
-            syncedCardName.OnChange += OnSyncedCardNameChanged;
+            // Register SyncVar callbacks
+            syncedCardDataName.OnChange += OnSyncedCardDataNameChanged;
+            _syncedCardObjectName.OnChange += OnSyncedCardObjectNameChanged;
             
             // Initial UI update attempt (might not have data yet)
             // UpdateCardUI(); // Moved to OnStartClient / OnChange
@@ -93,27 +98,40 @@ namespace Combat
 
         private void OnDestroy()
         {
-            // Unregister SyncVar callback
-            syncedCardName.OnChange -= OnSyncedCardNameChanged;
+            // Unregister SyncVar callbacks
+            syncedCardDataName.OnChange -= OnSyncedCardDataNameChanged;
+            _syncedCardObjectName.OnChange -= OnSyncedCardObjectNameChanged;
         }
         
         // Called when the syncedCardName changes
-        private void OnSyncedCardNameChanged(string prev, string next, bool asServer)
+        private void OnSyncedCardDataNameChanged(string prev, string next, bool asServer)
         {
             // Only clients need to react to find the CardData
             if (!asServer)
             {
                 // More detailed log
-                Debug.Log($"[Client {NetworkObject.ObjectId}] OnSyncedCardNameChanged: Prev='{prev}', Next='{next}'. IsOwner={IsOwner}");
+                Debug.Log($"[Client {NetworkObject.ObjectId}] OnSyncedCardDataNameChanged: Prev='{prev}', Next='{next}'. IsOwner={IsOwner}");
                 
                 // Check DeckManager availability right here
                 if (DeckManager.Instance == null)
                 {
-                    Debug.LogError($"[Client {NetworkObject.ObjectId}] DeckManager.Instance is NULL inside OnSyncedCardNameChanged!");
+                    Debug.LogError($"[Client {NetworkObject.ObjectId}] DeckManager.Instance is NULL inside OnSyncedCardDataNameChanged!");
                     return;
                 }
                 
                 FindCardDataAndUpdateUI(next);
+            }
+        }
+        
+        // Called when the synced GameObject name changes
+        private void OnSyncedCardObjectNameChanged(string prevName, string newName, bool asServer)
+        {
+            if (asServer) return; // Server sets the value, clients react
+
+            if (!string.IsNullOrEmpty(newName))
+            {
+                gameObject.name = newName;
+                // Debug.Log($"[Client {NetworkObject.ObjectId}] Card GameObject renamed to: {newName}");
             }
         }
         
@@ -157,16 +175,22 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
-            Debug.Log($"[Client] Card {syncedCardName.Value ?? "NAME_PENDING"} OnStartClient - IsOwner: {IsOwner}");
+            Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient. IsOwner: {IsOwner}. Name: {gameObject.name} SyncedName: '{_syncedCardObjectName.Value}' Parent: {(transform.parent != null ? transform.parent.name : "null")}");
+            
+            // Apply initial object name if value already synced
+            if (!string.IsNullOrEmpty(_syncedCardObjectName.Value))
+            {
+                 OnSyncedCardObjectNameChanged(null, _syncedCardObjectName.Value, false); // Call manually
+            }
             
             // Initial attempt to find data if SyncVar already arrived
-            if (!string.IsNullOrEmpty(syncedCardName.Value))
+            if (!string.IsNullOrEmpty(syncedCardDataName.Value))
             {
-                 FindCardDataAndUpdateUI(syncedCardName.Value);
+                 FindCardDataAndUpdateUI(syncedCardDataName.Value);
             }
             else
             {
-                Debug.Log($"[Client] Card {gameObject.name} waiting for syncedCardName...");
+                Debug.Log($"[Card:{NetworkObject.ObjectId}] waiting for syncedCardDataName...");
             }
 
             // Register with parent PlayerHand if available
@@ -200,7 +224,18 @@ namespace Combat
             this.owningHand = hand; // Store player hand if applicable
             // We don't store PetHand reference in owningHand field
             
-            Debug.Log($"[Server Initialize Method] Stored initial data for card {data.cardName}. SyncVar will be set in OnStartServer.");
+            // Set the synced data name immediately on the server
+            // This ensures the SyncVar is set *before* OnStartServer might be called
+            // If cardData is null, something went wrong earlier.
+            if(this.cardData != null)
+            {
+                 syncedCardDataName.Value = this.cardData.cardName;
+                 Debug.Log($"[Server Initialize Method] Set syncedCardDataName for {data.cardName}");
+            }
+            else
+            {
+                Debug.LogError($"[Server Initialize Method] CardData is NULL when trying to set syncedCardDataName!");
+            }
         }
         
         // REMOVED RpcInitializeCard - Replaced by SyncVar + OnStartClient logic
@@ -209,18 +244,57 @@ namespace Combat
         {
             base.OnStartServer();
             
-            // Now that the object is spawned, set the SyncVar
-            if (this.cardData != null)
+            // Now that the object is spawned, ensure SyncVars are set
+            // (syncedCardDataName should ideally be set in ServerInitialize now)
+            if (this.cardData != null && string.IsNullOrEmpty(syncedCardDataName.Value))
             {
-                syncedCardName.Value = this.cardData.cardName;
-                Debug.Log($"[Server - OnStartServer] Set syncedCardName for {this.cardData.cardName} (ObjectId: {NetworkObject.ObjectId})");
+                // Fallback in case ServerInitialize didn't run first somehow
+                syncedCardDataName.Value = this.cardData.cardName;
+                Debug.LogWarning($"[Server - OnStartServer] Set syncedCardName as fallback for {this.cardData.cardName} (ObjectId: {NetworkObject.ObjectId})");
             }
-            else
+            else if (this.cardData == null)
             {
-                Debug.LogError($"[Server - OnStartServer] CardData is null for Card (ObjectId: {NetworkObject.ObjectId})! Cannot set SyncVar.");
-                // Optionally destroy the card if data is missing
-                // InstanceFinder.ServerManager.Despawn(NetworkObject, DespawnType.Destroy);
+                Debug.LogError($"[Server - OnStartServer] CardData is null for Card (ObjectId: {NetworkObject.ObjectId})! Cannot ensure SyncVar.");
             }
+        }
+
+        // Server-side method to set the card's object name (called after spawning, before parenting RPC)
+        [Server]
+        public void SetCardObjectName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                Debug.LogWarning($"[Server {NetworkObject.ObjectId}] SetCardObjectName called with empty name.");
+                name = "UnnamedCard";
+            }
+            string uniqueName = $"Card_{NetworkObject.ObjectId}_{name.Replace(' ', '_')}"; // Ensure unique name in hierarchy
+            _syncedCardObjectName.Value = uniqueName;
+            // Set server-side name immediately too, client callback will handle clients
+            gameObject.name = uniqueName; 
+             Debug.Log($"[Server {NetworkObject.ObjectId}] Set synced card object name to: {uniqueName}");
+        }
+
+        // --- Parenting RPC --- 
+        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
+        public void RpcSetParent(NetworkObject parentNetworkObject)
+        {
+             if (parentNetworkObject == null)
+             {
+                 Debug.LogError($"[Card:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
+                 return;
+             }
+
+             Transform parentTransform = parentNetworkObject.transform;
+             if (parentTransform != null)
+             {
+                 // Use worldPositionStays = false to inherit parent's scale and position cleanly
+                 transform.SetParent(parentTransform, false); 
+                 Debug.Log($"[Card:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
+             }
+             else
+             {
+                  Debug.LogError($"[Card:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
+             }
         }
 
         private void UpdateInteractivity()

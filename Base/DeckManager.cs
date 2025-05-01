@@ -160,21 +160,31 @@ namespace Combat
                  Debug.LogError("CreateCardObject called with null CardData!");
                  return null;
             }
+            if (hand == null)
+            {
+                Debug.LogError("CreateCardObject called with null hand (parent NetworkBehaviour)!");
+                return null;
+            }
+            if (hand.NetworkObject == null)
+            {
+                 Debug.LogError($"CreateCardObject called with hand '{hand.name}' that has no NetworkObject!");
+                 return null;
+            }
             
             // Only the server should create and spawn network objects
             if (hand.IsServer)
             {
-                Debug.Log($"[Server] Creating card object for {cardData.cardName}");
+                Debug.Log($"[Server] Creating card object for {cardData.cardName} to be parented under {hand.name} ({hand.NetworkObject.ObjectId})");
                 
-                // Instantiate the card
-                GameObject cardObj = Instantiate(cardPrefab, parent);
+                // Instantiate the card - initially WITHOUT a parent to avoid potential scaling issues
+                GameObject cardObj = Instantiate(cardPrefab);
                 
                 // Get the Card component
                 Card card = cardObj.GetComponent<Card>();
                 
                 if (card != null)
                 {
-                    // Initialize the card on the Server - This will set the SyncVar
+                    // Initialize the card's data on the Server
                     if (hand is PlayerHand playerHand)
                     {
                         card.ServerInitialize(cardData, owner, playerHand, null);
@@ -185,18 +195,21 @@ namespace Combat
                     }
                     else
                     {
-                        Debug.LogError("CreateCardObject called with unknown hand type!");
+                        Debug.LogError($"CreateCardObject called with unknown hand type: {hand.GetType().Name}");
                          Destroy(cardObj);
                          return null;
                     }
                     
-                    // Set the GameObject name (can use the name from CardData directly now)
-                    cardObj.name = cardData.cardName;
+                    // Set the GameObject name via SyncVar AFTER getting component
+                    card.SetCardObjectName(cardData.cardName);
                     
-                    // Spawn the networked card
+                    // Spawn the networked card - Owner should be the hand's owner
                     InstanceFinder.ServerManager.Spawn(cardObj, hand.Owner);
                     
-                    Debug.Log($"[Server] Card {cardData.cardName} spawned with NetworkObject ID: {card.NetworkObject.ObjectId}");
+                    // Set parent AFTER spawning using the RPC
+                    card.RpcSetParent(hand.NetworkObject);
+
+                    Debug.Log($"[Server] Card {cardData.cardName} spawned (ID: {card.NetworkObject.ObjectId}), name set, and RpcSetParent called for {hand.name} ({hand.NetworkObject.ObjectId}).");
                     
                     return cardObj;
                 }
