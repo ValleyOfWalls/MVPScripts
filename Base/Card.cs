@@ -91,7 +91,7 @@ namespace Combat
             // Register SyncVar callbacks
             _syncedCardObjectName.OnChange += OnSyncedCardObjectNameChanged;
             syncedCardDataName.OnChange += OnSyncedCardDataNameChanged;
-            Debug.Log($"[Card:{GetInstanceID()}] Awake: Registered SyncVar callbacks."); // Use InstanceID pre-network
+           // Debug.Log($"[Card:{GetInstanceID()}] Awake: Registered SyncVar callbacks."); // Use InstanceID pre-network
             
             // Initial UI update attempt (might not have data yet)
             // UpdateCardUI(); // Moved to OnStartClient / OnChange
@@ -100,7 +100,7 @@ namespace Combat
         private void OnDestroy()
         {
             // Unsubscribe from events to prevent memory leaks
-             Debug.Log($"[Card:{(NetworkObject != null ? NetworkObject.ObjectId.ToString() : GetInstanceID().ToString())}] OnDestroy: Unregistering SyncVar callbacks.");
+            // Debug.Log($"[Card:{(NetworkObject != null ? NetworkObject.ObjectId.ToString() : GetInstanceID().ToString())}] OnDestroy: Unregistering SyncVar callbacks.");
             _syncedCardObjectName.OnChange -= OnSyncedCardObjectNameChanged;
             syncedCardDataName.OnChange -= OnSyncedCardDataNameChanged;
         }
@@ -112,7 +112,7 @@ namespace Combat
             if (!asServer)
             {
                 // More detailed log
-                Debug.Log($"[Client {NetworkObject.ObjectId}] OnSyncedCardDataNameChanged: Prev='{prev}', Next='{next}'. IsOwner={IsOwner}");
+             //   Debug.Log($"[Client {NetworkObject.ObjectId}] OnSyncedCardDataNameChanged: Prev='{prev}', Next='{next}'. IsOwner={IsOwner}");
                 
                 // Check DeckManager availability right here
                 if (DeckManager.Instance == null)
@@ -129,18 +129,18 @@ namespace Combat
         private void OnSyncedCardObjectNameChanged(string prevName, string newName, bool asServer)
         {
             // Both server AND clients should update their GameObject name
-            Debug.Log($"[Card:{NetworkObject.ObjectId}] OnSyncedCardObjectNameChanged fired. IsOwner: {IsOwner}, IsServer: {IsServer}, Prev: '{prevName}', New: '{newName}'");
+           // Debug.Log($"[Card:{NetworkObject.ObjectId}] OnSyncedCardObjectNameChanged fired. IsOwner: {IsOwner}, IsServer: {IsServer}, Prev: '{prevName}', New: '{newName}'");
 
             if (!string.IsNullOrEmpty(newName))
             {
                 // Ensure we update the actual GameObject name
                 gameObject.name = newName;
-                Debug.Log($"[Card:{NetworkObject.ObjectId}] Updated gameObject.name to: {newName}");
+                //Debug.Log($"[Card:{NetworkObject.ObjectId}] Updated gameObject.name to: {newName}");
                 
                 // Force UI update if card data is already set
                 if (cardData != null)
                 {
-                    Debug.Log($"[Card:{NetworkObject.ObjectId}] Card data exists, updating UI after name change");
+                   // Debug.Log($"[Card:{NetworkObject.ObjectId}] Card data exists, updating UI after name change");
                     UpdateCardUI();
                 }
             }
@@ -165,7 +165,7 @@ namespace Combat
                 return;
             }
             
-            Debug.Log($"[Client {NetworkObject.ObjectId}] Attempting to find CardData for name: '{cardName}' using DeckManager.");
+           // Debug.Log($"[Client {NetworkObject.ObjectId}] Attempting to find CardData for name: '{cardName}' using DeckManager.");
             this.cardData = DeckManager.Instance.FindCardByName(cardName);
             
             if (this.cardData == null)
@@ -178,13 +178,13 @@ namespace Combat
             }
             else
             {
-                Debug.Log($"[Client {NetworkObject.ObjectId}] FindCardByName SUCCESS for '{cardName}'. Updating UI and Interactivity.");
+               // Debug.Log($"[Client {NetworkObject.ObjectId}] FindCardByName SUCCESS for '{cardName}'. Updating UI and Interactivity.");
                 
                 // Ensure we have the correct name displayed in the inspector
                 if (!gameObject.name.Contains(cardData.cardName))
                 {
                     string newName = $"Card_{NetworkObject.ObjectId}_{cardData.cardName.Replace(' ', '_')}";
-                    Debug.Log($"[Client {NetworkObject.ObjectId}] Updating local GameObject name to match card data: {newName}");
+                  //  Debug.Log($"[Client {NetworkObject.ObjectId}] Updating local GameObject name to match card data: {newName}");
                     gameObject.name = newName;
                 }
                 
@@ -203,17 +203,17 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
-            Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient. IsOwner: {IsOwner}. Name: {gameObject.name} SyncedName: '{_syncedCardObjectName.Value}' Parent: {(transform.parent != null ? transform.parent.name : "null")}");
+          //  Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient. IsOwner: {IsOwner}. Name: {gameObject.name} SyncedName: '{_syncedCardObjectName.Value}' Parent: {(transform.parent != null ? transform.parent.name : "null")}");
 
             // --- Manually trigger object name update if the value arrived before OnChange ---
             if (!string.IsNullOrEmpty(_syncedCardObjectName.Value))
             {
-                Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient: Manually calling OnSyncedCardObjectNameChanged with initial value '{_syncedCardObjectName.Value}'.");
+              //  Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient: Manually calling OnSyncedCardObjectNameChanged with initial value '{_syncedCardObjectName.Value}'.");
                 OnSyncedCardObjectNameChanged(null, _syncedCardObjectName.Value, false); // Manually call the callback
             }
             else
             {
-                 Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient: _syncedCardObjectName is empty, waiting for OnChange callback.");
+              //   Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient: _syncedCardObjectName is empty, waiting for OnChange callback.");
             }
             
             // Initial attempt to find data if SyncVar already arrived
@@ -223,7 +223,7 @@ namespace Combat
             }
             else
             {
-                Debug.Log($"[Card:{NetworkObject.ObjectId}] waiting for syncedCardDataName...");
+             //   Debug.Log($"[Card:{NetworkObject.ObjectId}] waiting for syncedCardDataName...");
             }
 
             // Register with parent PlayerHand if available
@@ -262,7 +262,7 @@ namespace Combat
             {
                 // Make sure we set the syncedCardDataName first
                 syncedCardDataName.Value = this.cardData.cardName;
-                Debug.Log($"[Server] Set syncedCardDataName to {this.cardData.cardName} for card {this.NetworkObject.ObjectId}");
+              //  Debug.Log($"[Server] Set syncedCardDataName to {this.cardData.cardName} for card {this.NetworkObject.ObjectId}");
                 
                 // Also update our local UI immediately on server
                 UpdateCardUI();
@@ -297,7 +297,7 @@ namespace Combat
             {
                 // The host also needs to update its GameObject name
                 gameObject.name = _syncedCardObjectName.Value;
-                Debug.Log($"[Server - OnStartServer] Updated host's GameObject name from PreSpawn to: {gameObject.name}");
+              //  Debug.Log($"[Server - OnStartServer] Updated host's GameObject name from PreSpawn to: {gameObject.name}");
             }
         }
 
@@ -316,7 +316,7 @@ namespace Combat
             
             // Set the object name with a unique identifier to avoid name conflicts
             string uniqueName = $"Card_{NetworkObject.ObjectId}_{name.Replace(' ', '_')}"; 
-            Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Setting _syncedCardObjectName to: {uniqueName}");
+           // Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Setting _syncedCardObjectName to: {uniqueName}");
             
             // Set the synced name that clients will receive
             _syncedCardObjectName.Value = uniqueName;
@@ -324,7 +324,7 @@ namespace Combat
             // The server's callback won't fire for its own changes, so we need to explicitly update it
             // This ensures host and clients have consistent naming
             gameObject.name = uniqueName;
-            Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Manually set server GameObject.name to: {uniqueName}");
+           // Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Manually set server GameObject.name to: {uniqueName}");
         }
 
         // --- Parenting RPC --- 
@@ -342,7 +342,7 @@ namespace Combat
              {
                  // Use worldPositionStays = false to inherit parent's scale and position cleanly
                  transform.SetParent(parentTransform, false); 
-                 Debug.Log($"[Card:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
+                // Debug.Log($"[Card:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
              }
              else
              {
@@ -363,7 +363,7 @@ namespace Combat
                 // Keep alpha at 1, use SetPlayable for visual state
                 // cardCanvasGroup.alpha = 1f; 
             }
-            Debug.Log($"[Client] Card {CardName} interactivity set: {canInteract} (IsOwner: {IsOwner}, IsPlayerCard: {isPlayerCard})");
+           // Debug.Log($"[Client] Card {CardName} interactivity set: {canInteract} (IsOwner: {IsOwner}, IsPlayerCard: {isPlayerCard})");
         }
         
         private void UpdateCardUI()
@@ -462,7 +462,7 @@ namespace Combat
             Sprite placeholder = Sprite.Create(texture, new Rect(0, 0, 200, 300), new Vector2(0.5f, 0.5f), 100f);
             cardImage.sprite = placeholder;
             
-            Debug.Log("Created placeholder sprite for card background");
+          //  Debug.Log("Created placeholder sprite for card background");
         }
         
         private void UpdateCardTypeIcon()
@@ -540,7 +540,7 @@ namespace Combat
             // If card is not playable, don't do anything
             if (!isPlayable) return;
             
-            Debug.Log($"Card clicked: {CardName}");
+          //  Debug.Log($"Card clicked: {CardName}");
             
             // Highlight on click
             transform.DOScale(originalScale * 1.1f, 0.2f);
@@ -553,7 +553,7 @@ namespace Combat
             
             isDragging = true;
             
-            Debug.Log($"Begin dragging card: {CardName}");
+           // Debug.Log($"Begin dragging card: {CardName}");
             
             // Store original position
             originalPosition = transform.position;
@@ -582,7 +582,7 @@ namespace Combat
             
             isDragging = false;
             
-            Debug.Log($"End dragging card: {CardName}, Valid target: {validTarget}");
+         //   Debug.Log($"End dragging card: {CardName}, Valid target: {validTarget}");
             
             // Reset sorting order
             if (cardCanvas != null)
@@ -603,7 +603,7 @@ namespace Combat
         // Play the card
         public void PlayCard(ICombatant target = null)
         {
-            Debug.Log($"Playing card: {CardName}, Target: {(target != null ? "Found" : "None")}");
+          //  Debug.Log($"Playing card: {CardName}, Target: {(target != null ? "Found" : "None")}");
             
             // Apply card effects
             if (cardData != null && cardData.cardEffects != null)
@@ -676,7 +676,7 @@ namespace Combat
         {
             if (target == null) return;
             
-            Debug.Log($"Applying effect: {effect.effectType} with value {effect.effectValue} to target");
+         //   Debug.Log($"Applying effect: {effect.effectType} with value {effect.effectValue} to target");
             
             switch (effect.effectType)
             {
@@ -703,7 +703,7 @@ namespace Combat
         
         public void ReturnToHand()
         {
-            Debug.Log($"Returning card to hand: {CardName}");
+           // Debug.Log($"Returning card to hand: {CardName}");
             
             // Return to original position and scale
             transform.DOMove(originalPosition, 0.3f)

@@ -33,14 +33,14 @@ namespace Combat
 
         private void Awake()
         {
-            Debug.Log($"PlayerHand Awake - Initializing");
+            //Debug.Log($"PlayerHand Awake - Initializing");
         }
         
         // Always show cards, but only make them interactive for the owner
         public override void OnStartClient()
         {
             base.OnStartClient();
-            Debug.Log($"[PlayerHand] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
+            //Debug.Log($"[PlayerHand] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
             
             this.gameObject.SetActive(true);
             
@@ -92,7 +92,7 @@ namespace Combat
             owner = player;
             combatPlayer = combatPlayerRef;
             
-            Debug.Log($"PlayerHand initialized for player {(player != null ? player.GetSteamName() : "Unknown")}");
+           // Debug.Log($"PlayerHand initialized for player {(player != null ? player.GetSteamName() : "Unknown")}");
         }
         
         [Client]
@@ -100,7 +100,7 @@ namespace Combat
         {
             if (!IsOwner) return;
             
-            Debug.Log($"DrawInitialHand called for {cardCount} cards. IsOwner: {IsOwner}");
+            //Debug.Log($"DrawInitialHand called for {cardCount} cards. IsOwner: {IsOwner}");
             
             CmdDrawCards(cardCount);
         }
@@ -137,14 +137,14 @@ namespace Combat
                  }
             }
             
-            Debug.Log($"[Server] CmdDrawCards - Drawing {count} cards for player {owner.GetSteamName()}");
+           // Debug.Log($"[Server] CmdDrawCards - Drawing {count} cards for player {owner.GetSteamName()}");
             
             // Draw the requested number of cards
             for (int i = 0; i < count; i++)
             {
                 if (cardsInHand.Count >= maxHandSize)
                 {
-                    Debug.Log($"Hand is full ({maxHandSize} cards), stopping draw");
+                   // Debug.Log($"Hand is full ({maxHandSize} cards), stopping draw");
                     break;
                 }
                 
@@ -172,7 +172,7 @@ namespace Combat
             if (!cardsInHand.Contains(card))
             {
                 cardsInHand.Add(card);
-                Debug.Log($"[{(IsServer ? "Server" : "Client")}] Registered networked card {card.CardName} to hand, current hand size: {cardsInHand.Count}");
+                //Debug.Log($"[{(IsServer ? "Server" : "Client")}] Registered networked card {card.CardName} to hand, current hand size: {cardsInHand.Count}");
                 
                 // Arrange cards in hand
                 ArrangeCardsInHand();
@@ -185,7 +185,7 @@ namespace Combat
             // Find all Card components that are children of this hand
             Card[] cards = GetComponentsInChildren<Card>(true); // Include inactive cards
             
-            Debug.Log($"[{(IsServer ? "Server" : "Client")}] Discovering cards in hand: found {cards.Length}");
+           // Debug.Log($"[{(IsServer ? "Server" : "Client")}] Discovering cards in hand: found {cards.Length}");
             
             // Register any cards not already in our list
             foreach (Card card in cards)
@@ -193,7 +193,7 @@ namespace Combat
                 if (card != null && !cardsInHand.Contains(card))
                 {
                     cardsInHand.Add(card);
-                    Debug.Log($"[{(IsServer ? "Server" : "Client")}] Discovered card: {card.CardName}");
+                   // Debug.Log($"[{(IsServer ? "Server" : "Client")}] Discovered card: {card.CardName}");
                 }
             }
             
@@ -215,7 +215,7 @@ namespace Combat
                 string cardName = card.CardName;
                 
                 // Log card play
-                Debug.Log($"[{(IsServer ? "Server" : "Client")}] Card played: {cardName} from index {cardIndex}");
+              //  Debug.Log($"[{(IsServer ? "Server" : "Client")}] Card played: {cardName} from index {cardIndex}");
                 
                 // Only the owner should tell the server about played cards
                 if (IsOwner)
@@ -357,7 +357,7 @@ namespace Combat
         {
             if (!IsOwner) return;
             
-            Debug.Log($"Discarding entire hand of {cardsInHand.Count} cards");
+           // Debug.Log($"Discarding entire hand of {cardsInHand.Count} cards");
             
             // Animate discarding each card
             foreach (Card card in cardsInHand)
@@ -395,7 +395,7 @@ namespace Combat
         public void SetDeck(RuntimeDeck deck)
         {
             ownerDeck = deck;
-            Debug.Log($"PlayerHand deck set: {(deck != null ? deck.DeckName : "null")}");
+           // Debug.Log($"PlayerHand deck set: {(deck != null ? deck.DeckName : "null")}");
         }
         
         // Add a card to the hand
@@ -404,7 +404,7 @@ namespace Combat
             if (card != null && !cardsInHand.Contains(card))
             {
                 cardsInHand.Add(card);
-                Debug.Log($"Card {card.CardName} added directly to hand");
+              //  Debug.Log($"Card {card.CardName} added directly to hand");
                 ArrangeCardsInHand();
             }
         }
@@ -463,7 +463,7 @@ namespace Combat
              if (parentTransform != null)
              {
                  transform.SetParent(parentTransform, false);
-                 Debug.Log($"[PlayerHand:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
+                // Debug.Log($"[PlayerHand:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
              }
              else
              {
@@ -478,7 +478,7 @@ namespace Combat
             // When ownership changes, make sure interactivity is updated
             SetCardsInteractivity(IsOwner);
             
-            Debug.Log($"[Client] PlayerHand ownership changed to {(IsOwner ? "self" : "someone else")}");
+           // Debug.Log($"[Client] PlayerHand ownership changed to {(IsOwner ? "self" : "someone else")}");
         }
     }
 } 
