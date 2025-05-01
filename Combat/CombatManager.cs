@@ -431,6 +431,9 @@ namespace Combat
                     opponentCombatPet,
                     opponentPetHand
                 );
+
+                // Also set the synced opponent reference for the client UI to find
+                player.SyncedOpponentPlayer.Value = opponentPlayer;
             }
             UnityEngine.Debug.Log("[CombatManager] Phase 5: Linking and Initialization Complete.");
 
@@ -748,6 +751,7 @@ namespace Combat
                 {
                     if (p != null) {
                         p.ClearCombatReferences();
+                        p.SyncedOpponentPlayer.Value = null; // Clear synced opponent too
                     }
                 }
                 

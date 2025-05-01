@@ -105,7 +105,7 @@ public class CombatCanvasManager : MonoBehaviour
         }
         else if (obj.ConnectionState == LocalConnectionState.Stopped)
         {
-            ClearReferences();
+            ClearAndUnsubscribe();
         }
     }
 
@@ -117,8 +117,10 @@ public class CombatCanvasManager : MonoBehaviour
 
     IEnumerator FindPlayerRoutine()
     {
+        UnityEngine.Debug.Log("[CombatCanvasManager] Starting FindPlayerRoutine...");
         // Wait until the client is connected and has its first object (usually the player)
-        yield return new WaitUntil(() => _networkManager.IsClientStarted && _networkManager.ClientManager.Connection.FirstObject != null);
+        yield return new WaitUntil(() => _networkManager != null && _networkManager.IsClientStarted && _networkManager.ClientManager.Connection.FirstObject != null);
+        UnityEngine.Debug.Log("[CombatCanvasManager] NetworkManager is ready.");
 
         NetworkObject localIdentity = _networkManager.ClientManager.Connection.FirstObject;
         if (localIdentity != null)
@@ -126,82 +128,156 @@ public class CombatCanvasManager : MonoBehaviour
             localNetworkPlayer = localIdentity.GetComponent<NetworkPlayer>();
             if (localNetworkPlayer != null)
             {
-                Debug.Log($"[CombatCanvasManager] Found local player: {localNetworkPlayer.GetSteamName()}");
-                InitializeUI(); // Initialize based on the found player
+                UnityEngine.Debug.Log($"[CombatCanvasManager] Found local NetworkPlayer: {localNetworkPlayer.GetSteamName()} ({localNetworkPlayer.NetworkObject.ObjectId})");
+                // Start the next phase: waiting for combat data
+                StartCoroutine(WaitForCombatData());
             }
             else
             {
-                Debug.LogError("[CombatCanvasManager] Local player NetworkObject does not have a NetworkPlayer component!");
+                UnityEngine.Debug.LogError("[CombatCanvasManager] Local player NetworkObject does not have a NetworkPlayer component!");
             }
         }
         else
         {
-             Debug.LogError("[CombatCanvasManager] Could not find local player NetworkObject (_networkManager.ClientManager.Connection.FirstObject is null).");
-             // Optionally retry after a delay
-             // yield return new WaitForSeconds(1f);
-             // StartCoroutine(FindPlayerRoutine());
+             UnityEngine.Debug.LogError("[CombatCanvasManager] Could not find local player NetworkObject (_networkManager.ClientManager.Connection.FirstObject is null).");
         }
     }
 
-    void InitializeUI()
+    // Coroutine to wait for necessary combat references to be available
+    IEnumerator WaitForCombatData()
     {
+        UnityEngine.Debug.Log("[CombatCanvasManager] Starting WaitForCombatData...");
         if (localNetworkPlayer == null)
         {
-            Debug.LogError("[CombatCanvasManager] Cannot initialize UI - localNetworkPlayer is null.");
-            return;
+            UnityEngine.Debug.LogError("[CombatCanvasManager] Cannot wait for combat data - localNetworkPlayer is null.");
+            yield break;
         }
 
-        // Clear previous subscriptions before setting up new ones
-        UnsubscribeFromCombatChanges(); 
+        // --- Wait for Local Combat Player ---
+        UnityEngine.Debug.Log("[CombatCanvasManager] Waiting for local CombatPlayer...");
+        float timeout = Time.time + 10f; // 10 second timeout
+        while (localCombatPlayer == null && Time.time < timeout)
+        {
+            CombatPlayer[] allCombatPlayers = FindObjectsByType<CombatPlayer>(FindObjectsSortMode.None);
+            foreach(CombatPlayer cp in allCombatPlayers)
+            {
+                // Check if the CombatPlayer's NetworkPlayer SyncVar has arrived and matches our local player
+                if (cp.NetworkPlayer != null && cp.NetworkPlayer == localNetworkPlayer)
+                {
+                    localCombatPlayer = cp;
+                     UnityEngine.Debug.Log($"[CombatCanvasManager] Found local CombatPlayer: {localCombatPlayer.name} ({localCombatPlayer.NetworkObject.ObjectId})");
+                    break; 
+                }
+            }
+            if (localCombatPlayer == null) yield return null; // Wait a frame
+        }
+         if (localCombatPlayer == null) UnityEngine.Debug.LogError("[CombatCanvasManager] Timed out waiting for local CombatPlayer.");
 
-        // Get references from the local NetworkPlayer
-        localCombatPlayer = localNetworkPlayer.CombatPlayer;
-        localPlayerCombatPet = localNetworkPlayer.CombatPet;
-        opponentCombatPet = localNetworkPlayer.OpponentCombatPet;
+        // --- Wait for Local Combat Pet ---
+        UnityEngine.Debug.Log("[CombatCanvasManager] Waiting for local CombatPet...");
+        timeout = Time.time + 10f;
+        while (localPlayerCombatPet == null && Time.time < timeout)
+        {
+            // Wait for the persistent pet reference to sync
+            if (localNetworkPlayer.playerPet.Value != null)
+            {
+                // Search children ONLY after the parent ref is valid
+                 localPlayerCombatPet = localNetworkPlayer.playerPet.Value.GetComponentInChildren<CombatPet>();
+                 if(localPlayerCombatPet != null) 
+                 {
+                      UnityEngine.Debug.Log($"[CombatCanvasManager] Found local CombatPet: {localPlayerCombatPet.name} ({localPlayerCombatPet.NetworkObject.ObjectId}) under {localNetworkPlayer.playerPet.Value.name}");
+                      break;
+                 }
+            }
+            yield return null; // Wait a frame
+        }
+        if (localPlayerCombatPet == null) UnityEngine.Debug.LogError("[CombatCanvasManager] Timed out waiting for local CombatPet.");
 
-        // Basic Info Update
-        if (playerNameText != null) playerNameText.text = localNetworkPlayer.GetSteamName();
-        
-        // Subscribe to changes and update UI initially
-        SubscribeToCombatChanges();
-        UpdateAllUI(); // Update all UI elements with initial state
+        // --- Wait for Opponent Combat Pet ---
+         UnityEngine.Debug.Log("[CombatCanvasManager] Waiting for opponent CombatPet...");
+        timeout = Time.time + 10f;
+        NetworkPlayer opponentPlayer = null;
+        while (opponentCombatPet == null && Time.time < timeout)
+        {
+             // Wait for opponent player ref to sync
+             if (localNetworkPlayer.SyncedOpponentPlayer.Value != null)
+             {
+                 opponentPlayer = localNetworkPlayer.SyncedOpponentPlayer.Value;
+                 // Wait for opponent's persistent pet ref to sync
+                 if (opponentPlayer.playerPet.Value != null)
+                 {
+                     opponentCombatPet = opponentPlayer.playerPet.Value.GetComponentInChildren<CombatPet>();
+                     if (opponentCombatPet != null)
+                     {
+                          UnityEngine.Debug.Log($"[CombatCanvasManager] Found opponent CombatPet: {opponentCombatPet.name} ({opponentCombatPet.NetworkObject.ObjectId}) under {opponentPlayer.playerPet.Value.name}");
+                         break;
+                     }
+                 }
+             }
+            yield return null; // Wait a frame
+        }
+        if (opponentCombatPet == null) UnityEngine.Debug.LogError("[CombatCanvasManager] Timed out waiting for opponent CombatPet.");
 
-        Debug.Log("[CombatCanvasManager] UI Initialized.");
+        // --- Final Setup ---
+        if (localCombatPlayer != null && localPlayerCombatPet != null && opponentCombatPet != null)
+        {
+            UnityEngine.Debug.Log("[CombatCanvasManager] All references found. Subscribing and updating UI.");
+             // Basic Info Update
+            if (playerNameText != null) playerNameText.text = localNetworkPlayer.GetSteamName();
+            SubscribeToCombatChanges(); // Now subscribe to everything
+            UpdateAllUI(); // Update all UI elements with initial state
+        }
+        else
+        {
+             UnityEngine.Debug.LogError("[CombatCanvasManager] Failed to find all necessary combat references. UI will not be fully initialized.");
+        }
     }
     
-    void ClearReferences()
+    // Modified cleanup - no longer called ClearReferences
+    void ClearAndUnsubscribe()
     {
-        UnsubscribeFromCombatChanges();
-        localNetworkPlayer = null;
+        // Stop the waiting coroutine if it's running
+        StopCoroutine(nameof(WaitForCombatData)); // Use nameof to avoid typos
+
+        UnsubscribeFromCombatChanges(); // Unsubscribe from everything
+        // localNetworkPlayer = null; // Keep localNetworkPlayer until client disconnects
         localCombatPlayer = null;
         localPlayerCombatPet = null;
         opponentCombatPet = null;
-        Debug.Log("[CombatCanvasManager] References cleared due to client stop.");
+        UnityEngine.Debug.Log("[CombatCanvasManager] References cleared and unsubscribed.");
     }
 
+    // Combined subscription
     void SubscribeToCombatChanges()
     {
-        // Subscribe to SyncVar changes on the relevant components
+        UnsubscribeFromCombatChanges(); // Ensure no duplicates
+
         if (localCombatPlayer != null)
         {
             localCombatPlayer.SyncEnergy.OnChange += OnEnergyChanged;
             localCombatPlayer.SyncIsMyTurn.OnChange += OnTurnChanged;
+             UnityEngine.Debug.Log("[CombatCanvasManager] Subscribed to local CombatPlayer changes.");
         }
         if (localPlayerCombatPet != null)
         {
             localPlayerCombatPet.SyncHealth.OnChange += OnPlayerPetHealthChanged;
-            // Subscribe to other relevant Pet SyncVars (e.g., IsDefending, buffs)
+             UnityEngine.Debug.Log("[CombatCanvasManager] Subscribed to local CombatPet changes.");
         }
         if (opponentCombatPet != null)
         {
              opponentCombatPet.SyncHealth.OnChange += OnOpponentPetHealthChanged;
-             // Subscribe to opponent pet SyncVars
+              UnityEngine.Debug.Log("[CombatCanvasManager] Subscribed to opponent CombatPet changes.");
         }
+        // No longer need to subscribe to SyncedOpponentPlayer here, handled by initial find
     }
+    
+    // Remove split subscriptions
+    // void SubscribeToLocalCombatChanges() { ... }
+    // void SubscribeToOpponentCombatChanges() { ... }
 
+    // Unified unsubscribe logic - simplified
     void UnsubscribeFromCombatChanges()
     {
-        // Make sure to unsubscribe to prevent errors when objects are destroyed
         if (localCombatPlayer != null)
         {
              localCombatPlayer.SyncEnergy.OnChange -= OnEnergyChanged;
@@ -215,21 +291,34 @@ public class CombatCanvasManager : MonoBehaviour
         {
              opponentCombatPet.SyncHealth.OnChange -= OnOpponentPetHealthChanged;
         }
+        // No longer need to unsubscribe from SyncedOpponentPlayer here
     }
 
     // --- Update Methods (Called by Callbacks or InitializeUI) ---
 
+    // Combined initial update
     void UpdateAllUI()
     {
-        // Call individual update methods based on current references
+       UpdateLocalPlayerUI();
+       UpdateOpponentUI();
+    }
+    
+    // Update only local player elements
+    void UpdateLocalPlayerUI()
+    {
         OnEnergyChanged(0, localCombatPlayer != null ? localCombatPlayer.CurrentEnergy : 0, false);
         OnTurnChanged(false, localCombatPlayer != null ? localCombatPlayer.IsMyTurn : false, false);
         OnPlayerPetHealthChanged(0, localPlayerCombatPet != null ? localPlayerCombatPet.CurrentHealth : 0, false);
-        OnOpponentPetHealthChanged(0, opponentCombatPet != null ? opponentCombatPet.CurrentHealth : 0, false);
-        
-        // Update names (less likely to change, but good practice)
         if (localPlayerCombatPet != null && playerPetNameText != null) playerPetNameText.text = localPlayerCombatPet.ReferencePet?.PetName ?? "Player Pet";
+         else if (playerPetNameText != null) playerPetNameText.text = "Player Pet: N/A";
+    }
+    
+    // Update only opponent elements
+    void UpdateOpponentUI()
+    {
+        OnOpponentPetHealthChanged(0, opponentCombatPet != null ? opponentCombatPet.CurrentHealth : 0, false);
         if (opponentCombatPet != null && opponentPetNameText != null) opponentPetNameText.text = opponentCombatPet.ReferencePet?.PetName ?? "Opponent Pet";
+        else if (opponentPetNameText != null) opponentPetNameText.text = "Opponent Pet: N/A";
     }
 
     private void OnEnergyChanged(int prev, int next, bool asServer)

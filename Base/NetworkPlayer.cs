@@ -28,18 +28,37 @@ public class NetworkPlayer : NetworkBehaviour
     public readonly SyncVar<string> _syncedPetName = new SyncVar<string>(""); // Synced name for pet hierarchy
     private bool petInitialized = false;
     
-    // Field specifically for Inspector visibility of the persistent Pet
+    // --- Inspector-Only References --- 
+    // These are populated via OnChange callbacks for debugging/visualization
+    [Header("Inspector-Only References")]
     [SerializeField] private Pet inspectorPetReference;
+    [SerializeField] private CombatPlayer inspectorCombatPlayer;
+    [SerializeField] private PlayerHand inspectorPlayerHand;
+    [SerializeField] private CombatPet inspectorCombatPet;
+    [SerializeField] private PetHand inspectorPetHand;
+    [SerializeField] private CombatPet inspectorOpponentCombatPet;
+    [SerializeField] private PetHand inspectorOpponentPetHand;
+    [SerializeField] private NetworkPlayer inspectorOpponentNetworkPlayer;
+
+    // --- Combat Specific References (Now Synced) ---
+    // Server assigns the .Value, clients receive updates via SyncVar mechanism
+    public readonly SyncVar<CombatPlayer> SyncedCombatPlayer = new SyncVar<CombatPlayer>();
+    public readonly SyncVar<PlayerHand> SyncedPlayerHand = new SyncVar<PlayerHand>();
+    public readonly SyncVar<CombatPet> SyncedCombatPet = new SyncVar<CombatPet>(); // This player's CombatPet instance
+    public readonly SyncVar<PetHand> SyncedPetHand = new SyncVar<PetHand>(); // This player's PetHand instance
+    public readonly SyncVar<CombatPet> SyncedOpponentCombatPet = new SyncVar<CombatPet>(); // The CombatPet this player is fighting against
+    public readonly SyncVar<PetHand> SyncedOpponentPetHand = new SyncVar<PetHand>(); // The PetHand of the opponent's CombatPet
     
-    // --- Combat Specific References (Server authoritative) ---
-    // These are assigned by CombatManager when combat starts
-    [field: SerializeField] public CombatPlayer CombatPlayer { get; private set; }
-    [field: SerializeField] public PlayerHand PlayerHand { get; private set; }
-    [field: SerializeField] public CombatPet CombatPet { get; private set; } // This player's CombatPet instance
-    [field: SerializeField] public PetHand PetHand { get; private set; } // This player's PetHand instance (associated with their CombatPet)
-    [field: SerializeField] public CombatPet OpponentCombatPet { get; private set; } // The CombatPet this player is fighting against
-    [field: SerializeField] public PetHand OpponentPetHand { get; private set; } // The PetHand of the opponent's CombatPet
-    [field: SerializeField] public NetworkPlayer OpponentNetworkPlayer { get; private set; }
+    // Synced opponent reference for clients
+    public readonly SyncVar<NetworkPlayer> SyncedOpponentPlayer = new SyncVar<NetworkPlayer>();
+    // Public getters for convenience (optional)
+    public CombatPlayer CombatPlayer => SyncedCombatPlayer.Value;
+    public PlayerHand PlayerHand => SyncedPlayerHand.Value;
+    public CombatPet CombatPet => SyncedCombatPet.Value;
+    public PetHand PetHand => SyncedPetHand.Value;
+    public CombatPet OpponentCombatPet => SyncedOpponentCombatPet.Value;
+    public PetHand OpponentPetHand => SyncedOpponentPetHand.Value;
+    public NetworkPlayer OpponentNetworkPlayer => SyncedOpponentPlayer.Value;
     
     // Properties
     public string SteamName => _steamName.Value;
@@ -90,10 +109,28 @@ public class NetworkPlayer : NetworkBehaviour
         _syncedPetName.OnChange += OnPetNameChanged;
         playerPet.OnChange += OnPlayerPetChanged; // Register callback for pet changes
 
+        // Register callbacks for combat references
+        SyncedCombatPlayer.OnChange += OnChange_CombatPlayer;
+        SyncedPlayerHand.OnChange += OnChange_PlayerHand;
+        SyncedCombatPet.OnChange += OnChange_CombatPet;
+        SyncedPetHand.OnChange += OnChange_PetHand;
+        SyncedOpponentCombatPet.OnChange += OnChange_OpponentCombatPet;
+        SyncedOpponentPetHand.OnChange += OnChange_OpponentPetHand;
+        SyncedOpponentPlayer.OnChange += OnChange_OpponentPlayer;
+
         // Apply initial names if already set
         OnPlayerNameChanged(string.Empty, _syncedPlayerName.Value, false);
         OnPetNameChanged(string.Empty, _syncedPetName.Value, false);
+
+        // Apply initial references to inspector fields
         OnPlayerPetChanged(null, playerPet.Value, false); // Apply initial pet reference to inspector field
+        OnChange_CombatPlayer(null, SyncedCombatPlayer.Value, false);
+        OnChange_PlayerHand(null, SyncedPlayerHand.Value, false);
+        OnChange_CombatPet(null, SyncedCombatPet.Value, false);
+        OnChange_PetHand(null, SyncedPetHand.Value, false);
+        OnChange_OpponentCombatPet(null, SyncedOpponentCombatPet.Value, false);
+        OnChange_OpponentPetHand(null, SyncedOpponentPetHand.Value, false);
+        OnChange_OpponentPlayer(null, SyncedOpponentPlayer.Value, false);
 
         // Update UI if owner
         if (IsOwner && LobbyManager.Instance != null)
@@ -111,6 +148,15 @@ public class NetworkPlayer : NetworkBehaviour
         _syncedPlayerName.OnChange -= OnPlayerNameChanged;
         _syncedPetName.OnChange -= OnPetNameChanged;
         playerPet.OnChange -= OnPlayerPetChanged; // Unregister callback
+
+        // Unregister combat callbacks
+        SyncedCombatPlayer.OnChange -= OnChange_CombatPlayer;
+        SyncedPlayerHand.OnChange -= OnChange_PlayerHand;
+        SyncedCombatPet.OnChange -= OnChange_CombatPet;
+        SyncedPetHand.OnChange -= OnChange_PetHand;
+        SyncedOpponentCombatPet.OnChange -= OnChange_OpponentCombatPet;
+        SyncedOpponentPetHand.OnChange -= OnChange_OpponentPetHand;
+        SyncedOpponentPlayer.OnChange -= OnChange_OpponentPlayer;
     }
     
     [Server]
@@ -270,6 +316,15 @@ public class NetworkPlayer : NetworkBehaviour
         // if (!asServer) Debug.Log($"[Client] Inspector pet reference updated to: {nextPet?.name}"); 
     }
 
+    // --- OnChange Callbacks for Synced Combat References (to update Inspector fields) ---
+    private void OnChange_CombatPlayer(CombatPlayer prev, CombatPlayer next, bool asServer) => inspectorCombatPlayer = next;
+    private void OnChange_PlayerHand(PlayerHand prev, PlayerHand next, bool asServer) => inspectorPlayerHand = next;
+    private void OnChange_CombatPet(CombatPet prev, CombatPet next, bool asServer) => inspectorCombatPet = next;
+    private void OnChange_PetHand(PetHand prev, PetHand next, bool asServer) => inspectorPetHand = next;
+    private void OnChange_OpponentCombatPet(CombatPet prev, CombatPet next, bool asServer) => inspectorOpponentCombatPet = next;
+    private void OnChange_OpponentPetHand(PetHand prev, PetHand next, bool asServer) => inspectorOpponentPetHand = next;
+    private void OnChange_OpponentPlayer(NetworkPlayer prev, NetworkPlayer next, bool asServer) => inspectorOpponentNetworkPlayer = next;
+
     private void OnSteamNameChanged(string oldValue, string newValue, bool asServer)
     {
         Debug.Log($"OnSteamNameChanged: Player ID {SteamID} changed name from '{oldValue}' to '{newValue}'. IsServer: {asServer}");
@@ -338,15 +393,15 @@ public class NetworkPlayer : NetworkBehaviour
             return;
         }
         
-        CombatPlayer = cp;
-        PlayerHand = ph;
-        CombatPet = ownPet;
-        PetHand = ownPetHand;
-        OpponentNetworkPlayer = opponent;
-        OpponentCombatPet = oppPet;
-        OpponentPetHand = oppPetHand;
+        SyncedCombatPlayer.Value = cp;
+        SyncedPlayerHand.Value = ph;
+        SyncedCombatPet.Value = ownPet;
+        SyncedPetHand.Value = ownPetHand;
+        SyncedOpponentPlayer.Value = opponent;
+        SyncedOpponentCombatPet.Value = oppPet;
+        SyncedOpponentPetHand.Value = oppPetHand;
 
-        Debug.Log($"[NetworkPlayer:{GetSteamName()}] Combat references set. Player: {CombatPlayer?.name}, Hand: {PlayerHand?.name}, OwnPet: {CombatPet?.name}, OwnPetHand: {PetHand?.name}, Opponent: {OpponentNetworkPlayer?.GetSteamName()}, OppPet: {OpponentCombatPet?.name}, OppPetHand: {OpponentPetHand?.name}");
+        Debug.Log($"[NetworkPlayer:{GetSteamName()}] Combat references set. Player: {cp?.name}, Hand: {ph?.name}, OwnPet: {ownPet?.name}, OwnPetHand: {ownPetHand?.name}, Opponent: {opponent?.GetSteamName()}, OppPet: {oppPet?.name}, OppPetHand: {oppPetHand?.name}");
     }
     
     // Method to clear references when combat ends (Server only)
@@ -355,13 +410,14 @@ public class NetworkPlayer : NetworkBehaviour
     {
         if (!IsServerInitialized) return;
         
-        CombatPlayer = null;
-        PlayerHand = null;
-        CombatPet = null;
-        PetHand = null;
-        OpponentNetworkPlayer = null;
-        OpponentCombatPet = null;
-        OpponentPetHand = null;
+        SyncedCombatPlayer.Value = null;
+        SyncedPlayerHand.Value = null;
+        SyncedCombatPet.Value = null;
+        SyncedPetHand.Value = null;
+        SyncedOpponentPlayer.Value = null;
+        SyncedOpponentCombatPet.Value = null;
+        SyncedOpponentPetHand.Value = null;
+
         Debug.Log($"[NetworkPlayer:{GetSteamName()}] Combat references cleared.");
     }
 
