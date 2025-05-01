@@ -200,8 +200,9 @@ namespace Combat
                          return null;
                     }
                     
-                    // Set the GameObject name via SyncVar AFTER getting component
-                    card.SetCardObjectName(cardData.cardName);
+                    // NOW set the object name using the valid ObjectId
+                    Debug.Log($"[Server DeckManager] Calling SetCardObjectName for {cardData.cardName} on NO Id: {card.NetworkObject.ObjectId}");
+                    card.SetCardObjectName(cardData.cardName); // Sets the _syncedCardObjectName SyncVar
                     
                     // Spawn the networked card - Owner should be the hand's owner
                     InstanceFinder.ServerManager.Spawn(cardObj, hand.Owner);

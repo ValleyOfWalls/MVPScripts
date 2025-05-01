@@ -89,8 +89,9 @@ namespace Combat
             }
             
             // Register SyncVar callbacks
-            syncedCardDataName.OnChange += OnSyncedCardDataNameChanged;
             _syncedCardObjectName.OnChange += OnSyncedCardObjectNameChanged;
+            syncedCardDataName.OnChange += OnSyncedCardDataNameChanged;
+            Debug.Log($"[Card:{GetInstanceID()}] Awake: Registered SyncVar callbacks."); // Use InstanceID pre-network
             
             // Initial UI update attempt (might not have data yet)
             // UpdateCardUI(); // Moved to OnStartClient / OnChange
@@ -98,9 +99,10 @@ namespace Combat
 
         private void OnDestroy()
         {
-            // Unregister SyncVar callbacks
-            syncedCardDataName.OnChange -= OnSyncedCardDataNameChanged;
+            // Unsubscribe from events to prevent memory leaks
+             Debug.Log($"[Card:{(NetworkObject != null ? NetworkObject.ObjectId.ToString() : GetInstanceID().ToString())}] OnDestroy: Unregistering SyncVar callbacks.");
             _syncedCardObjectName.OnChange -= OnSyncedCardObjectNameChanged;
+            syncedCardDataName.OnChange -= OnSyncedCardDataNameChanged;
         }
         
         // Called when the syncedCardName changes
@@ -128,10 +130,17 @@ namespace Combat
         {
             if (asServer) return; // Server sets the value, clients react
 
+            // --- Add detailed log here ---
+            Debug.Log($"[Card:{NetworkObject.ObjectId}] OnSyncedCardObjectNameChanged fired. IsOwner: {IsOwner}. Prev: '{prevName}', New: '{newName}'");
+
             if (!string.IsNullOrEmpty(newName))
             {
                 gameObject.name = newName;
-                // Debug.Log($"[Client {NetworkObject.ObjectId}] Card GameObject renamed to: {newName}");
+                Debug.Log($"[Card:{NetworkObject.ObjectId}] --- Set gameObject.name to: {newName}");
+            }
+            else
+            {
+                Debug.LogWarning($"[Card:{NetworkObject.ObjectId}] --- Synced object name was null or empty, not setting name.");
             }
         }
         
@@ -176,11 +185,16 @@ namespace Combat
         {
             base.OnStartClient();
             Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient. IsOwner: {IsOwner}. Name: {gameObject.name} SyncedName: '{_syncedCardObjectName.Value}' Parent: {(transform.parent != null ? transform.parent.name : "null")}");
-            
-            // Apply initial object name if value already synced
+
+            // --- Manually trigger object name update if the value arrived before OnChange ---
             if (!string.IsNullOrEmpty(_syncedCardObjectName.Value))
             {
-                 OnSyncedCardObjectNameChanged(null, _syncedCardObjectName.Value, false); // Call manually
+                Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient: Manually calling OnSyncedCardObjectNameChanged with initial value '{_syncedCardObjectName.Value}'.");
+                OnSyncedCardObjectNameChanged(null, _syncedCardObjectName.Value, false); // Manually call the callback
+            }
+            else
+            {
+                 Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient: _syncedCardObjectName is empty, waiting for OnChange callback.");
             }
             
             // Initial attempt to find data if SyncVar already arrived
@@ -264,14 +278,15 @@ namespace Combat
         {
             if (string.IsNullOrEmpty(name))
             {
-                Debug.LogWarning($"[Server {NetworkObject.ObjectId}] SetCardObjectName called with empty name.");
+                Debug.LogWarning($"[Server Card:{NetworkObject.ObjectId}] SetCardObjectName called with empty name.");
                 name = "UnnamedCard";
             }
             string uniqueName = $"Card_{NetworkObject.ObjectId}_{name.Replace(' ', '_')}"; // Ensure unique name in hierarchy
+            Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Preparing to set _syncedCardObjectName to: {uniqueName}"); // Log before setting
             _syncedCardObjectName.Value = uniqueName;
             // Set server-side name immediately too, client callback will handle clients
-            gameObject.name = uniqueName; 
-             Debug.Log($"[Server {NetworkObject.ObjectId}] Set synced card object name to: {uniqueName}");
+            gameObject.name = uniqueName;
+             Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Set synced card object name to: {uniqueName}");
         }
 
         // --- Parenting RPC --- 
