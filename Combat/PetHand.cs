@@ -263,9 +263,11 @@ namespace Combat
             int cardCount = cardsInHand.Count;
             if (cardCount == 0) return;
             
-            // Calculate the width needed for all cards
-            float totalWidth = cardCount * cardSpacing;
-            float startX = -totalWidth / 2f;
+            // Use simple horizontal layout (similar to CombatCanvasManager.ManualCardArrangement)
+            float cardWidth = 120f; // Match value from ManualCardArrangement if possible
+            float spacing = 10f;   // Match value from ManualCardArrangement
+            float totalWidth = (cardCount * cardWidth) + ((cardCount - 1) * spacing);
+            float startX = -totalWidth / 2f + cardWidth / 2f; // Start from the left edge
             
             // Position each card
             for (int i = 0; i < cardCount; i++)
@@ -273,13 +275,14 @@ namespace Combat
                 Card card = cardsInHand[i];
                 if (card != null)
                 {
-                    float t = cardCount > 1 ? (float)i / (cardCount - 1) : 0.5f;
-                    float xPos = startX + i * cardSpacing;
-                    float yPos = CalculateHandCurve(t) * handCurveHeight;
+                     // Calculate simple horizontal position
+                    float xPos = startX + (i * (cardWidth + spacing));
+                    float yPos = 0; // Keep cards aligned horizontally
                     
-                    // Animate to the new position
-                    card.transform.DOLocalMove(new Vector3(xPos, yPos, 0), dealAnimationDuration)
-                        .SetEase(Ease.OutQuint);
+                    // Set position directly
+                    card.transform.localPosition = new Vector3(xPos, yPos, 0);
+                    card.transform.localRotation = Quaternion.identity; // Reset rotation
+                    card.transform.localScale = Vector3.one; // Ensure scale is reset
                 }
             }
         }

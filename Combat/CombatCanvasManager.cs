@@ -8,6 +8,7 @@ using FishNet.Object; // Required for NetworkObject
 using Combat; // Your combat namespace
 using System.Collections; 
 using FishNet.Transporting; // Required for ClientConnectionStateArgs
+using System.Collections.Generic; // Added for List
 
 /// <summary>
 /// Manages the UI elements on the Combat Canvas. 
@@ -43,13 +44,30 @@ public class CombatCanvasManager : MonoBehaviour
     [SerializeField] private GameObject resultPanel; // Panel containing result text
     [SerializeField] private TextMeshProUGUI resultText; // Text showing "Victory" or "Defeat"
 
+    [Header("Battle Observation")]
+    [SerializeField] private Button nextBattleButton; // Button to observe next battle
+
     // Added [SerializeField] for Inspector visibility during runtime
     [SerializeField] private NetworkPlayer localNetworkPlayer;
     [SerializeField] private CombatPlayer localCombatPlayer;
     [SerializeField] private CombatPet localPlayerCombatPet;
     [SerializeField] private CombatPet opponentCombatPet;
+    
+    // Currently observed combat references
+    [Header("Currently Observed References")]
+    [SerializeField] private NetworkPlayer currentObservedNetworkPlayer;
+    [SerializeField] private CombatPlayer currentObservedCombatPlayer;
+    [SerializeField] private CombatPet currentObservedPlayerPet;
+    [SerializeField] private CombatPet currentObservedOpponentPet;
+    [SerializeField] private PlayerHand currentObservedPlayerHand;
+    [SerializeField] private PetHand currentObservedPetHand;
 
     private NetworkManager _networkManager;
+    
+    // Variables for battle observation
+    private List<NetworkPlayer> allPlayers = new List<NetworkPlayer>();
+    private int currentObservedPlayerIndex = -1;
+    private bool isObservingOwnBattle = true;
 
     void Start()
     {
@@ -78,6 +96,12 @@ public class CombatCanvasManager : MonoBehaviour
         {
             endTurnButton.onClick.AddListener(OnEndTurnButtonPressed);
         }
+        
+        // Add listener to Next Battle button
+        if (nextBattleButton != null)
+        {
+            nextBattleButton.onClick.AddListener(OnNextBattleButtonPressed);
+        }
     }
     
     private void OnDestroy()
@@ -90,6 +114,10 @@ public class CombatCanvasManager : MonoBehaviour
          if (endTurnButton != null)
          {
              endTurnButton.onClick.RemoveListener(OnEndTurnButtonPressed);
+         }
+         if (nextBattleButton != null)
+         {
+             nextBattleButton.onClick.RemoveListener(OnNextBattleButtonPressed);
          }
          
          // Unsubscribe from SyncVar changes if subscribed
@@ -226,6 +254,12 @@ public class CombatCanvasManager : MonoBehaviour
             if (playerNameText != null) playerNameText.text = localNetworkPlayer.GetSteamName();
             SubscribeToCombatChanges(); // Now subscribe to everything
             UpdateAllUI(); // Update all UI elements with initial state
+            
+            // Initialize battle observation system
+            InitializeBattleObservation();
+            
+            // Position the player hand area correctly at the start
+            PositionPlayerHandOnStartup();
         }
         else
         {
@@ -233,6 +267,59 @@ public class CombatCanvasManager : MonoBehaviour
         }
     }
     
+    private void PositionPlayerHandOnStartup()
+    {
+        // Wait for a moment to ensure all network objects are fully initialized
+        StartCoroutine(DelayedHandPositioning());
+    }
+    
+    private IEnumerator DelayedHandPositioning()
+    {
+        // Wait a short time for all network objects to be properly set up
+        yield return new WaitForSeconds(1.5f);
+        
+        Debug.Log("[CombatCanvasManager] Performing initial hand positioning");
+        
+        // Ensure the player hand is properly positioned
+        if (localNetworkPlayer != null && localNetworkPlayer.PlayerHand != null && playerHandArea != null)
+        {
+            currentObservedPlayerHand = localNetworkPlayer.PlayerHand;
+            
+            // Position the hand in the correct UI area
+            Transform handTransform = currentObservedPlayerHand.transform;
+            handTransform.SetParent(playerHandArea, false);
+            handTransform.localPosition = Vector3.zero;
+            handTransform.localScale = Vector3.one;
+            handTransform.gameObject.SetActive(true);
+            
+            // If the hand has a method to arrange cards, try to call it
+            PlayerHand playerHand = handTransform.GetComponent<PlayerHand>();
+            if (playerHand != null)
+            {
+                // Use reflection to call the ArrangeCardsInHand method even if it's private
+                System.Reflection.MethodInfo arrangeMethod = 
+                    typeof(PlayerHand).GetMethod("ArrangeCardsInHand", 
+                    System.Reflection.BindingFlags.Instance | 
+                    System.Reflection.BindingFlags.Public | 
+                    System.Reflection.BindingFlags.NonPublic);
+                
+                if (arrangeMethod != null)
+                {
+                    Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method");
+                    arrangeMethod.Invoke(playerHand, null);
+                }
+                else
+                {
+                    // Try to call a public RPC method that might trigger card arrangement
+                    Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found, trying to trigger a refresh");
+                    // This is a fallback in case there's no direct method access
+                    playerHand.gameObject.SetActive(false);
+                    playerHand.gameObject.SetActive(true);
+                }
+            }
+        }
+    }
+
     // Modified cleanup - no longer called ClearReferences
     void ClearAndUnsubscribe()
     {
@@ -278,20 +365,21 @@ public class CombatCanvasManager : MonoBehaviour
     // Unified unsubscribe logic - simplified
     void UnsubscribeFromCombatChanges()
     {
-        if (localCombatPlayer != null)
+        if (currentObservedCombatPlayer != null)
         {
-             localCombatPlayer.SyncEnergy.OnChange -= OnEnergyChanged;
-             localCombatPlayer.SyncIsMyTurn.OnChange -= OnTurnChanged;
+             currentObservedCombatPlayer.SyncEnergy.OnChange -= OnEnergyChanged;
+             currentObservedCombatPlayer.SyncIsMyTurn.OnChange -= OnTurnChanged;
         }
-         if (localPlayerCombatPet != null)
+        
+        if (currentObservedPlayerPet != null)
         {
-             localPlayerCombatPet.SyncHealth.OnChange -= OnPlayerPetHealthChanged;
+             currentObservedPlayerPet.SyncHealth.OnChange -= OnPlayerPetHealthChanged;
         }
-         if (opponentCombatPet != null)
+        
+        if (currentObservedOpponentPet != null)
         {
-             opponentCombatPet.SyncHealth.OnChange -= OnOpponentPetHealthChanged;
+             currentObservedOpponentPet.SyncHealth.OnChange -= OnOpponentPetHealthChanged;
         }
-        // No longer need to unsubscribe from SyncedOpponentPlayer here
     }
 
     // --- Update Methods (Called by Callbacks or InitializeUI) ---
@@ -306,27 +394,56 @@ public class CombatCanvasManager : MonoBehaviour
     // Update only local player elements
     void UpdateLocalPlayerUI()
     {
-        OnEnergyChanged(0, localCombatPlayer != null ? localCombatPlayer.CurrentEnergy : 0, false);
-        OnTurnChanged(false, localCombatPlayer != null ? localCombatPlayer.IsMyTurn : false, false);
-        OnPlayerPetHealthChanged(0, localPlayerCombatPet != null ? localPlayerCombatPet.CurrentHealth : 0, false);
-        if (localPlayerCombatPet != null && playerPetNameText != null) playerPetNameText.text = localPlayerCombatPet.ReferencePet?.PetName ?? "Player Pet";
-         else if (playerPetNameText != null) playerPetNameText.text = "Player Pet: N/A";
+        // Update energy display
+        if (localCombatPlayer != null && playerEnergyText != null)
+        {
+            playerEnergyText.text = $"Energy: {localCombatPlayer.CurrentEnergy}";
+        }
+        
+        // Update turn indicator
+        if (turnIndicatorPlayer != null && localCombatPlayer != null)
+        {
+            turnIndicatorPlayer.SetActive(localCombatPlayer.IsMyTurn);
+        }
+        
+        // Update player pet health
+        if (localPlayerCombatPet != null && playerPetHealthText != null)
+        {
+            playerPetHealthText.text = $"Health: {localPlayerCombatPet.CurrentHealth}";
+        }
+        
+        // Update player pet name
+        if (localPlayerCombatPet != null && playerPetNameText != null && localPlayerCombatPet.ReferencePet != null)
+        {
+            playerPetNameText.text = localPlayerCombatPet.ReferencePet.PetName;
+        }
     }
     
     // Update only opponent elements
     void UpdateOpponentUI()
     {
-        OnOpponentPetHealthChanged(0, opponentCombatPet != null ? opponentCombatPet.CurrentHealth : 0, false);
-        if (opponentCombatPet != null && opponentPetNameText != null) opponentPetNameText.text = opponentCombatPet.ReferencePet?.PetName ?? "Opponent Pet";
-        else if (opponentPetNameText != null) opponentPetNameText.text = "Opponent Pet: N/A";
+        // Update opponent pet health
+        if (opponentCombatPet != null && opponentPetHealthText != null)
+        {
+            opponentPetHealthText.text = $"Health: {opponentCombatPet.CurrentHealth}";
+        }
+        
+        // Update opponent pet name
+        if (opponentCombatPet != null && opponentPetNameText != null && opponentCombatPet.ReferencePet != null)
+        {
+            opponentPetNameText.text = opponentCombatPet.ReferencePet.PetName;
+        }
     }
 
     private void OnEnergyChanged(int prev, int next, bool asServer)
     {
-        if (asServer) return; // Only update UI on clients
-        if (playerEnergyText != null && localCombatPlayer != null)
+        // Skip updates on server
+        if (asServer) return;
+        
+        // Update energy text
+        if (playerEnergyText != null)
         {
-            playerEnergyText.text = $"Energy: {next}/{localCombatPlayer.MaxEnergy}";
+            playerEnergyText.text = $"Energy: {next}";
         }
     }
 
@@ -393,5 +510,528 @@ public class CombatCanvasManager : MonoBehaviour
         {
             Debug.LogError("[CombatCanvasManager] Cannot show combat result - Result Panel or Result Text is not assigned.");
         }
+    }
+
+    // Methods for observing different battles
+    
+    private void InitializeBattleObservation()
+    {
+        // Clear existing list
+        allPlayers.Clear();
+        
+        // On clients, NetworkPlayer.Players might not contain all networked players
+        // Find all NetworkPlayer objects in the scene instead
+        NetworkPlayer[] sceneNetworkPlayers = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        foreach (NetworkPlayer player in sceneNetworkPlayers)
+        {
+            // Only add valid, active players
+            if (player != null && player.gameObject.activeInHierarchy)
+            {
+                allPlayers.Add(player);
+                Debug.Log($"[CombatCanvasManager] Found player: {player.GetSteamName()}");
+            }
+        }
+        
+        // Set current observed player to local player
+        currentObservedNetworkPlayer = localNetworkPlayer;
+        currentObservedCombatPlayer = localCombatPlayer;
+        currentObservedPlayerPet = localPlayerCombatPet;
+        currentObservedOpponentPet = opponentCombatPet;
+        
+        // Get the player's hand
+        currentObservedPlayerHand = localNetworkPlayer.PlayerHand;
+        currentObservedPetHand = localNetworkPlayer.PetHand;
+        
+        currentObservedPlayerIndex = allPlayers.IndexOf(localNetworkPlayer);
+        isObservingOwnBattle = true;
+        
+        // Enable next battle button only if there are other players
+        if (nextBattleButton != null)
+        {
+            bool hasMultiplePlayers = allPlayers.Count > 1;
+            nextBattleButton.interactable = hasMultiplePlayers;
+            Debug.Log($"[CombatCanvasManager] NextBattleButton interactable set to: {hasMultiplePlayers} (Found {allPlayers.Count} players)");
+        }
+        else
+        {
+            Debug.LogError("[CombatCanvasManager] NextBattleButton reference is null!");
+        }
+        
+        // Call refresh again after a short delay, in case more network objects are still spawning
+        Invoke(nameof(DelayedRefresh), 2.0f);
+    }
+    
+    private void DelayedRefresh()
+    {
+        RefreshPlayerList();
+        EnableBattleSwitch();
+    }
+    
+    // Public method that can be called to force enable the battle switching button
+    public void EnableBattleSwitch()
+    {
+        if (nextBattleButton != null)
+        {
+            Debug.Log("[CombatCanvasManager] Force enabling NextBattleButton");
+            nextBattleButton.interactable = true;
+        }
+    }
+    
+    public void OnNextBattleButtonPressed()
+    {
+        Debug.Log("[CombatCanvasManager] NextBattleButton pressed");
+        
+        // Refresh the player list in case players have joined or left
+        RefreshPlayerList();
+        
+        // Check if we have enough players to switch
+        if (allPlayers.Count <= 1)
+        {
+            Debug.LogWarning("[CombatCanvasManager] Cannot switch battles - only one player found");
+            return;
+        }
+        
+        // If this is the first time pressing the button, just refresh the current view
+        // This helps with initial positioning issues
+        if (isObservingOwnBattle && playerHandArea != null && localNetworkPlayer.PlayerHand != null)
+        {
+            Transform handTransform = localNetworkPlayer.PlayerHand.transform;
+            if (handTransform.parent != playerHandArea)
+            {
+                Debug.Log("[CombatCanvasManager] First button press - positioning hand correctly");
+                handTransform.SetParent(playerHandArea, false);
+                handTransform.localPosition = Vector3.zero;
+                handTransform.localScale = Vector3.one;
+                StartCoroutine(DelayedCardArrangementRefresh());
+                return;
+            }
+        }
+        
+        // If we're currently observing our own battle, switch to another player's battle
+        if (isObservingOwnBattle || currentObservedPlayerIndex < 0)
+        {
+            isObservingOwnBattle = false;
+            
+            // Find the first player that isn't the local player
+            for (int i = 0; i < allPlayers.Count; i++)
+            {
+                if (allPlayers[i] != localNetworkPlayer)
+                {
+                    currentObservedPlayerIndex = i;
+                    ObservePlayerBattle(allPlayers[i]);
+                    StartCoroutine(DelayedCardArrangementRefresh());
+                    return;
+                }
+            }
+        }
+        else
+        {
+            // Find the next player in the list
+            int nextIndex = (currentObservedPlayerIndex + 1) % allPlayers.Count;
+            
+            // If we've cycled back to the local player, observe our own battle
+            if (allPlayers[nextIndex] == localNetworkPlayer)
+            {
+                ObserveOwnBattle();
+            }
+            else
+            {
+                currentObservedPlayerIndex = nextIndex;
+                ObservePlayerBattle(allPlayers[nextIndex]);
+            }
+            
+            // Ensure cards are arranged properly after switching
+            StartCoroutine(DelayedCardArrangementRefresh());
+        }
+    }
+    
+    private void RefreshPlayerList()
+    {
+        // Save the current observed player reference before refreshing
+        NetworkPlayer currentObserved = currentObservedNetworkPlayer;
+        
+        // Get all NetworkPlayer objects in the scene
+        NetworkPlayer[] sceneNetworkPlayers = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        
+        // Clear and repopulate the list
+        allPlayers.Clear();
+        foreach (NetworkPlayer player in sceneNetworkPlayers)
+        {
+            if (player != null && player.gameObject.activeInHierarchy)
+            {
+                allPlayers.Add(player);
+                Debug.Log($"[CombatCanvasManager] Refreshed player list - Found: {player.GetSteamName()}");
+            }
+        }
+        
+        // Update the current observed player index
+        if (isObservingOwnBattle)
+        {
+            currentObservedPlayerIndex = allPlayers.IndexOf(localNetworkPlayer);
+        }
+        else if (currentObserved != null)
+        {
+            currentObservedPlayerIndex = allPlayers.IndexOf(currentObserved);
+            if (currentObservedPlayerIndex < 0)
+            {
+                // If we can't find the previously observed player, reset to local player
+                Debug.LogWarning("[CombatCanvasManager] Previously observed player no longer available, resetting to local player");
+                ObserveOwnBattle();
+            }
+        }
+        
+        // Update button interactability
+        if (nextBattleButton != null)
+        {
+            nextBattleButton.interactable = (allPlayers.Count > 1);
+        }
+    }
+    
+    private void ObservePlayerBattle(NetworkPlayer player)
+    {
+        if (player == null) return;
+        
+        // Unsubscribe from current combat changes
+        UnsubscribeFromCombatChanges();
+        
+        // Update references to observed player's objects
+        currentObservedNetworkPlayer = player;
+        currentObservedCombatPlayer = player.CombatPlayer;
+        currentObservedPlayerPet = player.CombatPet;
+        currentObservedOpponentPet = player.OpponentCombatPet;
+        currentObservedPlayerHand = player.PlayerHand;
+        currentObservedPetHand = player.PetHand;
+        isObservingOwnBattle = (player == localNetworkPlayer);
+        
+        // Toggle visibility of player hand UI
+        ToggleHandVisibility();
+        
+        // Update UI for observed player's battle
+        UpdateObservedPlayerUI(player);
+        
+        // Set SyncVar change subscriptions to the new player's combat objects
+        SubscribeToObservedPlayerCombatChanges(player);
+    }
+    
+    private void ObserveOwnBattle()
+    {
+        // Unsubscribe from current observed player's combat changes
+        UnsubscribeFromCombatChanges();
+        
+        // Reset to observing own battle
+        currentObservedNetworkPlayer = localNetworkPlayer;
+        currentObservedCombatPlayer = localCombatPlayer;
+        currentObservedPlayerPet = localPlayerCombatPet;
+        currentObservedOpponentPet = opponentCombatPet;
+        currentObservedPlayerHand = localNetworkPlayer.PlayerHand;
+        currentObservedPetHand = localNetworkPlayer.PetHand;
+        currentObservedPlayerIndex = allPlayers.IndexOf(localNetworkPlayer);
+        isObservingOwnBattle = true;
+        
+        // Toggle visibility of player hand UI
+        ToggleHandVisibility();
+        
+        // Re-subscribe to local player's combat changes
+        SubscribeToCombatChanges();
+        
+        // Update UI with local player's combat data
+        UpdateAllUI();
+        
+        // Update player name
+        if (playerNameText != null)
+        {
+            playerNameText.text = localNetworkPlayer.GetSteamName();
+        }
+    }
+    
+    private void ToggleHandVisibility()
+    {
+        Debug.Log("[CombatCanvasManager] Toggling hand visibility");
+        
+        // Update player hand visibility based on what we're observing
+        if (currentObservedPlayerHand != null && playerHandArea != null)
+        {
+            // Position the observed player's hand in the player hand area
+            Transform handTransform = currentObservedPlayerHand.transform;
+            handTransform.SetParent(playerHandArea, false);
+            handTransform.localPosition = Vector3.zero;
+            handTransform.localScale = Vector3.one;
+            handTransform.gameObject.SetActive(true);
+            
+            // Hide other player hands that might be visible
+            foreach (NetworkPlayer player in allPlayers)
+            {
+                if (player != currentObservedNetworkPlayer && player.PlayerHand != null)
+                {
+                    player.PlayerHand.gameObject.SetActive(false);
+                }
+            }
+            
+            // Always use ManualCardArrangement after switching hands
+            Debug.Log($"[CombatCanvasManager] Hand {handTransform.name} activated, calling ManualCardArrangement.");
+            StartCoroutine(ManualCardArrangement(handTransform));
+        }
+    }
+    
+    private IEnumerator ManualCardArrangement(Transform handTransform)
+    {
+        // Give the system a moment to process other changes
+        yield return new WaitForSeconds(0.1f);
+        
+        Debug.Log("[CombatCanvasManager] Performing simplified card arrangement (no animation)");
+        
+        // Count active card objects
+        List<Transform> cardTransforms = new List<Transform>();
+        foreach (Transform child in handTransform)
+        {
+            if (child.gameObject.activeSelf)
+            {
+                cardTransforms.Add(child);
+            }
+        }
+        
+        int cardCount = cardTransforms.Count;
+        if (cardCount > 0)
+        {
+            // Calculate simple horizontal positions
+            float cardWidth = 120f; // Estimated width, adjust as needed
+            float spacing = 10f;   // Basic spacing between cards
+            float totalWidth = (cardCount * cardWidth) + ((cardCount - 1) * spacing);
+            float startX = -totalWidth / 2f + cardWidth / 2f; // Start from the left edge
+            
+            for (int i = 0; i < cardCount; i++)
+            {
+                Transform card = cardTransforms[i];
+                
+                // Calculate simple horizontal position
+                float xPos = startX + (i * (cardWidth + spacing));
+                float yPos = 0; // Keep cards aligned horizontally
+                
+                // Set local position directly without animation
+                card.localPosition = new Vector3(xPos, yPos, 0);
+                
+                // Reset rotation and scale
+                card.localRotation = Quaternion.identity;
+                card.localScale = Vector3.one;
+            }
+        }
+    }
+    
+    private void UpdateObservedPlayerUI(NetworkPlayer player)
+    {
+        if (player == null) return;
+        
+        // Get combat references for observed player
+        CombatPlayer observedCombatPlayer = player.CombatPlayer;
+        CombatPet observedPlayerPet = player.CombatPet;
+        CombatPet observedOpponentPet = player.OpponentCombatPet;
+        
+        // Update player name text with clear indicator
+        if (playerNameText != null)
+        {
+            string playerName = player.GetSteamName();
+            if (!isObservingOwnBattle)
+            {
+                playerNameText.text = $"{playerName}'s Battle [OBSERVING]";
+                // Change color to indicate observing mode
+                playerNameText.color = Color.cyan;
+            }
+            else
+            {
+                playerNameText.text = $"{playerName} [YOU]";
+                // Reset to default color
+                playerNameText.color = Color.white;
+            }
+        }
+        
+        // Update energy UI if available
+        if (observedCombatPlayer != null && playerEnergyText != null)
+        {
+            playerEnergyText.text = $"Energy: {observedCombatPlayer.CurrentEnergy}";
+        }
+        
+        // Update player pet information with owner indication
+        if (observedPlayerPet != null)
+        {
+            if (playerPetHealthText != null)
+            {
+                playerPetHealthText.text = $"Health: {observedPlayerPet.CurrentHealth}/{observedPlayerPet.MaxHealth}";
+            }
+            
+            if (playerPetNameText != null && observedPlayerPet.ReferencePet != null)
+            {
+                string petName = observedPlayerPet.ReferencePet.PetName;
+                string ownerName = player.GetSteamName();
+                playerPetNameText.text = $"{petName} ({ownerName}'s Pet)";
+            }
+        }
+        
+        // Update opponent pet information with owner indication
+        if (observedOpponentPet != null)
+        {
+            if (opponentPetHealthText != null)
+            {
+                opponentPetHealthText.text = $"Health: {observedOpponentPet.CurrentHealth}/{observedOpponentPet.MaxHealth}";
+            }
+            
+            if (opponentPetNameText != null && observedOpponentPet.ReferencePet != null)
+            {
+                string petName = observedOpponentPet.ReferencePet.PetName;
+                NetworkPlayer opponentPlayer = player.OpponentNetworkPlayer;
+                string opponentName = opponentPlayer != null ? opponentPlayer.GetSteamName() : "Unknown";
+                opponentPetNameText.text = $"{petName} ({opponentName}'s Pet)";
+            }
+        }
+        
+        // Update turn indicator if available
+        if (turnIndicatorPlayer != null && observedCombatPlayer != null)
+        {
+            turnIndicatorPlayer.SetActive(observedCombatPlayer.IsMyTurn);
+        }
+        
+        // Disable end turn button when observing other players
+        if (endTurnButton != null)
+        {
+            endTurnButton.interactable = isObservingOwnBattle && observedCombatPlayer != null && observedCombatPlayer.IsMyTurn;
+        }
+    }
+    
+    private void SubscribeToObservedPlayerCombatChanges(NetworkPlayer player)
+    {
+        if (player == null) return;
+        
+        if (currentObservedCombatPlayer != null)
+        {
+            currentObservedCombatPlayer.SyncEnergy.OnChange += OnEnergyChanged;
+            currentObservedCombatPlayer.SyncIsMyTurn.OnChange += OnTurnChanged;
+        }
+        
+        if (currentObservedPlayerPet != null)
+        {
+            currentObservedPlayerPet.SyncHealth.OnChange += OnPlayerPetHealthChanged;
+        }
+        
+        if (currentObservedOpponentPet != null)
+        {
+            currentObservedOpponentPet.SyncHealth.OnChange += OnOpponentPetHealthChanged;
+        }
+        
+        // No need to subscribe to hand changes directly, as cards 
+        // will be updated visually through their own network syncing
+    }
+
+    // Debug method to log all players and their status
+    public void LogAllPlayers()
+    {
+        Debug.Log("-------- [CombatCanvasManager] Logging All Players --------");
+        
+        // Log the static list from NetworkPlayer class
+        Debug.Log($"NetworkPlayer.Players list contains {NetworkPlayer.Players.Count} players:");
+        foreach (NetworkPlayer player in NetworkPlayer.Players)
+        {
+            Debug.Log($"  Static list: {player.GetSteamName()} (IsOwner: {player.IsOwner}, IsServer: {player.IsServer})");
+        }
+        
+        // Find all NetworkPlayer objects in the scene
+        NetworkPlayer[] sceneNetworkPlayers = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        Debug.Log($"Scene search found {sceneNetworkPlayers.Length} NetworkPlayer objects:");
+        foreach (NetworkPlayer player in sceneNetworkPlayers)
+        {
+            string status = player.gameObject.activeInHierarchy ? "Active" : "Inactive";
+            Debug.Log($"  Scene search: {player.GetSteamName()} ({status}, IsOwner: {player.IsOwner}, IsServer: {player.IsServer})");
+            
+            // Log combat objects
+            if (player.CombatPlayer != null)
+            {
+                Debug.Log($"    - Has CombatPlayer: {player.CombatPlayer.name}");
+            }
+            if (player.CombatPet != null)
+            {
+                Debug.Log($"    - Has CombatPet: {player.CombatPet.name}");
+            }
+            if (player.PlayerHand != null)
+            {
+                Debug.Log($"    - Has PlayerHand: {player.PlayerHand.name}");
+            }
+        }
+        
+        // Log our tracked list
+        Debug.Log($"Our allPlayers list contains {allPlayers.Count} players:");
+        foreach (NetworkPlayer player in allPlayers)
+        {
+            Debug.Log($"  Tracked list: {player.GetSteamName()}");
+        }
+        
+        // Log button state
+        if (nextBattleButton != null)
+        {
+            Debug.Log($"NextBattleButton interactable: {nextBattleButton.interactable}");
+        }
+        else
+        {
+            Debug.Log("NextBattleButton reference is null!");
+        }
+        
+        Debug.Log("--------------------------------------------------------");
+    }
+
+    // Public method to force card arrangement - can be called by a UI button if needed
+    public void ForceCardArrangement()
+    {
+        Debug.Log("[CombatCanvasManager] Force card arrangement requested");
+        
+        if (currentObservedPlayerHand != null && currentObservedPlayerHand.gameObject.activeInHierarchy)
+        {
+            Transform handTransform = currentObservedPlayerHand.transform;
+            
+            // Force repositioning
+            if (playerHandArea != null)
+            {
+                handTransform.SetParent(playerHandArea, false);
+                handTransform.localPosition = Vector3.zero;
+                handTransform.localScale = Vector3.one;
+            }
+            
+            // Try to arrange cards
+            StartCoroutine(ManualCardArrangement(handTransform));
+            
+            // If specific cards need adjustment
+            foreach (Transform cardTransform in handTransform)
+            {
+                if (!cardTransform.gameObject.activeInHierarchy)
+                {
+                    cardTransform.gameObject.SetActive(true);
+                }
+            }
+        }
+        else
+        {
+            Debug.LogWarning("[CombatCanvasManager] Cannot force card arrangement - no active player hand");
+        }
+    }
+    
+    // Called when the Next Battle button is pressed again to refresh the view
+    public void RefreshCurrentView()
+    {
+        Debug.Log("[CombatCanvasManager] Refreshing current view");
+        
+        if (isObservingOwnBattle)
+        {
+            ObserveOwnBattle();
+        }
+        else if (currentObservedNetworkPlayer != null)
+        {
+            ObservePlayerBattle(currentObservedNetworkPlayer);
+        }
+        
+        // Force card arrangement
+        StartCoroutine(DelayedCardArrangementRefresh());
+    }
+    
+    // Coroutine to arrange cards after a short delay to ensure UI has updated
+    private IEnumerator DelayedCardArrangementRefresh()
+    {
+        yield return new WaitForSeconds(0.5f);
+        ForceCardArrangement();
     }
 } 

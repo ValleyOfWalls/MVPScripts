@@ -303,50 +303,39 @@ namespace Combat
             int cardCount = cardsInHand.Count;
             if (cardCount == 0) return;
             
-            // Width of the hand area
-            float width = arcWidth;
+            // Use simple horizontal layout (similar to CombatCanvasManager.ManualCardArrangement)
+            float cardWidth = 120f; // Match value from ManualCardArrangement if possible
+            float spacing = 10f;   // Match value from ManualCardArrangement
+            float totalWidth = (cardCount * cardWidth) + ((cardCount - 1) * spacing);
+            float startX = -totalWidth / 2f + cardWidth / 2f; // Start from the left edge
             
-            // Calculate card positions in an arc
+            // Calculate card positions
             for (int i = 0; i < cardCount; i++)
             {
                 Card card = cardsInHand[i];
                 if (card == null) continue;
                 
-                // Calculate a normalized position for this card along the arc (0 to 1)
-                float normalizedPos = cardCount > 1 ? (float)i / (cardCount - 1) : 0.5f;
+                // Calculate simple horizontal position
+                float xPos = startX + (i * (cardWidth + spacing));
+                float yPos = 0; // Keep cards aligned horizontally
                 
-                // Convert to an angle (-80 to 80 degrees for a nice arc spread)
-                float angle = Mathf.Lerp(-80f, 80f, normalizedPos);
+                // Set position and rotation directly
+                Vector3 targetPosition = new Vector3(xPos, yPos, 0);
+                Quaternion targetRotation = Quaternion.identity; // Reset rotation
                 
-                // Calculate position on arc
-                float radians = angle * Mathf.Deg2Rad;
-                
-                // Calculate the final position in local space
-                Vector3 targetPosition = new Vector3(
-                    Mathf.Sin(radians) * (width / 2), // X position along arc
-                    handCurveHeight + Mathf.Abs(Mathf.Cos(radians) * arcHeight), // Y position with height
-                    0
-                );
-                
-                // Calculate rotation to make cards fan out
-                Quaternion targetRotation = Quaternion.Euler(0, 0, angle * 0.5f); // Small rotation relative to angle
-                
-                // Only the server should directly modify transforms for network sync
-                if (IsServer)
-                {
-                    // Animate position with DOTween
-                    card.transform.DOLocalMove(targetPosition, dealAnimationDuration)
-                        .SetEase(Ease.OutBack);
-                    
-                    card.transform.DOLocalRotate(targetRotation.eulerAngles, dealAnimationDuration)
-                        .SetEase(Ease.OutBack);
-                }
-                
+                // Set directly regardless of server/client, removing animation
+                card.transform.localPosition = targetPosition;
+                card.transform.localRotation = targetRotation;
+                card.transform.localScale = Vector3.one; // Ensure scale is reset
+
                 // Update sorting order for all clients
                 Canvas cardCanvas = card.GetComponent<Canvas>();
                 if (cardCanvas != null)
                 {
-                    cardCanvas.sortingOrder = 100 + i;
+                    // Ensure canvas is enabled for sorting order to apply
+                    if (!cardCanvas.enabled) cardCanvas.enabled = true;
+                    cardCanvas.overrideSorting = true; // Take control of sorting
+                    cardCanvas.sortingOrder = 100 + i; // Simple left-to-right sort order
                 }
             }
         }
