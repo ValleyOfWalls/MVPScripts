@@ -9,7 +9,7 @@ using FishNet;
 
 namespace Combat
 {
-    public class PlayerHand : NetworkBehaviour
+    public class PlayerHand : NetworkBehaviour, IHand
     {
         [Header("Hand Settings")]
         [SerializeField] private int maxHandSize = 10;
@@ -44,6 +44,12 @@ namespace Combat
             
             this.gameObject.SetActive(true);
             
+            // Try to find owner and combatPlayer references if they're null
+            if (owner == null || combatPlayer == null)
+            {
+                TryFindReferences();
+            }
+            
             // Set interactability based on ownership
             if (!IsOwner)
             {
@@ -58,6 +64,89 @@ namespace Combat
             
             // Schedule card discovery after a short delay to ensure all objects are spawned
             StartCoroutine(DelayedCardDiscovery());
+            
+            // Schedule a delayed check to find references if they're still missing
+            // This is necessary because parenting might happen after OnStartClient
+            if (owner == null || combatPlayer == null)
+            {
+                StartCoroutine(DelayedReferenceSearch());
+            }
+        }
+        
+        private IEnumerator DelayedReferenceSearch()
+        {
+            // Wait a bit for parenting to be established
+            for (int i = 0; i < 5; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                
+                if (owner != null && combatPlayer != null)
+                    break;
+                    
+                // Try to find references again
+                TryFindReferences();
+                
+                if (owner != null && combatPlayer != null)
+                {
+                    Debug.Log($"[PlayerHand] Found references on retry {i+1}. Owner: {owner.GetSteamName()}");
+                    break;
+                }
+            }
+            
+            if (owner == null || combatPlayer == null)
+            {
+                Debug.LogError($"[PlayerHand] Failed to find references after multiple attempts. IsOwner: {IsOwner}");
+            }
+        }
+        
+        private void TryFindReferences()
+        {
+            // Try to find parent NetworkPlayer
+            Transform parent = transform.parent;
+            if (parent != null)
+            {
+                // Try to get NetworkPlayer from parent
+                NetworkPlayer parentPlayer = parent.GetComponent<NetworkPlayer>();
+                if (parentPlayer != null)
+                {
+                    owner = parentPlayer;
+                    
+                    // Find the CombatPlayer in children of NetworkPlayer
+                    CombatPlayer[] combatPlayers = parent.GetComponentsInChildren<CombatPlayer>();
+                    if (combatPlayers.Length > 0)
+                    {
+                        combatPlayer = combatPlayers[0];
+                    }
+                }
+            }
+            
+            // If still not found, try searching in the scene
+            if (owner == null || combatPlayer == null)
+            {
+                // Try to find owner in the scene if we're the owner
+                if (IsOwner)
+                {
+                    NetworkPlayer[] players = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+                    foreach (var player in players)
+                    {
+                        if (player.IsOwner)
+                        {
+                            owner = player;
+                            break;
+                        }
+                    }
+                    
+                    // Try to find combatPlayer
+                    if (owner != null)
+                    {
+                        CombatPlayer[] combatPlayers = owner.GetComponentsInChildren<CombatPlayer>();
+                        if (combatPlayers.Length > 0)
+                        {
+                            combatPlayer = combatPlayers[0];
+                        }
+                    }
+                }
+            }
         }
         
         private System.Collections.IEnumerator DelayedCardDiscovery()
@@ -76,12 +165,12 @@ namespace Combat
             {
                 if (card != null)
                 {
-                    CanvasGroup canvasGroup = card.GetComponent<CanvasGroup>();
-                    if (canvasGroup != null)
-                    {
-                        canvasGroup.interactable = interactive;
-                        canvasGroup.blocksRaycasts = interactive;
-                    }
+                    // Instead of directly setting interactivity, let the card handle it
+                    // This will use the network ownership check inside Card.UpdateInteractivity
+                    card.UpdateInteractivity();
+                    
+                    // Debug log to help troubleshoot
+                    Debug.Log($"[PlayerHand] Calling UpdateInteractivity() on card {card.CardName}, IsOwner: {card.IsOwner}");
                 }
             }
         }
@@ -173,6 +262,9 @@ namespace Combat
             {
                 cardsInHand.Add(card);
                 //Debug.Log($"[{(IsServer ? "Server" : "Client")}] Registered networked card {card.CardName} to hand, current hand size: {cardsInHand.Count}");
+                
+                // Force update card interactivity
+                card.UpdateInteractivity();
                 
                 // Arrange cards in hand
                 ArrangeCardsInHand();
@@ -298,7 +390,7 @@ namespace Combat
         }
         
         // Update the visual position of all cards in hand
-        private void ArrangeCardsInHand()
+        public void ArrangeCardsInHand()
         {
             int cardCount = cardsInHand.Count;
             if (cardCount == 0) return;
@@ -340,44 +432,77 @@ namespace Combat
             }
         }
         
-        // Discard the entire hand
-        [Client]
-        public void DiscardHand()
+        // Server telling clients to animate discard and destroy
+        [ObserversRpc]
+        private void RpcAnimateDiscard(NetworkObject cardNetworkObject)
         {
-            if (!IsOwner) return;
-            
-           // Debug.Log($"Discarding entire hand of {cardsInHand.Count} cards");
-            
-            // Animate discarding each card
-            foreach (Card card in cardsInHand)
-            {
-                if (card != null)
-                {
-                    // Animate the card flying off screen
-                    Vector3 randomDirection = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), 0).normalized;
-                    card.transform.DOMove(card.transform.position + (randomDirection * 1000), 0.5f)
-                        .SetEase(Ease.InBack);
-                    
-                    card.transform.DOScale(Vector3.zero, 0.5f);
-                    
-                    // Destroy after animation
-                    Destroy(card.gameObject, 0.5f);
-                }
-            }
-            
-            cardsInHand.Clear();
-            
-            // Tell the server the hand was discarded
-            CmdDiscardHand();
+             if (cardNetworkObject == null) 
+             {
+                 Debug.LogWarning("[Client] RpcAnimateDiscard received null NetworkObject.");
+                 return;
+             }
+             
+             Card card = cardNetworkObject.GetComponent<Card>();
+             if (card != null)
+             {
+                 Debug.Log($"[Client] Animating discard for {card.CardName}");
+                 // Animate the card flying off screen
+                 Vector3 randomDirection = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), 0).normalized;
+                 float duration = 0.5f;
+                 card.transform.DOMove(card.transform.position + (randomDirection * 1000), duration)
+                     .SetEase(Ease.InBack);
+                 
+                 card.transform.DOScale(Vector3.zero, duration);
+                 
+                 // Remove from local list immediately if owner (visual only)
+                 if (IsOwner && cardsInHand.Contains(card))
+                 {
+                     cardsInHand.Remove(card);
+                 }
+
+                 // Destroy after animation (or let server handle despawn)
+                 // For networked objects, relying on server despawn is safer.
+                 // Destroy(card.gameObject, duration);
+                 card.gameObject.SetActive(false); // Hide it while waiting for despawn
+             }
+             else
+             {
+                 Debug.LogWarning($"[Client] RpcAnimateDiscard could not find Card component on {cardNetworkObject.name}");
+                 // Potentially just disable the object if Card component is missing
+                 cardNetworkObject.gameObject.SetActive(false);
+             }
         }
-        
-        [ServerRpc]
-        private void CmdDiscardHand()
+
+        // Server authoritative discard hand
+        [Server]
+        public void ServerDiscardHand()
         {
-            if (!IsOwner) return;
-            
-            // Let the combat player handle discarding
-            combatPlayer.DiscardHand();
+             Debug.Log($"[Server] Discarding hand for {owner?.GetSteamName() ?? "Unknown"}. Hand size: {cardsInHand.Count}");
+
+             // Create a temporary list to avoid issues while iterating and removing
+             List<Card> cardsToDiscard = new List<Card>(cardsInHand);
+             cardsInHand.Clear(); // Clear server's list
+
+             foreach (Card card in cardsToDiscard)
+             {
+                 if (card != null)
+                 {
+                    // Tell clients to animate
+                    RpcAnimateDiscard(card.NetworkObject);
+                    
+                    // Despawn the card object
+                    if (card.IsSpawned)
+                    {
+                         InstanceFinder.ServerManager.Despawn(card.gameObject, DespawnType.Destroy); // Use Destroy to clean up
+                    }
+                    else {
+                         Debug.LogWarning($"[Server] Card {card.CardName} was not spawned, destroying directly.");
+                         Destroy(card.gameObject);
+                    }
+                 }
+             }
+             
+             // No need to call ArrangeCardsInHand on server after clearing
         }
         
         // Set the deck this hand is drawing from

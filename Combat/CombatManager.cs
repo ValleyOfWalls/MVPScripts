@@ -159,7 +159,7 @@ namespace Combat
             Dictionary<NetworkPlayer, GameObject> petHandObjs = new Dictionary<NetworkPlayer, GameObject>();
             
             Dictionary<NetworkPlayer, CombatPlayer> combatPlayers = new Dictionary<NetworkPlayer, CombatPlayer>();
-            Dictionary<NetworkPlayer, PlayerHand> playerHands = new Dictionary<NetworkPlayer, PlayerHand>();
+            Dictionary<NetworkPlayer, Combat.PlayerHand> playerHands = new Dictionary<NetworkPlayer, Combat.PlayerHand>();
             Dictionary<NetworkPlayer, CombatPet> combatPets = new Dictionary<NetworkPlayer, CombatPet>();
             Dictionary<NetworkPlayer, PetHand> petHands = new Dictionary<NetworkPlayer, PetHand>();
             Dictionary<NetworkPlayer, RuntimeDeck> playerDecks = new Dictionary<NetworkPlayer, RuntimeDeck>();
@@ -237,7 +237,7 @@ namespace Combat
                     else
                     {
                     GameObject playerHandObj = Instantiate(playerHandPrefab);
-                    PlayerHand playerHand = playerHandObj.GetComponent<PlayerHand>();
+                    Combat.PlayerHand playerHand = playerHandObj.GetComponent<Combat.PlayerHand>();
                      if (playerHand == null) {
                         UnityEngine.Debug.LogError($"[CombatManager] playerHandPrefab is missing PlayerHand component! Cannot instantiate for {player.GetSteamName()}.");
                         Destroy(playerHandObj);
@@ -318,7 +318,7 @@ namespace Combat
                  }
 
                 // Reparent PlayerHand (Child of NetworkPlayer)
-                 if (playerHands.TryGetValue(player, out PlayerHand playerHand)) {
+                 if (playerHands.TryGetValue(player, out Combat.PlayerHand playerHand)) {
                      playerHand.RpcSetParent(playerNob);
                      UnityEngine.Debug.Log($"Reparenting PlayerHand for {player.GetSteamName()} under {player.name}");
                  }
@@ -348,7 +348,7 @@ namespace Combat
             {
                 // Get own components (handle potential missing components from instantiation phase)
                 CombatPlayer ownCombatPlayer = combatPlayers.ContainsKey(player) ? combatPlayers[player] : null;
-                PlayerHand ownPlayerHand = playerHands.ContainsKey(player) ? playerHands[player] : null;
+                Combat.PlayerHand ownPlayerHand = playerHands.ContainsKey(player) ? playerHands[player] : null;
                 CombatPet ownCombatPet = combatPets.ContainsKey(player) ? combatPets[player] : null;
                 PetHand ownPetHand = petHands.ContainsKey(player) ? petHands[player] : null;
                 Pet persistentPet = player.playerPet.Value; // Already checked non-null during instantiation
@@ -942,7 +942,7 @@ namespace Combat
         public CombatPet PlayerPet;
         public CombatPet OpponentPet;
         public NetworkPlayer OpponentPlayer;
-        public PlayerHand PlayerHand;
+        public Combat.PlayerHand PlayerHand;
         public bool TurnCompleted;
         public bool CombatComplete;
         public PetHand PetHand;

@@ -7,6 +7,7 @@ using FishNet.Object.Synchronizing;
 using FishNet.Component.Transforming;
 using System.Collections;
 using FishNet.Connection;
+using Combat;
 
 namespace Combat
 {
@@ -36,6 +37,9 @@ namespace Combat
         
         // Synced variable for GameObject name
         private readonly SyncVar<string> _syncedCardObjectName = new SyncVar<string>();
+        
+        // Synced variable for owning hand reference
+        private readonly SyncVar<NetworkObject> _syncedOwningHandObject = new SyncVar<NetworkObject>();
         
         // Network Component
         private NetworkTransform networkTransform;
@@ -91,7 +95,8 @@ namespace Combat
             // Register SyncVar callbacks
             _syncedCardObjectName.OnChange += OnSyncedCardObjectNameChanged;
             syncedCardDataName.OnChange += OnSyncedCardDataNameChanged;
-           // Debug.Log($"[Card:{GetInstanceID()}] Awake: Registered SyncVar callbacks."); // Use InstanceID pre-network
+            _syncedOwningHandObject.OnChange += OnSyncedOwningHandObjectChanged;
+            // Debug.Log($"[Card:{GetInstanceID()}] Awake: Registered SyncVar callbacks."); // Use InstanceID pre-network
             
             // Initial UI update attempt (might not have data yet)
             // UpdateCardUI(); // Moved to OnStartClient / OnChange
@@ -103,6 +108,7 @@ namespace Combat
             // Debug.Log($"[Card:{(NetworkObject != null ? NetworkObject.ObjectId.ToString() : GetInstanceID().ToString())}] OnDestroy: Unregistering SyncVar callbacks.");
             _syncedCardObjectName.OnChange -= OnSyncedCardObjectNameChanged;
             syncedCardDataName.OnChange -= OnSyncedCardDataNameChanged;
+            _syncedOwningHandObject.OnChange -= OnSyncedOwningHandObjectChanged;
         }
         
         // Called when the syncedCardName changes
@@ -147,6 +153,28 @@ namespace Combat
             else
             {
                 Debug.LogWarning($"[Card:{NetworkObject.ObjectId}] Synced object name was null or empty, not setting name.");
+            }
+        }
+        
+        // Called when the synced owning hand reference changes
+        private void OnSyncedOwningHandObjectChanged(NetworkObject prev, NetworkObject next, bool asServer)
+        {
+            if (!asServer && next != null)
+            {
+                // Try to get the PlayerHand component from the NetworkObject
+                PlayerHand hand = next.GetComponent<PlayerHand>();
+                if (hand != null)
+                {
+                    owningHand = hand;
+                    Debug.Log($"[Client] Card {CardName} set owningHand reference to {hand.name}");
+                    
+                    // Update interactivity now that we have a hand reference
+                    UpdateInteractivity();
+                }
+                else
+                {
+                    Debug.LogWarning($"[Client] Card {CardName} received owningHand NetworkObject but couldn't find PlayerHand component");
+                }
             }
         }
         
@@ -255,6 +283,14 @@ namespace Combat
             this.cardData = data; 
             this.owner = cardOwner;
             this.owningHand = hand; // Store player hand if applicable
+            
+            // Set the owning hand NetworkObject sync var if applicable
+            if (hand != null && hand.NetworkObject != null)
+            {
+                _syncedOwningHandObject.Value = hand.NetworkObject;
+                Debug.Log($"[Server] Set _syncedOwningHandObject to {hand.name} for card {data.cardName}");
+            }
+            
             // We don't store PetHand reference in owningHand field
             
             // Set the synced data name immediately on the server
@@ -262,14 +298,30 @@ namespace Combat
             {
                 // Make sure we set the syncedCardDataName first
                 syncedCardDataName.Value = this.cardData.cardName;
-              //  Debug.Log($"[Server] Set syncedCardDataName to {this.cardData.cardName} for card {this.NetworkObject.ObjectId}");
+                // Debug.Log($"[Server] Set syncedCardDataName to {this.cardData.cardName} for card {this.NetworkObject.ObjectId}");
                 
                 // Also update our local UI immediately on server
                 UpdateCardUI();
+                
+                // Set ownership of the card to the player who should own it
+                if (cardOwner != null && cardOwner is CombatPlayer player && player.Owner != null)
+                {
+                    SetOwnership(player.Owner);
+                }
             }
             else
             {
                 Debug.LogError($"[Server] CardData is NULL when trying to set syncedCardDataName!");
+            }
+        }
+        
+        [Server]
+        public void SetOwnership(NetworkConnection conn)
+        {
+            if (conn != null && NetworkObject != null)
+            {
+                NetworkObject.GiveOwnership(conn);
+                Debug.Log($"[Server] Card {CardName} ownership given to connection {conn.ClientId}");
             }
         }
         
@@ -350,7 +402,8 @@ namespace Combat
              }
         }
 
-        private void UpdateInteractivity()
+        // Made public so it can be called from PlayerHand
+        public void UpdateInteractivity()
         {
             // Only the owner should interact with their cards in PlayerHand
             bool isPlayerCard = owningHand != null; 
@@ -363,7 +416,9 @@ namespace Combat
                 // Keep alpha at 1, use SetPlayable for visual state
                 // cardCanvasGroup.alpha = 1f; 
             }
-           // Debug.Log($"[Client] Card {CardName} interactivity set: {canInteract} (IsOwner: {IsOwner}, IsPlayerCard: {isPlayerCard})");
+            
+            // Add debug log to help identify ownership issues
+            Debug.Log($"[Client] Card {CardName} interactivity: canInteract={canInteract}, IsOwner={IsOwner}, isPlayerCard={isPlayerCard}, NetworkObject.IsOwner={NetworkObject?.IsOwner}");
         }
         
         private void UpdateCardUI()

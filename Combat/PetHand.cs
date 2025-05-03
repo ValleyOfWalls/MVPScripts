@@ -4,10 +4,11 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using DG.Tweening;
+using System.Collections;
 
 namespace Combat
 {
-    public class PetHand : NetworkBehaviour
+    public class PetHand : NetworkBehaviour, IHand
     {
         [Header("Hand Settings")]
         [SerializeField] private int maxHandSize = 7;
@@ -32,7 +33,7 @@ namespace Combat
 
         private void Awake()
         {
-            Debug.Log($"PetHand Awake - Initializing");
+           // Debug.Log($"PetHand Awake - Initializing");
             
             // Register callback for synced card changes
             syncedCardIDs.OnChange += OnSyncedCardsChanged;
@@ -42,14 +43,129 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
-            Debug.Log($"[PetHand] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
+           // Debug.Log($"[PetHand] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
             
             // Debug.Log($"PetHand OnStartClient - PetOwner: {(petOwner != null ? petOwner.GetSteamName() : "Unknown")}");
             
             this.gameObject.SetActive(true);
             
+            // Try to find combatPet and petOwner references if they're null
+            if (combatPet == null || petOwner == null)
+            {
+                TryFindReferences();
+            }
+            
             // Pet cards are visible but not interactive for any player
             SetCardsInteractivity(false);
+            
+            // Schedule a delayed check to find references if they're still missing
+            // This is necessary because parenting might happen after OnStartClient
+            if (combatPet == null || petOwner == null)
+            {
+                StartCoroutine(DelayedReferenceSearch());
+            }
+        }
+        
+        private IEnumerator DelayedReferenceSearch()
+        {
+            // Wait a bit for parenting to be established
+            for (int i = 0; i < 5; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                
+                if (combatPet != null && petOwner != null)
+                    break;
+                    
+                // Try to find references again
+                TryFindReferences();
+                
+                if (combatPet != null && petOwner != null)
+                {
+                 //   Debug.Log($"[PetHand] Found references on retry {i+1}. Owner: {petOwner.GetSteamName()}");
+                    break;
+                }
+            }
+            
+            if (combatPet == null || petOwner == null)
+            {
+                Debug.LogError($"[PetHand] Failed to find references after multiple attempts. IsOwner: {IsOwner}");
+            }
+        }
+        
+        private void TryFindReferences()
+        {
+            // Try to find parent Pet
+            Transform parent = transform.parent;
+            if (parent != null)
+            {
+                // Try to get Pet from parent
+                Pet parentPet = parent.GetComponent<Pet>();
+                if (parentPet != null)
+                {
+                    petOwner = parentPet.PlayerOwner;
+                    
+                    // Find the CombatPet in children of Pet
+                    CombatPet[] combatPets = parent.GetComponentsInChildren<CombatPet>();
+                    if (combatPets.Length > 0)
+                    {
+                        combatPet = combatPets[0];
+                    }
+                }
+            }
+            
+            // If still not found, try searching in the scene
+            if (combatPet == null || petOwner == null)
+            {
+                // First try to find relevant pets in the scene
+                Pet[] pets = FindObjectsByType<Pet>(FindObjectsSortMode.None);
+                foreach (var pet in pets)
+                {
+                    if (pet.PlayerOwner != null && (IsOwner == pet.PlayerOwner.IsOwner))
+                    {
+                        petOwner = pet.PlayerOwner;
+                        
+                        // Find CombatPet as child of this Pet
+                        CombatPet[] combatPets = pet.GetComponentsInChildren<CombatPet>();
+                        if (combatPets.Length > 0)
+                        {
+                            combatPet = combatPets[0];
+                            break;
+                        }
+                    }
+                }
+                
+                // Last resort: search for CombatPet objects directly
+                if (combatPet == null)
+                {
+                    CombatPet[] allCombatPets = FindObjectsByType<CombatPet>(FindObjectsSortMode.None);
+                    if (allCombatPets.Length > 0)
+                    {
+                        // Prefer the one that belongs to this client if IsOwner
+                        foreach (var cp in allCombatPets)
+                        {
+                            if (cp.ReferencePet != null && cp.ReferencePet.PlayerOwner != null)
+                            {
+                                if (IsOwner == cp.ReferencePet.PlayerOwner.IsOwner)
+                                {
+                                    combatPet = cp;
+                                    petOwner = cp.ReferencePet.PlayerOwner;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // If still not found, just take the first one
+                        if (combatPet == null && allCombatPets.Length > 0)
+                        {
+                            combatPet = allCombatPets[0];
+                            if (combatPet.ReferencePet != null)
+                            {
+                                petOwner = combatPet.ReferencePet.PlayerOwner;
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         // Helper to set interactivity of all cards
@@ -84,7 +200,7 @@ namespace Combat
             if (combatPet != null && combatPet.PetDeck != null)
             {
                 petDeck = combatPet.PetDeck;
-                Debug.Log($"PetHand initialized with combat pet's deck containing {petDeck.DrawPileCount} cards");
+              //  Debug.Log($"PetHand initialized with combat pet's deck containing {petDeck.DrawPileCount} cards");
             }
             else
             {
@@ -97,13 +213,13 @@ namespace Combat
             else if (combatPet != null && combatPet.ReferencePet != null && combatPet.ReferencePet.PlayerOwner != null)
                 ownerName = combatPet.ReferencePet.PlayerOwner.GetSteamName();
                 
-            Debug.Log($"PetHand initialized for combat pet owned by {ownerName}");
+           // Debug.Log($"PetHand initialized for combat pet owned by {ownerName}");
         }
         
         [Server]
         public void DrawInitialHand(int cardCount)
         {
-            Debug.Log($"[Server] Drawing initial hand of {cardCount} cards for pet");
+          //  Debug.Log($"[Server] Drawing initial hand of {cardCount} cards for pet");
             DrawCards(cardCount);
         }
         
@@ -124,7 +240,7 @@ namespace Combat
                 return;
             }
             
-            Debug.Log($"[Server] DrawCards - Drawing {count} cards for pet");
+           // Debug.Log($"[Server] DrawCards - Drawing {count} cards for pet");
             
             // Draw the requested number of cards
             for (int i = 0; i < count; i++)
@@ -176,7 +292,7 @@ namespace Combat
             // OBSOLETE: Clients no longer create cards here. 
             // They rely on the spawned NetworkObject and Card.OnStartClient.
             // The server manages card object creation and parenting.
-            Debug.Log($"[Client] PetHand RpcAddCardToHand received for card: {cardName}. Waiting for Card object spawn.");
+          //  Debug.Log($"[Client] PetHand RpcAddCardToHand received for card: {cardName}. Waiting for Card object spawn.");
             
             // OLD CODE REMOVED:
             // // Find the card data
@@ -234,7 +350,7 @@ namespace Combat
             
             // Get card info
             string cardName = syncedCardIDs[cardIndex];
-            Debug.Log($"[Server] Pet playing card {cardName} at index {cardIndex}");
+          //  Debug.Log($"[Server] Pet playing card {cardName} at index {cardIndex}");
             
             // Remove from synced list and notify clients
             syncedCardIDs.RemoveAt(cardIndex);
@@ -253,12 +369,12 @@ namespace Combat
                 Destroy(cardsInHand[cardIndex].gameObject);
                 cardsInHand.RemoveAt(cardIndex);
                 ArrangeCardsInHand();
-                Debug.Log($"[Client] Removed card {cardName} from pet's visual hand");
+               // Debug.Log($"[Client] Removed card {cardName} from pet's visual hand");
             }
         }
         
         // Update the visual position of all cards in hand
-        private void ArrangeCardsInHand()
+        public void ArrangeCardsInHand()
         {
             int cardCount = cardsInHand.Count;
             if (cardCount == 0) return;
@@ -298,7 +414,7 @@ namespace Combat
         [Server]
         public void DiscardHand()
         {
-            Debug.Log($"[Server] Discarding pet hand with {cardsInHand.Count} cards");
+          //  Debug.Log($"[Server] Discarding pet hand with {cardsInHand.Count} cards");
             
             // Clear the synced list
             syncedCardIDs.Clear();
@@ -310,7 +426,7 @@ namespace Combat
         [ObserversRpc]
         private void RpcDiscardHand()
         {
-            Debug.Log($"[Client] Discarding {cardsInHand.Count} cards from pet hand");
+          //  Debug.Log($"[Client] Discarding {cardsInHand.Count} cards from pet hand");
             
             // Destroy all card GameObjects
             foreach (Card card in cardsInHand)
@@ -347,7 +463,7 @@ namespace Combat
             if (parentTransform != null)
             {
                 transform.SetParent(parentTransform, false);
-                Debug.Log($"[PetHand:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
+            //    Debug.Log($"[PetHand:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
             }
             else
             {

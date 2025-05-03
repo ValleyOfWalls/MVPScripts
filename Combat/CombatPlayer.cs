@@ -37,6 +37,7 @@ namespace Combat
         public SyncVar<bool> SyncIsMyTurn => _isMyTurn;
         public SyncVar<int> SyncEnergy => _currentEnergy;
         public NetworkPlayer NetworkPlayer => _networkPlayer.Value;
+        public NetworkConnection Owner => _networkPlayer.Value != null ? _networkPlayer.Value.Owner : null;
         public bool IsMyTurn => _isMyTurn.Value;
         public int CurrentEnergy => _currentEnergy.Value;
         public int MaxEnergy => _maxEnergy.Value;
@@ -293,8 +294,8 @@ namespace Combat
             // Set turn state
             _isMyTurn.Value = false;
             
-            // Clear hand at end of turn
-            TargetDiscardHand(Owner);
+            // Clear hand at end of turn - Logic moved to CmdEndTurn
+            // TargetDiscardHand(Owner);
             
             // Notify combat manager that turn is over
             combatManager.PlayerEndedTurn(this);
@@ -326,10 +327,46 @@ namespace Combat
         [ServerRpc(RequireOwnership = true)]
         public void CmdEndTurn()
         {
-            if (!IsOwner || !_isMyTurn.Value) return;
+            if (!IsMyTurn) return; // Only end turn if it's currently this player's turn
+
+            Debug.Log($"[Server] CmdEndTurn received from {NetworkPlayer?.GetSteamName() ?? "Unknown"}");
+
+            // End the turn logic (set IsMyTurn to false, notify CombatManager)
+            _isMyTurn.Value = false;
             
-            // End the turn on the server
-            EndTurn();
+            // Discard Hand
+            if (playerHand != null)
+            {
+                 playerHand.ServerDiscardHand();
+            }
+            else
+            {
+                 Debug.LogError($"[Server] Cannot discard hand for {NetworkPlayer?.GetSteamName()} - PlayerHand reference is null.");
+            }
+            
+            // Draw new hand
+            // TODO: Define standard hand size properly
+            int handSizeToDraw = 5; 
+            if (playerHand != null)
+            {
+                 // The TargetDrawCards -> CmdDrawCards flow should work
+                 TargetDrawCards(Owner, handSizeToDraw);
+                 Debug.Log($"[Server] Initiated draw of {handSizeToDraw} cards for {NetworkPlayer?.GetSteamName()}");
+            }
+             else
+            {
+                 Debug.LogError($"[Server] Cannot draw new hand for {NetworkPlayer?.GetSteamName()} - PlayerHand reference is null.");
+            }
+
+            // Tell the CombatManager to switch turns
+            if (combatManager != null)
+            {
+                combatManager.PlayerEndedTurn(this);
+            }
+            else
+            {
+                 Debug.LogError("CmdEndTurn - CombatManager reference is null!");
+            }
         }
         
         // Play a card from hand
@@ -671,14 +708,6 @@ namespace Combat
             {
                 Debug.LogError("Failed to find owned PlayerHand after delay, cannot draw cards");
             }
-        }
-        
-        [TargetRpc]
-        private void TargetDiscardHand(NetworkConnection conn)
-        {
-            Debug.Log("Client received request to discard hand");
-            if (playerHand != null)
-                playerHand.DiscardHand();
         }
         
         [TargetRpc]

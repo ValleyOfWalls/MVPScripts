@@ -30,6 +30,9 @@ public class CombatCanvasManager : MonoBehaviour
     // Add reference to Card UI prefab if needed
     // [SerializeField] private GameObject cardUiPrefab; 
 
+    [Header("Opponent Pet Hand UI")]
+    [SerializeField] private Transform opponentPetHandArea; // Parent transform for opponent pet hand cards
+
     [Header("Player Pet UI")]
     [SerializeField] private TextMeshProUGUI playerPetNameText;
     [SerializeField] private TextMeshProUGUI playerPetHealthText;
@@ -237,7 +240,7 @@ public class CombatCanvasManager : MonoBehaviour
                      opponentCombatPet = opponentPlayer.playerPet.Value.GetComponentInChildren<CombatPet>();
                      if (opponentCombatPet != null)
                      {
-                          UnityEngine.Debug.Log($"[CombatCanvasManager] Found opponent CombatPet: {opponentCombatPet.name} ({opponentCombatPet.NetworkObject.ObjectId}) under {opponentPlayer.playerPet.Value.name}");
+                         // UnityEngine.Debug.Log($"[CombatCanvasManager] Found opponent CombatPet: {opponentCombatPet.name} ({opponentCombatPet.NetworkObject.ObjectId}) under {opponentPlayer.playerPet.Value.name}");
                          break;
                      }
                  }
@@ -278,7 +281,7 @@ public class CombatCanvasManager : MonoBehaviour
         // Wait a short time for all network objects to be properly set up
         yield return new WaitForSeconds(1.5f);
         
-        Debug.Log("[CombatCanvasManager] Performing initial hand positioning");
+       // Debug.Log("[CombatCanvasManager] Performing initial hand positioning");
         
         // Ensure the player hand is properly positioned
         if (localNetworkPlayer != null && localNetworkPlayer.PlayerHand != null && playerHandArea != null)
@@ -305,16 +308,55 @@ public class CombatCanvasManager : MonoBehaviour
                 
                 if (arrangeMethod != null)
                 {
-                    Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method");
+                   // Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method");
                     arrangeMethod.Invoke(playerHand, null);
                 }
                 else
                 {
                     // Try to call a public RPC method that might trigger card arrangement
-                    Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found, trying to trigger a refresh");
+                  //  Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found, trying to trigger a refresh");
                     // This is a fallback in case there's no direct method access
                     playerHand.gameObject.SetActive(false);
                     playerHand.gameObject.SetActive(true);
+                }
+            }
+        }
+        
+        // Position the opponent pet hand as well
+        if (localNetworkPlayer != null && localNetworkPlayer.OpponentNetworkPlayer != null && 
+            localNetworkPlayer.OpponentNetworkPlayer.PetHand != null && opponentPetHandArea != null)
+        {
+            currentObservedPetHand = localNetworkPlayer.OpponentNetworkPlayer.PetHand;
+            
+            // Position the opponent pet hand in the correct UI area
+            Transform petHandTransform = currentObservedPetHand.transform;
+            petHandTransform.SetParent(opponentPetHandArea, false);
+            petHandTransform.localPosition = Vector3.zero;
+            petHandTransform.localScale = Vector3.one;
+            petHandTransform.gameObject.SetActive(true);
+            
+            // If the pet hand has a method to arrange cards, try to call it
+            PetHand petHand = petHandTransform.GetComponent<PetHand>();
+            if (petHand != null)
+            {
+                // Try to access ArrangeCardsInHand via reflection (similar to player hand)
+                System.Reflection.MethodInfo arrangeMethod = 
+                    typeof(PetHand).GetMethod("ArrangeCardsInHand", 
+                    System.Reflection.BindingFlags.Instance | 
+                    System.Reflection.BindingFlags.Public | 
+                    System.Reflection.BindingFlags.NonPublic);
+                
+                if (arrangeMethod != null)
+                {
+                  //  Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method for pet hand");
+                    arrangeMethod.Invoke(petHand, null);
+                }
+                else
+                {
+                    // Try to call a public RPC method that might trigger card arrangement
+                   // Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found for pet hand, trying to trigger a refresh");
+                    petHand.gameObject.SetActive(false);
+                    petHand.gameObject.SetActive(true);
                 }
             }
         }
@@ -528,7 +570,7 @@ public class CombatCanvasManager : MonoBehaviour
             if (player != null && player.gameObject.activeInHierarchy)
             {
                 allPlayers.Add(player);
-                Debug.Log($"[CombatCanvasManager] Found player: {player.GetSteamName()}");
+               // Debug.Log($"[CombatCanvasManager] Found player: {player.GetSteamName()}");
             }
         }
         
@@ -540,7 +582,7 @@ public class CombatCanvasManager : MonoBehaviour
         
         // Get the player's hand
         currentObservedPlayerHand = localNetworkPlayer.PlayerHand;
-        currentObservedPetHand = localNetworkPlayer.PetHand;
+        currentObservedPetHand = localNetworkPlayer.OpponentNetworkPlayer?.PetHand;
         
         currentObservedPlayerIndex = allPlayers.IndexOf(localNetworkPlayer);
         isObservingOwnBattle = true;
@@ -550,7 +592,7 @@ public class CombatCanvasManager : MonoBehaviour
         {
             bool hasMultiplePlayers = allPlayers.Count > 1;
             nextBattleButton.interactable = hasMultiplePlayers;
-            Debug.Log($"[CombatCanvasManager] NextBattleButton interactable set to: {hasMultiplePlayers} (Found {allPlayers.Count} players)");
+           // Debug.Log($"[CombatCanvasManager] NextBattleButton interactable set to: {hasMultiplePlayers} (Found {allPlayers.Count} players)");
         }
         else
         {
@@ -572,14 +614,14 @@ public class CombatCanvasManager : MonoBehaviour
     {
         if (nextBattleButton != null)
         {
-            Debug.Log("[CombatCanvasManager] Force enabling NextBattleButton");
+          //  Debug.Log("[CombatCanvasManager] Force enabling NextBattleButton");
             nextBattleButton.interactable = true;
         }
     }
     
     public void OnNextBattleButtonPressed()
     {
-        Debug.Log("[CombatCanvasManager] NextBattleButton pressed");
+        //Debug.Log("[CombatCanvasManager] NextBattleButton pressed");
         
         // Refresh the player list in case players have joined or left
         RefreshPlayerList();
@@ -598,7 +640,7 @@ public class CombatCanvasManager : MonoBehaviour
             Transform handTransform = localNetworkPlayer.PlayerHand.transform;
             if (handTransform.parent != playerHandArea)
             {
-                Debug.Log("[CombatCanvasManager] First button press - positioning hand correctly");
+               // Debug.Log("[CombatCanvasManager] First button press - positioning hand correctly");
                 handTransform.SetParent(playerHandArea, false);
                 handTransform.localPosition = Vector3.zero;
                 handTransform.localScale = Vector3.one;
@@ -660,7 +702,7 @@ public class CombatCanvasManager : MonoBehaviour
             if (player != null && player.gameObject.activeInHierarchy)
             {
                 allPlayers.Add(player);
-                Debug.Log($"[CombatCanvasManager] Refreshed player list - Found: {player.GetSteamName()}");
+               // Debug.Log($"[CombatCanvasManager] Refreshed player list - Found: {player.GetSteamName()}");
             }
         }
         
@@ -700,7 +742,7 @@ public class CombatCanvasManager : MonoBehaviour
         currentObservedPlayerPet = player.CombatPet;
         currentObservedOpponentPet = player.OpponentCombatPet;
         currentObservedPlayerHand = player.PlayerHand;
-        currentObservedPetHand = player.PetHand;
+        currentObservedPetHand = player.OpponentNetworkPlayer?.PetHand;
         isObservingOwnBattle = (player == localNetworkPlayer);
         
         // Toggle visibility of player hand UI
@@ -724,7 +766,7 @@ public class CombatCanvasManager : MonoBehaviour
         currentObservedPlayerPet = localPlayerCombatPet;
         currentObservedOpponentPet = opponentCombatPet;
         currentObservedPlayerHand = localNetworkPlayer.PlayerHand;
-        currentObservedPetHand = localNetworkPlayer.PetHand;
+        currentObservedPetHand = localNetworkPlayer.OpponentNetworkPlayer?.PetHand;
         currentObservedPlayerIndex = allPlayers.IndexOf(localNetworkPlayer);
         isObservingOwnBattle = true;
         
@@ -746,7 +788,7 @@ public class CombatCanvasManager : MonoBehaviour
     
     private void ToggleHandVisibility()
     {
-        Debug.Log("[CombatCanvasManager] Toggling hand visibility");
+        //Debug.Log("[CombatCanvasManager] Toggling hand visibility");
         
         // Update player hand visibility based on what we're observing
         if (currentObservedPlayerHand != null && playerHandArea != null)
@@ -768,8 +810,32 @@ public class CombatCanvasManager : MonoBehaviour
             }
             
             // Always use ManualCardArrangement after switching hands
-            Debug.Log($"[CombatCanvasManager] Hand {handTransform.name} activated, calling ManualCardArrangement.");
+            //Debug.Log($"[CombatCanvasManager] Hand {handTransform.name} activated, calling ManualCardArrangement.");
             StartCoroutine(ManualCardArrangement(handTransform));
+        }
+        
+        // Update opponent pet hand visibility based on what we're observing
+        if (currentObservedPetHand != null && opponentPetHandArea != null)
+        {
+            // Position the observed opponent's pet hand in the opponent pet hand area
+            Transform petHandTransform = currentObservedPetHand.transform;
+            petHandTransform.SetParent(opponentPetHandArea, false);
+            petHandTransform.localPosition = Vector3.zero;
+            petHandTransform.localScale = Vector3.one;
+            petHandTransform.gameObject.SetActive(true);
+            
+            // Hide other pet hands that might be visible
+            foreach (NetworkPlayer player in allPlayers)
+            {
+                if (player != currentObservedNetworkPlayer.OpponentNetworkPlayer && player.PetHand != null)
+                {
+                    player.PetHand.gameObject.SetActive(false);
+                }
+            }
+            
+            // Arrange cards in the pet hand
+            //Debug.Log($"[CombatCanvasManager] Pet Hand {petHandTransform.name} activated, calling ManualCardArrangement.");
+            StartCoroutine(ManualCardArrangement(petHandTransform));
         }
     }
     
@@ -778,7 +844,7 @@ public class CombatCanvasManager : MonoBehaviour
         // Give the system a moment to process other changes
         yield return new WaitForSeconds(0.1f);
         
-        Debug.Log("[CombatCanvasManager] Performing simplified card arrangement (no animation)");
+       // Debug.Log("[CombatCanvasManager] Performing simplified card arrangement (no animation)");
         
         // Count active card objects
         List<Transform> cardTransforms = new List<Transform>();
@@ -1008,12 +1074,38 @@ public class CombatCanvasManager : MonoBehaviour
         {
             Debug.LogWarning("[CombatCanvasManager] Cannot force card arrangement - no active player hand");
         }
+        
+        // Also arrange opponent pet hand cards
+        if (currentObservedPetHand != null && currentObservedPetHand.gameObject.activeInHierarchy)
+        {
+            Transform petHandTransform = currentObservedPetHand.transform;
+            
+            // Force repositioning
+            if (opponentPetHandArea != null)
+            {
+                petHandTransform.SetParent(opponentPetHandArea, false);
+                petHandTransform.localPosition = Vector3.zero;
+                petHandTransform.localScale = Vector3.one;
+            }
+            
+            // Try to arrange cards
+            StartCoroutine(ManualCardArrangement(petHandTransform));
+            
+            // If specific cards need adjustment
+            foreach (Transform cardTransform in petHandTransform)
+            {
+                if (!cardTransform.gameObject.activeInHierarchy)
+                {
+                    cardTransform.gameObject.SetActive(true);
+                }
+            }
+        }
     }
     
     // Called when the Next Battle button is pressed again to refresh the view
     public void RefreshCurrentView()
     {
-        Debug.Log("[CombatCanvasManager] Refreshing current view");
+       // Debug.Log("[CombatCanvasManager] Refreshing current view");
         
         if (isObservingOwnBattle)
         {
