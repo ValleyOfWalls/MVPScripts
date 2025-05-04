@@ -375,9 +375,21 @@ public class CardDragHandler : NetworkBehaviour, IBeginDragHandler, IDragHandler
     {
         // Return the card to its original position and parent
         transform.SetParent(originalParent);
-        transform.position = originalPosition;
+        
+        // Make sure we explicitly reset the Z position to prevent cards from disappearing behind the canvas
+        Vector3 returnPosition = originalPosition;
+        
+        // Reset local position and scale
+        transform.position = returnPosition;
         transform.localScale = originalScale;
         canvasGroup.alpha = 1.0f;
+        
+        // Reset the Z position explicitly to ensure card visibility by getting the PlayerHand component
+        PlayerHand playerHand = GetComponentInParent<PlayerHand>();
+        if (playerHand != null)
+        {
+            playerHand.ArrangeCardsInHand();
+        }
         
         // Inform the card
         card.ReturnToHand();

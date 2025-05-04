@@ -686,11 +686,32 @@ namespace Combat
         public void ReturnToHand()
         {
             // Return to original position and scale
-            transform.DOMove(originalPosition, 0.3f)
+            // We need to make sure the Z position doesn't get pushed back behind the canvas
+            Vector3 returnPosition = originalPosition;
+            
+            // Return to position with controlled animation
+            transform.DOMove(returnPosition, 0.3f)
                 .SetEase(Ease.OutQuint);
             
             transform.DOScale(originalScale, 0.3f)
                 .SetEase(Ease.OutQuint);
+            
+            // Make sure the hand knows to arrange cards
+            PlayerHand playerHand = GetComponentInParent<PlayerHand>();
+            if (playerHand != null)
+            {
+                // Wait briefly for animation then arrange cards
+                StartCoroutine(DelayedHandArrangement(playerHand));
+            }
+        }
+        
+        private IEnumerator DelayedHandArrangement(PlayerHand hand)
+        {
+            // Wait for return animation to complete
+            yield return new WaitForSeconds(0.35f);
+            
+            // Ask the hand to arrange all cards
+            hand.ArrangeCardsInHand();
         }
         
         public void OnPointerEnter()

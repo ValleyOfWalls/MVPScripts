@@ -66,6 +66,9 @@ namespace Combat
             float totalWidth = spacing * (cardCount - 1);
             float startX = -totalWidth / 2f;
             
+            // Define a consistent z-position for all cards in hand to prevent issues with cards disappearing
+            const float consistentZPosition = 0f;
+            
             for (int i = 0; i < cardCount; i++)
             {
                 Card card = cardsInHand[i];
@@ -80,8 +83,8 @@ namespace Combat
                 float rotationAngle = Mathf.Lerp(-10f, 10f, normalizedPos);
                 Quaternion targetRotation = Quaternion.Euler(0, 0, rotationAngle);
                 
-                // Set positions directly
-                card.transform.localPosition = new Vector3(xPos, yPos, 0);
+                // Set positions directly - IMPORTANT: Always use consistent Z position
+                card.transform.localPosition = new Vector3(xPos, yPos, consistentZPosition);
                 card.transform.localRotation = targetRotation;
                 card.transform.localScale = Vector3.one;
 
