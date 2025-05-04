@@ -329,22 +329,44 @@ namespace Combat
         {
             if (petDeck == null)
             {
-                Debug.LogError($"[Server] CombatPet cannot draw card: petDeck is null!");
+                Debug.LogError("[Server] CombatPet cannot draw card: petDeck is null!");
                 return null;
             }
-            
-            // Draw from the RuntimeDeck
+
+            // Draw from the actual RuntimeDeck
             CardData drawnCard = petDeck.DrawCard();
             
+            // Log results
             if (drawnCard == null)
             {
-                Debug.LogWarning($"[Server] CombatPet drew null card (Deck empty or needs reshuffle)");
+                Debug.LogWarning("[Server] CombatPet drew null card (Deck empty or needs reshuffle)");
+                
+                // Handle empty deck by reshuffling discard pile
+                if (petDeck.NeedsReshuffle())
+                {
+                    Debug.Log("[Server] CombatPet reshuffling discard pile into draw pile");
+                    petDeck.Reshuffle();
+                    
+                    // Try drawing again after reshuffle
+                    drawnCard = petDeck.DrawCard();
+                    
+                    if (drawnCard != null)
+                    {
+                        Debug.Log($"[Server] CombatPet successfully drew {drawnCard.cardName} after reshuffling");
+                    }
+                }
+                
+                // If still null after reshuffling, log an error
+                if (drawnCard == null)
+                {
+                    Debug.LogError("[Server] CombatPet no cards available, deck empty and cannot reshuffle!");
+                }
             }
             else
             {
                 Debug.Log($"[Server] CombatPet drew card: {drawnCard.cardName}");
             }
-            
+
             return drawnCard;
         }
         
@@ -389,6 +411,127 @@ namespace Combat
             {
                  Debug.LogError($"[CombatPet:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
             }
+        }
+
+        // Called from CombatManager when it's this pet's turn
+        [Server]
+        public void StartTurn()
+        {
+            Debug.Log($"[CombatPet] Starting turn for pet {(referencePet != null ? referencePet.PetName : "Unknown")}");
+            
+            // Pet should not draw cards at the start of its turn - it should use cards already in hand
+            // DrawCards(3);  // REMOVED: Pets should only draw at the start of player turns
+            
+            // Take AI turn after a short delay
+            StartCoroutine(TakeTurnAfterDelay(1.0f));
+        }
+
+        // Coroutine to introduce a delay before AI actions
+        private System.Collections.IEnumerator TakeTurnAfterDelay(float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            
+            // Take the AI turn
+            TakeTurn();
+        }
+
+        // Execute the AI turn logic
+        [Server]
+        private void TakeTurn()
+        {
+            Debug.Log($"[CombatPet] Taking turn as AI");
+            
+            // Simple AI: Play all cards in hand
+            if (petHand != null)
+            {
+                // Get cards in the pet's hand
+                List<Card> cardsInHand = petHand.GetCardsInHand();
+                
+                // Play each card with a delay
+                StartCoroutine(PlayCardsSequentially(cardsInHand));
+            }
+            else
+            {
+                Debug.LogError($"[CombatPet] Cannot take turn - petHand is null");
+                // End turn immediately since there's nothing to do
+                EndTurn();
+            }
+        }
+
+        // Play cards one after another with delay
+        private System.Collections.IEnumerator PlayCardsSequentially(List<Card> cards)
+        {
+            if (cards == null || cards.Count == 0)
+            {
+                EndTurn();
+                yield break;
+            }
+            
+            foreach (Card card in new List<Card>(cards)) // Create a copy of the list to avoid modification issues
+            {
+                // Play the card
+                Debug.Log($"[CombatPet] AI playing card: {card.CardName}");
+                
+                // Find target (for now, always target the opponent pet)
+                CombatPet targetPet = FindOpponentPet();
+                
+                // Apply card effect based on type
+                switch (card.Type)
+                {
+                    case CardType.Attack:
+                        if (targetPet != null)
+                            targetPet.TakeDamage(card.BaseValue);
+                        break;
+                    case CardType.Skill:
+                        // Apply defense to self
+                        SetDefending(true);
+                        break;
+                    case CardType.Power:
+                        // Special effects would go here
+                        break;
+                }
+                
+                // Remove card from hand
+                petHand.RemoveCard(card);
+                
+                // Wait before playing next card
+                yield return new WaitForSeconds(1.0f);
+            }
+            
+            // End turn after all cards played
+            EndTurn();
+        }
+
+        // Find the opponent's pet
+        private CombatPet FindOpponentPet()
+        {
+            // In a proper implementation, this would get the correct opponent
+            // For now, we'll find the first combat pet that's not this one
+            CombatPet[] pets = FindObjectsByType<CombatPet>(FindObjectsSortMode.None);
+            foreach (CombatPet pet in pets)
+            {
+                if (pet != this)
+                {
+                    return pet;
+                }
+            }
+            return null;
+        }
+
+        // End the pet's turn
+        [Server]
+        private void EndTurn()
+        {
+            Debug.Log($"[CombatPet] Ending turn");
+            
+            // Discard remaining cards
+            if (petHand != null)
+            {
+                petHand.ServerDiscardHand();
+            }
+            
+            // Notify combat manager that turn is over
+            CombatManager.Instance.PetEndedTurn(this);
         }
     }
 } 

@@ -281,6 +281,10 @@ namespace Combat
                 else
                 {
                     Debug.LogWarning("[Server] Pet drew null card (Deck empty?)");
+                    
+                    // Since CombatPet.DrawCardFromDeck now handles reshuffling internally,
+                    // if we get null here it means there are truly no cards available
+                    Debug.LogError("[Server] Pet has no cards available to draw");
                     break; // Stop drawing if deck is empty
                 }
             }
@@ -469,6 +473,83 @@ namespace Combat
             {
                  Debug.LogError($"[PetHand:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
             }
+        }
+
+        // Get a copy of the cards in hand for AI to use
+        public List<Card> GetCardsInHand()
+        {
+            return new List<Card>(cardsInHand);
+        }
+
+        // Remove a specific card from hand (for AI usage)
+        [Server]
+        public void RemoveCard(Card card)
+        {
+            if (card == null) return;
+            
+            int cardIndex = cardsInHand.IndexOf(card);
+            if (cardIndex >= 0)
+            {
+                string cardName = card.CardName;
+                
+                // Remove from synced list and destroy the card
+                if (cardIndex < syncedCardIDs.Count)
+                {
+                    syncedCardIDs.RemoveAt(cardIndex);
+                }
+                
+                // Tell clients to remove the card
+                RpcRemoveCardFromHand(cardIndex, cardName);
+                
+                // Destroy the card on server
+                Destroy(card.gameObject);
+            }
+        }
+
+        // Server-side discard hand implementation
+        [Server]
+        public void ServerDiscardHand()
+        {
+            // Clear synced list
+            syncedCardIDs.Clear();
+            
+            // Get a copy of the cards to avoid issues while modifying the list
+            List<Card> cardsToDiscard = new List<Card>(cardsInHand);
+            
+            // Add the cards to the discard pile in the deck before destroying them
+            if (combatPet != null && combatPet.PetDeck != null)
+            {
+                foreach (Card card in cardsToDiscard)
+                {
+                    if (card != null && card.Data != null)
+                    {
+                        // Add card data to discard pile in the deck
+                        combatPet.PetDeck.DiscardCard(card.Data);
+                        Debug.Log($"[Server] Added pet card {card.CardName} to discard pile. Discard pile now has {combatPet.PetDeck.DiscardPileCount} cards.");
+                    }
+                }
+            }
+            else
+            {
+                Debug.LogError($"[Server] Could not discard pet cards to deck: combatPet={combatPet}, petDeck={(combatPet != null ? combatPet.PetDeck != null ? "valid" : "null" : "N/A")}");
+            }
+            
+            // Destroy card objects on server
+            foreach (Card card in cardsToDiscard)
+            {
+                if (card != null)
+                {
+                    Destroy(card.gameObject);
+                }
+            }
+            
+            // Clear local list
+            cardsInHand.Clear();
+            
+            // Notify clients to discard their hand
+            RpcDiscardHand();
+            
+            Debug.Log("[Server] Pet hand discarded");
         }
     }
 } 

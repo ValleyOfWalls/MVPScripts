@@ -595,23 +595,70 @@ namespace Combat
                 return;
             }
             
-            UnityEngine.Debug.Log($"[CombatManager] Player {networkPlayer.GetSteamName()} ended their turn");
-            
             // Mark this player's turn as completed
             if (activeCombats.TryGetValue(networkPlayer, out CombatData combatData))
             {
                 combatData.TurnCompleted = true;
                 
-                // Find the opponent and start their turn
-                NetworkPlayer opponentPlayer = combatData.OpponentPlayer;
-                if (activeCombats.TryGetValue(opponentPlayer, out CombatData opponentData))
+                // Now start the pet's turn
+                CombatPet opponentPet = combatData.OpponentPet;
+                if (opponentPet != null)
                 {
-                    opponentData.CombatPlayer.StartTurn();
-                    UnityEngine.Debug.Log($"[CombatManager] Started turn for opponent {opponentPlayer.GetSteamName()}");
+                    opponentPet.StartTurn();
                 }
                 else
                 {
-                    UnityEngine.Debug.LogError($"[CombatManager] No combat data found for opponent {opponentPlayer.GetSteamName()}");
+                    UnityEngine.Debug.LogError($"[CombatManager] Cannot start pet turn - opponent pet for {networkPlayer.GetSteamName()} is null");
+                }
+            }
+        }
+        
+        // Called when a pet ends their turn
+        [Server]
+        public void PetEndedTurn(CombatPet pet)
+        {
+            // Find the player combat data that has this pet as the opponent
+            NetworkPlayer petOwner = null;
+            NetworkPlayer opponentPlayer = null;
+            
+            foreach (var kvp in activeCombats)
+            {
+                if (kvp.Value.OpponentPet == pet)
+                {
+                    opponentPlayer = kvp.Key;
+                    petOwner = kvp.Value.OpponentPlayer;
+                    break;
+                }
+            }
+            
+            if (opponentPlayer == null || petOwner == null)
+            {
+                UnityEngine.Debug.LogError("[CombatManager] Could not find players for PetEndedTurn");
+                return;
+            }
+            
+            // Give the turn back to the player
+            if (activeCombats.TryGetValue(opponentPlayer, out CombatData combatData))
+            {
+                // Reset turn completed flag for next round
+                combatData.TurnCompleted = false;
+                
+                // Draw new cards for the player
+                CombatPlayer playerCombat = combatData.CombatPlayer;
+                if (playerCombat != null)
+                {
+                    // Draw cards for the player
+                    playerCombat.DrawCards(3);
+                    
+                    // Start the player's turn using the new public method
+                    playerCombat.SetTurn(true);
+                    
+                    // Also send RPC for more reliable turn updates
+                    playerCombat.RpcNotifyTurnChanged(true);
+                }
+                else
+                {
+                    UnityEngine.Debug.LogError($"[CombatManager] Cannot start player turn - combatPlayer for {opponentPlayer.GetSteamName()} is null");
                 }
             }
         }

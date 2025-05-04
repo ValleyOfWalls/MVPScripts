@@ -9,6 +9,8 @@ using Combat; // Your combat namespace
 using System.Collections; 
 using FishNet.Transporting; // Required for ClientConnectionStateArgs
 using System.Collections.Generic; // Added for List
+using DG.Tweening; // Added for DOTween
+using System.Reflection; // Added for reflection methods
 
 /// <summary>
 /// Manages the UI elements on the Combat Canvas. 
@@ -177,35 +179,43 @@ public class CombatCanvasManager : MonoBehaviour
     // Coroutine to wait for necessary combat references to be available
     IEnumerator WaitForCombatData()
     {
-      //  UnityEngine.Debug.Log("[CombatCanvasManager] Starting WaitForCombatData...");
+        Debug.Log("[CombatCanvasManager] Starting WaitForCombatData...");
         if (localNetworkPlayer == null)
         {
-            UnityEngine.Debug.LogError("[CombatCanvasManager] Cannot wait for combat data - localNetworkPlayer is null.");
+            Debug.LogError("[CombatCanvasManager] Cannot wait for combat data - localNetworkPlayer is null.");
             yield break;
         }
 
         // --- Wait for Local Combat Player ---
-      //  UnityEngine.Debug.Log("[CombatCanvasManager] Waiting for local CombatPlayer...");
+        Debug.Log("[CombatCanvasManager] Waiting for local CombatPlayer...");
         float timeout = Time.time + 10f; // 10 second timeout
         while (localCombatPlayer == null && Time.time < timeout)
         {
             CombatPlayer[] allCombatPlayers = FindObjectsByType<CombatPlayer>(FindObjectsSortMode.None);
+            Debug.Log($"[CombatCanvasManager] Found {allCombatPlayers.Length} CombatPlayer objects in scene");
+            
             foreach(CombatPlayer cp in allCombatPlayers)
             {
                 // Check if the CombatPlayer's NetworkPlayer SyncVar has arrived and matches our local player
                 if (cp.NetworkPlayer != null && cp.NetworkPlayer == localNetworkPlayer)
                 {
                     localCombatPlayer = cp;
-              //       UnityEngine.Debug.Log($"[CombatCanvasManager] Found local CombatPlayer: {localCombatPlayer.name} ({localCombatPlayer.NetworkObject.ObjectId})");
+                    Debug.Log($"[CombatCanvasManager] Found local CombatPlayer: {localCombatPlayer.name} ({localCombatPlayer.NetworkObject.ObjectId}) IsMyTurn={localCombatPlayer.IsMyTurn}");
                     break; 
                 }
+                
+                Debug.Log($"[CombatCanvasManager] CombatPlayer check: {cp.name}, NetworkPlayer={cp.NetworkPlayer?.GetSteamName() ?? "null"}, IsOwner={cp.IsOwner}, IsMyTurn={cp.IsMyTurn}");
             }
             if (localCombatPlayer == null) yield return null; // Wait a frame
         }
-         if (localCombatPlayer == null) UnityEngine.Debug.LogError("[CombatCanvasManager] Timed out waiting for local CombatPlayer.");
+        if (localCombatPlayer == null) 
+        {
+            Debug.LogError("[CombatCanvasManager] Timed out waiting for local CombatPlayer.");
+            yield break; // Exit if we can't find the combat player
+        }
 
         // --- Wait for Local Combat Pet ---
-       // UnityEngine.Debug.Log("[CombatCanvasManager] Waiting for local CombatPet...");
+        Debug.Log("[CombatCanvasManager] Waiting for local CombatPet...");
         timeout = Time.time + 10f;
         while (localPlayerCombatPet == null && Time.time < timeout)
         {
@@ -225,7 +235,7 @@ public class CombatCanvasManager : MonoBehaviour
         if (localPlayerCombatPet == null) UnityEngine.Debug.LogError("[CombatCanvasManager] Timed out waiting for local CombatPet.");
 
         // --- Wait for Opponent Combat Pet ---
-       //  UnityEngine.Debug.Log("[CombatCanvasManager] Waiting for opponent CombatPet...");
+        Debug.Log("[CombatCanvasManager] Waiting for opponent CombatPet...");
         timeout = Time.time + 10f;
         NetworkPlayer opponentPlayer = null;
         while (opponentCombatPet == null && Time.time < timeout)
@@ -240,7 +250,7 @@ public class CombatCanvasManager : MonoBehaviour
                      opponentCombatPet = opponentPlayer.playerPet.Value.GetComponentInChildren<CombatPet>();
                      if (opponentCombatPet != null)
                      {
-                         // UnityEngine.Debug.Log($"[CombatCanvasManager] Found opponent CombatPet: {opponentCombatPet.name} ({opponentCombatPet.NetworkObject.ObjectId}) under {opponentPlayer.playerPet.Value.name}");
+                          UnityEngine.Debug.Log($"[CombatCanvasManager] Found opponent CombatPet: {opponentCombatPet.name} ({opponentCombatPet.NetworkObject.ObjectId}) under {opponentPlayer.playerPet.Value.name}");
                          break;
                      }
                  }
@@ -252,21 +262,32 @@ public class CombatCanvasManager : MonoBehaviour
         // --- Final Setup ---
         if (localCombatPlayer != null && localPlayerCombatPet != null && opponentCombatPet != null)
         {
-         //   UnityEngine.Debug.Log("[CombatCanvasManager] All references found. Subscribing and updating UI.");
-             // Basic Info Update
+            Debug.Log("[CombatCanvasManager] All references found. Subscribing and updating UI.");
+            // Basic Info Update
             if (playerNameText != null) playerNameText.text = localNetworkPlayer.GetSteamName();
-            SubscribeToCombatChanges(); // Now subscribe to everything
-            UpdateAllUI(); // Update all UI elements with initial state
+            
+            // Now subscribe to everything - This was the critical line!
+            SubscribeToCombatChanges(); 
+            
+            // Force update UI with initial state AFTER subscribing
+            UpdateAllUI(); 
             
             // Initialize battle observation system
             InitializeBattleObservation();
             
             // Position the player hand area correctly at the start
             PositionPlayerHandOnStartup();
+            
+            Debug.Log("[CombatCanvasManager] WaitForCombatData completed successfully");
         }
         else
         {
-             UnityEngine.Debug.LogError("[CombatCanvasManager] Failed to find all necessary combat references. UI will not be fully initialized.");
+            string missing = "";
+            if (localCombatPlayer == null) missing += "localCombatPlayer ";
+            if (localPlayerCombatPet == null) missing += "localPlayerCombatPet ";
+            if (opponentCombatPet == null) missing += "opponentCombatPet ";
+            
+            Debug.LogError($"[CombatCanvasManager] Failed to find all necessary combat references. UI will not be fully initialized. Missing: {missing}");
         }
     }
     
@@ -281,7 +302,7 @@ public class CombatCanvasManager : MonoBehaviour
         // Wait a short time for all network objects to be properly set up
         yield return new WaitForSeconds(1.5f);
         
-       // Debug.Log("[CombatCanvasManager] Performing initial hand positioning");
+        Debug.Log("[CombatCanvasManager] Performing initial hand positioning");
         
         // Ensure the player hand is properly positioned
         if (localNetworkPlayer != null && localNetworkPlayer.PlayerHand != null && playerHandArea != null)
@@ -308,13 +329,13 @@ public class CombatCanvasManager : MonoBehaviour
                 
                 if (arrangeMethod != null)
                 {
-                   // Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method");
+                    Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method");
                     arrangeMethod.Invoke(playerHand, null);
                 }
                 else
                 {
                     // Try to call a public RPC method that might trigger card arrangement
-                  //  Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found, trying to trigger a refresh");
+                    Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found, trying to trigger a refresh");
                     // This is a fallback in case there's no direct method access
                     playerHand.gameObject.SetActive(false);
                     playerHand.gameObject.SetActive(true);
@@ -348,13 +369,13 @@ public class CombatCanvasManager : MonoBehaviour
                 
                 if (arrangeMethod != null)
                 {
-                  //  Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method for pet hand");
+                    Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method for pet hand");
                     arrangeMethod.Invoke(petHand, null);
                 }
                 else
                 {
                     // Try to call a public RPC method that might trigger card arrangement
-                   // Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found for pet hand, trying to trigger a refresh");
+                    Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found for pet hand, trying to trigger a refresh");
                     petHand.gameObject.SetActive(false);
                     petHand.gameObject.SetActive(true);
                 }
@@ -380,24 +401,42 @@ public class CombatCanvasManager : MonoBehaviour
     void SubscribeToCombatChanges()
     {
         UnsubscribeFromCombatChanges(); // Ensure no duplicates
+        
+        Debug.Log($"[CombatCanvasManager] SubscribeToCombatChanges called. localCombatPlayer: {(localCombatPlayer != null ? localCombatPlayer.name : "null")}, " +
+                  $"currentObservedCombatPlayer: {(currentObservedCombatPlayer != null ? currentObservedCombatPlayer.name : "null")}");
 
         if (localCombatPlayer != null)
         {
+            // IMPORTANT: Check if IsMyTurn is already set before subscribing
+            Debug.Log($"[CombatCanvasManager] Before subscribing - localCombatPlayer.IsMyTurn = {localCombatPlayer.IsMyTurn}");
+            
             localCombatPlayer.SyncEnergy.OnChange += OnEnergyChanged;
             localCombatPlayer.SyncIsMyTurn.OnChange += OnTurnChanged;
-          //   UnityEngine.Debug.Log("[CombatCanvasManager] Subscribed to local CombatPlayer changes.");
+            Debug.Log($"[CombatCanvasManager] ✓ Subscribed to localCombatPlayer changes: {localCombatPlayer.name}. Current IsMyTurn={localCombatPlayer.IsMyTurn}");
+            
+            // Manually trigger the turn update once during initial subscription if it's already the player's turn
+            if (localCombatPlayer.IsMyTurn)
+            {
+                Debug.Log("[CombatCanvasManager] Player turn is already active - manually calling OnTurnChanged");
+                OnTurnChanged(false, true, false); // prev=false, next=true, asServer=false
+            }
         }
+        else
+        {
+            Debug.LogError("[CombatCanvasManager] Failed to subscribe - localCombatPlayer is null!");
+        }
+        
         if (localPlayerCombatPet != null)
         {
             localPlayerCombatPet.SyncHealth.OnChange += OnPlayerPetHealthChanged;
-           //  UnityEngine.Debug.Log("[CombatCanvasManager] Subscribed to local CombatPet changes.");
+            Debug.Log($"[CombatCanvasManager] ✓ Subscribed to localPlayerCombatPet changes: {localPlayerCombatPet.name}");
         }
+        
         if (opponentCombatPet != null)
         {
-             opponentCombatPet.SyncHealth.OnChange += OnOpponentPetHealthChanged;
-            //  UnityEngine.Debug.Log("[CombatCanvasManager] Subscribed to opponent CombatPet changes.");
+            opponentCombatPet.SyncHealth.OnChange += OnOpponentPetHealthChanged;
+            Debug.Log($"[CombatCanvasManager] ✓ Subscribed to opponentCombatPet changes: {opponentCombatPet.name}");
         }
-        // No longer need to subscribe to SyncedOpponentPlayer here, handled by initial find
     }
     
     // Remove split subscriptions
@@ -407,20 +446,26 @@ public class CombatCanvasManager : MonoBehaviour
     // Unified unsubscribe logic - simplified
     void UnsubscribeFromCombatChanges()
     {
-        if (currentObservedCombatPlayer != null)
+        Debug.Log($"[CombatCanvasManager] UnsubscribeFromCombatChanges called. localCombatPlayer: {(localCombatPlayer != null ? localCombatPlayer.name : "null")}");
+        
+        // Unsubscribe from local references instead of observed references
+        if (localCombatPlayer != null)
         {
-             currentObservedCombatPlayer.SyncEnergy.OnChange -= OnEnergyChanged;
-             currentObservedCombatPlayer.SyncIsMyTurn.OnChange -= OnTurnChanged;
+            localCombatPlayer.SyncEnergy.OnChange -= OnEnergyChanged;
+            localCombatPlayer.SyncIsMyTurn.OnChange -= OnTurnChanged;
+            Debug.Log($"[CombatCanvasManager] ✓ Unsubscribed from localCombatPlayer: {localCombatPlayer.name}");
         }
         
-        if (currentObservedPlayerPet != null)
+        if (localPlayerCombatPet != null)
         {
-             currentObservedPlayerPet.SyncHealth.OnChange -= OnPlayerPetHealthChanged;
+            localPlayerCombatPet.SyncHealth.OnChange -= OnPlayerPetHealthChanged;
+            Debug.Log($"[CombatCanvasManager] ✓ Unsubscribed from localPlayerCombatPet: {localPlayerCombatPet.name}");
         }
         
-        if (currentObservedOpponentPet != null)
+        if (opponentCombatPet != null)
         {
-             currentObservedOpponentPet.SyncHealth.OnChange -= OnOpponentPetHealthChanged;
+            opponentCombatPet.SyncHealth.OnChange -= OnOpponentPetHealthChanged;
+            Debug.Log($"[CombatCanvasManager] ✓ Unsubscribed from opponentCombatPet: {opponentCombatPet.name}");
         }
     }
 
@@ -491,10 +536,61 @@ public class CombatCanvasManager : MonoBehaviour
 
     private void OnTurnChanged(bool prev, bool next, bool asServer)
     {
-         if (asServer) return;
-         if (endTurnButton != null) endTurnButton.interactable = next; // Enable button only on player's turn
-         if (turnIndicatorPlayer != null) turnIndicatorPlayer.SetActive(next);
-         // Potentially add visual indicator for opponent's turn
+        if (asServer) 
+        {
+            return;
+        }
+        
+        // Update the end turn button visibility and interactability
+        if (endTurnButton != null) 
+        {
+            // Button should only be interactable when:
+            // 1. It's the local player's turn
+            // 2. We're currently observing our own battle (not someone else's)
+            bool shouldBeInteractable = next && isObservingOwnBattle;
+            
+            // Force enable the button for testing if it's the player's turn
+            if (next && isObservingOwnBattle)
+            {
+                endTurnButton.interactable = true;
+            }
+            else
+            {
+                endTurnButton.interactable = shouldBeInteractable;
+            }
+        
+            // When turn starts, animate the button
+            if (!prev && next && isObservingOwnBattle)
+            {
+                endTurnButton.transform.DOPunchScale(Vector3.one * 0.2f, 0.3f);
+                
+                // Add extra visibility for testing
+                if (endTurnButton.GetComponentInChildren<UnityEngine.UI.Text>() != null)
+                {
+                    endTurnButton.GetComponentInChildren<UnityEngine.UI.Text>().text = "END TURN ✓";
+                }
+                else if (endTurnButton.GetComponentInChildren<TMPro.TextMeshProUGUI>() != null)
+                {
+                    endTurnButton.GetComponentInChildren<TMPro.TextMeshProUGUI>().text = "END TURN ✓";
+                }
+                
+                // Force a layout refresh
+                if (endTurnButton.transform.parent is RectTransform rectTransform)
+                {
+                    UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(rectTransform);
+                }
+            }
+        }
+        else
+        {
+            Debug.LogError("[CombatCanvasManager] OnTurnChanged - endTurnButton reference is null!");
+        }
+        
+        // Update turn indicator
+        if (turnIndicatorPlayer != null) 
+        {
+            turnIndicatorPlayer.SetActive(next);
+        }
     }
 
     private void OnPlayerPetHealthChanged(int prev, int next, bool asServer)
@@ -521,16 +617,26 @@ public class CombatCanvasManager : MonoBehaviour
 
     public void OnEndTurnButtonPressed()
     {
-        if (localCombatPlayer != null && localCombatPlayer.IsOwner && localCombatPlayer.IsMyTurn)
+        if (localCombatPlayer != null && localCombatPlayer.IsOwner)
         {
-        //    Debug.Log("[CombatCanvasManager] End Turn button pressed.");
-            localCombatPlayer.CmdEndTurn(); // Call the server command on the CombatPlayer
-            // Optionally disable button immediately to prevent double clicks
-            if (endTurnButton != null) endTurnButton.interactable = false; 
+            if (localCombatPlayer.IsMyTurn)
+            {
+                localCombatPlayer.CmdEndTurn(); // Call the server command on the CombatPlayer
+                
+                // Disable button immediately to prevent double clicks
+                if (endTurnButton != null)
+                {
+                    endTurnButton.interactable = false;
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[CombatCanvasManager] End Turn button pressed, but it's not the local player's turn. Current turn state: {localCombatPlayer.IsMyTurn}");
+            }
         }
         else
         {
-             Debug.LogWarning("[CombatCanvasManager] End Turn button pressed, but it's not the local player's turn or player not found.");
+            Debug.LogError($"[CombatCanvasManager] End Turn button pressed, but localCombatPlayer is {(localCombatPlayer == null ? "null" : "not owned by this client")}");
         }
     }
 
@@ -570,7 +676,7 @@ public class CombatCanvasManager : MonoBehaviour
             if (player != null && player.gameObject.activeInHierarchy)
             {
                 allPlayers.Add(player);
-               // Debug.Log($"[CombatCanvasManager] Found player: {player.GetSteamName()}");
+                Debug.Log($"[CombatCanvasManager] Found player: {player.GetSteamName()}");
             }
         }
         
@@ -592,7 +698,7 @@ public class CombatCanvasManager : MonoBehaviour
         {
             bool hasMultiplePlayers = allPlayers.Count > 1;
             nextBattleButton.interactable = hasMultiplePlayers;
-           // Debug.Log($"[CombatCanvasManager] NextBattleButton interactable set to: {hasMultiplePlayers} (Found {allPlayers.Count} players)");
+            Debug.Log($"[CombatCanvasManager] NextBattleButton interactable set to: {hasMultiplePlayers} (Found {allPlayers.Count} players)");
         }
         else
         {
@@ -614,14 +720,14 @@ public class CombatCanvasManager : MonoBehaviour
     {
         if (nextBattleButton != null)
         {
-          //  Debug.Log("[CombatCanvasManager] Force enabling NextBattleButton");
+            Debug.Log("[CombatCanvasManager] Force enabling NextBattleButton");
             nextBattleButton.interactable = true;
         }
     }
     
     public void OnNextBattleButtonPressed()
     {
-        //Debug.Log("[CombatCanvasManager] NextBattleButton pressed");
+        Debug.Log("[CombatCanvasManager] NextBattleButton pressed");
         
         // Refresh the player list in case players have joined or left
         RefreshPlayerList();
@@ -640,7 +746,7 @@ public class CombatCanvasManager : MonoBehaviour
             Transform handTransform = localNetworkPlayer.PlayerHand.transform;
             if (handTransform.parent != playerHandArea)
             {
-               // Debug.Log("[CombatCanvasManager] First button press - positioning hand correctly");
+                Debug.Log("[CombatCanvasManager] First button press - positioning hand correctly");
                 handTransform.SetParent(playerHandArea, false);
                 handTransform.localPosition = Vector3.zero;
                 handTransform.localScale = Vector3.one;
@@ -702,7 +808,7 @@ public class CombatCanvasManager : MonoBehaviour
             if (player != null && player.gameObject.activeInHierarchy)
             {
                 allPlayers.Add(player);
-               // Debug.Log($"[CombatCanvasManager] Refreshed player list - Found: {player.GetSteamName()}");
+                Debug.Log($"[CombatCanvasManager] Refreshed player list - Found: {player.GetSteamName()}");
             }
         }
         
@@ -788,7 +894,7 @@ public class CombatCanvasManager : MonoBehaviour
     
     private void ToggleHandVisibility()
     {
-        //Debug.Log("[CombatCanvasManager] Toggling hand visibility");
+        Debug.Log("[CombatCanvasManager] Toggling hand visibility");
         
         // Update player hand visibility based on what we're observing
         if (currentObservedPlayerHand != null && playerHandArea != null)
@@ -810,7 +916,7 @@ public class CombatCanvasManager : MonoBehaviour
             }
             
             // Always use ManualCardArrangement after switching hands
-            //Debug.Log($"[CombatCanvasManager] Hand {handTransform.name} activated, calling ManualCardArrangement.");
+            Debug.Log($"[CombatCanvasManager] Hand {handTransform.name} activated, calling ManualCardArrangement.");
             StartCoroutine(ManualCardArrangement(handTransform));
         }
         
@@ -834,7 +940,7 @@ public class CombatCanvasManager : MonoBehaviour
             }
             
             // Arrange cards in the pet hand
-            //Debug.Log($"[CombatCanvasManager] Pet Hand {petHandTransform.name} activated, calling ManualCardArrangement.");
+            Debug.Log($"[CombatCanvasManager] Pet Hand {petHandTransform.name} activated, calling ManualCardArrangement.");
             StartCoroutine(ManualCardArrangement(petHandTransform));
         }
     }
@@ -844,7 +950,7 @@ public class CombatCanvasManager : MonoBehaviour
         // Give the system a moment to process other changes
         yield return new WaitForSeconds(0.1f);
         
-       // Debug.Log("[CombatCanvasManager] Performing simplified card arrangement (no animation)");
+        Debug.Log("[CombatCanvasManager] Performing simplified card arrangement (no animation)");
         
         // Count active card objects
         List<Transform> cardTransforms = new List<Transform>();
@@ -1105,7 +1211,7 @@ public class CombatCanvasManager : MonoBehaviour
     // Called when the Next Battle button is pressed again to refresh the view
     public void RefreshCurrentView()
     {
-       // Debug.Log("[CombatCanvasManager] Refreshing current view");
+        Debug.Log("[CombatCanvasManager] Refreshing current view");
         
         if (isObservingOwnBattle)
         {

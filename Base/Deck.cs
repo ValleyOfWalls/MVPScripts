@@ -87,12 +87,8 @@ namespace Combat
                     return null; // No cards left
                 }
                 
-                // Move all cards from discard to draw pile
-                drawPile.AddRange(discardPile);
-                discardPile.Clear();
-                
-                // Shuffle the draw pile
-                Shuffle();
+                // Use the Reshuffle method instead of duplicating logic
+                Reshuffle();
             }
             
             // Draw the top card
@@ -113,6 +109,31 @@ namespace Combat
         {
             discardPile.AddRange(hand);
             hand.Clear();
+        }
+
+        // Check if discard pile should be reshuffled into draw pile
+        public bool NeedsReshuffle()
+        {
+            return drawPile.Count == 0 && discardPile.Count > 0;
+        }
+
+        // Reshuffle the discard pile into the draw pile
+        public void Reshuffle()
+        {
+            if (discardPile.Count == 0)
+            {
+                Debug.LogWarning($"Cannot reshuffle: Discard pile is empty for deck {deckName}");
+                return;
+            }
+
+            // Move all cards from discard to draw pile
+            drawPile.AddRange(discardPile);
+            discardPile.Clear();
+            
+            // Shuffle the draw pile
+            Shuffle();
+            
+            Debug.Log($"Reshuffled {drawPile.Count} cards from discard pile into draw pile for deck {deckName}");
         }
     }
 } 

@@ -248,6 +248,21 @@ namespace Combat
                 else
                 {
                     Debug.LogError("DrawCardFromDeck returned null card");
+                    
+                    // Our DrawCardFromDeck method should handle reshuffling internally
+                    // There's a chance the deck was reshuffled, so try drawing again once
+                    Debug.Log("Trying to draw again after receiving null card (in case deck was reshuffled)");
+                    card = combatPlayer.DrawCardFromDeck();
+                    
+                    if (card != null)
+                    {
+                        Debug.Log($"Successfully drew card {card.cardName} after initial null result");
+                        DeckManager.Instance.CreateCardObject(card, this.transform, this, combatPlayer);
+                    }
+                    else
+                    {
+                        Debug.LogError("Still got null card after second draw attempt - deck may be empty");
+                    }
                 }
             }
         }
@@ -482,7 +497,26 @@ namespace Combat
              // Create a temporary list to avoid issues while iterating and removing
              List<Card> cardsToDiscard = new List<Card>(cardsInHand);
              cardsInHand.Clear(); // Clear server's list
+             
+             // Get the card data for each card and add to discard pile before destroying the objects
+             if (combatPlayer != null && combatPlayer.PlayerDeck != null)
+             {
+                 foreach (Card card in cardsToDiscard)
+                 {
+                     if (card != null && card.Data != null)
+                     {
+                         // Add card data to discard pile in the deck
+                         combatPlayer.PlayerDeck.DiscardCard(card.Data);
+                         Debug.Log($"[Server] Added {card.CardName} to discard pile. Discard pile now has {combatPlayer.PlayerDeck.DiscardPileCount} cards.");
+                     }
+                 }
+             }
+             else
+             {
+                 Debug.LogError($"[Server] Could not discard cards to deck: combatPlayer={combatPlayer}, playerDeck={(combatPlayer != null ? combatPlayer.PlayerDeck != null ? "valid" : "null" : "N/A")}");
+             }
 
+             // Now destroy the card objects
              foreach (Card card in cardsToDiscard)
              {
                  if (card != null)

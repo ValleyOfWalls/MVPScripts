@@ -166,7 +166,7 @@ namespace Combat
                 if (hand != null)
                 {
                     owningHand = hand;
-                    Debug.Log($"[Client] Card {CardName} set owningHand reference to {hand.name}");
+                   // Debug.Log($"[Client] Card {CardName} set owningHand reference to {hand.name}");
                     
                     // Update interactivity now that we have a hand reference
                     UpdateInteractivity();
@@ -288,7 +288,7 @@ namespace Combat
             if (hand != null && hand.NetworkObject != null)
             {
                 _syncedOwningHandObject.Value = hand.NetworkObject;
-                Debug.Log($"[Server] Set _syncedOwningHandObject to {hand.name} for card {data.cardName}");
+               // Debug.Log($"[Server] Set _syncedOwningHandObject to {hand.name} for card {data.cardName}");
             }
             
             // We don't store PetHand reference in owningHand field
@@ -321,7 +321,7 @@ namespace Combat
             if (conn != null && NetworkObject != null)
             {
                 NetworkObject.GiveOwnership(conn);
-                Debug.Log($"[Server] Card {CardName} ownership given to connection {conn.ClientId}");
+                //Debug.Log($"[Server] Card {CardName} ownership given to connection {conn.ClientId}");
             }
         }
         
@@ -418,7 +418,7 @@ namespace Combat
             }
             
             // Add debug log to help identify ownership issues
-            Debug.Log($"[Client] Card {CardName} interactivity: canInteract={canInteract}, IsOwner={IsOwner}, isPlayerCard={isPlayerCard}, NetworkObject.IsOwner={NetworkObject?.IsOwner}");
+            //Debug.Log($"[Client] Card {CardName} interactivity: canInteract={canInteract}, IsOwner={IsOwner}, isPlayerCard={isPlayerCard}, NetworkObject.IsOwner={NetworkObject?.IsOwner}");
         }
         
         private void UpdateCardUI()

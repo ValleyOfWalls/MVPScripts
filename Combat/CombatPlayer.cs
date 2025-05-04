@@ -26,7 +26,6 @@ namespace Combat
         [Header("Combat UI")]
         [SerializeField] private TextMeshProUGUI playerNameText;
         [SerializeField] private TextMeshProUGUI energyText;
-        [SerializeField] private UnityEngine.UI.Button endTurnButton;
         
         // Combat state (Refactored)
         private readonly SyncVar<bool> _isMyTurn = new SyncVar<bool>();
@@ -51,18 +50,24 @@ namespace Combat
         
         private void Awake()
         {
-            if (endTurnButton != null)
-                endTurnButton.onClick.AddListener(OnEndTurnButtonClicked);
-                
-            // Register OnChange callbacks
+            // Debug.Log($"CombatPlayer Awake - SpriteRenderer: {(GetComponent<SpriteRenderer>() != null ? "Found" : "Missing")}");
+            
+            // Find UI elements
+            FindUIElements();
+            
+            // Register synced variable change callbacks
             _networkPlayer.OnChange += OnNetworkPlayerChanged;
             _currentEnergy.OnChange += OnEnergyChanged;
-            _isMyTurn.OnChange += OnTurnChanged;
+            _isMyTurn.OnChange += OnTurnChanged;  // Make sure this is registered
             
             // Get sprite renderer
             spriteRenderer = GetComponent<SpriteRenderer>();
             
-            Debug.Log($"CombatPlayer Awake - SpriteRenderer: {(spriteRenderer != null ? "Found" : "Missing")}");
+            // Create a visual placeholder
+            CreatePlaceholderIfNeeded();
+            
+            // Get reference to CombatManager
+            combatManager = FindObjectOfType<CombatManager>();
         }
 
         private void Start()
@@ -87,10 +92,10 @@ namespace Combat
 
         private void OnDestroy()
         {
-            // Unregister callbacks
+            // Unregister synced variable change callbacks
             _networkPlayer.OnChange -= OnNetworkPlayerChanged;
             _currentEnergy.OnChange -= OnEnergyChanged;
-            _isMyTurn.OnChange -= OnTurnChanged;
+            _isMyTurn.OnChange -= OnTurnChanged;  // Make sure to unregister too
         }
         
         public override void OnStartClient()
@@ -106,34 +111,20 @@ namespace Combat
             // Update visuals that don't depend on _networkPlayer yet
             // Player name will be set by OnNetworkPlayerChanged callback
             
-            // Only show the end turn button to the owner
-            if (endTurnButton != null)
-                endTurnButton.gameObject.SetActive(IsOwner);
-            
-            // Initialize energy display & turn button state
-            // Check if _networkPlayer is already set (might happen if value arrives before OnStartClient)
-            if (_networkPlayer.Value != null)
-            {
-                OnNetworkPlayerChanged(null, _networkPlayer.Value, false);
-            }
-            UpdateEnergyDisplay(0, _currentEnergy.Value, false);
-            UpdateTurnVisuals(false, _isMyTurn.Value, false);
-            
-            // Removed delayed reference search - References are now set via Initialize
-            // Invoke("FindCombatReferences", 0.5f);
-            
-            // Removed immediate reference finding logic
-            // if (IsOwner)
-            // {
-            // ... (removed ~70 lines of finding logic)
-            // }
+            // Start debugging coroutine
+            StartCoroutine(DebugTurnStateRoutine());
         }
         
-        // Removed FindCombatReferences method entirely
-        // private void FindCombatReferences()
-        // {
-        // ... (removed ~80 lines of finding logic)
-        // }
+        private IEnumerator DebugTurnStateRoutine()
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                yield return new WaitForSeconds(1.0f);
+                
+                // Just log the turn state
+                Debug.Log($"[CombatPlayer] DebugTurnStateRoutine [{i+1}] - IsMyTurn={_isMyTurn.Value}, IsOwner={IsOwner}");
+            }
+        }
         
         private void CreatePlaceholderIfNeeded()
         {
@@ -229,16 +220,15 @@ namespace Combat
         // Find required UI elements, usually called if IsOwner
         private void FindUIElements()
         {
-            // These should ideally be assigned in the Inspector, 
-            // but we can try finding them if they are null.
+            // Find player name text
             if (playerNameText == null)
             {
                 // Assuming it's a child object named "PlayerNameText" or similar
-                playerNameText = GetComponentInChildren<TextMeshProUGUI>(true); // Search inactive too, by name might be safer
-                if (playerNameText == null) 
-                    Debug.LogError("Could not find PlayerNameText component in children.");
+                playerNameText = GetComponentInChildren<TextMeshProUGUI>(true);
+                if (playerNameText == null)
+                    Debug.LogError("Could not find TextMeshProUGUI component in children.");
                 else
-                    Debug.Log("Found PlayerNameText in children.");
+                    Debug.Log("Found TextMeshProUGUI in children.");
             }
 
             if (energyText == null)
@@ -259,24 +249,14 @@ namespace Combat
                 }
                 if (energyText == null) Debug.LogError("Could not find EnergyText component in children.");
             }
-
-            if (endTurnButton == null)
-            {
-                // Assuming it's a child object named "EndTurnButton" or similar
-                endTurnButton = GetComponentInChildren<UnityEngine.UI.Button>(true);
-                 if (endTurnButton == null) 
-                    Debug.LogError("Could not find EndTurnButton component in children.");
-                else
-                    Debug.Log("Found EndTurnButton in children.");
-            }
         }
         
         // Start player turn
         [Server]
         public void StartTurn()
         {
-            // Set turn state
-            _isMyTurn.Value = true;
+            // Set turn state using the new method
+            SetTurn(true);
             
             // Reset/increase energy
             _currentEnergy.Value = _maxEnergy.Value;
@@ -284,23 +264,36 @@ namespace Combat
             // Draw cards
             DrawCardsOnTurnStart(5); // Draw 5 cards at start of turn
             
-            Debug.Log($"Started turn for player {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "Unknown")}, Energy: {_currentEnergy.Value}");
+            // Notify clients explicitly that turn state changed
+            RpcNotifyTurnChanged(true);
         }
         
+        // Public method for the server (CombatManager) to set the turn state
+        [Server]
+        public void SetTurn(bool isMyTurn)
+        {
+            _isMyTurn.Value = isMyTurn;
+        }
+
         // End player turn
         [Server]
         public void EndTurn()
         {
-            // Set turn state
-            _isMyTurn.Value = false;
+            // Set turn state using the new method
+            SetTurn(false);
             
-            // Clear hand at end of turn - Logic moved to CmdEndTurn
-            // TargetDiscardHand(Owner);
+            // Notify clients explicitly that turn state changed
+            RpcNotifyTurnChanged(false);
             
             // Notify combat manager that turn is over
-            combatManager.PlayerEndedTurn(this);
-            
-            Debug.Log($"Ended turn for player {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "Unknown")}");
+            if (combatManager != null)
+            {
+                combatManager.PlayerEndedTurn(this);
+            }
+            else
+            {
+                Debug.LogError($"EndTurn - CombatManager reference is null for {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "Unknown")}");
+            }
         }
         
         // Draw cards on turn start
@@ -312,60 +305,39 @@ namespace Combat
             TargetDrawCards(Owner, count);
         }
         
-        // Called when the end turn button is clicked
-        private void OnEndTurnButtonClicked()
-        {
-            if (!IsOwner) return;
-            
-            Debug.Log("End Turn button clicked");
-            
-            // Tell server to end turn
-            CmdEndTurn();
-        }
-        
         // Server command to end turn
         [ServerRpc(RequireOwnership = true)]
         public void CmdEndTurn()
         {
             if (!IsMyTurn) return; // Only end turn if it's currently this player's turn
 
-            Debug.Log($"[Server] CmdEndTurn received from {NetworkPlayer?.GetSteamName() ?? "Unknown"}");
-
-            // End the turn logic (set IsMyTurn to false, notify CombatManager)
-            _isMyTurn.Value = false;
+            // End the turn logic (set IsMyTurn to false)
+            SetTurn(false);
             
             // Discard Hand
             if (playerHand != null)
             {
-                 playerHand.ServerDiscardHand();
+                playerHand.ServerDiscardHand();
             }
             else
             {
-                 Debug.LogError($"[Server] Cannot discard hand for {NetworkPlayer?.GetSteamName()} - PlayerHand reference is null.");
+                Debug.LogError($"[Server] Cannot discard hand for {NetworkPlayer?.GetSteamName()} - PlayerHand reference is null.");
             }
             
-            // Draw new hand
-            // TODO: Define standard hand size properly
-            int handSizeToDraw = 5; 
-            if (playerHand != null)
-            {
-                 // The TargetDrawCards -> CmdDrawCards flow should work
-                 TargetDrawCards(Owner, handSizeToDraw);
-                 Debug.Log($"[Server] Initiated draw of {handSizeToDraw} cards for {NetworkPlayer?.GetSteamName()}");
-            }
-             else
-            {
-                 Debug.LogError($"[Server] Cannot draw new hand for {NetworkPlayer?.GetSteamName()} - PlayerHand reference is null.");
-            }
-
             // Tell the CombatManager to switch turns
+            if (combatManager == null)
+            {
+                // Try to find CombatManager if it's null
+                combatManager = FindObjectOfType<CombatManager>();
+            }
+            
             if (combatManager != null)
             {
                 combatManager.PlayerEndedTurn(this);
             }
             else
             {
-                 Debug.LogError("CmdEndTurn - CombatManager reference is null!");
+                Debug.LogError("CmdEndTurn - CombatManager reference is null!");
             }
         }
         
@@ -436,15 +408,28 @@ namespace Combat
             if (drawnCard == null)
             {
                 Debug.LogWarning($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} drew null card (Deck empty or reshuffled?).");
-                // Handle empty deck / reshuffle if needed
-                // Potentially reshuffle discard into draw pile here if deck is empty
-                // Example: 
-                // if (playerDeck.NeedsReshuffle()) 
-                // {
-                //     playerDeck.Reshuffle(); 
-                //     drawnCard = playerDeck.DrawCard(); 
-                //     if(drawnCard != null) Debug.Log($"[Server] Reshuffled and drew {drawnCard.cardName}");
-                // }
+                
+                // Handle empty deck by reshuffling discard pile
+                if (playerDeck.NeedsReshuffle())
+                {
+                    Debug.Log($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} reshuffling discard pile into draw pile.");
+                    playerDeck.Reshuffle();
+                    
+                    // Try drawing again after reshuffling
+                    drawnCard = playerDeck.DrawCard();
+                    if (drawnCard != null)
+                    {
+                        Debug.Log($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} drew {drawnCard.cardName} after reshuffling.");
+                    }
+                    else
+                    {
+                        Debug.LogError($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} still drew null card after reshuffling!");
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} no cards available, deck empty and cannot reshuffle!");
+                }
             }
             else
             {
@@ -543,6 +528,9 @@ namespace Combat
 
         private void OnTurnChanged(bool prev, bool next, bool asServer)
         {
+            Debug.Log($"[CombatPlayer] OnTurnChanged: {prev} -> {next}, asServer: {asServer}, IsOwner: {IsOwner}");
+            
+            // Update the turn visuals
             UpdateTurnVisuals(prev, next, asServer);
         }
         
@@ -559,6 +547,9 @@ namespace Combat
         
         private void UpdateTurnVisuals(bool prev, bool next, bool asServer)
         {
+            // Add more detailed debug to catch issues
+            Debug.Log($"[CombatPlayer] UpdateTurnVisuals called: prev={prev}, next={next}, asServer={asServer}, IsOwner={IsOwner}, IsMyTurn={IsMyTurn}");
+            
             // Update turn indicator
             if (playerNameText != null && _networkPlayer.Value != null)
             {
@@ -575,21 +566,6 @@ namespace Combat
                     playerNameText.color = Color.white;
                 }
             }
-            
-            // Update end turn button
-            if (endTurnButton != null && IsOwner)
-            {
-                endTurnButton.gameObject.SetActive(next);
-                
-                // Animate button appearance
-                if (next)
-                {
-                    endTurnButton.transform.localScale = Vector3.zero;
-                    endTurnButton.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
-                }
-            }
-            
-            // Debug.Log($"Updated turn visuals: {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "Unknown")} - IsMyTurn: {next}");
         }
         
         // --- RPCs ---
@@ -597,11 +573,11 @@ namespace Combat
         [TargetRpc]
         private void TargetDrawCards(NetworkConnection conn, int count)
         {
-            // Debug.Log("TargetDrawCards called, attempting to draw " + count + " cards");
+            Debug.Log($"[CombatPlayer] TargetDrawCards called, count={count}, playerHand null={playerHand == null}");
             
             if (playerHand == null)
             {
-                Debug.LogWarning("PlayerHand is null during TargetDrawCards, attempting to find it");
+                Debug.LogWarning("[CombatPlayer] PlayerHand is null during TargetDrawCards, attempting to find it");
                 
                 // Try to find the PlayerHand in the scene that we actually OWN
                 PlayerHand[] hands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
@@ -612,15 +588,15 @@ namespace Combat
                     if (hand.IsOwner)
                     {
                         playerHand = hand;
-                        Debug.Log("Found owned PlayerHand for TargetDrawCards: " + hand.name);
+                        Debug.Log($"[CombatPlayer] Found owned PlayerHand for TargetDrawCards: {hand.name}");
                         break;
                     }
                 }
                 
-                // If still not found, trigger the FindCombatReferences method
+                // If still not found, trigger the search coroutine
                 if (playerHand == null)
                 {
-                    Debug.LogWarning("Could not find owned PlayerHand for TargetDrawCards, queueing search");
+                    Debug.LogWarning("[CombatPlayer] Could not find owned PlayerHand for TargetDrawCards, queueing search");
                     StartCoroutine(FindHandAndDrawCards(count));
                     return;
                 }
@@ -629,7 +605,7 @@ namespace Combat
             // DOUBLE CHECK ownership before proceeding
             if (!playerHand.IsOwner)
             {
-                Debug.LogError("PlayerHand is not owned by this client! Looking for a correctly owned hand.");
+                Debug.LogError("[CombatPlayer] PlayerHand is not owned by this client! Looking for a correctly owned hand.");
                 // Try to find a properly owned hand
                 PlayerHand[] hands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
                 bool foundOwnedHand = false;
@@ -640,39 +616,36 @@ namespace Combat
                     {
                         playerHand = hand;
                         foundOwnedHand = true;
-                        Debug.Log("Switched to properly owned PlayerHand: " + hand.name);
+                        Debug.Log($"[CombatPlayer] Switched to properly owned PlayerHand: {hand.name}");
                         break;
                     }
                 }
                 
                 if (!foundOwnedHand)
                 {
-                    Debug.LogError("Failed to find ANY owned PlayerHand, cannot draw cards");
+                    Debug.LogError("[CombatPlayer] Failed to find ANY owned PlayerHand, cannot draw cards");
                     return;
                 }
             }
             
             // If we reach here, we have a non-null playerHand that should be properly owned
-            // Debug.Log("Using PlayerHand " + playerHand.name + " with IsOwner: " + playerHand.IsOwner + " to draw cards");
+            Debug.Log($"[CombatPlayer] Using PlayerHand {playerHand.name} with IsOwner={playerHand.IsOwner} to draw cards");
             
             // Call the ServerRpc on PlayerHand to request cards from the server
             try 
             {
                 playerHand.CmdDrawCards(count);
-                // Debug.Log("Successfully called CmdDrawCards for " + count + " cards");
+                Debug.Log($"[CombatPlayer] Successfully called CmdDrawCards for {count} cards");
             }
             catch (System.Exception e)
             {
-                Debug.LogError("Error calling CmdDrawCards: " + e.Message);
+                Debug.LogError($"[CombatPlayer] Error calling CmdDrawCards: {e.Message}");
             }
         }
         
         // Coroutine to find hand and draw cards after a delay
         private System.Collections.IEnumerator FindHandAndDrawCards(int count)
         {
-            // Try to find combat references
-            // FindCombatReferences();
-            
             // Wait for a moment to allow references to be found
             yield return new WaitForSeconds(0.5f);
             
@@ -686,41 +659,41 @@ namespace Combat
                 {
                     playerHand = hand;
                     foundOwnedHand = true;
-                    Debug.Log("Delayed search found owned PlayerHand: " + hand.name);
+                    Debug.Log($"[CombatPlayer] Delayed search found owned PlayerHand: {hand.name}");
                     break;
                 }
             }
             
             if (foundOwnedHand && playerHand != null)
             {
-                Debug.Log("Found PlayerHand after delay, drawing cards now with IsOwner: " + playerHand.IsOwner);
+                Debug.Log($"[CombatPlayer] Found PlayerHand after delay, drawing cards now with IsOwner={playerHand.IsOwner}");
                 try 
                 {
                     playerHand.CmdDrawCards(count);
-                    Debug.Log("Successfully called delayed CmdDrawCards for " + count + " cards");
+                    Debug.Log($"[CombatPlayer] Successfully called delayed CmdDrawCards for {count} cards");
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogError("Error calling delayed CmdDrawCards: " + e.Message);
+                    Debug.LogError($"[CombatPlayer] Error calling delayed CmdDrawCards: {e.Message}");
                 }
             }
             else
             {
-                Debug.LogError("Failed to find owned PlayerHand after delay, cannot draw cards");
+                Debug.LogError("[CombatPlayer] Failed to find owned PlayerHand after delay, cannot draw cards");
             }
         }
         
         [TargetRpc]
         private void TargetCardPlayed(NetworkConnection conn, string cardName)
         {
-            Debug.Log($"Successfully played card: {cardName}");
+            Debug.Log($"[CombatPlayer] Successfully played card: {cardName}");
             // Show a visual effect or notification on the client
         }
 
         [TargetRpc]
         private void TargetNotifyInsufficientEnergy(NetworkConnection conn)
         {
-            Debug.LogWarning("Not enough energy to play that card!");
+            Debug.LogWarning("[CombatPlayer] Not enough energy to play that card!");
             // Show a message to the player
         }
 
@@ -745,5 +718,42 @@ namespace Combat
                   Debug.LogError($"[CombatPlayer:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
              }
         }
+
+        public override void OnStartNetwork()
+        {
+            base.OnStartNetwork();
+            Debug.Log($"[CombatPlayer] OnStartNetwork - IsServer: {IsServer}, IsClient: {IsClient}, IsOwner: {base.Owner.IsLocalClient}");
+            
+            // Double-check registration of callbacks
+            _isMyTurn.OnChange += OnTurnChanged;
+            _currentEnergy.OnChange += OnEnergyChanged;
+            _networkPlayer.OnChange += OnNetworkPlayerChanged;
+        }
+
+        // Add RPC to explicitly notify clients about turn state change
+        [ObserversRpc]
+        public void RpcNotifyTurnChanged(bool isMyTurn)
+        {
+            // Force update any UI that needs to respond to turn changes
+            // The CanvasManager should pick this up via the SyncVar, but just in case...
+            CombatCanvasManager canvasManager = FindObjectOfType<CombatCanvasManager>();
+            if (canvasManager != null)
+            {
+                // Use reflection to call OnTurnChanged since it's private
+                System.Reflection.MethodInfo method = typeof(CombatCanvasManager).GetMethod(
+                    "OnTurnChanged", 
+                    System.Reflection.BindingFlags.NonPublic | 
+                    System.Reflection.BindingFlags.Instance);
+                    
+                if (method != null)
+                {
+                    method.Invoke(canvasManager, new object[] { !isMyTurn, isMyTurn, false });
+                }
+                else
+                {
+                    Debug.LogError("[Client] Failed to find OnTurnChanged method via reflection");
+                }
+            }
+        }
     }
-} 
+}
