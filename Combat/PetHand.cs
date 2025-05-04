@@ -10,11 +10,11 @@ namespace Combat
 {
     public class PetHand : NetworkBehaviour, IHand
     {
+        #region Fields and Properties
         [Header("Hand Settings")]
         [SerializeField] private int maxHandSize = 7;
         [SerializeField] private float cardSpacing = 0.8f;
-        [SerializeField] private float handCurveHeight = 100f;
-        [SerializeField] private float dealAnimationDuration = 0.3f;
+        [SerializeField] private float arcHeight = 30f;
         
         [Header("References")]
         [SerializeField] private CombatPet combatPet;
@@ -30,22 +30,21 @@ namespace Combat
         private readonly SyncList<string> syncedCardIDs = new SyncList<string>();
         
         public int HandSize => cardsInHand.Count;
+        #endregion
 
+        #region Unity Lifecycle
         private void Awake()
         {
-           // Debug.Log($"PetHand Awake - Initializing");
-            
             // Register callback for synced card changes
             syncedCardIDs.OnChange += OnSyncedCardsChanged;
         }
-        
+        #endregion
+
+        #region Network Callbacks
         // All clients can see the pet's hand
         public override void OnStartClient()
         {
             base.OnStartClient();
-           // Debug.Log($"[PetHand] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
-            
-            // Debug.Log($"PetHand OnStartClient - PetOwner: {(petOwner != null ? petOwner.GetSteamName() : "Unknown")}");
             
             this.gameObject.SetActive(true);
             
@@ -59,13 +58,14 @@ namespace Combat
             SetCardsInteractivity(false);
             
             // Schedule a delayed check to find references if they're still missing
-            // This is necessary because parenting might happen after OnStartClient
             if (combatPet == null || petOwner == null)
             {
                 StartCoroutine(DelayedReferenceSearch());
             }
         }
-        
+        #endregion
+
+        #region Reference Finding
         private IEnumerator DelayedReferenceSearch()
         {
             // Wait a bit for parenting to be established
@@ -80,15 +80,12 @@ namespace Combat
                 TryFindReferences();
                 
                 if (combatPet != null && petOwner != null)
-                {
-                 //   Debug.Log($"[PetHand] Found references on retry {i+1}. Owner: {petOwner.GetSteamName()}");
                     break;
-                }
             }
             
             if (combatPet == null || petOwner == null)
             {
-                Debug.LogError($"[PetHand] Failed to find references after multiple attempts. IsOwner: {IsOwner}");
+                Debug.LogError("FALLBACK: Failed to find references after multiple attempts");
             }
         }
         
@@ -184,7 +181,9 @@ namespace Combat
                 }
             }
         }
-        
+        #endregion
+
+        #region Server Initialization
         [Server]
         public void Initialize(CombatPet pet)
         {
@@ -200,26 +199,16 @@ namespace Combat
             if (combatPet != null && combatPet.PetDeck != null)
             {
                 petDeck = combatPet.PetDeck;
-              //  Debug.Log($"PetHand initialized with combat pet's deck containing {petDeck.DrawPileCount} cards");
             }
             else
             {
-                Debug.LogError("PetHand initialized with null combat pet or pet deck");
+                Debug.LogError("FALLBACK: PetHand initialized with null combat pet or pet deck");
             }
-            
-            string ownerName = "Unknown";
-            if (petOwner != null)
-                ownerName = petOwner.GetSteamName();
-            else if (combatPet != null && combatPet.ReferencePet != null && combatPet.ReferencePet.PlayerOwner != null)
-                ownerName = combatPet.ReferencePet.PlayerOwner.GetSteamName();
-                
-           // Debug.Log($"PetHand initialized for combat pet owned by {ownerName}");
         }
         
         [Server]
         public void DrawInitialHand(int cardCount)
         {
-          //  Debug.Log($"[Server] Drawing initial hand of {cardCount} cards for pet");
             DrawCards(cardCount);
         }
         
@@ -229,29 +218,20 @@ namespace Combat
             // Ensure combat pet reference is valid
             if (combatPet == null)
             {
-                Debug.LogError("[Server] DrawCards - CombatPet is null, cannot draw cards.");
+                Debug.LogError("FALLBACK: DrawCards - CombatPet is null, cannot draw cards");
                 return;
             }
 
             // Ensure pet deck reference is valid
             if (petDeck == null)
             {
-                Debug.LogError("[Server] DrawCards - Pet deck is null, cannot draw cards.");
+                Debug.LogError("FALLBACK: DrawCards - Pet deck is null, cannot draw cards");
                 return;
             }
-            
-           // Debug.Log($"[Server] DrawCards - Drawing {count} cards for pet");
             
             // Draw the requested number of cards
             for (int i = 0; i < count; i++)
             {
-                // TODO: Check if hand is full based on NetworkObjects, not local list
-                // if (cardsInHand.Count >= maxHandSize)
-                // {
-                //     Debug.Log($"Pet hand is full ({maxHandSize} cards), stopping draw");
-                //     break;
-                // }
-                
                 // Get a card from the combat pet's deck
                 CardData cardData = combatPet.DrawCardFromDeck();
                 if (cardData != null)
@@ -263,82 +243,28 @@ namespace Combat
                         GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPet);
                         if (cardObj == null)
                         {
-                             Debug.LogError($"[Server] DeckManager failed to create/spawn card object '{cardData.cardName}' for pet hand.");
+                            Debug.LogError("FALLBACK: DeckManager failed to create/spawn card object for pet hand");
                         }
-                        // else: Card successfully created and spawned by DeckManager
                     }
                     else
                     {
-                         Debug.LogError("[Server] DeckManager instance is null in PetHand.DrawCards!");
+                        Debug.LogError("FALLBACK: DeckManager instance is null in PetHand.DrawCards");
                     }
-
-                    // REMOVED: SyncList add - CardData now synced via Card's SyncVar
-                    // syncedCardIDs.Add(cardData.cardName);
-                    
-                    // REMOVED: RPC call - Clients will get the card via spawn message
-                    // RpcAddCardToHand(cardData.cardName);
                 }
                 else
                 {
-                    Debug.LogWarning("[Server] Pet drew null card (Deck empty?)");
-                    
-                    // Since CombatPet.DrawCardFromDeck now handles reshuffling internally,
-                    // if we get null here it means there are truly no cards available
-                    Debug.LogError("[Server] Pet has no cards available to draw");
+                    Debug.LogWarning("FALLBACK: Pet drew null card (Deck empty?)");
                     break; // Stop drawing if deck is empty
                 }
             }
         }
-        
-        [ObserversRpc]
-        private void RpcAddCardToHand(string cardName)
-        {
-            // OBSOLETE: Clients no longer create cards here. 
-            // They rely on the spawned NetworkObject and Card.OnStartClient.
-            // The server manages card object creation and parenting.
-          //  Debug.Log($"[Client] PetHand RpcAddCardToHand received for card: {cardName}. Waiting for Card object spawn.");
-            
-            // OLD CODE REMOVED:
-            // // Find the card data
-            // if (DeckManager.Instance == null)
-            // {
-            //     Debug.LogError("DeckManager instance is null in RpcAddCardToHand");
-            //     return;
-            // }
-            // 
-            // CardData cardData = DeckManager.Instance.FindCardByName(cardName);
-            // if (cardData == null)
-            // {
-            //     Debug.LogError($"Could not find CardData for card: {cardName} in RpcAddCardToHand");
-            //     return;
-            // }
-            // 
-            // // Create the card visually for all clients
-            // CreateCardInHand(cardData);
-        }
-        
+        #endregion
+
+        #region Card Management
         // Handle synced card changes
         private void OnSyncedCardsChanged(SyncListOperation op, int index, string oldItem, string newItem, bool asServer)
         {
             if (asServer) return; // Only react on clients
-            
-            // Debug.Log($"[SyncList] PetHand Change: Op={op}, Index={index}, Old='{oldItem}', New='{newItem}'"); // COMMENT OUT
-            
-            // Handle different operations (Add, Remove, etc.)
-            // switch (op)
-            // {
-            //     case SyncListOperation.Add:
-            //         Debug.Log($"[SyncList] Pet card added: {newItem}");
-            //         break;
-                    
-            //     case SyncListOperation.RemoveAt:
-            //         Debug.Log($"[SyncList] Pet card removed: {oldItem}");
-            //         break;
-                    
-            //     case SyncListOperation.Clear:
-            //         Debug.Log("[SyncList] Pet hand cleared");
-            //         break;
-            // }
         }
         
         // Called when a pet plays a card
@@ -348,33 +274,16 @@ namespace Combat
             // Ensure the index is valid
             if (cardIndex < 0 || cardIndex >= cardsInHand.Count || cardIndex >= syncedCardIDs.Count)
             {
-                Debug.LogError($"[Server] Invalid card index {cardIndex} for pet hand with {cardsInHand.Count} cards");
+                Debug.LogError($"FALLBACK: Invalid card index {cardIndex} for pet hand with {cardsInHand.Count} cards");
                 return;
             }
             
             // Get card info
             string cardName = syncedCardIDs[cardIndex];
-          //  Debug.Log($"[Server] Pet playing card {cardName} at index {cardIndex}");
             
             // Remove from synced list and notify clients
             syncedCardIDs.RemoveAt(cardIndex);
             RpcRemoveCardFromHand(cardIndex, cardName);
-            
-            // The actual card effect would be handled by the pet AI
-            // combatPet.PlayCard(cardName);
-        }
-        
-        [ObserversRpc]
-        private void RpcRemoveCardFromHand(int cardIndex, string cardName)
-        {
-            if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
-            {
-                // Remove the card and rearrange
-                Destroy(cardsInHand[cardIndex].gameObject);
-                cardsInHand.RemoveAt(cardIndex);
-                ArrangeCardsInHand();
-               // Debug.Log($"[Client] Removed card {cardName} from pet's visual hand");
-            }
         }
         
         // Update the visual position of all cards in hand
@@ -383,11 +292,11 @@ namespace Combat
             int cardCount = cardsInHand.Count;
             if (cardCount == 0) return;
             
-            // Use simple horizontal layout (similar to CombatCanvasManager.ManualCardArrangement)
-            float cardWidth = 120f; // Match value from ManualCardArrangement if possible
-            float spacing = 10f;   // Match value from ManualCardArrangement
-            float totalWidth = (cardCount * cardWidth) + ((cardCount - 1) * spacing);
-            float startX = -totalWidth / 2f + cardWidth / 2f; // Start from the left edge
+            // Use arc-based layout similar to PlayerHand
+            float cardWidth = 120f;
+            float spacing = Mathf.Min(400f / cardCount, cardWidth * 0.8f); // Dynamic spacing
+            float totalWidth = spacing * (cardCount - 1);
+            float startX = -totalWidth / 2f;
             
             // Position each card
             for (int i = 0; i < cardCount; i++)
@@ -395,86 +304,31 @@ namespace Combat
                 Card card = cardsInHand[i];
                 if (card != null)
                 {
-                     // Calculate simple horizontal position
-                    float xPos = startX + (i * (cardWidth + spacing));
-                    float yPos = 0; // Keep cards aligned horizontally
+                    // Calculate position along a gentle arc
+                    float xPos = startX + (i * spacing);
+                    float normalizedPos = (float)i / (cardCount > 1 ? cardCount - 1 : 1); // 0 to 1
+                    float yPos = arcHeight * Mathf.Sin(Mathf.PI * normalizedPos); // Arc using sine
+                    
+                    // Calculate rotation (fan effect)
+                    float rotationAngle = Mathf.Lerp(-5f, 5f, normalizedPos);
+                    Quaternion targetRotation = Quaternion.Euler(0, 0, rotationAngle);
                     
                     // Set position directly
                     card.transform.localPosition = new Vector3(xPos, yPos, 0);
-                    card.transform.localRotation = Quaternion.identity; // Reset rotation
-                    card.transform.localScale = Vector3.one; // Ensure scale is reset
+                    card.transform.localRotation = targetRotation;
+                    card.transform.localScale = Vector3.one;
+                    
+                    // Update sorting order
+                    Canvas cardCanvas = card.GetComponent<Canvas>();
+                    if (cardCanvas != null)
+                    {
+                        cardCanvas.overrideSorting = true;
+                        cardCanvas.sortingOrder = 100 + i;
+                    }
                 }
             }
         }
         
-        // Calculate a curve for the hand shape (parabola)
-        private float CalculateHandCurve(float t)
-        {
-            // Simple parabola: y = -4 * (x - 0.5)^2
-            return -4f * (t - 0.5f) * (t - 0.5f);
-        }
-        
-        // Discard the hand
-        [Server]
-        public void DiscardHand()
-        {
-          //  Debug.Log($"[Server] Discarding pet hand with {cardsInHand.Count} cards");
-            
-            // Clear the synced list
-            syncedCardIDs.Clear();
-            
-            // Notify clients
-            RpcDiscardHand();
-        }
-        
-        [ObserversRpc]
-        private void RpcDiscardHand()
-        {
-          //  Debug.Log($"[Client] Discarding {cardsInHand.Count} cards from pet hand");
-            
-            // Destroy all card GameObjects
-            foreach (Card card in cardsInHand)
-            {
-                if (card != null && card.gameObject != null)
-                {
-                    Destroy(card.gameObject);
-                }
-            }
-            
-            // Clear the list
-            cardsInHand.Clear();
-        }
-        
-        // Set the pet's deck
-        [Server]
-        public void SetDeck(RuntimeDeck deck)
-        {
-            petDeck = deck;
-            // Debug.Log($"[Server] PetHand deck set with {deck.DrawPileCount} cards"); // Less important log
-        }
-
-        // --- Parenting RPC --- 
-        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
-        public void RpcSetParent(NetworkObject parentNetworkObject)
-        {
-            if (parentNetworkObject == null)
-            {
-                Debug.LogError($"[PetHand:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
-                return;
-            }
-
-            Transform parentTransform = parentNetworkObject.transform;
-            if (parentTransform != null)
-            {
-                transform.SetParent(parentTransform, false);
-            //    Debug.Log($"[PetHand:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
-            }
-            else
-            {
-                 Debug.LogError($"[PetHand:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
-            }
-        }
-
         // Get a copy of the cards in hand for AI to use
         public List<Card> GetCardsInHand()
         {
@@ -505,6 +359,77 @@ namespace Combat
                 Destroy(card.gameObject);
             }
         }
+        #endregion
+
+        #region RPCs
+        [ObserversRpc]
+        private void RpcRemoveCardFromHand(int cardIndex, string cardName)
+        {
+            if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
+            {
+                // Remove the card and rearrange
+                Destroy(cardsInHand[cardIndex].gameObject);
+                cardsInHand.RemoveAt(cardIndex);
+                ArrangeCardsInHand();
+            }
+        }
+        
+        [ObserversRpc]
+        private void RpcDiscardHand()
+        {
+            // Destroy all card GameObjects
+            foreach (Card card in cardsInHand)
+            {
+                if (card != null && card.gameObject != null)
+                {
+                    Destroy(card.gameObject);
+                }
+            }
+            
+            // Clear the list
+            cardsInHand.Clear();
+        }
+        
+        // Parenting RPC
+        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
+        public void RpcSetParent(NetworkObject parentNetworkObject)
+        {
+            if (parentNetworkObject == null)
+            {
+                Debug.LogError("FALLBACK: RpcSetParent received null parentNetworkObject");
+                return;
+            }
+
+            Transform parentTransform = parentNetworkObject.transform;
+            if (parentTransform != null)
+            {
+                transform.SetParent(parentTransform, false);
+            }
+            else
+            {
+                Debug.LogError("FALLBACK: Could not find transform for parent NetworkObject in RpcSetParent");
+            }
+        }
+        #endregion
+
+        #region Discard and Deck Management
+        // Discard the hand
+        [Server]
+        public void DiscardHand()
+        {
+            // Clear the synced list
+            syncedCardIDs.Clear();
+            
+            // Notify clients
+            RpcDiscardHand();
+        }
+        
+        // Set the pet's deck
+        [Server]
+        public void SetDeck(RuntimeDeck deck)
+        {
+            petDeck = deck;
+        }
 
         // Server-side discard hand implementation
         [Server]
@@ -525,13 +450,12 @@ namespace Combat
                     {
                         // Add card data to discard pile in the deck
                         combatPet.PetDeck.DiscardCard(card.Data);
-                        Debug.Log($"[Server] Added pet card {card.CardName} to discard pile. Discard pile now has {combatPet.PetDeck.DiscardPileCount} cards.");
                     }
                 }
             }
             else
             {
-                Debug.LogError($"[Server] Could not discard pet cards to deck: combatPet={combatPet}, petDeck={(combatPet != null ? combatPet.PetDeck != null ? "valid" : "null" : "N/A")}");
+                Debug.LogError("FALLBACK: Could not discard pet cards to deck - missing combatPet or petDeck");
             }
             
             // Destroy card objects on server
@@ -548,8 +472,7 @@ namespace Combat
             
             // Notify clients to discard their hand
             RpcDiscardHand();
-            
-            Debug.Log("[Server] Pet hand discarded");
         }
+        #endregion
     }
 } 

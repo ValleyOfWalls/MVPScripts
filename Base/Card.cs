@@ -21,6 +21,7 @@ namespace Combat
     
     public class Card : NetworkBehaviour
     {
+        #region Fields and Properties
         [Header("Card Data")]
         // This will be assigned locally on each client based on syncedCardName
         private CardData cardData;
@@ -62,7 +63,9 @@ namespace Combat
         
         private Canvas cardCanvas;
         private CanvasGroup cardCanvasGroup;
-        
+        #endregion
+
+        #region Unity Lifecycle
         private void Awake()
         {
             // Store original transform values
@@ -89,41 +92,34 @@ namespace Combat
             if (networkTransform == null)
             {
                 networkTransform = gameObject.AddComponent<NetworkTransform>();
-                // Configure NetworkTransform using the correct properties
             }
             
             // Register SyncVar callbacks
             _syncedCardObjectName.OnChange += OnSyncedCardObjectNameChanged;
             syncedCardDataName.OnChange += OnSyncedCardDataNameChanged;
             _syncedOwningHandObject.OnChange += OnSyncedOwningHandObjectChanged;
-            // Debug.Log($"[Card:{GetInstanceID()}] Awake: Registered SyncVar callbacks."); // Use InstanceID pre-network
-            
-            // Initial UI update attempt (might not have data yet)
-            // UpdateCardUI(); // Moved to OnStartClient / OnChange
         }
 
         private void OnDestroy()
         {
             // Unsubscribe from events to prevent memory leaks
-            // Debug.Log($"[Card:{(NetworkObject != null ? NetworkObject.ObjectId.ToString() : GetInstanceID().ToString())}] OnDestroy: Unregistering SyncVar callbacks.");
             _syncedCardObjectName.OnChange -= OnSyncedCardObjectNameChanged;
             syncedCardDataName.OnChange -= OnSyncedCardDataNameChanged;
             _syncedOwningHandObject.OnChange -= OnSyncedOwningHandObjectChanged;
         }
-        
+        #endregion
+
+        #region SyncVar Callbacks
         // Called when the syncedCardName changes
         private void OnSyncedCardDataNameChanged(string prev, string next, bool asServer)
         {
             // Only clients need to react to find the CardData
             if (!asServer)
             {
-                // More detailed log
-             //   Debug.Log($"[Client {NetworkObject.ObjectId}] OnSyncedCardDataNameChanged: Prev='{prev}', Next='{next}'. IsOwner={IsOwner}");
-                
                 // Check DeckManager availability right here
                 if (DeckManager.Instance == null)
                 {
-                    Debug.LogError($"[Client {NetworkObject.ObjectId}] DeckManager.Instance is NULL inside OnSyncedCardDataNameChanged!");
+                    Debug.LogError($"[FALLBACK] DeckManager.Instance is NULL inside OnSyncedCardDataNameChanged!");
                     return;
                 }
                 
@@ -134,25 +130,20 @@ namespace Combat
         // Called when the synced GameObject name changes
         private void OnSyncedCardObjectNameChanged(string prevName, string newName, bool asServer)
         {
-            // Both server AND clients should update their GameObject name
-           // Debug.Log($"[Card:{NetworkObject.ObjectId}] OnSyncedCardObjectNameChanged fired. IsOwner: {IsOwner}, IsServer: {IsServer}, Prev: '{prevName}', New: '{newName}'");
-
             if (!string.IsNullOrEmpty(newName))
             {
                 // Ensure we update the actual GameObject name
                 gameObject.name = newName;
-                //Debug.Log($"[Card:{NetworkObject.ObjectId}] Updated gameObject.name to: {newName}");
                 
                 // Force UI update if card data is already set
                 if (cardData != null)
                 {
-                   // Debug.Log($"[Card:{NetworkObject.ObjectId}] Card data exists, updating UI after name change");
                     UpdateCardUI();
                 }
             }
             else
             {
-                Debug.LogWarning($"[Card:{NetworkObject.ObjectId}] Synced object name was null or empty, not setting name.");
+                Debug.LogWarning($"[FALLBACK] Synced object name was null or empty, not setting name.");
             }
         }
         
@@ -166,96 +157,41 @@ namespace Combat
                 if (hand != null)
                 {
                     owningHand = hand;
-                   // Debug.Log($"[Client] Card {CardName} set owningHand reference to {hand.name}");
                     
                     // Update interactivity now that we have a hand reference
                     UpdateInteractivity();
                 }
                 else
                 {
-                    Debug.LogWarning($"[Client] Card {CardName} received owningHand NetworkObject but couldn't find PlayerHand component");
+                    Debug.LogWarning($"[FALLBACK] Card {CardName} received owningHand NetworkObject but couldn't find PlayerHand component");
                 }
             }
         }
-        
-        // Helper to find CardData and update UI
-        private void FindCardDataAndUpdateUI(string cardName)
-        {
-            if (string.IsNullOrEmpty(cardName))
-            {
-                Debug.LogWarning($"[Client {NetworkObject.ObjectId}] Synced card name is empty in FindCardDataAndUpdateUI.");
-                return;
-            }
+        #endregion
 
-            if (DeckManager.Instance == null)
-            {
-                Debug.LogError($"[Client {NetworkObject.ObjectId}] DeckManager instance is null in FindCardDataAndUpdateUI. Cannot find CardData for '{cardName}'.");
-                return;
-            }
-            
-           // Debug.Log($"[Client {NetworkObject.ObjectId}] Attempting to find CardData for name: '{cardName}' using DeckManager.");
-            this.cardData = DeckManager.Instance.FindCardByName(cardName);
-            
-            if (this.cardData == null)
-            {
-                Debug.LogError($"[Client {NetworkObject.ObjectId}] FindCardByName FAILED for name: '{cardName}'");
-                // Create a placeholder UI to show something is wrong
-                nameText.text = "CARD NOT FOUND";
-                descriptionText.text = $"Missing card: {cardName}";
-                costText.text = "?";
-            }
-            else
-            {
-               // Debug.Log($"[Client {NetworkObject.ObjectId}] FindCardByName SUCCESS for '{cardName}'. Updating UI and Interactivity.");
-                
-                // Ensure we have the correct name displayed in the inspector
-                if (!gameObject.name.Contains(cardData.cardName))
-                {
-                    string newName = $"Card_{NetworkObject.ObjectId}_{cardData.cardName.Replace(' ', '_')}";
-                  //  Debug.Log($"[Client {NetworkObject.ObjectId}] Updating local GameObject name to match card data: {newName}");
-                    gameObject.name = newName;
-                }
-                
-                // Update the UI with the found card data
-                UpdateCardUI();
-                UpdateInteractivity(); // Update based on ownership
-            }
-        }
-
+        #region Network Callbacks
         public override void OnStartNetwork()
         {
             base.OnStartNetwork();
-            // IsOwner check removed as per previous fix (use base.Owner.IsLocalClient)
         }
         
         public override void OnStartClient()
         {
             base.OnStartClient();
-          //  Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient. IsOwner: {IsOwner}. Name: {gameObject.name} SyncedName: '{_syncedCardObjectName.Value}' Parent: {(transform.parent != null ? transform.parent.name : "null")}");
 
-            // --- Manually trigger object name update if the value arrived before OnChange ---
+            // Manually trigger object name update if the value arrived before OnChange
             if (!string.IsNullOrEmpty(_syncedCardObjectName.Value))
             {
-              //  Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient: Manually calling OnSyncedCardObjectNameChanged with initial value '{_syncedCardObjectName.Value}'.");
-                OnSyncedCardObjectNameChanged(null, _syncedCardObjectName.Value, false); // Manually call the callback
-            }
-            else
-            {
-              //   Debug.Log($"[Card:{NetworkObject.ObjectId}] OnStartClient: _syncedCardObjectName is empty, waiting for OnChange callback.");
+                OnSyncedCardObjectNameChanged(null, _syncedCardObjectName.Value, false);
             }
             
             // Initial attempt to find data if SyncVar already arrived
             if (!string.IsNullOrEmpty(syncedCardDataName.Value))
             {
-                 FindCardDataAndUpdateUI(syncedCardDataName.Value);
-            }
-            else
-            {
-             //   Debug.Log($"[Card:{NetworkObject.ObjectId}] waiting for syncedCardDataName...");
+                FindCardDataAndUpdateUI(syncedCardDataName.Value);
             }
 
             // Register with parent PlayerHand if available
-            // We might need a small delay here if the hand isn't ready yet
             StartCoroutine(RegisterWithHandAfterDelay());
         }
 
@@ -266,16 +202,80 @@ namespace Combat
             if (playerHand != null)
             {
                 playerHand.RegisterNetworkedCard(this);
-                // Debug.Log($"[Client] Card {CardName} registered with PlayerHand"); // Log inside RegisterNetworkedCard
             }
-            // TODO: Add similar logic for PetHand if necessary
+        }
+
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+            
+            // Now that the object is spawned, ensure SyncVars are set
+            if (this.cardData != null && string.IsNullOrEmpty(syncedCardDataName.Value))
+            {
+                // Fallback in case ServerInitialize didn't run first somehow
+                syncedCardDataName.Value = this.cardData.cardName;
+                Debug.LogWarning($"[FALLBACK] Set syncedCardName as fallback for {this.cardData.cardName}");
+            }
+            else if (this.cardData == null)
+            {
+                Debug.LogError($"[FALLBACK] CardData is null for Card! Cannot ensure SyncVar.");
+            }
+            
+            // Make sure name is properly set on the host too
+            if (!string.IsNullOrEmpty(_syncedCardObjectName.Value) && gameObject.name.Contains("PreSpawn"))
+            {
+                // The host also needs to update its GameObject name
+                gameObject.name = _syncedCardObjectName.Value;
+            }
+        }
+        #endregion
+
+        #region Card Data Management
+        // Helper to find CardData and update UI
+        private void FindCardDataAndUpdateUI(string cardName)
+        {
+            if (string.IsNullOrEmpty(cardName))
+            {
+                Debug.LogWarning($"[FALLBACK] Synced card name is empty in FindCardDataAndUpdateUI.");
+                return;
+            }
+
+            if (DeckManager.Instance == null)
+            {
+                Debug.LogError($"[FALLBACK] DeckManager instance is null in FindCardDataAndUpdateUI. Cannot find CardData for '{cardName}'.");
+                return;
+            }
+            
+            this.cardData = DeckManager.Instance.FindCardByName(cardName);
+            
+            if (this.cardData == null)
+            {
+                Debug.LogError($"[FALLBACK] FindCardByName FAILED for name: '{cardName}'");
+                // Create a placeholder UI to show something is wrong
+                nameText.text = "CARD NOT FOUND";
+                descriptionText.text = $"Missing card: {cardName}";
+                costText.text = "?";
+            }
+            else
+            {
+                // Ensure we have the correct name displayed in the inspector
+                if (!gameObject.name.Contains(cardData.cardName))
+                {
+                    string newName = $"Card_{NetworkObject.ObjectId}_{cardData.cardName.Replace(' ', '_')}";
+                    gameObject.name = newName;
+                }
+                
+                // Update the UI with the found card data
+                UpdateCardUI();
+                UpdateInteractivity(); // Update based on ownership
+            }
         }
 
         public void ServerInitialize(CardData data, ICombatant cardOwner, PlayerHand hand = null, PetHand petHand = null)
         {
             if (data == null)
             {
-                Debug.LogError("[Server] Attempted to initialize Card with null CardData!");
+                Debug.LogError("[FALLBACK] Attempted to initialize Card with null CardData!");
                 return;
             }
             
@@ -288,17 +288,13 @@ namespace Combat
             if (hand != null && hand.NetworkObject != null)
             {
                 _syncedOwningHandObject.Value = hand.NetworkObject;
-               // Debug.Log($"[Server] Set _syncedOwningHandObject to {hand.name} for card {data.cardName}");
             }
-            
-            // We don't store PetHand reference in owningHand field
             
             // Set the synced data name immediately on the server
             if (this.cardData != null)
             {
                 // Make sure we set the syncedCardDataName first
                 syncedCardDataName.Value = this.cardData.cardName;
-                // Debug.Log($"[Server] Set syncedCardDataName to {this.cardData.cardName} for card {this.NetworkObject.ObjectId}");
                 
                 // Also update our local UI immediately on server
                 UpdateCardUI();
@@ -311,7 +307,7 @@ namespace Combat
             }
             else
             {
-                Debug.LogError($"[Server] CardData is NULL when trying to set syncedCardDataName!");
+                Debug.LogError($"[FALLBACK] CardData is NULL when trying to set syncedCardDataName!");
             }
         }
         
@@ -321,45 +317,16 @@ namespace Combat
             if (conn != null && NetworkObject != null)
             {
                 NetworkObject.GiveOwnership(conn);
-                //Debug.Log($"[Server] Card {CardName} ownership given to connection {conn.ClientId}");
             }
         }
         
-        // REMOVED RpcInitializeCard - Replaced by SyncVar + OnStartClient logic
-
-        public override void OnStartServer()
-        {
-            base.OnStartServer();
-            
-            // Now that the object is spawned, ensure SyncVars are set
-            // (syncedCardDataName should ideally be set in ServerInitialize now)
-            if (this.cardData != null && string.IsNullOrEmpty(syncedCardDataName.Value))
-            {
-                // Fallback in case ServerInitialize didn't run first somehow
-                syncedCardDataName.Value = this.cardData.cardName;
-                Debug.LogWarning($"[Server - OnStartServer] Set syncedCardName as fallback for {this.cardData.cardName} (ObjectId: {NetworkObject.ObjectId})");
-            }
-            else if (this.cardData == null)
-            {
-                Debug.LogError($"[Server - OnStartServer] CardData is null for Card (ObjectId: {NetworkObject.ObjectId})! Cannot ensure SyncVar.");
-            }
-            
-            // Make sure name is properly set on the host too
-            if (!string.IsNullOrEmpty(_syncedCardObjectName.Value) && gameObject.name.Contains("PreSpawn"))
-            {
-                // The host also needs to update its GameObject name
-                gameObject.name = _syncedCardObjectName.Value;
-              //  Debug.Log($"[Server - OnStartServer] Updated host's GameObject name from PreSpawn to: {gameObject.name}");
-            }
-        }
-
         // Server-side method to set the card's object name (called after spawning, before parenting RPC)
         [Server]
         public void SetCardObjectName(string name)
         {
             if (string.IsNullOrEmpty(name))
             {
-                Debug.LogWarning($"[Server Card:{NetworkObject.ObjectId}] SetCardObjectName called with empty name.");
+                Debug.LogWarning($"[FALLBACK] SetCardObjectName called with empty name.");
                 name = "UnnamedCard";
             }
             
@@ -368,7 +335,6 @@ namespace Combat
             
             // Set the object name with a unique identifier to avoid name conflicts
             string uniqueName = $"Card_{NetworkObject.ObjectId}_{name.Replace(' ', '_')}"; 
-           // Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Setting _syncedCardObjectName to: {uniqueName}");
             
             // Set the synced name that clients will receive
             _syncedCardObjectName.Value = uniqueName;
@@ -376,32 +342,10 @@ namespace Combat
             // The server's callback won't fire for its own changes, so we need to explicitly update it
             // This ensures host and clients have consistent naming
             gameObject.name = uniqueName;
-           // Debug.Log($"[Server Card:{NetworkObject.ObjectId}] Manually set server GameObject.name to: {uniqueName}");
         }
+        #endregion
 
-        // --- Parenting RPC --- 
-        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
-        public void RpcSetParent(NetworkObject parentNetworkObject)
-        {
-             if (parentNetworkObject == null)
-             {
-                 Debug.LogError($"[Card:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
-                 return;
-             }
-
-             Transform parentTransform = parentNetworkObject.transform;
-             if (parentTransform != null)
-             {
-                 // Use worldPositionStays = false to inherit parent's scale and position cleanly
-                 transform.SetParent(parentTransform, false); 
-                // Debug.Log($"[Card:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
-             }
-             else
-             {
-                  Debug.LogError($"[Card:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
-             }
-        }
-
+        #region UI Updates
         // Made public so it can be called from PlayerHand
         public void UpdateInteractivity()
         {
@@ -413,18 +357,11 @@ namespace Combat
             {
                 cardCanvasGroup.interactable = canInteract;
                 cardCanvasGroup.blocksRaycasts = canInteract;
-                // Keep alpha at 1, use SetPlayable for visual state
-                // cardCanvasGroup.alpha = 1f; 
             }
-            
-            // Add debug log to help identify ownership issues
-            //Debug.Log($"[Client] Card {CardName} interactivity: canInteract={canInteract}, IsOwner={IsOwner}, isPlayerCard={isPlayerCard}, NetworkObject.IsOwner={NetworkObject?.IsOwner}");
         }
         
         private void UpdateCardUI()
         {
-            // Debug.Log($"Updating UI for card: {CardName}");
-            
             // Set up card UI
             if (nameText != null) nameText.text = CardName;
             if (descriptionText != null) descriptionText.text = Description;
@@ -439,7 +376,7 @@ namespace Combat
                     cardImage.sprite = Resources.Load<Sprite>(cardData.cardArtworkPath);
                     if (cardImage.sprite == null) 
                     {
-                        Debug.LogWarning($"Card {CardName}: Could not load artwork from path: {cardData.cardArtworkPath}");
+                        Debug.LogWarning($"[FALLBACK] Card {CardName}: Could not load artwork from path: {cardData.cardArtworkPath}");
                         CreatePlaceholderCardBackground(); // Fallback placeholder
                     }
                 }
@@ -459,7 +396,7 @@ namespace Combat
             }
             else
             {
-                Debug.LogError($"Card {CardName} has no Image component assigned to cardImage");
+                Debug.LogError($"[FALLBACK] Card {CardName} has no Image component assigned to cardImage");
             }
             
             // Set card type icon
@@ -468,7 +405,7 @@ namespace Combat
         
         private void CreatePlaceholderCardBackground()
         {
-            Debug.LogWarning($"No sprite assigned to Card {CardName} - creating placeholder");
+            Debug.LogWarning($"[FALLBACK] No sprite assigned to Card {CardName} - creating placeholder");
             
             // Create a placeholder texture
             Texture2D texture = new Texture2D(200, 300);
@@ -516,8 +453,6 @@ namespace Combat
             // Create sprite from texture
             Sprite placeholder = Sprite.Create(texture, new Rect(0, 0, 200, 300), new Vector2(0.5f, 0.5f), 100f);
             cardImage.sprite = placeholder;
-            
-          //  Debug.Log("Created placeholder sprite for card background");
         }
         
         private void UpdateCardTypeIcon()
@@ -534,7 +469,7 @@ namespace Combat
                     }
                     else
                     {
-                         Debug.LogWarning($"Card {CardName}: Could not load type icon from path: {cardData.typeIconPath}");
+                         Debug.LogWarning($"[FALLBACK] Card {CardName}: Could not load type icon from path: {cardData.typeIconPath}");
                          SetTypeIconColorFallback(); // Fallback to color
                     }
                 }
@@ -569,7 +504,9 @@ namespace Combat
                      break;
              }
         }
-        
+        #endregion
+
+        #region Card Interaction
         public void SetPlayable(bool playable)
         {
             isPlayable = playable;
@@ -595,8 +532,6 @@ namespace Combat
             // If card is not playable, don't do anything
             if (!isPlayable) return;
             
-          //  Debug.Log($"Card clicked: {CardName}");
-            
             // Highlight on click
             transform.DOScale(originalScale * 1.1f, 0.2f);
         }
@@ -607,8 +542,6 @@ namespace Combat
             if (!isPlayable) return;
             
             isDragging = true;
-            
-           // Debug.Log($"Begin dragging card: {CardName}");
             
             // Store original position
             originalPosition = transform.position;
@@ -637,8 +570,6 @@ namespace Combat
             
             isDragging = false;
             
-         //   Debug.Log($"End dragging card: {CardName}, Valid target: {validTarget}");
-            
             // Reset sorting order
             if (cardCanvas != null)
                 cardCanvas.sortingOrder -= 10;
@@ -658,8 +589,6 @@ namespace Combat
         // Play the card
         public void PlayCard(ICombatant target = null)
         {
-          //  Debug.Log($"Playing card: {CardName}, Target: {(target != null ? "Found" : "None")}");
-            
             // Apply card effects
             if (cardData != null && cardData.cardEffects != null)
             {
@@ -731,8 +660,6 @@ namespace Combat
         {
             if (target == null) return;
             
-         //   Debug.Log($"Applying effect: {effect.effectType} with value {effect.effectValue} to target");
-            
             switch (effect.effectType)
             {
                 case EffectType.Damage:
@@ -758,8 +685,6 @@ namespace Combat
         
         public void ReturnToHand()
         {
-           // Debug.Log($"Returning card to hand: {CardName}");
-            
             // Return to original position and scale
             transform.DOMove(originalPosition, 0.3f)
                 .SetEase(Ease.OutQuint);
@@ -791,5 +716,29 @@ namespace Combat
             if (cardCanvas != null)
                 cardCanvas.sortingOrder -= 5;
         }
+        #endregion
+
+        #region RPCs
+        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
+        public void RpcSetParent(NetworkObject parentNetworkObject)
+        {
+             if (parentNetworkObject == null)
+             {
+                 Debug.LogError($"[FALLBACK] RpcSetParent received null parentNetworkObject.");
+                 return;
+             }
+
+             Transform parentTransform = parentNetworkObject.transform;
+             if (parentTransform != null)
+             {
+                 // Use worldPositionStays = false to inherit parent's scale and position cleanly
+                 transform.SetParent(parentTransform, false); 
+             }
+             else
+             {
+                  Debug.LogError($"[FALLBACK] Could not find transform for parent NetworkObject in RpcSetParent.");
+             }
+        }
+        #endregion
     }
 }

@@ -12,10 +12,9 @@ namespace Combat
     // The main player class during combat
     public class CombatPlayer : NetworkBehaviour, ICombatant
     {
+        #region References and Components
         [Header("References")]
-        // Changed networkPlayer to a SyncVar
         private readonly SyncVar<NetworkPlayer> _networkPlayer = new SyncVar<NetworkPlayer>();
-        // Removed SerializeField, assigned via Initialize
         private CombatPet playerPet;
         private CombatPet opponentPet;
         private PlayerHand playerHand;
@@ -27,11 +26,17 @@ namespace Combat
         [SerializeField] private TextMeshProUGUI playerNameText;
         [SerializeField] private TextMeshProUGUI energyText;
         
-        // Combat state (Refactored)
+        // Combat state
         private readonly SyncVar<bool> _isMyTurn = new SyncVar<bool>();
         private readonly SyncVar<int> _currentEnergy = new SyncVar<int>();
-        private readonly SyncVar<int> _maxEnergy = new SyncVar<int>(3); // Initialize default value
+        private readonly SyncVar<int> _maxEnergy = new SyncVar<int>(3);
         
+        // References to combat systems
+        private CombatManager combatManager;
+        private SpriteRenderer spriteRenderer;
+        #endregion
+
+        #region Properties
         // Public properties
         public SyncVar<bool> SyncIsMyTurn => _isMyTurn;
         public SyncVar<int> SyncEnergy => _currentEnergy;
@@ -40,25 +45,19 @@ namespace Combat
         public bool IsMyTurn => _isMyTurn.Value;
         public int CurrentEnergy => _currentEnergy.Value;
         public int MaxEnergy => _maxEnergy.Value;
-        
-        // References to combat systems
-        private CombatManager combatManager;
-        private SpriteRenderer spriteRenderer;
-        
-        // Reference to the player's deck (Property for potential external access)
         public RuntimeDeck PlayerDeck => playerDeck;
-        
+        #endregion
+
+        #region Unity Lifecycle
         private void Awake()
         {
-            // Debug.Log($"CombatPlayer Awake - SpriteRenderer: {(GetComponent<SpriteRenderer>() != null ? "Found" : "Missing")}");
-            
             // Find UI elements
             FindUIElements();
             
             // Register synced variable change callbacks
             _networkPlayer.OnChange += OnNetworkPlayerChanged;
             _currentEnergy.OnChange += OnEnergyChanged;
-            _isMyTurn.OnChange += OnTurnChanged;  // Make sure this is registered
+            _isMyTurn.OnChange += OnTurnChanged;
             
             // Get sprite renderer
             spriteRenderer = GetComponent<SpriteRenderer>();
@@ -85,8 +84,6 @@ namespace Combat
                 Color color = spriteRenderer.color;
                 color.a = 1f;
                 spriteRenderer.color = color;
-                
-                Debug.Log($"CombatPlayer Start - Sprite: {(spriteRenderer.sprite != null ? "Assigned" : "Missing")}, Alpha: {color.a}");
             }
         }
 
@@ -95,44 +92,36 @@ namespace Combat
             // Unregister synced variable change callbacks
             _networkPlayer.OnChange -= OnNetworkPlayerChanged;
             _currentEnergy.OnChange -= OnEnergyChanged;
-            _isMyTurn.OnChange -= OnTurnChanged;  // Make sure to unregister too
+            _isMyTurn.OnChange -= OnTurnChanged;
         }
-        
+        #endregion
+
+        #region Network Callbacks
         public override void OnStartClient()
         {
             base.OnStartClient();
-            Debug.Log($"[CombatPlayer] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}"); // RE-ADD Log
             
-            Debug.Log($"CombatPlayer OnStartClient - IsOwner: {IsOwner}, NetworkPlayer: {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "null")}");
-            
-            // Check if we need placeholders
+            // Create placeholder if needed
             CreatePlaceholderIfNeeded();
-            
-            // Update visuals that don't depend on _networkPlayer yet
-            // Player name will be set by OnNetworkPlayerChanged callback
-            
-            // Start debugging coroutine
-            StartCoroutine(DebugTurnStateRoutine());
         }
         
-        private IEnumerator DebugTurnStateRoutine()
+        public override void OnStartNetwork()
         {
-            for (int i = 0; i < 5; i++)
-            {
-                yield return new WaitForSeconds(1.0f);
-                
-                // Just log the turn state
-                Debug.Log($"[CombatPlayer] DebugTurnStateRoutine [{i+1}] - IsMyTurn={_isMyTurn.Value}, IsOwner={IsOwner}");
-            }
+            base.OnStartNetwork();
+            
+            // Double-check registration of callbacks
+            _isMyTurn.OnChange += OnTurnChanged;
+            _currentEnergy.OnChange += OnEnergyChanged;
+            _networkPlayer.OnChange += OnNetworkPlayerChanged;
         }
-        
+        #endregion
+
+        #region Initialization and Setup
         private void CreatePlaceholderIfNeeded()
         {
             // Check if player has a sprite renderer with no sprite
             if (spriteRenderer != null && spriteRenderer.sprite == null)
             {
-                Debug.LogWarning("No sprite assigned to CombatPlayer - creating placeholder");
-                
                 // Create a placeholder texture
                 Texture2D texture = new Texture2D(128, 128);
                 Color[] colors = new Color[128 * 128];
@@ -164,8 +153,6 @@ namespace Combat
                 
                 // Ensure renderer is enabled and visible
                 spriteRenderer.enabled = true;
-                
-                Debug.Log("Created placeholder sprite for CombatPlayer");
             }
         }
         
@@ -175,45 +162,38 @@ namespace Combat
         {
              if (networkPlayer == null) 
              {
-                 Debug.LogError("[CombatPlayer.Initialize] NetworkPlayer is null!");
+                 Debug.LogError("FALLBACK: NetworkPlayer is null in Initialize");
                  return;
              }
              if (playerPetRef == null)
              {
-                 Debug.LogError($"[CombatPlayer.Initialize] PlayerPetRef is null for {networkPlayer.GetSteamName()}!");
-                 // Decide how to handle this - return? proceed? Throw exception?
-                 // return; 
+                 Debug.LogError($"FALLBACK: PlayerPetRef is null for {networkPlayer.GetSteamName()}");
              }
              if (opponentPetRef == null)
              { 
-                 Debug.LogError($"[CombatPlayer.Initialize] OpponentPetRef is null for {networkPlayer.GetSteamName()}!");
-                 // return;
+                 Debug.LogError($"FALLBACK: OpponentPetRef is null for {networkPlayer.GetSteamName()}");
              }
              if (playerHandRef == null)
              {
-                 Debug.LogError($"[CombatPlayer.Initialize] PlayerHandRef is null for {networkPlayer.GetSteamName()}!");
-                 // return;
+                 Debug.LogError($"FALLBACK: PlayerHandRef is null for {networkPlayer.GetSteamName()}");
              }
             
             _networkPlayer.Value = networkPlayer;
-            this.playerPet = playerPetRef; // Assign player pet
-            this.opponentPet = opponentPetRef; // Assign opponent pet
-            this.playerHand = playerHandRef; // Assign player hand
-            this.playerDeck = deck; // Assign the player deck
-            
-            Debug.Log($"[CombatPlayer.Initialize] Initialized for {networkPlayer.GetSteamName()} - PlayerPet: {(this.playerPet != null ? this.playerPet.name : "null")}, OpponentPet: {(this.opponentPet != null ? this.opponentPet.name : "null")}, Hand: {this.playerHand.name}");
+            this.playerPet = playerPetRef;
+            this.opponentPet = opponentPetRef;
+            this.playerHand = playerHandRef;
+            this.playerDeck = deck;
             
             // Initialize combat state
-            _maxEnergy.Value = 3; // Set max energy (or get from player data if needed)
+            _maxEnergy.Value = 3;
             _currentEnergy.Value = _maxEnergy.Value;
-            _isMyTurn.Value = false; // Will be set true by CombatManager when turn starts
+            _isMyTurn.Value = false;
             
             // Additional setup after references are assigned
-            // FindUIElements(); // Call this if UI elements are children/need finding
             if (playerNameText != null) 
                 playerNameText.text = networkPlayer.GetSteamName();
             
-            UpdateEnergyDisplay(0, _currentEnergy.Value, true); // Update visuals on server
+            UpdateEnergyDisplay(0, _currentEnergy.Value, true);
             UpdateTurnVisuals(false, _isMyTurn.Value, true);
         }
         
@@ -223,46 +203,43 @@ namespace Combat
             // Find player name text
             if (playerNameText == null)
             {
-                // Assuming it's a child object named "PlayerNameText" or similar
+                // Try to find among children
                 playerNameText = GetComponentInChildren<TextMeshProUGUI>(true);
                 if (playerNameText == null)
-                    Debug.LogError("Could not find TextMeshProUGUI component in children.");
-                else
-                    Debug.Log("Found TextMeshProUGUI in children.");
+                    Debug.LogError("FALLBACK: Could not find TextMeshProUGUI component in children");
             }
 
             if (energyText == null)
             {
-                // Assuming it's a child object named "EnergyText" or similar
-                // Might need a more specific search if multiple TextMeshProUGUI exist
-                // Example: transform.Find("UIContainer/EnergyText").GetComponent<TextMeshProUGUI>();
-                // For now, just grab the first one found besides player name
+                // Try to find among children TextMeshProUGUI components
                 var texts = GetComponentsInChildren<TextMeshProUGUI>(true);
                 foreach(var text in texts)
                 {
-                    if (text != playerNameText) // Avoid re-assigning player name
+                    if (text != playerNameText)
                     {
                         energyText = text;
-                        Debug.Log("Found EnergyText in children.");
                         break;
                     }
                 }
-                if (energyText == null) Debug.LogError("Could not find EnergyText component in children.");
+                if (energyText == null) 
+                    Debug.LogError("FALLBACK: Could not find EnergyText component in children");
             }
         }
-        
+        #endregion
+
+        #region Turn Management
         // Start player turn
         [Server]
         public void StartTurn()
         {
-            // Set turn state using the new method
+            // Set turn state
             SetTurn(true);
             
             // Reset/increase energy
             _currentEnergy.Value = _maxEnergy.Value;
             
             // Draw cards
-            DrawCardsOnTurnStart(5); // Draw 5 cards at start of turn
+            DrawCardsOnTurnStart(5);
             
             // Notify clients explicitly that turn state changed
             RpcNotifyTurnChanged(true);
@@ -279,7 +256,7 @@ namespace Combat
         [Server]
         public void EndTurn()
         {
-            // Set turn state using the new method
+            // Set turn state
             SetTurn(false);
             
             // Notify clients explicitly that turn state changed
@@ -292,7 +269,7 @@ namespace Combat
             }
             else
             {
-                Debug.LogError($"EndTurn - CombatManager reference is null for {(_networkPlayer.Value != null ? _networkPlayer.Value.GetSteamName() : "Unknown")}");
+                Debug.LogError($"FALLBACK: EndTurn - CombatManager reference is null");
             }
         }
         
@@ -300,7 +277,6 @@ namespace Combat
         [Server]
         private void DrawCardsOnTurnStart(int count)
         {
-            Debug.Log($"[Combat] {_networkPlayer.Value.GetSteamName()}'s turn started - drawing {count} cards");
             // Tell client to draw cards
             TargetDrawCards(Owner, count);
         }
@@ -309,9 +285,9 @@ namespace Combat
         [ServerRpc(RequireOwnership = true)]
         public void CmdEndTurn()
         {
-            if (!IsMyTurn) return; // Only end turn if it's currently this player's turn
+            if (!IsMyTurn) return;
 
-            // End the turn logic (set IsMyTurn to false)
+            // End the turn logic
             SetTurn(false);
             
             // Discard Hand
@@ -321,7 +297,7 @@ namespace Combat
             }
             else
             {
-                Debug.LogError($"[Server] Cannot discard hand for {NetworkPlayer?.GetSteamName()} - PlayerHand reference is null.");
+                Debug.LogError($"FALLBACK: Cannot discard hand - PlayerHand reference is null");
             }
             
             // Tell the CombatManager to switch turns
@@ -337,10 +313,12 @@ namespace Combat
             }
             else
             {
-                Debug.LogError("CmdEndTurn - CombatManager reference is null!");
+                Debug.LogError("FALLBACK: CmdEndTurn - CombatManager reference is null");
             }
         }
-        
+        #endregion
+
+        #region Card Management
         // Play a card from hand
         [Server]
         public void PlayCard(string cardName, CardType cardType, int baseValue)
@@ -359,8 +337,6 @@ namespace Combat
             // Spend energy
             _currentEnergy.Value -= cardCost;
             
-            Debug.Log($"[Combat] {_networkPlayer.Value.GetSteamName()} played {cardName} ({cardType}) with value {baseValue}, cost {cardCost}");
-            
             // Apply card effect based on type
             switch (cardType)
             {
@@ -368,16 +344,15 @@ namespace Combat
                     if (opponentPet != null)
                         opponentPet.TakeDamage(baseValue);
                     else
-                        Debug.LogError("Cannot play attack card - opponentPet is null");
+                        Debug.LogError("FALLBACK: Cannot play attack card - opponentPet is null");
                     break;
                 case CardType.Skill:
                     if (playerPet != null)
                         playerPet.SetDefending(true);
                     else
-                        Debug.LogError("Cannot play skill card - playerPet is null");
+                        Debug.LogError("FALLBACK: Cannot play skill card - playerPet is null");
                     break;
                 case CardType.Power:
-                    Debug.Log($"Power card played: {cardName}");
                     break;
             }
             
@@ -397,43 +372,32 @@ namespace Combat
         {
             if (playerDeck == null)
             {
-                Debug.LogError($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} cannot draw card: playerDeck is null!");
+                Debug.LogError("FALLBACK: Cannot draw card: playerDeck is null");
                 return null;
             }
 
             // Draw from the actual RuntimeDeck
             CardData drawnCard = playerDeck.DrawCard();
 
-            // Log results
+            // Handle empty deck
             if (drawnCard == null)
             {
-                Debug.LogWarning($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} drew null card (Deck empty or reshuffled?).");
-                
                 // Handle empty deck by reshuffling discard pile
                 if (playerDeck.NeedsReshuffle())
                 {
-                    Debug.Log($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} reshuffling discard pile into draw pile.");
                     playerDeck.Reshuffle();
                     
                     // Try drawing again after reshuffling
                     drawnCard = playerDeck.DrawCard();
-                    if (drawnCard != null)
+                    if (drawnCard == null)
                     {
-                        Debug.Log($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} drew {drawnCard.cardName} after reshuffling.");
-                    }
-                    else
-                    {
-                        Debug.LogError($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} still drew null card after reshuffling!");
+                        Debug.LogError("FALLBACK: Still drew null card after reshuffling");
                     }
                 }
                 else
                 {
-                    Debug.LogError($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} no cards available, deck empty and cannot reshuffle!");
+                    Debug.LogError("FALLBACK: No cards available, deck empty and cannot reshuffle");
                 }
-            }
-            else
-            {
-                 Debug.Log($"[Server] CombatPlayer {NetworkPlayer?.GetSteamName()} drew card: {drawnCard.cardName}");
             }
 
             return drawnCard;
@@ -444,41 +408,34 @@ namespace Combat
         {
             // No server logic needed here for basic implementation
         }
-        
-        // --- ICombatant Implementation ---
+        #endregion
 
+        #region ICombatant Implementation
         // Players themselves don't take damage directly, their pets do
         [Server]
         public void TakeDamage(int amount)
         {
-            Debug.LogWarning("CombatPlayer.TakeDamage called. Should target the pet.");
-            // Potentially redirect to playerPet?
-            // if (playerPet != null) playerPet.TakeDamage(amount);
+            Debug.LogWarning("FALLBACK: CombatPlayer.TakeDamage called. Should target the pet");
         }
 
         // Players don't have block, their pets might
         [Server]
         public void AddBlock(int amount)
         {
-            Debug.LogWarning("CombatPlayer.AddBlock called. Should target the pet.");
-            // Potentially redirect to playerPet?
-            // if (playerPet != null) playerPet.AddBlock(amount);
+            Debug.LogWarning("FALLBACK: CombatPlayer.AddBlock called. Should target the pet");
         }
 
         // Players don't heal directly, their pets might
         [Server]
         public void Heal(int amount)
         {
-            Debug.LogWarning("CombatPlayer.Heal called. Should target the pet.");
-            // Potentially redirect to playerPet?
-            // if (playerPet != null) playerPet.Heal(amount);
+            Debug.LogWarning("FALLBACK: CombatPlayer.Heal called. Should target the pet");
         }
 
         // Draw cards is handled by TargetDrawCards RPC
         [Server]
         public void DrawCards(int amount)
         {
-            Debug.Log($"CombatPlayer asked to draw {amount} cards.");
             TargetDrawCards(Owner, amount);
         }
 
@@ -486,18 +443,14 @@ namespace Combat
         [Server]
         public void ApplyBuff(int buffId)
         {
-            // Implement player-specific buffs
-            Debug.LogWarning($"CombatPlayer.ApplyBuff({buffId}) called, but player buffs not implemented.");
-            // Example: Increase max energy, gain temp energy, etc.
+            Debug.LogWarning("FALLBACK: CombatPlayer.ApplyBuff called, but player buffs not implemented");
         }
 
         // Apply debuff to the player
         [Server]
         public void ApplyDebuff(int debuffId)
         {
-            // Implement player-specific debuffs
-            Debug.LogWarning($"CombatPlayer.ApplyDebuff({debuffId}) called, but player debuffs not implemented.");
-            // Example: Reduce energy, skip draw, etc.
+            Debug.LogWarning("FALLBACK: CombatPlayer.ApplyDebuff called, but player debuffs not implemented");
         }
 
         // CombatPlayer represents the player, typically not an enemy
@@ -505,19 +458,26 @@ namespace Combat
         {
             return false;
         }
-
-        // --- End ICombatant Implementation ---
-
-        // --- OnChange Callbacks --- 
         
+        // Players are defeated when their pet is defeated
+        public bool IsDefeated()
+        {
+            // Forward to pet if available
+            if (playerPet != null)
+            {
+                return playerPet.IsDefeated();
+            }
+            return false; // By default, not defeated if no pet reference
+        }
+        #endregion
+
+        #region SyncVar Callbacks
         private void OnNetworkPlayerChanged(NetworkPlayer prev, NetworkPlayer next, bool asServer)
         {
             if (next != null && playerNameText != null)
             {
                  playerNameText.text = next.GetSteamName() + (IsMyTurn ? " (Your Turn)" : "");
-                 UpdateTurnVisuals(false, IsMyTurn, asServer); // Re-apply turn visuals with the correct name
-                 
-                 // Debug.Log($"Updated player name to {next.GetSteamName()}");
+                 UpdateTurnVisuals(false, IsMyTurn, asServer);
             }
         }
         
@@ -528,28 +488,21 @@ namespace Combat
 
         private void OnTurnChanged(bool prev, bool next, bool asServer)
         {
-            Debug.Log($"[CombatPlayer] OnTurnChanged: {prev} -> {next}, asServer: {asServer}, IsOwner: {IsOwner}");
-            
-            // Update the turn visuals
             UpdateTurnVisuals(prev, next, asServer);
         }
-        
-        // --- Update Visual Methods --- 
-        
+        #endregion
+
+        #region UI Update Methods
         private void UpdateEnergyDisplay(int prev, int next, bool asServer)
         {
             if (energyText != null)
             {
                 energyText.text = $"Energy: {next}/{_maxEnergy.Value}";
-                Debug.Log($"Updated energy display: {next}/{_maxEnergy.Value}");
             }
         }
         
         private void UpdateTurnVisuals(bool prev, bool next, bool asServer)
         {
-            // Add more detailed debug to catch issues
-            Debug.Log($"[CombatPlayer] UpdateTurnVisuals called: prev={prev}, next={next}, asServer={asServer}, IsOwner={IsOwner}, IsMyTurn={IsMyTurn}");
-            
             // Update turn indicator
             if (playerNameText != null && _networkPlayer.Value != null)
             {
@@ -567,17 +520,15 @@ namespace Combat
                 }
             }
         }
-        
-        // --- RPCs ---
-        
+        #endregion
+
+        #region RPCs
         [TargetRpc]
         private void TargetDrawCards(NetworkConnection conn, int count)
         {
-            Debug.Log($"[CombatPlayer] TargetDrawCards called, count={count}, playerHand null={playerHand == null}");
-            
             if (playerHand == null)
             {
-                Debug.LogWarning("[CombatPlayer] PlayerHand is null during TargetDrawCards, attempting to find it");
+                Debug.LogWarning("FALLBACK: PlayerHand is null during TargetDrawCards, attempting to find it");
                 
                 // Try to find the PlayerHand in the scene that we actually OWN
                 PlayerHand[] hands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
@@ -588,7 +539,6 @@ namespace Combat
                     if (hand.IsOwner)
                     {
                         playerHand = hand;
-                        Debug.Log($"[CombatPlayer] Found owned PlayerHand for TargetDrawCards: {hand.name}");
                         break;
                     }
                 }
@@ -596,7 +546,6 @@ namespace Combat
                 // If still not found, trigger the search coroutine
                 if (playerHand == null)
                 {
-                    Debug.LogWarning("[CombatPlayer] Could not find owned PlayerHand for TargetDrawCards, queueing search");
                     StartCoroutine(FindHandAndDrawCards(count));
                     return;
                 }
@@ -605,7 +554,7 @@ namespace Combat
             // DOUBLE CHECK ownership before proceeding
             if (!playerHand.IsOwner)
             {
-                Debug.LogError("[CombatPlayer] PlayerHand is not owned by this client! Looking for a correctly owned hand.");
+                Debug.LogError("FALLBACK: PlayerHand is not owned by this client, looking for a correctly owned hand");
                 // Try to find a properly owned hand
                 PlayerHand[] hands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
                 bool foundOwnedHand = false;
@@ -616,30 +565,25 @@ namespace Combat
                     {
                         playerHand = hand;
                         foundOwnedHand = true;
-                        Debug.Log($"[CombatPlayer] Switched to properly owned PlayerHand: {hand.name}");
                         break;
                     }
                 }
                 
                 if (!foundOwnedHand)
                 {
-                    Debug.LogError("[CombatPlayer] Failed to find ANY owned PlayerHand, cannot draw cards");
+                    Debug.LogError("FALLBACK: Failed to find ANY owned PlayerHand, cannot draw cards");
                     return;
                 }
             }
-            
-            // If we reach here, we have a non-null playerHand that should be properly owned
-            Debug.Log($"[CombatPlayer] Using PlayerHand {playerHand.name} with IsOwner={playerHand.IsOwner} to draw cards");
             
             // Call the ServerRpc on PlayerHand to request cards from the server
             try 
             {
                 playerHand.CmdDrawCards(count);
-                Debug.Log($"[CombatPlayer] Successfully called CmdDrawCards for {count} cards");
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"[CombatPlayer] Error calling CmdDrawCards: {e.Message}");
+                Debug.LogError($"FALLBACK: Error calling CmdDrawCards: {e.Message}");
             }
         }
         
@@ -659,51 +603,47 @@ namespace Combat
                 {
                     playerHand = hand;
                     foundOwnedHand = true;
-                    Debug.Log($"[CombatPlayer] Delayed search found owned PlayerHand: {hand.name}");
+                    Debug.Log("FALLBACK: Delayed search found owned PlayerHand");
                     break;
                 }
             }
             
             if (foundOwnedHand && playerHand != null)
             {
-                Debug.Log($"[CombatPlayer] Found PlayerHand after delay, drawing cards now with IsOwner={playerHand.IsOwner}");
                 try 
                 {
                     playerHand.CmdDrawCards(count);
-                    Debug.Log($"[CombatPlayer] Successfully called delayed CmdDrawCards for {count} cards");
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogError($"[CombatPlayer] Error calling delayed CmdDrawCards: {e.Message}");
+                    Debug.LogError($"FALLBACK: Error calling delayed CmdDrawCards: {e.Message}");
                 }
             }
             else
             {
-                Debug.LogError("[CombatPlayer] Failed to find owned PlayerHand after delay, cannot draw cards");
+                Debug.LogError("FALLBACK: Failed to find owned PlayerHand after delay, cannot draw cards");
             }
         }
         
         [TargetRpc]
         private void TargetCardPlayed(NetworkConnection conn, string cardName)
         {
-            Debug.Log($"[CombatPlayer] Successfully played card: {cardName}");
-            // Show a visual effect or notification on the client
+            // Visual feedback handled by Card component
         }
 
         [TargetRpc]
         private void TargetNotifyInsufficientEnergy(NetworkConnection conn)
         {
-            Debug.LogWarning("[CombatPlayer] Not enough energy to play that card!");
-            // Show a message to the player
+            Debug.LogWarning("FALLBACK: Not enough energy to play that card");
         }
 
-        // --- Parenting RPC --- 
+        // Parenting RPC
         [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
         public void RpcSetParent(NetworkObject parentNetworkObject)
         {
              if (parentNetworkObject == null)
              {
-                 Debug.LogError($"[CombatPlayer:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
+                 Debug.LogError("FALLBACK: RpcSetParent received null parentNetworkObject");
                  return;
              }
 
@@ -711,23 +651,11 @@ namespace Combat
              if (parentTransform != null)
              {
                  transform.SetParent(parentTransform, false);
-                 Debug.Log($"[CombatPlayer:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
              }
              else
              {
-                  Debug.LogError($"[CombatPlayer:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
+                 Debug.LogError("FALLBACK: Could not find transform for parent NetworkObject in RpcSetParent");
              }
-        }
-
-        public override void OnStartNetwork()
-        {
-            base.OnStartNetwork();
-            Debug.Log($"[CombatPlayer] OnStartNetwork - IsServer: {IsServer}, IsClient: {IsClient}, IsOwner: {base.Owner.IsLocalClient}");
-            
-            // Double-check registration of callbacks
-            _isMyTurn.OnChange += OnTurnChanged;
-            _currentEnergy.OnChange += OnEnergyChanged;
-            _networkPlayer.OnChange += OnNetworkPlayerChanged;
         }
 
         // Add RPC to explicitly notify clients about turn state change
@@ -735,7 +663,6 @@ namespace Combat
         public void RpcNotifyTurnChanged(bool isMyTurn)
         {
             // Force update any UI that needs to respond to turn changes
-            // The CanvasManager should pick this up via the SyncVar, but just in case...
             CombatCanvasManager canvasManager = FindObjectOfType<CombatCanvasManager>();
             if (canvasManager != null)
             {
@@ -751,9 +678,10 @@ namespace Combat
                 }
                 else
                 {
-                    Debug.LogError("[Client] Failed to find OnTurnChanged method via reflection");
+                    Debug.LogError("FALLBACK: Failed to find OnTurnChanged method via reflection");
                 }
             }
         }
+        #endregion
     }
 }

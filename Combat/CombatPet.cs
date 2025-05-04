@@ -10,6 +10,7 @@ namespace Combat
 {
     public class CombatPet : NetworkBehaviour, ICombatant
     {
+        #region Properties and Fields
         [Header("Combat Stats")]
         private readonly SyncVar<int> _currentHealth = new SyncVar<int>();
         private readonly SyncVar<bool> _isDefending = new SyncVar<bool>();
@@ -33,7 +34,9 @@ namespace Combat
         public bool IsDefending => _isDefending.Value;
         public Pet ReferencePet => referencePet;
         public RuntimeDeck PetDeck => petDeck;
-        
+        #endregion
+
+        #region Unity Lifecycle Methods
         private void Awake()
         {
             // Register OnChange callbacks
@@ -51,7 +54,9 @@ namespace Combat
             _currentHealth.OnChange -= OnHealthChanged;
             _isDefending.OnChange -= OnDefendingChanged;
         }
-        
+        #endregion
+
+        #region Network Callbacks
         public override void OnStartServer()
         {
             base.OnStartServer();
@@ -71,7 +76,6 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
-            Debug.Log($"[CombatPet] OnStartClient for {gameObject.name}. IsOwner: {IsOwner}. Parent: {(transform.parent != null ? transform.parent.name : "null")}");
 
             if (!IsOwner)
                 return; // Initialize only for owner
@@ -89,16 +93,15 @@ namespace Combat
                 }
             }
         }
-        
-        // New Initialize method called right after instantiation on server
+        #endregion
+
+        #region Initialization
         [Server]
         public void Initialize(Pet parentPet)
         {
             if (parentPet == null)
             {
-                Debug.LogError("[CombatPet] Initialize called with null parentPet!");
-                // Optionally destroy self or handle error
-                // Destroy(gameObject);
+                Debug.LogError("FALLBACK: Initialize called with null parentPet");
                 return;
             }
 
@@ -107,20 +110,12 @@ namespace Combat
             // Set initial health based on pet's max health
             _currentHealth.Value = referencePet.MaxHealth;
             _isDefending.Value = false;
-            
-            // Create runtime deck from the persistent pet's deck
-            // CreateRuntimeDeck(); // Removed: Will be called manually from CombatManager after spawning
-            
-            Debug.Log($"[CombatPet] Initialized with reference to persistent pet owned by {referencePet?.PlayerOwner?.GetSteamName() ?? "Unknown"}");
         }
 
-        // Optional: Keep this if CombatManager still needs to assign the hand later
-        // Or remove if hand assignment is handled elsewhere
         [Server]
         public void AssignHand(PetHand hand)
         {
              petHand = hand;
-             Debug.Log($"[CombatPet] Assigned hand {hand?.name ?? "null"}");
         }
         
         [Server]
@@ -132,11 +127,6 @@ namespace Combat
             // Check if pet has an initialized deck
             if (referencePet != null && referencePet.persistentDeckCardIDs.Count > 0)
             {
-                Debug.Log($"[CombatPet] Creating runtime deck from persistent deck ({referencePet.persistentDeckCardIDs.Count} cards)");
-                
-                // Log the count of persistent card IDs found
-                Debug.Log($"[CombatPet] Found {referencePet.persistentDeckCardIDs.Count} card IDs in persistent Pet deck for {referencePet.PetName}");
-                
                 // Populate deck from persistent deck IDs
                 foreach (string cardID in referencePet.persistentDeckCardIDs)
                 {
@@ -144,22 +134,20 @@ namespace Combat
                     if (cardData != null)
                     {
                         petDeck.AddCard(cardData);
-                        Debug.Log($"[CombatPet] Added card {cardID} to runtime deck");
                     }
                     else
                     {
-                        Debug.LogWarning($"[CombatPet] Could not find CardData for {cardID}");
+                        Debug.LogWarning($"FALLBACK: Could not find CardData for {cardID}");
                     }
                 }
                 
                 // Shuffle the deck
                 petDeck.Shuffle();
-                Debug.Log($"[CombatPet] Shuffled runtime deck with {petDeck.DrawPileCount} cards");
             }
             else
             {
                 // Fallback to starter deck
-                Debug.LogWarning("[CombatPet] No persistent deck found, using starter deck");
+                Debug.LogWarning("FALLBACK: No persistent deck found, using starter deck");
                 if (DeckManager.Instance != null)
                 {
                     int petIndex = 0;
@@ -171,14 +159,12 @@ namespace Combat
                 }
             }
         }
-        
-        // --- Combat Methods ---
-        
+        #endregion
+
+        #region Combat Methods
         [Server]
         public void TakeDamage(int damage)
         {
-            Debug.Log($"CombatPet TakeDamage called - Current Health: {_currentHealth.Value}, Damage: {damage}, IsDefending: {_isDefending.Value}");
-            
             int actualDamage = _isDefending.Value ? Mathf.FloorToInt(damage * 0.5f) : damage;
             _currentHealth.Value = Mathf.Max(_currentHealth.Value - actualDamage, 0);
             
@@ -209,8 +195,9 @@ namespace Combat
         {
             return _currentHealth.Value <= 0;
         }
-        
-        // Animation for taking damage
+        #endregion
+
+        #region RPCs and Animations
         [ObserversRpc]
         private void RpcAnimateDamage(int damage)
         {
@@ -234,11 +221,9 @@ namespace Combat
         // Create floating damage text
         private void ShowDamageNumber(int damage)
         {
-            // This would be implemented with a damage number prefab
-            Debug.Log($"CombatPet took {damage} damage!");
+            // Simplified - we'll just log it instead of creating a visual element
         }
         
-        // Animation for pet defeat
         [ObserversRpc]
         private void RpcDefeat()
         {
@@ -256,7 +241,28 @@ namespace Combat
                 CombatManager.Instance.HandlePetDefeat(this);
         }
         
-        // UI update methods
+        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
+        public void RpcSetParent(NetworkObject parentNetworkObject)
+        {
+            if (parentNetworkObject == null)
+            {
+                Debug.LogError("FALLBACK: RpcSetParent received null parentNetworkObject");
+                return;
+            }
+            
+            Transform parentTransform = parentNetworkObject.transform;
+            if (parentTransform != null)
+            {
+                transform.SetParent(parentTransform, false);
+            }
+            else
+            {
+                Debug.LogError("FALLBACK: Could not find transform for parent NetworkObject in RpcSetParent");
+            }
+        }
+        #endregion
+
+        #region UI Updates
         private void UpdateHealthDisplay(int prev, int next, bool asServer)
         {
             if (healthText != null)
@@ -291,22 +297,20 @@ namespace Combat
         {
             UpdateDefendIcon(next);
         }
-        
-        // --- ICombatant Implementation ---
-        
+        #endregion
+
+        #region ICombatant Implementation
         [Server]
         public void AddBlock(int amount)
         {
             // Pets typically don't use block, but implement the interface method
             SetDefending(true); // Treat block as defense for pets
-            Debug.Log($"[CombatPet] Added block, setting to defending mode");
         }
         
         [Server]
         public void Heal(int amount)
         {
             _currentHealth.Value = Mathf.Min(_currentHealth.Value + amount, MaxHealth);
-            Debug.Log($"CombatPet healed for {amount}, current health: {_currentHealth.Value}");
         }
         
         [Server]
@@ -316,11 +320,10 @@ namespace Combat
             if (petHand != null)
             {
                 petHand.DrawCards(amount);
-                Debug.Log($"[CombatPet] Requested to draw {amount} cards through PetHand");
             }
             else
             {
-                Debug.LogWarning($"[CombatPet] Cannot draw cards - petHand is null");
+                Debug.LogWarning("FALLBACK: Cannot draw cards - petHand is null");
             }
         }
         
@@ -329,42 +332,29 @@ namespace Combat
         {
             if (petDeck == null)
             {
-                Debug.LogError("[Server] CombatPet cannot draw card: petDeck is null!");
+                Debug.LogError("FALLBACK: CombatPet cannot draw card: petDeck is null");
                 return null;
             }
 
             // Draw from the actual RuntimeDeck
             CardData drawnCard = petDeck.DrawCard();
             
-            // Log results
+            // Handle results
             if (drawnCard == null)
             {
-                Debug.LogWarning("[Server] CombatPet drew null card (Deck empty or needs reshuffle)");
-                
                 // Handle empty deck by reshuffling discard pile
                 if (petDeck.NeedsReshuffle())
                 {
-                    Debug.Log("[Server] CombatPet reshuffling discard pile into draw pile");
                     petDeck.Reshuffle();
                     
                     // Try drawing again after reshuffle
                     drawnCard = petDeck.DrawCard();
                     
-                    if (drawnCard != null)
+                    if (drawnCard == null)
                     {
-                        Debug.Log($"[Server] CombatPet successfully drew {drawnCard.cardName} after reshuffling");
+                        Debug.LogError("FALLBACK: CombatPet no cards available, deck empty and cannot reshuffle");
                     }
                 }
-                
-                // If still null after reshuffling, log an error
-                if (drawnCard == null)
-                {
-                    Debug.LogError("[Server] CombatPet no cards available, deck empty and cannot reshuffle!");
-                }
-            }
-            else
-            {
-                Debug.Log($"[Server] CombatPet drew card: {drawnCard.cardName}");
             }
 
             return drawnCard;
@@ -373,55 +363,26 @@ namespace Combat
         [Server]
         public void ApplyBuff(int buffId)
         {
-            // Implement buff logic based on buffId
-            Debug.LogWarning($"CombatPet.ApplyBuff({buffId}) called, but buff system not implemented.");
+            Debug.LogWarning($"FALLBACK: CombatPet.ApplyBuff({buffId}) called, but buff system not implemented");
         }
         
         [Server]
         public void ApplyDebuff(int debuffId)
         {
-            // Implement debuff logic based on debuffId
-            Debug.LogWarning($"CombatPet.ApplyDebuff({debuffId}) called, but debuff system not implemented.");
+            Debug.LogWarning($"FALLBACK: CombatPet.ApplyDebuff({debuffId}) called, but debuff system not implemented");
         }
         
         public bool IsEnemy()
         {
             // This depends on context - usually a pet is an enemy to the opponent player
-            // This would be set during combat setup
             return false;
         }
-        
-        // --- Parenting RPC --- 
-        [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
-        public void RpcSetParent(NetworkObject parentNetworkObject)
-        {
-            if (parentNetworkObject == null)
-            {
-                Debug.LogError($"[CombatPet:{NetworkObject.ObjectId}] RpcSetParent received null parentNetworkObject.");
-                return;
-            }
-            
-            Transform parentTransform = parentNetworkObject.transform;
-            if (parentTransform != null)
-            {
-                transform.SetParent(parentTransform, false);
-                Debug.Log($"[CombatPet:{NetworkObject.ObjectId}] Set parent to {parentTransform.name} ({parentNetworkObject.ObjectId}) via RPC.");
-            }
-            else
-            {
-                 Debug.LogError($"[CombatPet:{NetworkObject.ObjectId}] Could not find transform for parent NetworkObject {parentNetworkObject.ObjectId} in RpcSetParent.");
-            }
-        }
+        #endregion
 
-        // Called from CombatManager when it's this pet's turn
+        #region Turn Management
         [Server]
         public void StartTurn()
         {
-            Debug.Log($"[CombatPet] Starting turn for pet {(referencePet != null ? referencePet.PetName : "Unknown")}");
-            
-            // Pet should not draw cards at the start of its turn - it should use cards already in hand
-            // DrawCards(3);  // REMOVED: Pets should only draw at the start of player turns
-            
             // Take AI turn after a short delay
             StartCoroutine(TakeTurnAfterDelay(1.0f));
         }
@@ -439,8 +400,6 @@ namespace Combat
         [Server]
         private void TakeTurn()
         {
-            Debug.Log($"[CombatPet] Taking turn as AI");
-            
             // Simple AI: Play all cards in hand
             if (petHand != null)
             {
@@ -452,7 +411,7 @@ namespace Combat
             }
             else
             {
-                Debug.LogError($"[CombatPet] Cannot take turn - petHand is null");
+                Debug.LogError("FALLBACK: Cannot take turn - petHand is null");
                 // End turn immediately since there's nothing to do
                 EndTurn();
             }
@@ -469,9 +428,6 @@ namespace Combat
             
             foreach (Card card in new List<Card>(cards)) // Create a copy of the list to avoid modification issues
             {
-                // Play the card
-                Debug.Log($"[CombatPet] AI playing card: {card.CardName}");
-                
                 // Find target (for now, always target the opponent pet)
                 CombatPet targetPet = FindOpponentPet();
                 
@@ -506,7 +462,7 @@ namespace Combat
         private CombatPet FindOpponentPet()
         {
             // In a proper implementation, this would get the correct opponent
-            // For now, we'll find the first combat pet that's not this one
+            // Find the first combat pet that's not this one
             CombatPet[] pets = FindObjectsByType<CombatPet>(FindObjectsSortMode.None);
             foreach (CombatPet pet in pets)
             {
@@ -522,8 +478,6 @@ namespace Combat
         [Server]
         private void EndTurn()
         {
-            Debug.Log($"[CombatPet] Ending turn");
-            
             // Discard remaining cards
             if (petHand != null)
             {
@@ -533,5 +487,6 @@ namespace Combat
             // Notify combat manager that turn is over
             CombatManager.Instance.PetEndedTurn(this);
         }
+        #endregion
     }
 } 
