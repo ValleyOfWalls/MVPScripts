@@ -63,11 +63,11 @@ namespace Combat
             int cardCount = cardsInHand.Count;
             if (cardCount == 0) return;
             
-            // Use arc-based layout for better visual appearance
+            // Use simple horizontal layout instead of arc-based layout
             float cardWidth = 120f;
-            float spacing = Mathf.Min(arcWidth / cardCount, cardWidth * 0.8f); // Dynamic spacing
-            float totalWidth = spacing * (cardCount - 1);
-            float startX = -totalWidth / 2f;
+            float spacing = 10f;   // Basic spacing between cards
+            float totalWidth = (cardCount * cardWidth) + ((cardCount - 1) * spacing);
+            float startX = -totalWidth / 2f + cardWidth / 2f; // Start from the left edge
             
             // Define a consistent z-position for all cards in hand to prevent issues with cards disappearing
             const float consistentZPosition = 0f;
@@ -77,18 +77,13 @@ namespace Combat
                 Card card = cardsInHand[i];
                 if (card == null) continue;
                 
-                // Position along arc
-                float xPos = startX + (i * spacing);
-                float normalizedPos = (float)i / (cardCount > 1 ? cardCount - 1 : 1); // 0 to 1
-                float yPos = arcHeight * Mathf.Sin(Mathf.PI * normalizedPos); // Arc height using sine
-                
-                // Calculate rotation (fan effect)
-                float rotationAngle = Mathf.Lerp(-10f, 10f, normalizedPos);
-                Quaternion targetRotation = Quaternion.Euler(0, 0, rotationAngle);
+                // Position horizontally
+                float xPos = startX + (i * (cardWidth + spacing));
+                float yPos = 0f; // Keep cards aligned horizontally
                 
                 // Set positions directly - IMPORTANT: Always use consistent Z position
                 card.transform.localPosition = new Vector3(xPos, yPos, consistentZPosition);
-                card.transform.localRotation = targetRotation;
+                card.transform.localRotation = Quaternion.identity;
                 card.transform.localScale = Vector3.one;
 
                 // Update sorting order

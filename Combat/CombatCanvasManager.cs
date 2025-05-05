@@ -110,6 +110,10 @@ public class CombatCanvasManager : MonoBehaviour
         {
             nextBattleButton.onClick.AddListener(OnNextBattleButtonPressed);
         }
+        
+        // Schedule an early positioning of all combat objects with a short delay
+        // This helps with objects that might appear before the network initialization is complete
+        Invoke(nameof(FindAndPositionAllCombatObjects), 1.0f);
     }
     
     private void OnDestroy()
@@ -275,8 +279,18 @@ public class CombatCanvasManager : MonoBehaviour
             // Force update UI with initial state AFTER subscribing
             UpdateAllUI(); 
             
-            // Initialize battle observation system
+            // Initialize battle observation
             InitializeBattleObservation();
+            
+            // Find and properly parent ALL combat objects first
+            FindAndPositionAllCombatObjects();
+            
+            // Immediately position all combatants and cards to fix initial positioning issues
+            PositionObservedCombatants();
+            ForceCardArrangement();
+            
+            // Position ALL hands in the scene to fix unobserved cards
+            PositionAllHandsInScene();
             
             // Position the player hand area correctly at the start
             PositionPlayerHandOnStartup();
@@ -303,7 +317,7 @@ public class CombatCanvasManager : MonoBehaviour
     private IEnumerator DelayedHandPositioning()
     {
         // Wait a short time for all network objects to be properly set up
-        yield return new WaitForSeconds(1.5f);
+        yield return new WaitForSeconds(0.5f);
         
         Debug.Log("[CombatCanvasManager] Performing initial hand positioning");
         
@@ -319,31 +333,8 @@ public class CombatCanvasManager : MonoBehaviour
             handTransform.localScale = Vector3.one;
             handTransform.gameObject.SetActive(true);
             
-            // If the hand has a method to arrange cards, try to call it
-            PlayerHand playerHand = handTransform.GetComponent<PlayerHand>();
-            if (playerHand != null)
-            {
-                // Use reflection to call the ArrangeCardsInHand method even if it's private
-                System.Reflection.MethodInfo arrangeMethod = 
-                    typeof(PlayerHand).GetMethod("ArrangeCardsInHand", 
-                    System.Reflection.BindingFlags.Instance | 
-                    System.Reflection.BindingFlags.Public | 
-                    System.Reflection.BindingFlags.NonPublic);
-                
-                if (arrangeMethod != null)
-                {
-                    Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method");
-                    arrangeMethod.Invoke(playerHand, null);
-                }
-                else
-                {
-                    // Try to call a public RPC method that might trigger card arrangement
-                    Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found, trying to trigger a refresh");
-                    // This is a fallback in case there's no direct method access
-                    playerHand.gameObject.SetActive(false);
-                    playerHand.gameObject.SetActive(true);
-                }
-            }
+            // Use our direct ManualCardArrangement method
+            StartCoroutine(ManualCardArrangement(handTransform));
         }
         
         // Position the opponent pet hand as well
@@ -359,30 +350,8 @@ public class CombatCanvasManager : MonoBehaviour
             petHandTransform.localScale = Vector3.one;
             petHandTransform.gameObject.SetActive(true);
             
-            // If the pet hand has a method to arrange cards, try to call it
-            PetHand petHand = petHandTransform.GetComponent<PetHand>();
-            if (petHand != null)
-            {
-                // Try to access ArrangeCardsInHand via reflection (similar to player hand)
-                System.Reflection.MethodInfo arrangeMethod = 
-                    typeof(PetHand).GetMethod("ArrangeCardsInHand", 
-                    System.Reflection.BindingFlags.Instance | 
-                    System.Reflection.BindingFlags.Public | 
-                    System.Reflection.BindingFlags.NonPublic);
-                
-                if (arrangeMethod != null)
-                {
-                    Debug.Log("[CombatCanvasManager] Found and calling ArrangeCardsInHand method for pet hand");
-                    arrangeMethod.Invoke(petHand, null);
-                }
-                else
-                {
-                    // Try to call a public RPC method that might trigger card arrangement
-                    Debug.Log("[CombatCanvasManager] ArrangeCardsInHand method not found for pet hand, trying to trigger a refresh");
-                    petHand.gameObject.SetActive(false);
-                    petHand.gameObject.SetActive(true);
-                }
-            }
+            // Use our direct ManualCardArrangement method
+            StartCoroutine(ManualCardArrangement(petHandTransform));
         }
         
         // After positioning hands, also position the combat player and pets
@@ -451,6 +420,118 @@ public class CombatCanvasManager : MonoBehaviour
         else
         {
             Debug.LogWarning("[CombatCanvasManager] Cannot position opponent's CombatPet - missing references");
+        }
+    }
+
+    // Add this method after PositionCombatantsOnStartup
+    
+    private void PositionAllHandsInScene()
+    {
+        Debug.Log("[CombatCanvasManager] Positioning ALL hands in scene");
+        
+        // Find all PlayerHand objects in the scene and position them
+        PlayerHand[] allPlayerHands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
+        foreach (PlayerHand playerHand in allPlayerHands)
+        {
+            if (playerHand != null && playerHandArea != null)
+            {
+                // First, save the current parent and active state to restore later if needed
+                Transform originalParent = playerHand.transform.parent;
+                bool wasActive = playerHand.gameObject.activeSelf;
+                
+                // Temporarily activate and parent to the hand area for positioning
+                playerHand.gameObject.SetActive(true);
+                playerHand.transform.SetParent(playerHandArea, false);
+                playerHand.transform.localPosition = Vector3.zero;
+                playerHand.transform.localScale = Vector3.one;
+                
+                // Make sure all child cards are active for arrangement
+                foreach (Transform child in playerHand.transform)
+                {
+                    if (!child.gameObject.activeSelf)
+                    {
+                        child.gameObject.SetActive(true);
+                    }
+                }
+                
+                // Apply card arrangement - use synchronous method for non-observed hands
+                if (playerHand == currentObservedPlayerHand) 
+                {
+                    StartCoroutine(ManualCardArrangement(playerHand.transform));
+                }
+                else 
+                {
+                    ArrangeCardsImmediately(playerHand.transform);
+                }
+                
+                // Restore original parent and state if this is not the observed hand
+                if (playerHand != currentObservedPlayerHand)
+                {
+                    playerHand.transform.SetParent(originalParent, false);
+                    playerHand.gameObject.SetActive(wasActive);
+                }
+            }
+        }
+        
+        // Find all PetHand objects in the scene and position them
+        PetHand[] allPetHands = FindObjectsByType<PetHand>(FindObjectsSortMode.None);
+        foreach (PetHand petHand in allPetHands)
+        {
+            if (petHand != null && opponentPetHandArea != null)
+            {
+                // First, save the current parent and active state to restore later if needed
+                Transform originalParent = petHand.transform.parent;
+                bool wasActive = petHand.gameObject.activeSelf;
+                
+                // Temporarily activate and parent to the hand area for positioning
+                petHand.gameObject.SetActive(true);
+                petHand.transform.SetParent(opponentPetHandArea, false);
+                petHand.transform.localPosition = Vector3.zero;
+                petHand.transform.localScale = Vector3.one;
+                
+                // Make sure all child cards are active for arrangement
+                foreach (Transform child in petHand.transform)
+                {
+                    if (!child.gameObject.activeSelf)
+                    {
+                        child.gameObject.SetActive(true);
+                    }
+                }
+                
+                // Apply card arrangement - use synchronous method for non-observed hands
+                if (petHand == currentObservedPetHand) 
+                {
+                    StartCoroutine(ManualCardArrangement(petHand.transform));
+                }
+                else 
+                {
+                    ArrangeCardsImmediately(petHand.transform);
+                }
+                
+                // Restore original parent and state if this is not the observed hand
+                if (petHand != currentObservedPetHand)
+                {
+                    petHand.transform.SetParent(originalParent, false);
+                    petHand.gameObject.SetActive(wasActive);
+                }
+            }
+        }
+        
+        // Finally, ensure the current observed hands are active and positioned correctly
+        if (currentObservedPlayerHand != null)
+        {
+            currentObservedPlayerHand.transform.SetParent(playerHandArea, false);
+            currentObservedPlayerHand.transform.localPosition = Vector3.zero;
+            currentObservedPlayerHand.transform.localScale = Vector3.one;
+            currentObservedPlayerHand.gameObject.SetActive(true);
+        }
+        
+        if (currentObservedPetHand != null)
+        {
+            currentObservedPetHand.transform.SetParent(opponentPetHandArea, false);
+            currentObservedPetHand.transform.localPosition = Vector3.zero;
+            currentObservedPetHand.transform.localScale = Vector3.one;
+            currentObservedPetHand.gameObject.SetActive(true);
         }
     }
 
@@ -803,65 +884,38 @@ public class CombatCanvasManager : MonoBehaviour
         // Refresh the player list in case players have joined or left
         RefreshPlayerList();
         
-        // Check if we have enough players to switch
-        if (allPlayers.Count <= 1)
+        // If we don't have at least two players, we can't switch
+        if (allPlayers.Count < 2)
         {
-            Debug.LogWarning("[CombatCanvasManager] Cannot switch battles - only one player found");
+            Debug.LogWarning("[CombatCanvasManager] Cannot switch battle - not enough players");
             return;
         }
         
-        // If this is the first time pressing the button, just refresh the current view
-        // This helps with initial positioning issues
-        if (isObservingOwnBattle && playerHandArea != null && localNetworkPlayer.PlayerHand != null)
-        {
-            Transform handTransform = localNetworkPlayer.PlayerHand.transform;
-            if (handTransform.parent != playerHandArea)
-            {
-                Debug.Log("[CombatCanvasManager] First button press - positioning hand correctly");
-                handTransform.SetParent(playerHandArea, false);
-                handTransform.localPosition = Vector3.zero;
-                handTransform.localScale = Vector3.one;
-                StartCoroutine(DelayedCardArrangementRefresh());
-                return;
-            }
-        }
+        // Determine the next player index to observe
+        int nextPlayerIndex = (currentObservedPlayerIndex + 1) % allPlayers.Count;
         
-        // If we're currently observing our own battle, switch to another player's battle
-        if (isObservingOwnBattle || currentObservedPlayerIndex < 0)
+        // Observe the next player's battle
+        NetworkPlayer nextPlayer = allPlayers[nextPlayerIndex];
+        if (nextPlayer == localNetworkPlayer)
         {
-            isObservingOwnBattle = false;
-            
-            // Find the first player that isn't the local player
-            for (int i = 0; i < allPlayers.Count; i++)
-            {
-                if (allPlayers[i] != localNetworkPlayer)
-                {
-                    currentObservedPlayerIndex = i;
-                    ObservePlayerBattle(allPlayers[i]);
-                    StartCoroutine(DelayedCardArrangementRefresh());
-                    return;
-                }
-            }
+            // If we've cycled back to our own battle
+            ObserveOwnBattle();
         }
         else
         {
-            // Find the next player in the list
-            int nextIndex = (currentObservedPlayerIndex + 1) % allPlayers.Count;
-            
-            // If we've cycled back to the local player, observe our own battle
-            if (allPlayers[nextIndex] == localNetworkPlayer)
-            {
-                ObserveOwnBattle();
-            }
-            else
-            {
-                currentObservedPlayerIndex = nextIndex;
-                ObservePlayerBattle(allPlayers[nextIndex]);
-            }
-            
-            // Ensure cards are arranged properly after switching
-            StartCoroutine(DelayedCardArrangementRefresh());
+            // Observe someone else's battle
+            ObservePlayerBattle(nextPlayer);
         }
+        
+        // Immediately force card arrangement and position combat elements
+        PositionObservedCombatants();
+        ForceCardArrangement();
+        
+        // Also find and position ALL combat objects to ensure proper parenting
+        FindAndPositionAllCombatObjects();
+        
+        // Also position all other hands in the scene
+        PositionAllHandsInScene();
     }
     
     private void RefreshPlayerList()
@@ -908,65 +962,75 @@ public class CombatCanvasManager : MonoBehaviour
     
     private void ObservePlayerBattle(NetworkPlayer player)
     {
-        if (player == null) return;
+        Debug.Log($"[CombatCanvasManager] Observing battle of player: {player.GetSteamName()}");
         
-        // Unsubscribe from current combat changes
-        UnsubscribeFromCombatChanges();
-        
-        // Update references to observed player's objects
         currentObservedNetworkPlayer = player;
         currentObservedCombatPlayer = player.CombatPlayer;
         currentObservedPlayerPet = player.CombatPet;
         currentObservedOpponentPet = player.OpponentCombatPet;
+        
+        // Get the player's hand
         currentObservedPlayerHand = player.PlayerHand;
         currentObservedPetHand = player.OpponentNetworkPlayer?.PetHand;
-        isObservingOwnBattle = (player == localNetworkPlayer);
         
-        // Toggle visibility of player hand UI
-        ToggleHandVisibility();
+        currentObservedPlayerIndex = allPlayers.IndexOf(player);
+        isObservingOwnBattle = false;
         
-        // Position the combat objects in the UI
+        // Immediately position combatants and arrange cards
         PositionObservedCombatants();
+        ToggleHandVisibility();
+        ForceCardArrangement();
         
-        // Update UI for observed player's battle
+        // Update the UI for the observed player
         UpdateObservedPlayerUI(player);
-        
-        // Set SyncVar change subscriptions to the new player's combat objects
         SubscribeToObservedPlayerCombatChanges(player);
     }
     
     private void ObserveOwnBattle()
     {
-        // Unsubscribe from current observed player's combat changes
-        UnsubscribeFromCombatChanges();
+        Debug.Log("[CombatCanvasManager] Observing own battle");
         
-        // Reset to observing own battle
+        if (localNetworkPlayer == null)
+        {
+            Debug.LogError("[CombatCanvasManager] Cannot observe own battle - localNetworkPlayer is null");
+            return;
+        }
+        
         currentObservedNetworkPlayer = localNetworkPlayer;
         currentObservedCombatPlayer = localCombatPlayer;
         currentObservedPlayerPet = localPlayerCombatPet;
         currentObservedOpponentPet = opponentCombatPet;
+        
+        // Get the player's hand
         currentObservedPlayerHand = localNetworkPlayer.PlayerHand;
         currentObservedPetHand = localNetworkPlayer.OpponentNetworkPlayer?.PetHand;
+        
         currentObservedPlayerIndex = allPlayers.IndexOf(localNetworkPlayer);
         isObservingOwnBattle = true;
         
-        // Toggle visibility of player hand UI
-        ToggleHandVisibility();
-        
-        // Position the combat objects in the UI
+        // Immediately position combatants and arrange cards
         PositionObservedCombatants();
+        ToggleHandVisibility();
+        ForceCardArrangement();
         
-        // Re-subscribe to local player's combat changes
+        // Enable next battle button only if there are other players
+        if (nextBattleButton != null)
+        {
+            bool hasMultiplePlayers = allPlayers.Count > 1;
+            nextBattleButton.interactable = hasMultiplePlayers;
+            Debug.Log($"[CombatCanvasManager] NextBattleButton interactable set to: {hasMultiplePlayers} (Found {allPlayers.Count} players)");
+        }
+        else
+        {
+            Debug.LogError("[CombatCanvasManager] NextBattleButton reference is null!");
+        }
+        
+        // Update UI for own battle
+        UpdateObservedPlayerUI(localNetworkPlayer);
         SubscribeToCombatChanges();
         
-        // Update UI with local player's combat data
-        UpdateAllUI();
-        
-        // Update player name
-        if (playerNameText != null)
-        {
-            playerNameText.text = localNetworkPlayer.GetSteamName();
-        }
+        // Call refresh again after a short delay, in case more network objects are still spawning
+        Invoke(nameof(DelayedRefresh), 2.0f);
     }
     
     // Helper method to position the currently observed combat objects in the UI
@@ -1100,19 +1164,15 @@ public class CombatCanvasManager : MonoBehaviour
     
     private IEnumerator ManualCardArrangement(Transform handTransform)
     {
-        // Give the system a moment to process other changes
-        yield return new WaitForSeconds(0.1f);
-        
-        Debug.Log("[CombatCanvasManager] Performing simplified card arrangement (no animation)");
+        // No delay - arrange cards immediately
+        Debug.Log("[CombatCanvasManager] Performing immediate card arrangement");
         
         // Count active card objects
         List<Transform> cardTransforms = new List<Transform>();
         foreach (Transform child in handTransform)
         {
-            if (child.gameObject.activeSelf)
-            {
-                cardTransforms.Add(child);
-            }
+            cardTransforms.Add(child);
+            child.gameObject.SetActive(true); // Ensure all cards are active
         }
         
         int cardCount = cardTransforms.Count;
@@ -1140,6 +1200,8 @@ public class CombatCanvasManager : MonoBehaviour
                 card.localScale = Vector3.one;
             }
         }
+        
+        yield return null;
     }
     
     private void UpdateObservedPlayerUI(NetworkPlayer player)
@@ -1385,7 +1447,219 @@ public class CombatCanvasManager : MonoBehaviour
     // Coroutine to arrange cards after a short delay to ensure UI has updated
     private IEnumerator DelayedCardArrangementRefresh()
     {
-        yield return new WaitForSeconds(0.5f);
+        // No delay, arrange cards immediately
+        yield return null;
         ForceCardArrangement();
+    }
+
+    // Add a synchronous version of ManualCardArrangement that doesn't use a coroutine
+    private void ArrangeCardsImmediately(Transform handTransform)
+    {
+        Debug.Log("[CombatCanvasManager] Arranging cards immediately (sync)");
+        
+        // Count card objects
+        List<Transform> cardTransforms = new List<Transform>();
+        foreach (Transform child in handTransform)
+        {
+            cardTransforms.Add(child);
+            child.gameObject.SetActive(true); // Ensure all cards are active
+        }
+        
+        int cardCount = cardTransforms.Count;
+        if (cardCount > 0)
+        {
+            // Calculate simple horizontal positions
+            float cardWidth = 120f; // Estimated width, adjust as needed
+            float spacing = 10f;   // Basic spacing between cards
+            float totalWidth = (cardCount * cardWidth) + ((cardCount - 1) * spacing);
+            float startX = -totalWidth / 2f + cardWidth / 2f; // Start from the left edge
+            
+            for (int i = 0; i < cardCount; i++)
+            {
+                Transform card = cardTransforms[i];
+                
+                // Calculate simple horizontal position
+                float xPos = startX + (i * (cardWidth + spacing));
+                float yPos = 0; // Keep cards aligned horizontally
+                
+                // Set local position directly without animation
+                card.localPosition = new Vector3(xPos, yPos, 0);
+                
+                // Reset rotation and scale
+                card.localRotation = Quaternion.identity;
+                card.localScale = Vector3.one;
+            }
+        }
+    }
+
+    // Add a new method to find and properly parent ALL combat-related objects
+    private void FindAndPositionAllCombatObjects()
+    {
+        Debug.Log("[CombatCanvasManager] Finding and positioning ALL combat objects, even those not properly parented yet");
+        
+        // Find ALL CombatPlayer objects in the scene
+        CombatPlayer[] allCombatPlayers = FindObjectsByType<CombatPlayer>(FindObjectsSortMode.None);
+        foreach(CombatPlayer combatPlayer in allCombatPlayers)
+        {
+            if (combatPlayer != null)
+            {
+                bool isCurrentlyObserved = (combatPlayer == currentObservedCombatPlayer);
+                
+                // Temporarily parent to the player area for positioning
+                if (playerAreaTransform != null)
+                {
+                    // Only change the parent if this is the observed player or not parented yet
+                    if (isCurrentlyObserved || combatPlayer.transform.parent == null)
+                    {
+                        combatPlayer.transform.SetParent(playerAreaTransform, false);
+                        combatPlayer.transform.localPosition = Vector3.zero;
+                        combatPlayer.transform.localScale = Vector3.one;
+                    }
+                }
+                
+                // Only hide non-observed players if they're not actively being displayed somewhere
+                if (!isCurrentlyObserved && combatPlayer != currentObservedCombatPlayer)
+                {
+                    combatPlayer.gameObject.SetActive(false);
+                }
+            }
+        }
+        
+        // Find ALL CombatPet objects in the scene
+        CombatPet[] allCombatPets = FindObjectsByType<CombatPet>(FindObjectsSortMode.None);
+        
+        // In a two-player scenario, we need to ensure pets are visible when switching views
+        foreach(CombatPet combatPet in allCombatPets)
+        {
+            if (combatPet != null)
+            {
+                NetworkPlayer petOwner = GetPetOwner(combatPet);
+                if (petOwner != null)
+                {
+                    // When observing a player's battle, their pet should be in the player area
+                    // and their opponent's pet in the opponent area
+                    if (petOwner == currentObservedNetworkPlayer)
+                    {
+                        // This is the player pet in the current view
+                        if (playerPetAreaTransform != null)
+                        {
+                            combatPet.transform.SetParent(playerPetAreaTransform, false);
+                            combatPet.transform.localPosition = Vector3.zero;
+                            combatPet.transform.localScale = Vector3.one;
+                            
+                            // Ensure the player pet is visible
+                            combatPet.gameObject.SetActive(true);
+                        }
+                    }
+                    else if (petOwner == currentObservedNetworkPlayer.OpponentNetworkPlayer)
+                    {
+                        // This is the opponent pet in the current view
+                        if (opponentPetAreaTransform != null)
+                        {
+                            combatPet.transform.SetParent(opponentPetAreaTransform, false);
+                            combatPet.transform.localPosition = Vector3.zero;
+                            combatPet.transform.localScale = Vector3.one;
+                            
+                            // Ensure the opponent pet is visible
+                            combatPet.gameObject.SetActive(true);
+                        }
+                    }
+                    else
+                    {
+                        // This pet isn't part of the currently observed battle, so hide it
+                        combatPet.gameObject.SetActive(false);
+                    }
+                }
+            }
+        }
+        
+        // Find ALL PlayerHand objects regardless of parent
+        PlayerHand[] allPlayerHands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
+        foreach(PlayerHand playerHand in allPlayerHands)
+        {
+            if (playerHand != null && playerHandArea != null)
+            {
+                bool isCurrentlyObserved = (playerHand == currentObservedPlayerHand);
+                
+                // Only position and arrange cards for hands that need it
+                if (!isCurrentlyObserved)
+                {
+                    // Save original state
+                    bool wasActive = playerHand.gameObject.activeSelf;
+                    
+                    // Temporarily activate for positioning
+                    playerHand.gameObject.SetActive(true);
+                    
+                    // Parent to hand area for positioning
+                    playerHand.transform.SetParent(playerHandArea, false);
+                    playerHand.transform.localPosition = Vector3.zero;
+                    playerHand.transform.localScale = Vector3.one;
+                    
+                    // Activate all cards for positioning
+                    foreach(Transform child in playerHand.transform)
+                    {
+                        child.gameObject.SetActive(true);
+                    }
+                    
+                    // Position cards
+                    ArrangeCardsImmediately(playerHand.transform);
+                    
+                    // Set hand back to inactive if it wasn't originally active
+                    playerHand.gameObject.SetActive(wasActive);
+                }
+            }
+        }
+        
+        // Find ALL PetHand objects regardless of parent
+        PetHand[] allPetHands = FindObjectsByType<PetHand>(FindObjectsSortMode.None);
+        foreach(PetHand petHand in allPetHands)
+        {
+            if (petHand != null && opponentPetHandArea != null)
+            {
+                bool isCurrentlyObserved = (petHand == currentObservedPetHand);
+                
+                // Only position and arrange cards for hands that need it
+                if (!isCurrentlyObserved)
+                {
+                    // Save original state
+                    bool wasActive = petHand.gameObject.activeSelf;
+                    
+                    // Temporarily activate for positioning
+                    petHand.gameObject.SetActive(true);
+                    
+                    // Parent to hand area for positioning
+                    petHand.transform.SetParent(opponentPetHandArea, false);
+                    petHand.transform.localPosition = Vector3.zero;
+                    petHand.transform.localScale = Vector3.one;
+                    
+                    // Activate all cards for positioning
+                    foreach(Transform child in petHand.transform)
+                    {
+                        child.gameObject.SetActive(true);
+                    }
+                    
+                    // Position cards
+                    ArrangeCardsImmediately(petHand.transform);
+                    
+                    // Set hand back to inactive if it wasn't originally active
+                    petHand.gameObject.SetActive(wasActive);
+                }
+            }
+        }
+    }
+    
+    // Helper method to find the owner of a pet
+    private NetworkPlayer GetPetOwner(CombatPet pet)
+    {
+        // Try all players to find the owner of this pet
+        NetworkPlayer[] players = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        foreach(NetworkPlayer player in players)
+        {
+            if (player.CombatPet == pet)
+            {
+                return player;
+            }
+        }
+        return null;
     }
 } 
