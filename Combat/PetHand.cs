@@ -267,6 +267,32 @@ namespace Combat
             if (asServer) return; // Only react on clients
         }
         
+        // Add a card to the pet's hand (server-side)
+        [Server]
+        public void ServerAddCard(CardData cardData)
+        {
+            if (cardData == null)
+            {
+                Debug.LogError("FALLBACK: Cannot add null card to pet hand");
+                return;
+            }
+            
+            // If we have a valid DeckManager, use it to create the card
+            if (DeckManager.Instance != null)
+            {
+                // Create the card object parented to this hand
+                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPet);
+                if (cardObj == null)
+                {
+                    Debug.LogError("FALLBACK: DeckManager failed to create card object for pet hand");
+                }
+            }
+            else
+            {
+                Debug.LogError("FALLBACK: DeckManager instance is null in PetHand.ServerAddCard");
+            }
+        }
+        
         // Called when a pet plays a card
         [Server]
         public void PlayCard(int cardIndex)

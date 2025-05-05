@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI; // Added for UI components
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using FishNet.Connection;
@@ -13,27 +14,44 @@ namespace Combat
         #region Properties and Fields
         [Header("Combat Stats")]
         private readonly SyncVar<int> _currentHealth = new SyncVar<int>();
+        private readonly SyncVar<int> _maxHealth = new SyncVar<int>();
+        private readonly SyncVar<int> _currentEnergy = new SyncVar<int>();
+        private readonly SyncVar<int> _maxEnergy = new SyncVar<int>(2); // Default max energy for pets
         private readonly SyncVar<bool> _isDefending = new SyncVar<bool>();
+        
+        // Status effects tracking
+        private readonly SyncDictionary<StatusEffectType, StatusEffectData> _statusEffects = new SyncDictionary<StatusEffectType, StatusEffectData>();
         
         // Public accessor for health SyncVar needed by UI
         public SyncVar<int> SyncHealth => _currentHealth;
+        public SyncVar<int> SyncMaxHealth => _maxHealth;
+        public SyncVar<int> SyncEnergy => _currentEnergy;
+        public SyncVar<int> SyncMaxEnergy => _maxEnergy;
         
         [Header("References")]
         [SerializeField] private Pet referencePet; // The persistent pet this combat pet represents
         [SerializeField] private PetHand petHand;
-        [SerializeField] private SpriteRenderer petSprite;
+        [SerializeField] private Image petImage; // Changed from SpriteRenderer to Image
         [SerializeField] private TMPro.TextMeshProUGUI healthText;
+        [SerializeField] private TMPro.TextMeshProUGUI energyText;
         [SerializeField] private GameObject defendIcon;
+        [SerializeField] private Transform statusEffectsContainer;
         
         // Runtime deck for combat
         private RuntimeDeck petDeck;
         
+        // Collision detection for card targeting
+        private BoxCollider2D targetingCollider;
+        
         // Properties
         public int CurrentHealth => _currentHealth.Value;
-        public int MaxHealth => referencePet != null ? referencePet.MaxHealth : 100;
+        public int MaxHealth => _maxHealth.Value;
+        public int CurrentEnergy => _currentEnergy.Value;
+        public int MaxEnergy => _maxEnergy.Value;
         public bool IsDefending => _isDefending.Value;
         public Pet ReferencePet => referencePet;
         public RuntimeDeck PetDeck => petDeck;
+        public IDictionary<StatusEffectType, StatusEffectData> StatusEffects => _statusEffects;
         #endregion
 
         #region Unity Lifecycle Methods
@@ -41,18 +59,131 @@ namespace Combat
         {
             // Register OnChange callbacks
             _currentHealth.OnChange += OnHealthChanged;
+            _maxHealth.OnChange += OnMaxHealthChanged;
+            _currentEnergy.OnChange += OnEnergyChanged;
             _isDefending.OnChange += OnDefendingChanged;
             
-            // Get sprite renderer if not set
-            if (petSprite == null)
-                petSprite = GetComponent<SpriteRenderer>();
+            // Get Image component if not set
+            if (petImage == null)
+                petImage = GetComponentInChildren<Image>();
+            if (petImage == null)
+                Debug.LogError("CombatPet could not find its Image component!");
+                
+            // Create or get targeting collider
+            SetupTargetingCollider();
+            
+            // Create placeholder sprite if needed
+            CreatePlaceholderIfNeeded();
         }
         
         private void OnDestroy()
         {
             // Unregister callbacks
             _currentHealth.OnChange -= OnHealthChanged;
+            _maxHealth.OnChange -= OnMaxHealthChanged;
+            _currentEnergy.OnChange -= OnEnergyChanged;
             _isDefending.OnChange -= OnDefendingChanged;
+        }
+        
+        private void SetupTargetingCollider()
+        {
+            // Create or get targeting collider for card drops
+            targetingCollider = GetComponent<BoxCollider2D>();
+            if (targetingCollider == null)
+            {
+                targetingCollider = gameObject.AddComponent<BoxCollider2D>();
+            }
+            
+            // Configure collider for targeting
+            targetingCollider.isTrigger = true;
+            
+            // Size based on RectTransform if available
+            if (petImage != null)
+            {
+                RectTransform rectTransform = petImage.GetComponent<RectTransform>();
+                if (rectTransform != null)
+                {
+                    // Convert rect size to world space for the collider
+                    Vector2 size = rectTransform.rect.size;
+                    // Account for scaling if needed
+                    size.x *= rectTransform.lossyScale.x;
+                    size.y *= rectTransform.lossyScale.y;
+                    
+                    targetingCollider.size = size;
+                    
+                    // Offset might be needed depending on pivot and anchors
+                    // This is a simplified version - might need adjustment based on the actual layout
+                    Vector2 offset = Vector2.zero;
+                    targetingCollider.offset = offset;
+                }
+                else
+                {
+                    // Fallback if no RectTransform found
+                    targetingCollider.size = new Vector2(2f, 2f);
+                    targetingCollider.offset = Vector2.zero;
+                }
+            }
+            else
+            {
+                // Default size if no Image
+                targetingCollider.size = new Vector2(2f, 2f);
+                targetingCollider.offset = Vector2.zero;
+            }
+        }
+        
+        private void CreatePlaceholderIfNeeded()
+        {
+            // Ensure we have an Image component
+            if (petImage == null) 
+            {
+                petImage = GetComponentInChildren<Image>();
+                if (petImage == null) 
+                {
+                    Debug.LogError("Cannot create placeholder, Image component not found!");
+                    return; // Exit if no Image found
+                }
+            }
+            
+            // Check if the image has no sprite assigned
+            if (petImage.sprite == null)
+            {
+                // Create a placeholder texture
+                Texture2D texture = new Texture2D(128, 128);
+                Color[] colors = new Color[128 * 128];
+                
+                // Fill with a reddish color for pet
+                Color fillColor = new Color(0.8f, 0.3f, 0.3f, 1.0f);
+                for (int i = 0; i < colors.Length; i++)
+                {
+                    colors[i] = fillColor;
+                }
+                
+                // Add a darker border
+                Color borderColor = new Color(0.5f, 0.1f, 0.1f, 1.0f);
+                for (int x = 0; x < 128; x++)
+                {
+                    for (int y = 0; y < 128; y++)
+                    {
+                        if (x < 3 || x > 124 || y < 3 || y > 124)
+                        {
+                            colors[y * 128 + x] = borderColor;
+                        }
+                    }
+                }
+                
+                texture.SetPixels(colors);
+                texture.Apply();
+                
+                // Create sprite from texture
+                Sprite placeholder = Sprite.Create(texture, new Rect(0, 0, 128, 128), new Vector2(0.5f, 0.5f), 100f);
+                petImage.sprite = placeholder;
+                
+                // Ensure renderer is enabled and visible
+                petImage.enabled = true;
+                
+                // --- Re-run collider setup after creating sprite --- 
+                SetupTargetingCollider(); 
+            }
         }
         #endregion
 
@@ -64,11 +195,17 @@ namespace Combat
             // Set initial state
             if (referencePet != null)
             {
-                _currentHealth.Value = referencePet.MaxHealth;
+                _maxHealth.Value = referencePet.MaxHealth;
+                _currentHealth.Value = _maxHealth.Value;
+                _maxEnergy.Value = 2; // Default energy for pets
+                _currentEnergy.Value = _maxEnergy.Value;
             }
             else
             {
-                _currentHealth.Value = 100; // Default value
+                _maxHealth.Value = 100; // Default value
+                _currentHealth.Value = _maxHealth.Value;
+                _maxEnergy.Value = 2;
+                _currentEnergy.Value = _maxEnergy.Value;
             }
             _isDefending.Value = false;
         }
@@ -77,24 +214,31 @@ namespace Combat
         {
             base.OnStartClient();
             
-            // Initial UI update for all clients - removed the early return
+            // Initial UI update for all clients
             UpdateHealthDisplay(_currentHealth.Value, _currentHealth.Value, false);
+            UpdateEnergyDisplay(_currentEnergy.Value, _currentEnergy.Value, false);
             UpdateDefendIcon(_isDefending.Value);
             
             // Set visual appearance from reference pet if available
-            if (referencePet != null && petSprite != null)
+            if (referencePet != null && petImage != null)
             {
                 if (referencePet.PetSprite != null)
                 {
-                    petSprite.sprite = referencePet.PetSprite;
+                    petImage.sprite = referencePet.PetSprite;
                 }
             }
+            
+            // Create placeholder if needed (runs before FindReferencesOnClient)
+            CreatePlaceholderIfNeeded();
             
             // Try to find references if they're missing on client (for ALL clients)
             if (referencePet == null || petHand == null)
             {
                 StartCoroutine(FindReferencesOnClient());
             }
+            
+            // Make sure targeting collider is set up (might run again if placeholder was created)
+            SetupTargetingCollider();
         }
         
         private System.Collections.IEnumerator FindReferencesOnClient()
@@ -122,9 +266,9 @@ namespace Combat
                         if (referencePet != null && petHand != null)
                         {
                             // Update sprite if needed
-                            if (petSprite != null && referencePet.PetSprite != null)
+                            if (petImage != null && referencePet.PetSprite != null)
                             {
-                                petSprite.sprite = referencePet.PetSprite;
+                                petImage.sprite = referencePet.PetSprite;
                             }
                             yield break;
                         }
@@ -188,7 +332,10 @@ namespace Combat
             referencePet = parentPet;
             
             // Set initial health based on pet's max health
-            _currentHealth.Value = referencePet.MaxHealth;
+            _maxHealth.Value = referencePet.MaxHealth;
+            _currentHealth.Value = _maxHealth.Value;
+            _maxEnergy.Value = 2; // Default energy for pets
+            _currentEnergy.Value = _maxEnergy.Value;
             _isDefending.Value = false;
         }
 
@@ -246,20 +393,22 @@ namespace Combat
         public void TakeDamage(int damage)
         {
             int actualDamage = _isDefending.Value ? Mathf.FloorToInt(damage * 0.5f) : damage;
-            _currentHealth.Value = Mathf.Max(_currentHealth.Value - actualDamage, 0);
             
-            // Notify clients to animate damage
-            RpcAnimateDamage(actualDamage);
-            
-            // Reset defense status after taking damage
-            if (_isDefending.Value)
+            // Check for break status effect which increases damage taken
+            if (HasStatusEffect(StatusEffectType.Break))
             {
-                _isDefending.Value = false;
+                float multiplier = 1f + (_statusEffects[StatusEffectType.Break].Value / 100f);
+                actualDamage = Mathf.FloorToInt(actualDamage * multiplier);
             }
             
+            _currentHealth.Value = Mathf.Max(_currentHealth.Value - actualDamage, 0);
+            
+            // Animate damage on all clients
+            RpcAnimateDamage(actualDamage);
+            
+            // Check defeat state
             if (_currentHealth.Value <= 0)
             {
-                // Pet is defeated
                 RpcDefeat();
             }
         }
@@ -275,45 +424,251 @@ namespace Combat
         {
             return _currentHealth.Value <= 0;
         }
+        
+        [Server]
+        public void SetEnergy(int energy)
+        {
+            _currentEnergy.Value = Mathf.Clamp(energy, 0, _maxEnergy.Value);
+        }
+        
+        [Server]
+        public void ChangeEnergy(int amount)
+        {
+            _currentEnergy.Value = Mathf.Clamp(_currentEnergy.Value + amount, 0, _maxEnergy.Value);
+        }
+        
+        [Server]
+        public void UseEnergy(int amount)
+        {
+            _currentEnergy.Value = Mathf.Max(_currentEnergy.Value - amount, 0);
+        }
         #endregion
 
-        #region RPCs and Animations
+        #region Status Effects
+        [Server]
+        public void ApplyStatusEffect(StatusEffectType type, int value, int duration)
+        {
+            if (_statusEffects.ContainsKey(type))
+            {
+                // Update existing effect
+                StatusEffectData existingEffect = _statusEffects[type];
+                existingEffect.Value = Mathf.Max(existingEffect.Value, value);
+                existingEffect.Duration = Mathf.Max(existingEffect.Duration, duration);
+                _statusEffects[type] = existingEffect;
+            }
+            else
+            {
+                // Add new effect
+                _statusEffects.Add(type, new StatusEffectData { Value = value, Duration = duration });
+            }
+            
+            // Notify clients to update status effect display
+            RpcUpdateStatusEffects();
+        }
+        
+        [Server]
+        public void RemoveStatusEffect(StatusEffectType type)
+        {
+            if (_statusEffects.ContainsKey(type))
+            {
+                _statusEffects.Remove(type);
+                
+                // Notify clients to update status effect display
+                RpcUpdateStatusEffects();
+            }
+        }
+        
+        [Server]
+        public bool HasStatusEffect(StatusEffectType type)
+        {
+            return _statusEffects.ContainsKey(type) && _statusEffects[type].Duration > 0;
+        }
+        
+        [Server]
+        public void ProcessStatusEffectsForNewTurn()
+        {
+            List<StatusEffectType> effectsToRemove = new List<StatusEffectType>();
+            
+            // Process each status effect
+            foreach (var kvp in _statusEffects)
+            {
+                StatusEffectType type = kvp.Key;
+                StatusEffectData data = kvp.Value;
+                
+                // Reduce duration
+                data.Duration--;
+                
+                // Apply effect based on type
+                switch (type)
+                {
+                    case StatusEffectType.DoT:
+                        // Apply damage over time
+                        int dotDamage = data.Value;
+                        _currentHealth.Value = Mathf.Max(_currentHealth.Value - dotDamage, 0);
+                        RpcAnimateDamage(dotDamage);
+                        break;
+                        
+                    // Other status effect processing as needed
+                }
+                
+                // Mark for removal if duration reached zero
+                if (data.Duration <= 0)
+                {
+                    effectsToRemove.Add(type);
+                }
+                else
+                {
+                    // Update duration
+                    _statusEffects[type] = data;
+                }
+            }
+            
+            // Remove expired effects
+            foreach (StatusEffectType type in effectsToRemove)
+            {
+                _statusEffects.Remove(type);
+            }
+            
+            // Notify clients to update status effect display
+            if (effectsToRemove.Count > 0)
+            {
+                RpcUpdateStatusEffects();
+            }
+            
+            // Check defeat state after DoT effects
+            if (_currentHealth.Value <= 0)
+            {
+                RpcDefeat();
+            }
+        }
+        
+        [ObserversRpc]
+        private void RpcUpdateStatusEffects()
+        {
+            // Update status effect display on clients
+            UpdateStatusEffectsDisplay();
+        }
+        
+        private void UpdateStatusEffectsDisplay()
+        {
+            // Find or create a single status effect text display
+            TMPro.TextMeshProUGUI statusText = null;
+            
+            // Clear existing status effect elements
+            if (statusEffectsContainer != null)
+            {
+                // Check if we already have a status text element
+                statusText = statusEffectsContainer.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+                
+                // Clear any old elements
+                foreach (Transform child in statusEffectsContainer)
+                {
+                    Destroy(child.gameObject);
+                }
+                
+                // Create a new game object for our status text if needed
+                GameObject statusObj = new GameObject("StatusEffectsText");
+                statusObj.transform.SetParent(statusEffectsContainer, false);
+                
+                // Add text component if it doesn't exist
+                statusText = statusObj.AddComponent<TMPro.TextMeshProUGUI>();
+                statusText.fontSize = 12;
+                statusText.alignment = TMPro.TextAlignmentOptions.Center;
+                
+                // Build a string of all current status effects
+                string statusString = "";
+                
+                // Check if we have any status effects
+                if (_statusEffects.Count > 0)
+                {
+                    foreach (var kvp in _statusEffects)
+                    {
+                        // Add each status effect to the string
+                        if (statusString.Length > 0)
+                            statusString += ", "; // Add comma between effects
+                            
+                        statusString += $"{kvp.Key}: {kvp.Value.Value} ({kvp.Value.Duration})";
+                    }
+                }
+                else
+                {
+                    statusString = "No effects";
+                }
+                
+                // Set the text
+                statusText.text = statusString;
+            }
+        }
+        #endregion
+
+        #region UI Updates
         [ObserversRpc]
         private void RpcAnimateDamage(int damage)
         {
-            // Animate damage
-            if (petSprite != null)
+            // Animate the UI image to show damage
+            if (petImage != null)
             {
-                // Flash red to indicate damage
-                petSprite.DOColor(Color.red, 0.1f).OnComplete(() => 
-                {
-                    petSprite.DOColor(Color.white, 0.1f);
-                });
+                // Flash red for UI Image
+                petImage.DOColor(Color.red, 0.1f).SetLoops(2, LoopType.Yoyo);
                 
-                // Shake the pet
-                transform.DOShakePosition(0.3f, 0.3f, 10, 90, false, true);
+                // Shake the transform
+                petImage.transform.DOShakePosition(0.2f, 0.1f, 10, 90, false, true);
             }
             
-            // Show floating damage number
+            // Show damage number
             ShowDamageNumber(damage);
         }
         
         // Create floating damage text
         private void ShowDamageNumber(int damage)
         {
-            // Simplified - we'll just log it instead of creating a visual element
+            // Create a floating damage number that works with UI
+            if (petImage != null && petImage.transform.parent != null)
+            {
+                GameObject damageObj = new GameObject($"Damage_{damage}");
+                // Make the damage number a sibling of the pet image to get proper layering
+                damageObj.transform.SetParent(petImage.transform.parent);
+                
+                // Position it over the pet
+                RectTransform damageRectTransform = damageObj.AddComponent<RectTransform>();
+                damageRectTransform.anchoredPosition = petImage.rectTransform.anchoredPosition + new Vector2(0, 50f);
+                
+                // Add text component
+                TMPro.TextMeshProUGUI damageText = damageObj.AddComponent<TMPro.TextMeshProUGUI>();
+                damageText.text = damage.ToString();
+                damageText.fontSize = 24;
+                damageText.color = Color.red;
+                damageText.alignment = TMPro.TextAlignmentOptions.Center;
+                
+                // Animate the text floating up and fading
+                damageRectTransform.DOAnchorPosY(damageRectTransform.anchoredPosition.y + 100f, 1f);
+                damageText.DOFade(0, 1f).OnComplete(() => {
+                    Destroy(damageObj);
+                });
+            }
         }
         
         [ObserversRpc]
         private void RpcDefeat()
         {
-            if (petSprite != null)
+            // Visual defeat effect for UI Image
+            if (petImage != null)
             {
-                // Fade out the pet
-                petSprite.DOFade(0, 1f);
+                // Fade out image
+                petImage.DOFade(0, 0.5f);
                 
-                // Scale down
-                transform.DOScale(0, 1f).SetEase(Ease.InBack);
+                // Shrink down the RectTransform
+                petImage.rectTransform.DOScale(0.1f, 0.5f).OnComplete(() =>
+                {
+                    // Disable image after animation
+                    petImage.enabled = false;
+                });
+            }
+            
+            // Disable collider
+            if (targetingCollider != null)
+            {
+                targetingCollider.enabled = false;
             }
             
             // Notify CombatManager that pet is defeated
@@ -340,19 +695,47 @@ namespace Combat
                 Debug.LogError("FALLBACK: Could not find transform for parent NetworkObject in RpcSetParent");
             }
         }
-        #endregion
-
-        #region UI Updates
+        
         private void UpdateHealthDisplay(int prev, int next, bool asServer)
         {
             if (healthText != null)
             {
-                healthText.text = $"HP: {next}/{MaxHealth}";
+                healthText.text = $"{next}/{_maxHealth.Value}";
                 
-                // Animate health change only if it decreased (took damage)
+                // Visual feedback for health changes
                 if (next < prev)
                 {
-                    healthText.transform.DOPunchScale(Vector3.one * 0.2f, 0.3f, 1, 0.5f);
+                    // Health decreased
+                    healthText.color = Color.red;
+                    healthText.DOColor(Color.white, 0.5f);
+                }
+                else if (next > prev)
+                {
+                    // Health increased
+                    healthText.color = Color.green;
+                    healthText.DOColor(Color.white, 0.5f);
+                }
+            }
+        }
+        
+        private void UpdateEnergyDisplay(int prev, int next, bool asServer)
+        {
+            if (energyText != null)
+            {
+                energyText.text = $"Energy: {next}/{_maxEnergy.Value}";
+                
+                // Visual feedback for energy changes
+                if (next < prev)
+                {
+                    // Energy decreased
+                    energyText.color = Color.yellow;
+                    energyText.DOColor(Color.white, 0.5f);
+                }
+                else if (next > prev)
+                {
+                    // Energy increased
+                    energyText.color = Color.cyan;
+                    energyText.DOColor(Color.white, 0.5f);
                 }
             }
         }
@@ -362,15 +745,22 @@ namespace Combat
             if (defendIcon != null)
             {
                 defendIcon.SetActive(isDefending);
-                // Simple pop animation
-                if (isDefending) defendIcon.transform.DOPunchScale(Vector3.one * 0.3f, 0.3f, 1, 0.5f);
             }
         }
         
-        // OnChange callbacks
         private void OnHealthChanged(int prev, int next, bool asServer)
         {
             UpdateHealthDisplay(prev, next, asServer);
+        }
+        
+        private void OnMaxHealthChanged(int prev, int next, bool asServer)
+        {
+            UpdateHealthDisplay(_currentHealth.Value, _currentHealth.Value, asServer);
+        }
+        
+        private void OnEnergyChanged(int prev, int next, bool asServer)
+        {
+            UpdateEnergyDisplay(prev, next, asServer);
         }
         
         private void OnDefendingChanged(bool prev, bool next, bool asServer)
@@ -383,27 +773,28 @@ namespace Combat
         [Server]
         public void AddBlock(int amount)
         {
-            // Pets typically don't use block, but implement the interface method
-            SetDefending(true); // Treat block as defense for pets
+            _isDefending.Value = true;
         }
         
         [Server]
         public void Heal(int amount)
         {
-            _currentHealth.Value = Mathf.Min(_currentHealth.Value + amount, MaxHealth);
+            _currentHealth.Value = Mathf.Min(_currentHealth.Value + amount, _maxHealth.Value);
         }
         
         [Server]
         public void DrawCards(int amount)
         {
-            // Draw cards using the pet hand
             if (petHand != null)
             {
-                petHand.DrawCards(amount);
-            }
-            else
-            {
-                Debug.LogWarning("FALLBACK: Cannot draw cards - petHand is null");
+                for (int i = 0; i < amount; i++)
+                {
+                    CardData card = DrawCardFromDeck();
+                    if (card != null)
+                    {
+                        petHand.ServerAddCard(card);
+                    }
+                }
             }
         }
         
@@ -443,19 +834,50 @@ namespace Combat
         [Server]
         public void ApplyBuff(int buffId)
         {
-            Debug.LogWarning($"FALLBACK: CombatPet.ApplyBuff({buffId}) called, but buff system not implemented");
+            // Convert to appropriate status effect
+            switch(buffId)
+            {
+                case 0: // Critical
+                    ApplyStatusEffect(StatusEffectType.Critical, 25, 2); // 25% crit chance for 2 turns
+                    break;
+                case 1: // Thorns
+                    ApplyStatusEffect(StatusEffectType.Thorns, 3, 2); // Return 3 damage for 2 turns
+                    break;
+                // Add more buffs as needed
+            }
         }
         
         [Server]
         public void ApplyDebuff(int debuffId)
         {
-            Debug.LogWarning($"FALLBACK: CombatPet.ApplyDebuff({debuffId}) called, but debuff system not implemented");
+            // Convert to appropriate status effect
+            switch(debuffId)
+            {
+                case 0: // Break
+                    ApplyStatusEffect(StatusEffectType.Break, 25, 2); // Take 25% more damage for 2 turns
+                    break;
+                case 1: // Weak
+                    ApplyStatusEffect(StatusEffectType.Weak, 25, 2); // Deal 25% less damage for 2 turns
+                    break;
+                case 2: // DoT
+                    ApplyStatusEffect(StatusEffectType.DoT, 3, 3); // Take 3 damage per turn for 3 turns
+                    break;
+                // Add more debuffs as needed
+            }
         }
         
         public bool IsEnemy()
         {
-            // This depends on context - usually a pet is an enemy to the opponent player
-            return false;
+            // Determine if this pet is an enemy based on the connection owner
+            // This is used by the card targeting system
+            if (IsOwner)
+            {
+                return false; // Not an enemy to the owner
+            }
+            else
+            {
+                return true; // An enemy to other players
+            }
         }
         #endregion
 

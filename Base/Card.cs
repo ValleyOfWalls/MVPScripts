@@ -110,7 +110,25 @@ namespace Combat
             targetingSystem = CardTargetingSystem.Instance;
             if (targetingSystem == null)
             {
-                Debug.LogWarning("CardTargetingSystem not found. Card targeting will not work.");
+                // Try to find it after a short delay, in case it's being spawned
+                StartCoroutine(FindTargetingSystemWithDelay());
+            }
+        }
+
+        private IEnumerator FindTargetingSystemWithDelay()
+        {
+            // Wait for potential network spawn
+            yield return new WaitForSeconds(0.5f);
+            
+            // Try again to find the targeting system
+            targetingSystem = CardTargetingSystem.Instance;
+            if (targetingSystem == null)
+            {
+                Debug.LogWarning($"[Card] CardTargetingSystem still not found after delay for card {CardName}.");
+            }
+            else
+            {
+                Debug.Log($"[Card] Successfully found CardTargetingSystem after delay for card {CardName}.");
             }
         }
 
@@ -594,6 +612,8 @@ namespace Combat
         {
             if (!isDragging || !IsOwner) return;
             
+            Debug.Log($"[Card] OnEndDrag for {CardName}");
+            
             isDragging = false;
             
             // Reset sorting order
@@ -606,41 +626,29 @@ namespace Combat
             if (targetingSystem != null)
             {
                 validTarget = targetingSystem.EndTargeting(Input.mousePosition);
+                Debug.Log($"[Card] TargetingSystem returned validTarget: {validTarget}");
+            }
+            else
+            {
+                Debug.LogWarning("[Card] No TargetingSystem found on EndDrag!");
             }
             
             if (validTarget)
             {
-                // Card was played successfully - it will be destroyed via the targeting system
-                // Notify the owning hand that this card was played
-                if (owningHand != null)
-                {
-                    owningHand.OnCardPlayed(this);
-                }
+                Debug.Log($"[Card] {CardName} was played successfully on a valid target. Not returning to hand.");
+                // Card was played successfully - it will be destroyed via the targeting system or RPC
+                // Notify the owning hand that this card was played (Server does the actual removal)
+                // if (owningHand != null)
+                // {
+                //     owningHand.OnCardPlayed(this); // This might be redundant if server handles removal
+                // }
                 
-                // Animate card being played
-                transform.DOMove(new Vector3(Screen.width / 2, Screen.height / 2, 0), 0.3f)
-                    .SetEase(Ease.OutQuint);
-                
-                transform.DOScale(originalScale * 1.5f, 0.3f)
-                    .SetEase(Ease.OutQuint);
-                
-                // Fade out and destroy
-                if (cardCanvasGroup != null)
-                {
-                    cardCanvasGroup.DOFade(0, 0.3f)
-                        .SetDelay(0.3f)
-                        .OnComplete(() => {
-                            Destroy(gameObject);
-                        });
-                }
-                else
-                {
-                    // If no canvas group, destroy after delay
-                    Destroy(gameObject, 0.6f);
-                }
+                // Optional: Add a quick visual effect here before it gets despawned/destroyed
+                // e.g., a quick scale/fade animation managed locally
             }
             else
             {
+                Debug.Log($"[Card] {CardName} returning to hand (invalid target or targeting system failure).");
                 // Card was not played, return to hand
                 ReturnToHand();
             }

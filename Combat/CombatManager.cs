@@ -864,7 +864,30 @@ namespace Combat
             // Create CardTargetingSystem if needed
             if (cardTargetingSystemPrefab != null && CardTargetingSystem.Instance == null)
             {
-                Instantiate(cardTargetingSystemPrefab);
+                // Instead of just instantiating, we need to spawn it properly on the network
+                GameObject targetingSystemObj = Instantiate(cardTargetingSystemPrefab);
+                
+                // If we're a client, we can request the server to spawn this for us
+                if (IsClient && !IsServer)
+                {
+                    // Request the server to spawn this via RPC
+                    CmdSpawnCardTargetingSystem();
+                }
+                else if (IsServer)
+                {
+                    // If we're the server, spawn it directly
+                    Spawn(targetingSystemObj);
+                }
+            }
+        }
+        
+        [ServerRpc(RequireOwnership = false)]
+        private void CmdSpawnCardTargetingSystem()
+        {
+            if (cardTargetingSystemPrefab != null && CardTargetingSystem.Instance == null)
+            {
+                GameObject targetingSystemObj = Instantiate(cardTargetingSystemPrefab);
+                Spawn(targetingSystemObj);
             }
         }
         #endregion

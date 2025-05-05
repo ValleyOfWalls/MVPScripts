@@ -19,7 +19,7 @@ MonoBehaviour:
   cardArtworkPath: 
   typeIconPath: 
   cardEffects:
-  - effectType: 7
+  - effectType: 0
     effectValue: 6
     targetType: 1
   hasScalingWithUse: 0

@@ -14,12 +14,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cardName: Power Up
   description: Gain 1 energy next turn
-  manaCost: 2
+  manaCost: 1
   cardType: 2
-  baseValue: 1
   cardArtworkPath: 
   typeIconPath: 
   cardEffects:
   - effectType: 3
     effectValue: 1
     targetType: 0
+  hasScalingWithUse: 0
+  hasScalingWithTurns: 0
+  hasScalingWithLowHealth: 0
+  hasScalingWithSimilarCards: 0

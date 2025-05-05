@@ -50,6 +50,12 @@ namespace Combat
                 return;
             }
             
+            // --- Added Logging --- 
+            string sourceName = (source is Component sourceComp) ? sourceComp.gameObject.name : source.GetType().Name;
+            string targetName = (target is Component targetComp) ? targetComp.gameObject.name : target.GetType().Name;
+            Debug.Log($"[CardEffectProcessor] Applying card '{cardData.cardName}' from Source: {sourceName} ({source.GetType().Name}) to Target: {targetName} ({target.GetType().Name})");
+            // --- End Logging --- 
+            
             // Track card usage for various effects
             TrackCardUsage(cardData.cardName);
             
@@ -59,6 +65,7 @@ namespace Combat
                 // Skip effects that don't match the target type
                 if (!IsValidTarget(effect.targetType, source, target))
                 {
+                    Debug.Log($" - Skipping effect {effect.effectType} ({effect.effectValue}) - Invalid target type {effect.targetType} for actual target {targetName}");
                     continue;
                 }
                 

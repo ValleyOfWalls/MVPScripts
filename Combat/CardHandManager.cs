@@ -388,5 +388,92 @@ namespace Combat
             cardsInHand.Clear();
         }
         #endregion
+
+        #region Helper Methods for Cards
+        // Server-side method to add a card to the hand
+        [Server]
+        public virtual void ServerAddCard(CardData cardData)
+        {
+            if (cardData == null)
+            {
+                Debug.LogError("FALLBACK: Cannot add null card to hand");
+                return;
+            }
+            
+            // If we have a valid DeckManager, use it to create the card
+            if (DeckManager.Instance != null)
+            {
+                // Create the card (this will register it with the hand)
+                DeckManager.Instance.CreateCardObject(cardData, this.transform, this, GetCombatant());
+            }
+            else
+            {
+                Debug.LogError("FALLBACK: DeckManager.Instance is null, cannot create card object");
+            }
+        }
+
+        // Server-side method to remove a card by name from the hand
+        [Server]
+        public virtual void ServerRemoveCard(string cardName)
+        {
+            if (string.IsNullOrEmpty(cardName))
+            {
+                Debug.LogError("FALLBACK: Cannot remove card with null or empty name");
+                return;
+            }
+            
+            // Find the card with the specified name
+            for (int i = 0; i < cardsInHand.Count; i++)
+            {
+                Card card = cardsInHand[i];
+                if (card != null && card.CardName == cardName)
+                {
+                    // Remove the card from the hand list
+                    cardsInHand.RemoveAt(i);
+                    
+                    // Destroy the card object
+                    if (card.NetworkObject != null)
+                        card.NetworkObject.Despawn();
+                    
+                    // Rearrange the remaining cards
+                    ArrangeCardsInHand();
+                    
+                    // Notify clients to remove this card (if needed)
+                    RpcRemoveCardFromHandVisuals(i, cardName);
+                    
+                    return;
+                }
+            }
+            
+            Debug.LogWarning($"FALLBACK: Card '{cardName}' not found in hand to remove");
+        }
+
+        // Client-side method to animate drawing a card
+        public virtual void ClientAnimateCardDraw(int count)
+        {
+            // Default implementation is to just discover cards
+            // Derived classes can override with more elaborate animations
+            DiscoverCardObjects();
+        }
+
+        // Client-side method to animate a card being played
+        public virtual void ClientAnimateCardPlayed(string cardName)
+        {
+            // Default implementation does nothing
+            // Derived classes can override with specific animations
+        }
+
+        // Returns whether this hand can animate card draws
+        public virtual bool CanAnimateCardDraw()
+        {
+            return true;
+        }
+
+        // Get a list of cards in the hand
+        public List<Card> GetCardsInHand()
+        {
+            return new List<Card>(cardsInHand);
+        }
+        #endregion
     }
 } 

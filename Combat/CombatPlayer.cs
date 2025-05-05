@@ -1,10 +1,12 @@
 using UnityEngine;
+using UnityEngine.UI; // Added for UI components
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using DG.Tweening;
 using TMPro;
 using System.Collections;
+using System.Collections.Generic;
 using FishNet.Transporting; // For RPCs
 
 namespace Combat
@@ -25,27 +27,44 @@ namespace Combat
         [Header("Combat UI")]
         [SerializeField] private TextMeshProUGUI playerNameText;
         [SerializeField] private TextMeshProUGUI energyText;
+        [SerializeField] private TextMeshProUGUI healthText;
+        [SerializeField] private Transform statusEffectsContainer;
+        [SerializeField] private Image playerImage; // Changed from SpriteRenderer to Image
         
         // Combat state
         private readonly SyncVar<bool> _isMyTurn = new SyncVar<bool>();
         private readonly SyncVar<int> _currentEnergy = new SyncVar<int>();
         private readonly SyncVar<int> _maxEnergy = new SyncVar<int>(3);
+        private readonly SyncVar<int> _currentHealth = new SyncVar<int>(100);
+        private readonly SyncVar<int> _maxHealth = new SyncVar<int>(100);
+        private readonly SyncVar<bool> _isDefending = new SyncVar<bool>();
+        
+        // Status effects tracking
+        private readonly SyncDictionary<StatusEffectType, StatusEffectData> _statusEffects = new SyncDictionary<StatusEffectType, StatusEffectData>();
         
         // References to combat systems
         private CombatManager combatManager;
-        private SpriteRenderer spriteRenderer;
+        
+        // Collision detection for card targeting - using BoxCollider2D with Image
+        private BoxCollider2D targetingCollider;
         #endregion
 
         #region Properties
         // Public properties
         public SyncVar<bool> SyncIsMyTurn => _isMyTurn;
         public SyncVar<int> SyncEnergy => _currentEnergy;
+        public SyncVar<int> SyncHealth => _currentHealth;
+        public SyncVar<int> SyncMaxHealth => _maxHealth;
         public NetworkPlayer NetworkPlayer => _networkPlayer.Value;
         public NetworkConnection Owner => _networkPlayer.Value != null ? _networkPlayer.Value.Owner : null;
         public bool IsMyTurn => _isMyTurn.Value;
         public int CurrentEnergy => _currentEnergy.Value;
         public int MaxEnergy => _maxEnergy.Value;
+        public int CurrentHealth => _currentHealth.Value;
+        public int MaxHealth => _maxHealth.Value;
+        public bool IsDefending => _isDefending.Value;
         public RuntimeDeck PlayerDeck => playerDeck;
+        public IDictionary<StatusEffectType, StatusEffectData> StatusEffects => _statusEffects;
         #endregion
 
         #region Unity Lifecycle
@@ -58,32 +77,41 @@ namespace Combat
             _networkPlayer.OnChange += OnNetworkPlayerChanged;
             _currentEnergy.OnChange += OnEnergyChanged;
             _isMyTurn.OnChange += OnTurnChanged;
+            _currentHealth.OnChange += OnHealthChanged;
+            _maxHealth.OnChange += OnMaxHealthChanged;
+            _isDefending.OnChange += OnDefendingChanged;
             
-            // Get sprite renderer
-            spriteRenderer = GetComponent<SpriteRenderer>();
+            // Get Image component if not set
+            if (playerImage == null)
+                playerImage = GetComponentInChildren<Image>();
+            if (playerImage == null)
+                Debug.LogError("CombatPlayer could not find its Image component!");
             
             // Create a visual placeholder
             CreatePlaceholderIfNeeded();
             
             // Get reference to CombatManager
             combatManager = FindObjectOfType<CombatManager>();
+            
+            // Setup targeting collider
+            SetupTargetingCollider();
         }
 
         private void Start()
         {
-            // Make sure sprite is visible
-            if (spriteRenderer != null)
+            // Make sure image is visible
+            if (playerImage != null)
             {
-                spriteRenderer.enabled = true;
+                playerImage.enabled = true;
                 
                 // Create placeholder if needed
-                if (spriteRenderer.sprite == null)
+                if (playerImage.sprite == null)
                     CreatePlaceholderIfNeeded();
                 
                 // Ensure full opacity
-                Color color = spriteRenderer.color;
+                Color color = playerImage.color;
                 color.a = 1f;
-                spriteRenderer.color = color;
+                playerImage.color = color;
             }
         }
 
@@ -93,6 +121,55 @@ namespace Combat
             _networkPlayer.OnChange -= OnNetworkPlayerChanged;
             _currentEnergy.OnChange -= OnEnergyChanged;
             _isMyTurn.OnChange -= OnTurnChanged;
+            _currentHealth.OnChange -= OnHealthChanged;
+            _maxHealth.OnChange -= OnMaxHealthChanged;
+            _isDefending.OnChange -= OnDefendingChanged;
+        }
+        
+        private void SetupTargetingCollider()
+        {
+            // Create or get targeting collider for card drops
+            targetingCollider = GetComponent<BoxCollider2D>();
+            if (targetingCollider == null)
+            {
+                targetingCollider = gameObject.AddComponent<BoxCollider2D>();
+            }
+            
+            // Configure collider for targeting
+            targetingCollider.isTrigger = true;
+            
+            // Size based on RectTransform if available
+            if (playerImage != null)
+            {
+                RectTransform rectTransform = playerImage.GetComponent<RectTransform>();
+                if (rectTransform != null)
+                {
+                    // Convert rect size to world space for the collider
+                    Vector2 size = rectTransform.rect.size;
+                    // Account for scaling if needed
+                    size.x *= rectTransform.lossyScale.x;
+                    size.y *= rectTransform.lossyScale.y;
+                    
+                    targetingCollider.size = size;
+                    
+                    // Offset might be needed depending on pivot and anchors
+                    // This is a simplified version - might need adjustment based on the actual layout
+                    Vector2 offset = Vector2.zero;
+                    targetingCollider.offset = offset;
+                }
+                else
+                {
+                    // Fallback if no RectTransform found
+                    targetingCollider.size = new Vector2(2f, 2f);
+                    targetingCollider.offset = Vector2.zero;
+                }
+            }
+            else
+            {
+                // Default size if no Image
+                targetingCollider.size = new Vector2(2f, 2f);
+                targetingCollider.offset = Vector2.zero;
+            }
         }
         #endregion
 
@@ -103,6 +180,14 @@ namespace Combat
             
             // Create placeholder if needed
             CreatePlaceholderIfNeeded();
+            
+            // Setup collider for card targeting
+            SetupTargetingCollider();
+            
+            // Update UI
+            UpdateHealthDisplay(_currentHealth.Value, _currentHealth.Value, false);
+            UpdateEnergyDisplay(_currentEnergy.Value, _currentEnergy.Value, false);
+            UpdateDefendIcon(_isDefending.Value);
         }
         
         public override void OnStartNetwork()
@@ -113,14 +198,27 @@ namespace Combat
             _isMyTurn.OnChange += OnTurnChanged;
             _currentEnergy.OnChange += OnEnergyChanged;
             _networkPlayer.OnChange += OnNetworkPlayerChanged;
+            _currentHealth.OnChange += OnHealthChanged;
+            _maxHealth.OnChange += OnMaxHealthChanged;
+            _isDefending.OnChange += OnDefendingChanged;
+        }
+        
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+            
+            // Initialize health to maximum on server start
+            _currentHealth.Value = _maxHealth.Value;
+            _currentEnergy.Value = _maxEnergy.Value;
+            _isDefending.Value = false;
         }
         #endregion
 
         #region Initialization and Setup
         private void CreatePlaceholderIfNeeded()
         {
-            // Check if player has a sprite renderer with no sprite
-            if (spriteRenderer != null && spriteRenderer.sprite == null)
+            // Check if player has an image with no sprite
+            if (playerImage != null && playerImage.sprite == null)
             {
                 // Create a placeholder texture
                 Texture2D texture = new Texture2D(128, 128);
@@ -149,10 +247,13 @@ namespace Combat
                 
                 // Create sprite from texture
                 Sprite placeholder = Sprite.Create(texture, new Rect(0, 0, 128, 128), new Vector2(0.5f, 0.5f), 100f);
-                spriteRenderer.sprite = placeholder;
+                playerImage.sprite = placeholder;
                 
                 // Ensure renderer is enabled and visible
-                spriteRenderer.enabled = true;
+                playerImage.enabled = true;
+
+                // --- Re-run collider setup after creating sprite --- 
+                SetupTargetingCollider();
             }
         }
         
@@ -185,15 +286,19 @@ namespace Combat
             this.playerDeck = deck;
             
             // Initialize combat state
+            _maxHealth.Value = 100; // Default value for players
+            _currentHealth.Value = _maxHealth.Value;
             _maxEnergy.Value = 3;
             _currentEnergy.Value = _maxEnergy.Value;
             _isMyTurn.Value = false;
+            _isDefending.Value = false;
             
             // Additional setup after references are assigned
             if (playerNameText != null) 
                 playerNameText.text = networkPlayer.GetSteamName();
             
             UpdateEnergyDisplay(0, _currentEnergy.Value, true);
+            UpdateHealthDisplay(0, _currentHealth.Value, true);
             UpdateTurnVisuals(false, _isMyTurn.Value, true);
         }
         
@@ -209,13 +314,14 @@ namespace Combat
                     Debug.LogError("FALLBACK: Could not find TextMeshProUGUI component in children");
             }
 
+            // Try to find energy text among children
             if (energyText == null)
             {
                 // Try to find among children TextMeshProUGUI components
                 var texts = GetComponentsInChildren<TextMeshProUGUI>(true);
                 foreach(var text in texts)
                 {
-                    if (text != playerNameText)
+                    if (text != playerNameText && text.name.Contains("Energy"))
                     {
                         energyText = text;
                         break;
@@ -223,6 +329,22 @@ namespace Combat
                 }
                 if (energyText == null) 
                     Debug.LogError("FALLBACK: Could not find EnergyText component in children");
+            }
+            
+            // Try to find health text among children
+            if (healthText == null)
+            {
+                var texts = GetComponentsInChildren<TextMeshProUGUI>(true);
+                foreach(var text in texts)
+                {
+                    if (text != playerNameText && text != energyText && text.name.Contains("Health"))
+                    {
+                        healthText = text;
+                        break;
+                    }
+                }
+                if (healthText == null)
+                    Debug.LogError("FALLBACK: Could not find HealthText component in children");
             }
         }
         #endregion
@@ -238,6 +360,9 @@ namespace Combat
             // Reset/increase energy
             _currentEnergy.Value = _maxEnergy.Value;
             
+            // Process status effects for new turn
+            ProcessStatusEffectsForNewTurn();
+            
             // Draw cards
             DrawCardsOnTurnStart(5);
             
@@ -252,148 +377,129 @@ namespace Combat
             _isMyTurn.Value = isMyTurn;
         }
 
-        // End player turn
+        // End the player's turn
         [Server]
         public void EndTurn()
         {
-            // Set turn state
-            SetTurn(false);
+            // Clear turn state
+            _isMyTurn.Value = false;
             
-            // Notify clients explicitly that turn state changed
+            // Discard the player's hand
+            DiscardHand();
+            
+            // Notify clients explicitly that turn has ended
             RpcNotifyTurnChanged(false);
             
-            // Notify combat manager that turn is over
+            // Notify the combat manager that our turn is over
             if (combatManager != null)
             {
                 combatManager.PlayerEndedTurn(this);
             }
-            else
-            {
-                Debug.LogError($"FALLBACK: EndTurn - CombatManager reference is null");
-            }
         }
         
-        // Draw cards on turn start
         [Server]
         private void DrawCardsOnTurnStart(int count)
         {
-            // Tell client to draw cards
-            TargetDrawCards(Owner, count);
+            DrawCards(count);
         }
         
-        // Server command to end turn
         [ServerRpc(RequireOwnership = true)]
         public void CmdEndTurn()
         {
-            if (!IsMyTurn) return;
-
-            // End the turn logic
-            SetTurn(false);
-            
-            // Discard Hand
-            if (playerHand != null)
+            // Verify it's their turn
+            if (!_isMyTurn.Value)
             {
-                playerHand.ServerDiscardHand();
-            }
-            else
-            {
-                Debug.LogError($"FALLBACK: Cannot discard hand - PlayerHand reference is null");
+                Debug.LogWarning($"Player {_networkPlayer.Value.GetSteamName()} tried to end turn when it's not their turn");
+                return;
             }
             
-            // Tell the CombatManager to switch turns
-            if (combatManager == null)
-            {
-                // Try to find CombatManager if it's null
-                combatManager = FindObjectOfType<CombatManager>();
-            }
-            
-            if (combatManager != null)
-            {
-                combatManager.PlayerEndedTurn(this);
-            }
-            else
-            {
-                Debug.LogError("FALLBACK: CmdEndTurn - CombatManager reference is null");
-            }
+            EndTurn();
         }
         #endregion
 
-        #region Card Management
-        // Play a card from hand
+        #region Card Interactions
+        // Called by the server when a card is played by the player
         [Server]
         public void PlayCard(string cardName, CardType cardType)
         {
-            // Log a warning that this method might be deprecated
-            Debug.LogWarning($"CombatPlayer.PlayCard({cardName}) called. This logic might be superseded by CardTargetingSystem/CardEffectProcessor.");
+            // Find the card in the player's hand
+            CardData cardData = null;
             
-            if (!_isMyTurn.Value) return;
+            if (playerHand != null)
+            {
+                // Use DeckManager.Instance to find card data
+                cardData = DeckManager.Instance.FindCardByName(cardName);
+            }
+            
+            if (cardData == null)
+            {
+                Debug.LogError($"Card {cardName} not found in player's hand");
+                return;
+            }
             
             // Check if player has enough energy
-            int cardCost = GetCardCostFromName(cardName); 
-            
-            if (_currentEnergy.Value < cardCost)
+            int cost = GetCardCostFromName(cardName);
+            if (_currentEnergy.Value < cost)
             {
+                Debug.LogWarning($"Player {_networkPlayer.Value.GetSteamName()} tried to play {cardName} but doesn't have enough energy. Has: {_currentEnergy.Value}, Needs: {cost}");
                 TargetNotifyInsufficientEnergy(Owner);
                 return;
             }
             
-            // Spend energy
-            _currentEnergy.Value -= cardCost;
+            // Deduct energy cost
+            _currentEnergy.Value -= cost;
             
-            // Find CardData to apply effects using CardEffectProcessor
-            CardData cardData = DeckManager.Instance.FindCardByName(cardName);
-            if (cardData != null && opponentPet != null) // Need a target for the processor
+            // Remove from hand
+            if (playerHand != null)
             {
-                // Apply effects targeting the opponent pet by default (this is limited)
+                playerHand.ServerRemoveCard(cardName);
+            }
+            
+            // Notify player the card was played successfully
+            TargetCardPlayed(Owner, cardName);
+            
+            // Process card effects
+            if (cardType == CardType.Attack)
+            {
+                // Apply to opponent's pet
                 CardEffectProcessor.ApplyCardEffects(cardData, this, opponentPet);
+            }
+            else if (cardType == CardType.Skill)
+            {
+                // Apply to player's own pet
+                CardEffectProcessor.ApplyCardEffects(cardData, this, playerPet);
             }
             else
             {
-                Debug.LogError($"Could not find CardData for {cardName} or opponentPet is null in PlayCard.");
+                // Apply to both or based on card targeting
+                // Could be extended based on target types in the future
+                CardEffectProcessor.ApplyCardEffects(cardData, this, playerPet);
             }
-            
-            TargetCardPlayed(Owner, cardName);
         }
 
         private int GetCardCostFromName(string cardName)
         {
-            if (cardName.Contains("Strike")) return 1;
-            if (cardName.Contains("Defend")) return 1;
-            if (cardName.Contains("Bash")) return 2;
-            return 1;
+            // Get the card cost directly from DeckManager
+            CardData card = DeckManager.Instance.FindCardByName(cardName);
+            return card != null ? card.manaCost : 1; // Default to 1 if not found
         }
-        
+        #endregion
+
+        #region Card Drawing and Discard
         [Server]
         public CardData DrawCardFromDeck()
         {
-            if (playerDeck == null)
+            if (playerDeck == null || playerDeck.DrawPileCount == 0)
             {
-                Debug.LogError("FALLBACK: Cannot draw card: playerDeck is null");
+                Debug.LogWarning($"FALLBACK: Player {_networkPlayer.Value.GetSteamName()} tried to draw a card but deck is empty or null");
                 return null;
             }
 
-            // Draw from the actual RuntimeDeck
             CardData drawnCard = playerDeck.DrawCard();
-
-            // Handle empty deck
             if (drawnCard == null)
             {
-                // Handle empty deck by reshuffling discard pile
-                if (playerDeck.NeedsReshuffle())
-                {
-                    playerDeck.Reshuffle();
-                    
-                    // Try drawing again after reshuffling
-                    drawnCard = playerDeck.DrawCard();
-                    if (drawnCard == null)
-                    {
-                        Debug.LogError("FALLBACK: Still drew null card after reshuffling");
-                    }
-                }
-                else
-                {
-                    Debug.LogError("FALLBACK: No cards available, deck empty and cannot reshuffle");
-                }
+                Debug.LogWarning($"FALLBACK: Player {_networkPlayer.Value.GetSteamName()} drew a null card");
+                return null;
             }
 
             return drawnCard;
@@ -402,78 +508,293 @@ namespace Combat
         [Server]
         public void DiscardHand()
         {
-            // No server logic needed here for basic implementation
+            if (playerHand != null)
+            {
+                playerHand.ServerDiscardHand();
+            }
+        }
+        #endregion
+
+        #region Combat Methods
+        [Server]
+        public void TakeDamage(int amount)
+        {
+            int actualDamage = _isDefending.Value ? Mathf.FloorToInt(amount * 0.5f) : amount;
+            
+            // Apply break status effect if present
+            if (HasStatusEffect(StatusEffectType.Break))
+            {
+                float multiplier = 1f + (_statusEffects[StatusEffectType.Break].Value / 100f);
+                actualDamage = Mathf.FloorToInt(actualDamage * multiplier);
+            }
+            
+            _currentHealth.Value = Mathf.Max(_currentHealth.Value - actualDamage, 0);
+            
+            // Show damage animation
+            RpcAnimateDamage(actualDamage);
+            
+            // Check defeat state
+            if (_currentHealth.Value <= 0)
+            {
+                RpcDefeat();
+            }
+        }
+        
+        [Server]
+        public void AddBlock(int amount)
+        {
+            _isDefending.Value = true;
+        }
+
+        [Server]
+        public void Heal(int amount)
+        {
+            _currentHealth.Value = Mathf.Min(_currentHealth.Value + amount, _maxHealth.Value);
+        }
+
+        [Server]
+        public void DrawCards(int amount)
+        {
+            if (playerHand != null)
+            {
+                for (int i = 0; i < amount; i++)
+                {
+                    CardData card = DrawCardFromDeck();
+                    if (card != null)
+                    {
+                        // Use the server method to add card to hand
+                        playerHand.ServerAddCard(card);
+                    }
+                }
+                
+                // Notify the player to draw cards UI-wise
+            TargetDrawCards(Owner, amount);
+        }
+        }
+        
+        [Server]
+        public bool IsDefeated()
+        {
+            return _currentHealth.Value <= 0;
+        }
+        #endregion
+
+        #region Status Effects
+        [Server]
+        public void ApplyStatusEffect(StatusEffectType type, int value, int duration)
+        {
+            if (_statusEffects.ContainsKey(type))
+            {
+                // Update existing effect
+                StatusEffectData existingEffect = _statusEffects[type];
+                existingEffect.Value = Mathf.Max(existingEffect.Value, value);
+                existingEffect.Duration = Mathf.Max(existingEffect.Duration, duration);
+                _statusEffects[type] = existingEffect;
+            }
+            else
+            {
+                // Add new effect
+                _statusEffects.Add(type, new StatusEffectData { Value = value, Duration = duration });
+            }
+            
+            // Notify clients to update status effect display
+            RpcUpdateStatusEffects();
+        }
+        
+        [Server]
+        public void RemoveStatusEffect(StatusEffectType type)
+        {
+            if (_statusEffects.ContainsKey(type))
+            {
+                _statusEffects.Remove(type);
+                
+                // Notify clients to update status effect display
+                RpcUpdateStatusEffects();
+            }
+        }
+        
+        [Server]
+        public bool HasStatusEffect(StatusEffectType type)
+        {
+            return _statusEffects.ContainsKey(type) && _statusEffects[type].Duration > 0;
+        }
+        
+        [Server]
+        public void ProcessStatusEffectsForNewTurn()
+        {
+            List<StatusEffectType> effectsToRemove = new List<StatusEffectType>();
+            
+            // Process each status effect
+            foreach (var kvp in _statusEffects)
+            {
+                StatusEffectType type = kvp.Key;
+                StatusEffectData data = kvp.Value;
+                
+                // Reduce duration
+                data.Duration--;
+                
+                // Apply effect based on type
+                switch (type)
+                {
+                    case StatusEffectType.DoT:
+                        // Apply damage over time
+                        int dotDamage = data.Value;
+                        _currentHealth.Value = Mathf.Max(_currentHealth.Value - dotDamage, 0);
+                        RpcAnimateDamage(dotDamage);
+                        break;
+                        
+                    // Other status effect processing as needed
+                }
+                
+                // Mark for removal if duration reached zero
+                if (data.Duration <= 0)
+                {
+                    effectsToRemove.Add(type);
+                }
+                else
+                {
+                    // Update duration
+                    _statusEffects[type] = data;
+                }
+            }
+            
+            // Remove expired effects
+            foreach (StatusEffectType type in effectsToRemove)
+            {
+                _statusEffects.Remove(type);
+            }
+            
+            // Notify clients to update status effect display
+            if (effectsToRemove.Count > 0)
+            {
+                RpcUpdateStatusEffects();
+            }
+            
+            // Reset defending status at start of turn
+            _isDefending.Value = false;
+            
+            // Check defeat state after DoT effects
+            if (_currentHealth.Value <= 0)
+            {
+                RpcDefeat();
+            }
+        }
+        
+        [ObserversRpc]
+        private void RpcUpdateStatusEffects()
+        {
+            // Update status effect display on clients
+            UpdateStatusEffectsDisplay();
+        }
+        
+        private void UpdateStatusEffectsDisplay()
+        {
+            // Find or create a single status effect text display
+            TMPro.TextMeshProUGUI statusText = null;
+            
+            // Clear existing status effect elements
+            if (statusEffectsContainer != null)
+            {
+                // Check if we already have a status text element
+                statusText = statusEffectsContainer.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+                
+                // Clear any old elements
+                foreach (Transform child in statusEffectsContainer)
+                {
+                    Destroy(child.gameObject);
+                }
+                
+                // Create a new game object for our status text if needed
+                GameObject statusObj = new GameObject("StatusEffectsText");
+                statusObj.transform.SetParent(statusEffectsContainer, false);
+                
+                // Add text component if it doesn't exist
+                statusText = statusObj.AddComponent<TMPro.TextMeshProUGUI>();
+                statusText.fontSize = 12;
+                statusText.alignment = TMPro.TextAlignmentOptions.Center;
+                
+                // Build a string of all current status effects
+                string statusString = "";
+                
+                // Check if we have any status effects
+                if (_statusEffects.Count > 0)
+                {
+                    foreach (var kvp in _statusEffects)
+                    {
+                        // Add each status effect to the string
+                        if (statusString.Length > 0)
+                            statusString += ", "; // Add comma between effects
+                            
+                        statusString += $"{kvp.Key}: {kvp.Value.Value} ({kvp.Value.Duration})";
+                    }
+                }
+                else
+                {
+                    statusString = "No effects";
+                }
+                
+                // Set the text
+                statusText.text = statusString;
+            }
         }
         #endregion
 
         #region ICombatant Implementation
-        // Players themselves don't take damage directly, their pets do
-        [Server]
-        public void TakeDamage(int amount)
-        {
-            Debug.LogWarning("FALLBACK: CombatPlayer.TakeDamage called. Should target the pet");
-        }
-
-        // Players don't have block, their pets might
-        [Server]
-        public void AddBlock(int amount)
-        {
-            Debug.LogWarning("FALLBACK: CombatPlayer.AddBlock called. Should target the pet");
-        }
-
-        // Players don't heal directly, their pets might
-        [Server]
-        public void Heal(int amount)
-        {
-            Debug.LogWarning("FALLBACK: CombatPlayer.Heal called. Should target the pet");
-        }
-
-        // Draw cards is handled by TargetDrawCards RPC
-        [Server]
-        public void DrawCards(int amount)
-        {
-            TargetDrawCards(Owner, amount);
-        }
-
-        // Apply buff to the player (e.g., energy boost)
         [Server]
         public void ApplyBuff(int buffId)
         {
-            Debug.LogWarning("FALLBACK: CombatPlayer.ApplyBuff called, but player buffs not implemented");
+            // Convert to appropriate status effect
+            switch(buffId)
+            {
+                case 0: // Critical
+                    ApplyStatusEffect(StatusEffectType.Critical, 25, 2); // 25% crit chance for 2 turns
+                    break;
+                case 1: // Thorns
+                    ApplyStatusEffect(StatusEffectType.Thorns, 3, 2); // Return 3 damage for 2 turns
+                    break;
+                // Add more buffs as needed
+            }
         }
-
-        // Apply debuff to the player
+        
         [Server]
         public void ApplyDebuff(int debuffId)
         {
-            Debug.LogWarning("FALLBACK: CombatPlayer.ApplyDebuff called, but player debuffs not implemented");
-        }
-
-        // CombatPlayer represents the player, typically not an enemy
-        public bool IsEnemy()
-        {
-            return false;
+            // Convert to appropriate status effect
+            switch(debuffId)
+            {
+                case 0: // Break
+                    ApplyStatusEffect(StatusEffectType.Break, 25, 2); // Take 25% more damage for 2 turns
+                    break;
+                case 1: // Weak
+                    ApplyStatusEffect(StatusEffectType.Weak, 25, 2); // Deal 25% less damage for 2 turns
+                    break;
+                case 2: // DoT
+                    ApplyStatusEffect(StatusEffectType.DoT, 3, 3); // Take 3 damage per turn for 3 turns
+                    break;
+                // Add more debuffs as needed
+            }
         }
         
-        // Players are defeated when their pet is defeated
-        public bool IsDefeated()
+        public bool IsEnemy()
         {
-            // Forward to pet if available
-            if (playerPet != null)
+            // Based on ownership perspective
+            if (IsOwner)
             {
-                return playerPet.IsDefeated();
+                return false; // Not an enemy to the owner
+        }
+            else
+        {
+                return true; // An enemy to other players
             }
-            return false; // By default, not defeated if no pet reference
         }
         #endregion
 
-        #region SyncVar Callbacks
+        #region UI Updates
         private void OnNetworkPlayerChanged(NetworkPlayer prev, NetworkPlayer next, bool asServer)
         {
             if (next != null && playerNameText != null)
             {
-                 playerNameText.text = next.GetSteamName() + (IsMyTurn ? " (Your Turn)" : "");
-                 UpdateTurnVisuals(false, IsMyTurn, asServer);
+                playerNameText.text = next.GetSteamName();
             }
         }
         
@@ -486,110 +807,189 @@ namespace Combat
         {
             UpdateTurnVisuals(prev, next, asServer);
         }
-        #endregion
-
-        #region UI Update Methods
+        
+        private void OnHealthChanged(int prev, int next, bool asServer)
+        {
+            UpdateHealthDisplay(prev, next, asServer);
+        }
+        
+        private void OnMaxHealthChanged(int prev, int next, bool asServer)
+        {
+            UpdateHealthDisplay(_currentHealth.Value, _currentHealth.Value, asServer);
+        }
+        
+        private void OnDefendingChanged(bool prev, bool next, bool asServer)
+        {
+            UpdateDefendIcon(next);
+        }
+        
         private void UpdateEnergyDisplay(int prev, int next, bool asServer)
         {
             if (energyText != null)
             {
                 energyText.text = $"Energy: {next}/{_maxEnergy.Value}";
+                
+                // Visual feedback for energy changes
+                if (next < prev)
+                {
+                    // Energy decreased
+                    energyText.color = Color.yellow;
+                    energyText.DOColor(Color.white, 0.5f);
+                }
+                else if (next > prev)
+        {
+                    // Energy increased
+                    energyText.color = Color.cyan;
+                    energyText.DOColor(Color.white, 0.5f);
+                }
+            }
+        }
+        
+        private void UpdateHealthDisplay(int prev, int next, bool asServer)
+        {
+            if (healthText != null)
+            {
+                healthText.text = $"HP: {next}/{_maxHealth.Value}";
+                
+                // Visual feedback for health changes
+                if (next < prev)
+                {
+                    // Health decreased
+                    healthText.color = Color.red;
+                    healthText.DOColor(Color.white, 0.5f);
+                }
+                else if (next > prev)
+                {
+                    // Health increased
+                    healthText.color = Color.green;
+                    healthText.DOColor(Color.white, 0.5f);
+                }
+            }
+        }
+        
+        private void UpdateDefendIcon(bool isDefending)
+        {
+            // If we have a defend icon, update its visibility
+            GameObject defendIcon = transform.Find("DefendIcon")?.gameObject;
+            if (defendIcon != null)
+            {
+                defendIcon.SetActive(isDefending);
             }
         }
         
         private void UpdateTurnVisuals(bool prev, bool next, bool asServer)
         {
-            // Update turn indicator
-            if (playerNameText != null && _networkPlayer.Value != null)
+            // Visual indication of turn state
+            if (playerImage != null)
             {
-                playerNameText.text = _networkPlayer.Value.GetSteamName() + (next ? " (Your Turn)" : "");
-                
-                // Highlight when it's player's turn
+                // Highlight player when it's their turn
                 if (next)
                 {
-                    playerNameText.color = Color.yellow;
-                    playerNameText.transform.DOPunchScale(Vector3.one * 0.2f, 0.3f, 1, 0.5f);
+                    // Update glow or highlight effect for UI Image
+                    // For Image, we'll use DOColor to animate the color property
+                    playerImage.DOColor(new Color(1f, 1f, 1f, 1f), 0.5f).SetLoops(-1, LoopType.Yoyo);
                 }
                 else
                 {
-                    playerNameText.color = Color.white;
+                    // Stop any animations and return to normal
+                    DOTween.Kill(playerImage);
+                    playerImage.color = new Color(1f, 1f, 1f, 0.8f);
                 }
+            }
+        }
+        
+        [ObserversRpc]
+        private void RpcAnimateDamage(int damage)
+        {
+            // Animate the UI image to show damage
+            if (playerImage != null)
+            {
+                // Flash red for UI Image
+                playerImage.DOColor(Color.red, 0.1f).SetLoops(2, LoopType.Yoyo);
+                
+                // Shake the transform
+                playerImage.transform.DOShakePosition(0.2f, 0.1f, 10, 90, false, true);
+                }
+                
+            // Show damage number
+            ShowDamageNumber(damage);
+        }
+        
+        private void ShowDamageNumber(int damage)
+        {
+            // Create a floating damage number that works with UI
+            if (playerImage != null && playerImage.transform.parent != null)
+            {
+                GameObject damageObj = new GameObject($"Damage_{damage}");
+                // Make the damage number a sibling of the player image to get proper layering
+                damageObj.transform.SetParent(playerImage.transform.parent);
+                
+                // Position it over the player
+                RectTransform damageRectTransform = damageObj.AddComponent<RectTransform>();
+                damageRectTransform.anchoredPosition = playerImage.rectTransform.anchoredPosition + new Vector2(0, 50f);
+                
+                // Add text component
+                TextMeshProUGUI damageText = damageObj.AddComponent<TextMeshProUGUI>();
+                damageText.text = damage.ToString();
+                damageText.fontSize = 24;
+                damageText.color = Color.red;
+                damageText.alignment = TextAlignmentOptions.Center;
+                
+                // Animate the text floating up and fading
+                damageRectTransform.DOAnchorPosY(damageRectTransform.anchoredPosition.y + 100f, 1f);
+                damageText.DOFade(0, 1f).OnComplete(() => {
+                    Destroy(damageObj);
+                });
+                    }
+                }
+                
+        [ObserversRpc]
+        private void RpcDefeat()
+                {
+            // Visual defeat effect for UI Image
+            if (playerImage != null)
+            {
+                // Fade out image
+                playerImage.DOFade(0, 0.5f);
+                
+                // Shrink down the RectTransform
+                playerImage.rectTransform.DOScale(0.1f, 0.5f).OnComplete(() =>
+                {
+                    // Disable image after animation
+                    playerImage.enabled = false;
+                });
+            }
+            
+            // Disable collider
+            if (targetingCollider != null)
+            {
+                targetingCollider.enabled = false;
             }
         }
         #endregion
 
-        #region RPCs
+        #region Client RPCs
         [TargetRpc]
         private void TargetDrawCards(NetworkConnection conn, int count)
         {
+            // Handle UI card drawing
             if (playerHand == null)
             {
-                Debug.LogWarning("FALLBACK: PlayerHand is null during TargetDrawCards, attempting to find it");
-                
-                // Try to find the PlayerHand in the scene that we actually OWN
-                PlayerHand[] hands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
-                playerHand = null; // Reset to ensure we don't use a non-owned reference
-                
-                foreach (PlayerHand hand in hands)
-                {
-                    if (hand.IsOwner)
-                    {
-                        playerHand = hand;
-                        break;
-                    }
-                }
-                
-                // If still not found, trigger the search coroutine
-                if (playerHand == null)
-                {
-                    StartCoroutine(FindHandAndDrawCards(count));
-                    return;
-                }
+                StartCoroutine(FindHandAndDrawCards(count));
             }
-            
-            // DOUBLE CHECK ownership before proceeding
-            if (!playerHand.IsOwner)
+            else
             {
-                Debug.LogError("FALLBACK: PlayerHand is not owned by this client, looking for a correctly owned hand");
-                // Try to find a properly owned hand
-                PlayerHand[] hands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
-                bool foundOwnedHand = false;
-                
-                foreach (PlayerHand hand in hands)
-                {
-                    if (hand.IsOwner)
-                    {
-                        playerHand = hand;
-                        foundOwnedHand = true;
-                        break;
-                    }
-                }
-                
-                if (!foundOwnedHand)
-                {
-                    Debug.LogError("FALLBACK: Failed to find ANY owned PlayerHand, cannot draw cards");
-                    return;
-                }
-            }
-            
-            // Call the ServerRpc on PlayerHand to request cards from the server
-            try 
-            {
-                playerHand.CmdDrawCards(count);
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"FALLBACK: Error calling CmdDrawCards: {e.Message}");
+                // Call client-side animation method
+                playerHand.ClientAnimateCardDraw(count);
             }
         }
         
-        // Coroutine to find hand and draw cards after a delay
         private System.Collections.IEnumerator FindHandAndDrawCards(int count)
         {
             // Wait for a moment to allow references to be found
             yield return new WaitForSeconds(0.5f);
             
-            // Try drawing cards again, but this time ensure we have an owned hand
+            // Try to find PlayerHand in the scene that we own
             PlayerHand[] hands = FindObjectsByType<PlayerHand>(FindObjectsSortMode.None);
             bool foundOwnedHand = false;
             
@@ -599,83 +999,75 @@ namespace Combat
                 {
                     playerHand = hand;
                     foundOwnedHand = true;
-                    Debug.Log("FALLBACK: Delayed search found owned PlayerHand");
                     break;
                 }
             }
             
             if (foundOwnedHand && playerHand != null)
             {
-                try 
+                // Use visual animation method if available, otherwise just receive the cards
+                if (playerHand.CanAnimateCardDraw())
                 {
-                    playerHand.CmdDrawCards(count);
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError($"FALLBACK: Error calling delayed CmdDrawCards: {e.Message}");
+                    playerHand.ClientAnimateCardDraw(count);
                 }
             }
             else
             {
-                Debug.LogError("FALLBACK: Failed to find owned PlayerHand after delay, cannot draw cards");
+                Debug.LogError("Failed to find owned PlayerHand after delay, cannot animate drawing cards");
             }
         }
         
         [TargetRpc]
         private void TargetCardPlayed(NetworkConnection conn, string cardName)
         {
-            // Visual feedback handled by Card component
+            // Visual feedback when a card is played
+            if (playerHand != null)
+            {
+                playerHand.ClientAnimateCardPlayed(cardName);
+            }
         }
 
         [TargetRpc]
         private void TargetNotifyInsufficientEnergy(NetworkConnection conn)
         {
-            Debug.LogWarning("FALLBACK: Not enough energy to play that card");
+            // Visual feedback when player doesn't have enough energy
+            if (energyText != null)
+            {
+                energyText.color = Color.red;
+                energyText.transform.DOShakePosition(0.5f, 0.2f);
+                energyText.DOColor(Color.white, 0.5f);
         }
-
-        // Parenting RPC
+        }
+        
         [ObserversRpc(ExcludeOwner = false, BufferLast = true)]
         public void RpcSetParent(NetworkObject parentNetworkObject)
         {
-             if (parentNetworkObject == null)
+            if (parentNetworkObject != null)
              {
-                 Debug.LogError("FALLBACK: RpcSetParent received null parentNetworkObject");
-                 return;
-             }
-
-             Transform parentTransform = parentNetworkObject.transform;
-             if (parentTransform != null)
-             {
-                 transform.SetParent(parentTransform, false);
+                // Set the transform parent
+                transform.SetParent(parentNetworkObject.transform);
+                
+                // Reset local position and scale
+                transform.localPosition = Vector3.zero;
+                transform.localScale = Vector3.one;
              }
              else
              {
-                 Debug.LogError("FALLBACK: Could not find transform for parent NetworkObject in RpcSetParent");
+                // Unparent if parent is null
+                transform.SetParent(null);
              }
         }
 
-        // Add RPC to explicitly notify clients about turn state change
         [ObserversRpc]
         public void RpcNotifyTurnChanged(bool isMyTurn)
         {
-            // Force update any UI that needs to respond to turn changes
-            CombatCanvasManager canvasManager = FindObjectOfType<CombatCanvasManager>();
-            if (canvasManager != null)
+            // Visual notification of turn change
+            if (isMyTurn && IsOwner)
             {
-                // Use reflection to call OnTurnChanged since it's private
-                System.Reflection.MethodInfo method = typeof(CombatCanvasManager).GetMethod(
-                    "OnTurnChanged", 
-                    System.Reflection.BindingFlags.NonPublic | 
-                    System.Reflection.BindingFlags.Instance);
-                    
-                if (method != null)
-                {
-                    method.Invoke(canvasManager, new object[] { !isMyTurn, isMyTurn, false });
-                }
-                else
-                {
-                    Debug.LogError("FALLBACK: Failed to find OnTurnChanged method via reflection");
-                }
+                // Show turn start notification to owner
+                Debug.Log("Your turn started!");
+                
+                // You would add more visual feedback here
             }
         }
         #endregion
