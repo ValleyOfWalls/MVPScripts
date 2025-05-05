@@ -16,10 +16,13 @@ MonoBehaviour:
   description: Deal 6 damage
   manaCost: 1
   cardType: 0
-  baseValue: 6
   cardArtworkPath: 
   typeIconPath: 
   cardEffects:
-  - effectType: 0
+  - effectType: 7
     effectValue: 6
     targetType: 1
+  hasScalingWithUse: 0
+  hasScalingWithTurns: 0
+  hasScalingWithLowHealth: 0
+  hasScalingWithSimilarCards: 0

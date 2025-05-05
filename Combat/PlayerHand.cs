@@ -15,6 +15,7 @@ namespace Combat
         [Header("Player Hand References")]
         [SerializeField] private NetworkPlayer owner;
         [SerializeField] private CombatPlayer combatPlayer;
+        public NetworkPlayer NetworkPlayer { get; private set; }
         #endregion
 
         #region Network Callbacks
@@ -24,6 +25,70 @@ namespace Combat
             
             // Set interactability based on ownership
             SetCardsInteractivity(IsOwner);
+            
+            // Try to find references if they're missing on client
+            if (owner == null || combatPlayer == null)
+            {
+                // First try the quick find
+                TryFindReferences();
+                
+                // If still missing, do a more thorough search
+                if (owner == null || combatPlayer == null)
+                {
+                    StartCoroutine(FindReferencesViaNetwork());
+                }
+            }
+        }
+        
+        private System.Collections.IEnumerator FindReferencesViaNetwork()
+        {
+            // Wait a bit for network sync to complete
+            for (int i = 0; i < 5; i++)
+            {
+                yield return new WaitForSeconds(0.2f);
+                
+                // Try to find the references via the player's synced combat reference
+                NetworkPlayer[] players = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+                foreach (var player in players)
+                {
+                    // Check if this is the reference player hand for any player
+                    if (player.SyncedPlayerHand.Value == this)
+                    {
+                        // Set owner reference
+                        owner = player;
+                        
+                        // Set combat player reference
+                        combatPlayer = player.SyncedCombatPlayer.Value;
+                        
+                        // Update interactivity based on ownership
+                        SetCardsInteractivity(IsOwner);
+                        
+                        Debug.Log($"[CLIENT] Found owner and combatPlayer for PlayerHand on client");
+                        yield break;
+                    }
+                }
+                
+                // If we're the owner, try to find references based on ownership
+                if (IsOwner)
+                {
+                    foreach (var player in players)
+                    {
+                        if (player.IsOwner)
+                        {
+                            owner = player;
+                            combatPlayer = player.SyncedCombatPlayer.Value;
+                            
+                            if (owner != null && combatPlayer != null)
+                            {
+                                Debug.Log($"[CLIENT] Found owner and combatPlayer for PlayerHand based on ownership");
+                                yield break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Debug.LogWarning("[CLIENT] Failed to find owner or combatPlayer after multiple attempts");
         }
         
         public override void OnOwnershipClient(NetworkConnection prevOwner)
@@ -58,12 +123,11 @@ namespace Combat
                 // Tell server to remove card from hand
                 CmdRemoveCardFromHand(cardIndex, card.CardName);
                 
-                // Get card type and base value to send to server
+                // Get card type to send to server
                 CardType cardType = card.Type;
-                int baseValue = card.BaseValue;
                 
                 // Tell server to play this card's effect
-                CmdPlayCard(cardIndex, card.CardName, cardType, baseValue);
+                CmdPlayCard(cardIndex, card.CardName, cardType);
             }
         }
         
@@ -162,9 +226,10 @@ namespace Combat
 
         #region Server RPCs
         [Server]
-        public void Initialize(NetworkPlayer player, CombatPlayer combatPlayerRef)
+        public void Initialize(NetworkPlayer networkPlayer, CombatPlayer combatPlayerRef)
         {
-            owner = player;
+            NetworkPlayer = networkPlayer;
+            owner = networkPlayer;
             combatPlayer = combatPlayerRef;
             
             // Set the deck
@@ -240,12 +305,12 @@ namespace Combat
         }
         
         [ServerRpc]
-        private void CmdPlayCard(int cardIndex, string cardName, CardType cardType, int baseValue)
+        private void CmdPlayCard(int cardIndex, string cardName, CardType cardType)
         {
             if (!IsOwner) return;
             
             // Let the combat player handle the card effect
-            combatPlayer.PlayCard(cardName, cardType, baseValue);
+            combatPlayer.PlayCard(cardName, cardType);
         }
         
         // Server authoritative discard hand - override to handle deck discarding

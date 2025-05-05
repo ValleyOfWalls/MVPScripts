@@ -111,8 +111,9 @@ public class CardDragHandler : NetworkBehaviour, IBeginDragHandler, IDragHandler
         // Scale up slightly on hover
         transform.localScale = originalScale * hoveredScale;
         
-        // Inform the card
-        card.OnPointerEnter();
+        // Inform the card - create a new PointerEventData if needed
+        if (card != null)
+            card.OnPointerEnter(eventData);
     }
 
     public void OnPointerExit(PointerEventData eventData)
@@ -124,7 +125,8 @@ public class CardDragHandler : NetworkBehaviour, IBeginDragHandler, IDragHandler
             transform.localScale = originalScale;
             
             // Inform the card
-            card.OnPointerExit();
+            if (card != null)
+                card.OnPointerExit(eventData);
         }
     }
 
@@ -167,8 +169,9 @@ public class CardDragHandler : NetworkBehaviour, IBeginDragHandler, IDragHandler
             SetDragStateServerRpc(true);
         }
         
-        // Inform the card
-        card.OnBeginDrag();
+        // Inform the card - pass the eventData
+        if (card != null)
+            card.OnBeginDrag(eventData);
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -186,8 +189,9 @@ public class CardDragHandler : NetworkBehaviour, IBeginDragHandler, IDragHandler
         // Check for targets under the card
         CheckForTargets();
         
-        // Inform the card
-        card.OnDrag(mousePosition);
+        // Inform the card - pass the eventData
+        if (card != null)
+            card.OnDrag(eventData);
     }
 
     public void OnEndDrag(PointerEventData eventData)
@@ -207,32 +211,15 @@ public class CardDragHandler : NetworkBehaviour, IBeginDragHandler, IDragHandler
         
         bool validTarget = (currentTarget != null);
         
-        // Inform the card
-        card.OnEndDrag(validTarget, currentTarget);
+        // Inform the card with proper parameters
+        if (card != null)
+            card.OnEndDrag(eventData);
         
         // If we have a valid target, play the card on that target
-        if (validTarget)
+        if (validTarget && card != null)
         {
-            // Get the NetworkObject from the target component
-            Component targetComponent = currentTarget as Component;
-            if (targetComponent != null)
-            {
-                NetworkObject targetNetworkObject = targetComponent.GetComponent<NetworkObject>();
-                if (targetNetworkObject != null)
-                {
-                    PlayCardServerRpc(targetNetworkObject);
-                }
-                else
-                {
-                    Debug.LogError($"[CardDragHandler] Target component {targetComponent.name} does not have a NetworkObject.", targetComponent);
-                    ReturnToHand(); // Failed to get NetworkObject, return card
-                }
-            }
-            else
-            {
-                Debug.LogError($"[CardDragHandler] Current target is not a valid Component.");
-                ReturnToHand(); // Invalid target type, return card
-            }
+            // Instead of calling PlayCard, use ReturnToHand if card wasn't played
+            // Card targeting is now handled by CardTargetingSystem
         }
         else
         {
@@ -405,22 +392,10 @@ public class CardDragHandler : NetworkBehaviour, IBeginDragHandler, IDragHandler
     [ServerRpc]
     private void PlayCardServerRpc(NetworkObject targetNetworkObject)
     {
-        // Find the ICombatant component on the target object
-        if (targetNetworkObject == null)
-        {
-            Debug.LogError("[CardDragHandler.ServerRpc] Received null target NetworkObject.");
-            return;
-        }
+        // This method should be updated to use the CardTargetingSystem instead
         
-        ICombatant target = targetNetworkObject.GetComponent<ICombatant>();
-        if (target != null)
-        {
-            // Let the card handle its own effect logic
-            card.PlayCard(target);
-        }
-        else
-        {
-            Debug.LogError($"[CardDragHandler.ServerRpc] Target NetworkObject {targetNetworkObject.name} does not have an ICombatant component.", targetNetworkObject);
-        }
+        // For backward compatibility, just call ReturnToHand
+        // As the targeting and card playing is now handled by CardTargetingSystem
+        ReturnToHand();
     }
 } 

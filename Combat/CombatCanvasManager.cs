@@ -26,6 +26,7 @@ public class CombatCanvasManager : MonoBehaviour
     // [SerializeField] private TextMeshProUGUI playerHealthText; 
     [SerializeField] private Button endTurnButton;
     [SerializeField] private GameObject turnIndicatorPlayer; // e.g., a highlight or image
+    [SerializeField] private Transform playerAreaTransform; // UI area for the CombatPlayer
 
     [Header("Player Hand UI")]
     [SerializeField] private Transform playerHandArea; // Parent transform for player card UI objects
@@ -38,11 +39,13 @@ public class CombatCanvasManager : MonoBehaviour
     [Header("Player Pet UI")]
     [SerializeField] private TextMeshProUGUI playerPetNameText;
     [SerializeField] private TextMeshProUGUI playerPetHealthText;
+    [SerializeField] private Transform playerPetAreaTransform; // UI area for the player's CombatPet
     // Add references for pet status icons (defending, buffs, etc.) if needed
 
     [Header("Opponent Pet UI")]
     [SerializeField] private TextMeshProUGUI opponentPetNameText;
     [SerializeField] private TextMeshProUGUI opponentPetHealthText;
+    [SerializeField] private Transform opponentPetAreaTransform; // UI area for the opponent's CombatPet
     // Add references for opponent pet status icons
 
     [Header("Combat Result UI")]
@@ -380,6 +383,74 @@ public class CombatCanvasManager : MonoBehaviour
                     petHand.gameObject.SetActive(true);
                 }
             }
+        }
+        
+        // After positioning hands, also position the combat player and pets
+        PositionCombatantsOnStartup();
+    }
+
+    private void PositionCombatantsOnStartup()
+    {
+        Debug.Log("[CombatCanvasManager] Positioning CombatPlayer and CombatPet objects in UI");
+        
+        // Position the local combat player in the player area
+        if (localNetworkPlayer != null && localNetworkPlayer.CombatPlayer != null && playerAreaTransform != null)
+        {
+            // Set the combat player as the observed player
+            currentObservedCombatPlayer = localNetworkPlayer.CombatPlayer;
+            
+            // Position the combat player in the correct UI area
+            Transform playerTransform = currentObservedCombatPlayer.transform;
+            playerTransform.SetParent(playerAreaTransform, false);
+            playerTransform.localPosition = Vector3.zero;
+            playerTransform.localScale = Vector3.one;
+            playerTransform.gameObject.SetActive(true);
+            
+            Debug.Log($"[CombatCanvasManager] Positioned CombatPlayer {playerTransform.name} in UI area");
+        }
+        else
+        {
+            Debug.LogWarning("[CombatCanvasManager] Cannot position CombatPlayer - missing references");
+        }
+        
+        // Position the local player's pet in the player pet area
+        if (localNetworkPlayer != null && localNetworkPlayer.CombatPet != null && playerPetAreaTransform != null)
+        {
+            // Set the player's combat pet as the observed pet
+            currentObservedPlayerPet = localNetworkPlayer.CombatPet;
+            
+            // Position the player's pet in the correct UI area
+            Transform petTransform = currentObservedPlayerPet.transform;
+            petTransform.SetParent(playerPetAreaTransform, false);
+            petTransform.localPosition = Vector3.zero;
+            petTransform.localScale = Vector3.one;
+            petTransform.gameObject.SetActive(true);
+            
+            Debug.Log($"[CombatCanvasManager] Positioned player's CombatPet {petTransform.name} in UI area");
+        }
+        else
+        {
+            Debug.LogWarning("[CombatCanvasManager] Cannot position player's CombatPet - missing references");
+        }
+        
+        // Position the opponent's pet in the opponent pet area
+        if (localNetworkPlayer != null && localNetworkPlayer.OpponentCombatPet != null && opponentPetAreaTransform != null)
+        {
+            // Set the opponent's combat pet as the observed opponent pet
+            currentObservedOpponentPet = localNetworkPlayer.OpponentCombatPet;
+            
+            // Position the opponent's pet in the correct UI area
+            Transform opponentPetTransform = currentObservedOpponentPet.transform;
+            opponentPetTransform.SetParent(opponentPetAreaTransform, false);
+            opponentPetTransform.localPosition = Vector3.zero;
+            opponentPetTransform.localScale = Vector3.one;
+            opponentPetTransform.gameObject.SetActive(true);
+            
+            Debug.Log($"[CombatCanvasManager] Positioned opponent's CombatPet {opponentPetTransform.name} in UI area");
+        }
+        else
+        {
+            Debug.LogWarning("[CombatCanvasManager] Cannot position opponent's CombatPet - missing references");
         }
     }
 
@@ -854,6 +925,9 @@ public class CombatCanvasManager : MonoBehaviour
         // Toggle visibility of player hand UI
         ToggleHandVisibility();
         
+        // Position the combat objects in the UI
+        PositionObservedCombatants();
+        
         // Update UI for observed player's battle
         UpdateObservedPlayerUI(player);
         
@@ -879,6 +953,9 @@ public class CombatCanvasManager : MonoBehaviour
         // Toggle visibility of player hand UI
         ToggleHandVisibility();
         
+        // Position the combat objects in the UI
+        PositionObservedCombatants();
+        
         // Re-subscribe to local player's combat changes
         SubscribeToCombatChanges();
         
@@ -889,6 +966,82 @@ public class CombatCanvasManager : MonoBehaviour
         if (playerNameText != null)
         {
             playerNameText.text = localNetworkPlayer.GetSteamName();
+        }
+    }
+    
+    // Helper method to position the currently observed combat objects in the UI
+    private void PositionObservedCombatants()
+    {
+        Debug.Log("[CombatCanvasManager] Positioning observed combat objects");
+        
+        // Position the observed combat player
+        if (currentObservedCombatPlayer != null && playerAreaTransform != null)
+        {
+            Transform playerTransform = currentObservedCombatPlayer.transform;
+            playerTransform.SetParent(playerAreaTransform, false);
+            playerTransform.localPosition = Vector3.zero;
+            playerTransform.localScale = Vector3.one;
+            playerTransform.gameObject.SetActive(true);
+            
+            // Hide other combat players
+            CombatPlayer[] allPlayers = FindObjectsByType<CombatPlayer>(FindObjectsSortMode.None);
+            foreach (CombatPlayer otherPlayer in allPlayers)
+            {
+                if (otherPlayer != currentObservedCombatPlayer)
+                {
+                    // Only hide if they're a child of the UI (not in world)
+                    Transform parent = otherPlayer.transform.parent;
+                    while (parent != null)
+                    {
+                        if (parent == playerAreaTransform)
+                        {
+                            otherPlayer.gameObject.SetActive(false);
+                            break;
+                        }
+                        parent = parent.parent;
+                    }
+                }
+            }
+        }
+        
+        // Position the observed player's combat pet
+        if (currentObservedPlayerPet != null && playerPetAreaTransform != null)
+        {
+            Transform petTransform = currentObservedPlayerPet.transform;
+            petTransform.SetParent(playerPetAreaTransform, false);
+            petTransform.localPosition = Vector3.zero;
+            petTransform.localScale = Vector3.one;
+            petTransform.gameObject.SetActive(true);
+        }
+        
+        // Position the observed opponent's combat pet
+        if (currentObservedOpponentPet != null && opponentPetAreaTransform != null)
+        {
+            Transform opponentPetTransform = currentObservedOpponentPet.transform;
+            opponentPetTransform.SetParent(opponentPetAreaTransform, false);
+            opponentPetTransform.localPosition = Vector3.zero;
+            opponentPetTransform.localScale = Vector3.one;
+            opponentPetTransform.gameObject.SetActive(true);
+            
+            // Hide other opponent pets
+            CombatPet[] allPets = FindObjectsByType<CombatPet>(FindObjectsSortMode.None);
+            foreach (CombatPet otherPet in allPets)
+            {
+                if (otherPet != currentObservedPlayerPet && otherPet != currentObservedOpponentPet)
+                {
+                    // Only hide if they're a child of the UI (not in world)
+                    Transform parent = otherPet.transform.parent;
+                    while (parent != null)
+                    {
+                        if (parent == playerPetAreaTransform || parent == opponentPetAreaTransform)
+                        {
+                            otherPet.gameObject.SetActive(false);
+                            break;
+                        }
+                        parent = parent.parent;
+                    }
+                }
+            }
         }
     }
     
@@ -1206,6 +1359,9 @@ public class CombatCanvasManager : MonoBehaviour
                 }
             }
         }
+        
+        // Also position the combat players and pets
+        PositionObservedCombatants();
     }
     
     // Called when the Next Battle button is pressed again to refresh the view
@@ -1222,7 +1378,7 @@ public class CombatCanvasManager : MonoBehaviour
             ObservePlayerBattle(currentObservedNetworkPlayer);
         }
         
-        // Force card arrangement
+        // Force card arrangement and positioning combat elements
         StartCoroutine(DelayedCardArrangementRefresh());
     }
     

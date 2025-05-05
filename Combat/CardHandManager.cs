@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using FishNet.Object;
 using System.Collections;
 using FishNet.Object.Synchronizing;
+using FishNet.Connection;
+using DG.Tweening;
+using FishNet;
 
 namespace Combat
 {
@@ -252,6 +255,137 @@ namespace Combat
             {
                 Debug.LogError("FALLBACK: Could not find transform for parent NetworkObject in RpcSetParent");
             }
+        }
+        #endregion
+
+        #region Server RPCs
+        [ServerRpc(RequireOwnership = true)]
+        protected void CmdRemoveCardFromHand(int cardIndex, string cardName)
+        {
+            if (cardIndex < 0 || cardIndex >= cardsInHand.Count)
+            {
+                Debug.LogError($"[Server] Invalid card index {cardIndex} for hand removal. Hand count: {cardsInHand.Count}, Card: {cardName}");
+                return;
+            }
+            
+            Card card = cardsInHand[cardIndex];
+            if (card == null)
+            {
+                Debug.LogError($"[Server] Card at index {cardIndex} is null when trying to remove {cardName}.");
+                 // Attempt to remove the null entry anyway and rearrange
+                 cardsInHand.RemoveAt(cardIndex);
+                 RpcRemoveCardFromHandVisuals(cardIndex, cardName); // Still tell clients to clean up visuals
+                return;
+            }
+            
+            // Remove from server list
+            cardsInHand.RemoveAt(cardIndex);
+            
+            // Instead of despawning here, trigger client RPC for animation + destroy
+            RpcAnimateAndDestroyCard(card.NetworkObject);
+            
+            // Tell clients to remove the logical card reference and rearrange
+            // Note: RpcRemoveCardFromHandVisuals might be better name now
+            RpcRemoveCardFromHandVisuals(cardIndex, cardName);
+            
+            // Server doesn't arrange visuals
+        }
+        #endregion
+
+        #region Observer RPCs
+        // Renamed for clarity - handles visual removal and rearrangement
+        [ObserversRpc]
+        private void RpcRemoveCardFromHandVisuals(int cardIndex, string cardName)
+        {
+            // Find the card visually - important if list order differs slightly
+            Card cardToRemove = null;
+            if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
+            {
+                 // Try index first
+                 if (cardsInHand[cardIndex] != null && cardsInHand[cardIndex].CardName == cardName) {
+                     cardToRemove = cardsInHand[cardIndex];
+                 }
+            }
+            
+            // Fallback: search by name if index failed or list was modified
+            if (cardToRemove == null) {
+                foreach(Card card in cardsInHand) {
+                    if (card != null && card.CardName == cardName) {
+                        cardToRemove = card;
+                        break;
+                    }
+                }
+            }
+
+            if (cardToRemove != null)
+            {
+                // Remove from local list
+                cardsInHand.Remove(cardToRemove);
+            }
+            else
+            {
+                 Debug.LogWarning($"RpcRemoveCardFromHandVisuals: Could not find card {cardName} to remove visually.");
+            }
+            
+            // Arrange remaining cards
+            ArrangeCardsInHand();
+        }
+        
+        // NEW RPC: Client handles animation and destruction
+        [ObserversRpc(BufferLast = false)] // Don't buffer, it's a one-time event
+        private void RpcAnimateAndDestroyCard(NetworkObject cardNetworkObject)
+        {
+            if (cardNetworkObject == null)
+            {
+                Debug.LogWarning("RpcAnimateAndDestroyCard received null NetworkObject.");
+                return;
+            }
+
+            Card card = cardNetworkObject.GetComponent<Card>();
+            if (card != null)
+            {
+                // Ensure card is not interactable during animation
+                CanvasGroup cg = card.GetComponent<CanvasGroup>();
+                if (cg != null) cg.blocksRaycasts = false;
+
+                // Simple fade-out and scale-down animation
+                float duration = 0.4f;
+                Sequence sequence = DOTween.Sequence();
+                sequence.Append(card.transform.DOScale(Vector3.zero, duration).SetEase(Ease.InBack));
+                sequence.Join(card.GetComponent<CanvasGroup>()?.DOFade(0, duration)); // Fade out if CanvasGroup exists
+                sequence.OnComplete(() =>
+                {
+                    // Check if object hasn't been destroyed already (e.g., by scene change)
+                    if (card != null && card.gameObject != null)
+                    {
+                        // If we are NOT the server, destroy the GameObject.
+                        // The server despawned the NetworkObject, which handles destruction there.
+                        if (!IsServer)
+                        {
+                           Destroy(card.gameObject);
+                        }
+                    }
+                });
+            }
+            else
+            {
+                 Debug.LogWarning($"RpcAnimateAndDestroyCard could not find Card component on NetworkObject {cardNetworkObject.ObjectId}. Disabling object.");
+                 // Fallback: just disable the object if Card component is missing
+                 if (cardNetworkObject.gameObject != null) 
+                    cardNetworkObject.gameObject.SetActive(false);
+            }
+        }
+
+        [ObserversRpc]
+        private void RpcClearHand()
+        {
+            // Clear visual cards on clients
+            foreach (Card card in cardsInHand)
+            {
+                if (card != null) 
+                   Destroy(card.gameObject);
+            }
+            cardsInHand.Clear();
         }
         #endregion
     }

@@ -321,8 +321,11 @@ namespace Combat
         #region Card Management
         // Play a card from hand
         [Server]
-        public void PlayCard(string cardName, CardType cardType, int baseValue)
+        public void PlayCard(string cardName, CardType cardType)
         {
+            // Log a warning that this method might be deprecated
+            Debug.LogWarning($"CombatPlayer.PlayCard({cardName}) called. This logic might be superseded by CardTargetingSystem/CardEffectProcessor.");
+            
             if (!_isMyTurn.Value) return;
             
             // Check if player has enough energy
@@ -337,23 +340,16 @@ namespace Combat
             // Spend energy
             _currentEnergy.Value -= cardCost;
             
-            // Apply card effect based on type
-            switch (cardType)
+            // Find CardData to apply effects using CardEffectProcessor
+            CardData cardData = DeckManager.Instance.FindCardByName(cardName);
+            if (cardData != null && opponentPet != null) // Need a target for the processor
             {
-                case CardType.Attack:
-                    if (opponentPet != null)
-                        opponentPet.TakeDamage(baseValue);
-                    else
-                        Debug.LogError("FALLBACK: Cannot play attack card - opponentPet is null");
-                    break;
-                case CardType.Skill:
-                    if (playerPet != null)
-                        playerPet.SetDefending(true);
-                    else
-                        Debug.LogError("FALLBACK: Cannot play skill card - playerPet is null");
-                    break;
-                case CardType.Power:
-                    break;
+                // Apply effects targeting the opponent pet by default (this is limited)
+                CardEffectProcessor.ApplyCardEffects(cardData, this, opponentPet);
+            }
+            else
+            {
+                Debug.LogError($"Could not find CardData for {cardName} or opponentPet is null in PlayCard.");
             }
             
             TargetCardPlayed(Owner, cardName);

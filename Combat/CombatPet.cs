@@ -76,11 +76,8 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
-
-            if (!IsOwner)
-                return; // Initialize only for owner
             
-            // Initial UI update
+            // Initial UI update for all clients - removed the early return
             UpdateHealthDisplay(_currentHealth.Value, _currentHealth.Value, false);
             UpdateDefendIcon(_isDefending.Value);
             
@@ -92,6 +89,89 @@ namespace Combat
                     petSprite.sprite = referencePet.PetSprite;
                 }
             }
+            
+            // Try to find references if they're missing on client (for ALL clients)
+            if (referencePet == null || petHand == null)
+            {
+                StartCoroutine(FindReferencesOnClient());
+            }
+        }
+        
+        private System.Collections.IEnumerator FindReferencesOnClient()
+        {
+            // Wait a bit for network sync to complete - try more times with longer interval
+            for (int i = 0; i < 10; i++)
+            {
+                yield return new WaitForSeconds(0.3f);
+                
+                // Try to find the references via the player's synced combat reference
+                NetworkPlayer[] players = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+                foreach (var player in players)
+                {
+                    // Check if this is the reference pet for any player
+                    if (player.SyncedCombatPet.Value == this)
+                    {
+                        // Get reference pet from the player
+                        referencePet = player.playerPet.Value;
+                        
+                        // Also get the pet hand
+                        petHand = player.SyncedPetHand.Value;
+                        
+                        Debug.Log($"[CLIENT] Found referencePet:{referencePet != null} and petHand:{petHand != null} for CombatPet on client");
+                        
+                        if (referencePet != null && petHand != null)
+                        {
+                            // Update sprite if needed
+                            if (petSprite != null && referencePet.PetSprite != null)
+                            {
+                                petSprite.sprite = referencePet.PetSprite;
+                            }
+                            yield break;
+                        }
+                    }
+                }
+                
+                // Alternative approach: Find the NetworkPlayer that owns this pet via parent structure
+                if (referencePet == null)
+                {
+                    // Find all pets in the scene
+                    Pet[] allPets = FindObjectsByType<Pet>(FindObjectsSortMode.None);
+                    foreach (var pet in allPets)
+                    {
+                        if (pet != null && pet.transform.IsChildOf(transform.parent))
+                        {
+                            referencePet = pet;
+                            Debug.Log($"[CLIENT] Found referencePet:{referencePet != null} via parent structure");
+                            break;
+                        }
+                    }
+                }
+                
+                // If we found the reference pet but not the hand, try to find the hand
+                if (referencePet != null && petHand == null)
+                {
+                    PetHand[] allHands = FindObjectsByType<PetHand>(FindObjectsSortMode.None);
+                    foreach (var hand in allHands)
+                    {
+                        // Try to find a hand that belongs to the same pet owner
+                        if (hand != null && referencePet.PlayerOwner != null && 
+                            hand.gameObject.name.Contains(referencePet.PlayerOwner.GetSteamName()))
+                        {
+                            petHand = hand;
+                            Debug.Log($"[CLIENT] Found petHand:{petHand != null} via name matching");
+                            break;
+                        }
+                    }
+                }
+                
+                // If we've found both references, we can exit
+                if (referencePet != null && petHand != null)
+                {
+                    yield break;
+                }
+            }
+            
+            Debug.LogWarning($"[CLIENT] Failed to find referencePet:{referencePet != null} or petHand:{petHand != null} after multiple attempts");
         }
         #endregion
 
@@ -426,28 +506,36 @@ namespace Combat
                 yield break;
             }
             
+            // Find the target ONCE (opponent player's pet, or just any other pet)
+            CombatPet targetPet = FindOpponentPet(); 
+            CombatPlayer targetPlayer = FindOpponentPlayer(); // Find the opponent player
+            ICombatant target = null;
+            if(targetPet != null) 
+                target = targetPet; // Prioritize targeting the pet
+            else if (targetPlayer != null)
+                target = targetPlayer; // Fallback to player if pet not found
+            
+            if (target == null)
+            {
+                Debug.LogError("Pet AI could not find any valid target!");
+                EndTurn();
+                yield break;
+            }
+
             foreach (Card card in new List<Card>(cards)) // Create a copy of the list to avoid modification issues
             {
-                // Find target (for now, always target the opponent pet)
-                CombatPet targetPet = FindOpponentPet();
-                
-                // Apply card effect based on type
-                switch (card.Type)
+                if (card == null || card.Data == null) 
                 {
-                    case CardType.Attack:
-                        if (targetPet != null)
-                            targetPet.TakeDamage(card.BaseValue);
-                        break;
-                    case CardType.Skill:
-                        // Apply defense to self
-                        SetDefending(true);
-                        break;
-                    case CardType.Power:
-                        // Special effects would go here
-                        break;
+                    Debug.LogWarning("Pet AI found null card or card data in hand, skipping.");
+                    continue; // Skip this card
                 }
+
+                // Use the CardEffectProcessor to apply the card's effects
+                // The processor will handle targeting logic (Self, Enemy, Ally) based on the card's effects
+                // For now, the default enemy target is passed
+                CardEffectProcessor.ApplyCardEffects(card.Data, this, target); 
                 
-                // Remove card from hand
+                // Remove card from hand (server-side)
                 petHand.RemoveCard(card);
                 
                 // Wait before playing next card
@@ -458,17 +546,42 @@ namespace Combat
             EndTurn();
         }
 
-        // Find the opponent's pet
+        // Find the opponent's pet (keep existing logic)
         private CombatPet FindOpponentPet()
         {
-            // In a proper implementation, this would get the correct opponent
-            // Find the first combat pet that's not this one
             CombatPet[] pets = FindObjectsByType<CombatPet>(FindObjectsSortMode.None);
             foreach (CombatPet pet in pets)
             {
                 if (pet != this)
                 {
                     return pet;
+                }
+            }
+            return null;
+        }
+
+        // Add a helper to find the opponent player
+        private CombatPlayer FindOpponentPlayer()
+        {
+            CombatPlayer[] players = FindObjectsByType<CombatPlayer>(FindObjectsSortMode.None);
+            foreach(CombatPlayer player in players)
+            {
+                // Check if this player owns this pet
+                if(player.NetworkPlayer != null && player.NetworkPlayer.CombatPet == this)
+                {
+                    // If so, find *their* opponent
+                    if(player.NetworkPlayer.OpponentNetworkPlayer != null)
+                    {
+                        return player.NetworkPlayer.OpponentNetworkPlayer.CombatPlayer;
+                    }
+                }
+            }
+            // Fallback: find any player that doesn't own this pet
+            foreach(CombatPlayer player in players)
+            {
+                if(player.NetworkPlayer != null && player.NetworkPlayer.CombatPet != this)
+                {
+                    return player;
                 }
             }
             return null;

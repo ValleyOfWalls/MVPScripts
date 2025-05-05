@@ -8,6 +8,7 @@ using FishNet.Component.Transforming;
 using System.Collections;
 using FishNet.Connection;
 using Combat;
+using UnityEngine.EventSystems;
 
 namespace Combat
 {
@@ -19,7 +20,7 @@ namespace Combat
         Power
     }
     
-    public class Card : NetworkBehaviour
+    public class Card : NetworkBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerEnterHandler, IPointerExitHandler
     {
         #region Fields and Properties
         [Header("Card Data")]
@@ -51,7 +52,6 @@ namespace Combat
         public string Description => cardData != null ? cardData.description : "NO_DATA";
         public int ManaCost => cardData != null ? cardData.manaCost : 0;
         public CardType Type => cardData != null ? cardData.cardType : default;
-        public int BaseValue => cardData != null ? cardData.baseValue : 0;
         
         // Card state
         private bool isPlayable = true;
@@ -60,9 +60,13 @@ namespace Combat
         private Vector3 originalScale;
         private PlayerHand owningHand;
         private ICombatant owner;
+        public ICombatant Owner => owner;
         
         private Canvas cardCanvas;
         private CanvasGroup cardCanvasGroup;
+        
+        // References to combat systems
+        private CardTargetingSystem targetingSystem;
         #endregion
 
         #region Unity Lifecycle
@@ -98,6 +102,16 @@ namespace Combat
             _syncedCardObjectName.OnChange += OnSyncedCardObjectNameChanged;
             syncedCardDataName.OnChange += OnSyncedCardDataNameChanged;
             _syncedOwningHandObject.OnChange += OnSyncedOwningHandObjectChanged;
+        }
+
+        private void Start()
+        {
+            // Find the targeting system
+            targetingSystem = CardTargetingSystem.Instance;
+            if (targetingSystem == null)
+            {
+                Debug.LogWarning("CardTargetingSystem not found. Card targeting will not work.");
+            }
         }
 
         private void OnDestroy()
@@ -157,6 +171,13 @@ namespace Combat
                 if (hand != null)
                 {
                     owningHand = hand;
+                    
+                    // Set the owner combatant reference
+                    NetworkPlayer networkPlayer = hand.NetworkPlayer;
+                    if (networkPlayer != null)
+                    {
+                        owner = networkPlayer.CombatPlayer;
+                    }
                     
                     // Update interactivity now that we have a hand reference
                     UpdateInteractivity();
@@ -526,20 +547,10 @@ namespace Combat
             }
         }
         
-        // Called when the card is clicked
-        public void OnCardClick()
+        // Implements IBeginDragHandler
+        public void OnBeginDrag(PointerEventData eventData)
         {
-            // If card is not playable, don't do anything
-            if (!isPlayable) return;
-            
-            // Highlight on click
-            transform.DOScale(originalScale * 1.1f, 0.2f);
-        }
-        
-        // Called when the card starts being dragged
-        public void OnBeginDrag()
-        {
-            if (!isPlayable) return;
+            if (!isPlayable || !IsOwner) return;
             
             isDragging = true;
             
@@ -552,21 +563,36 @@ namespace Combat
             // Bring card to front during drag
             if (cardCanvas != null)
                 cardCanvas.sortingOrder += 10;
-        }
-        
-        // Called while the card is being dragged
-        public void OnDrag(Vector3 position)
-        {
-            if (!isDragging) return;
             
-            // Follow the cursor/touch position
-            transform.position = position;
+            // Start targeting with the card targeting system
+            if (targetingSystem != null)
+            {
+                targetingSystem.StartTargeting(this, transform.position);
+            }
         }
         
-        // Called when the card is released after dragging
-        public void OnEndDrag(bool validTarget, ICombatant target = null)
+        // Implements IDragHandler
+        public void OnDrag(PointerEventData eventData)
         {
-            if (!isDragging) return;
+            if (!isDragging || !IsOwner) return;
+            
+            // Get correct position in world space
+            Vector3 pointerPosition = Input.mousePosition;
+            
+            // Move the card to the pointer position
+            transform.position = pointerPosition;
+            
+            // Update targeting if we have a targeting system
+            if (targetingSystem != null)
+            {
+                targetingSystem.UpdateTargeting(pointerPosition);
+            }
+        }
+        
+        // Implements IEndDragHandler
+        public void OnEndDrag(PointerEventData eventData)
+        {
+            if (!isDragging || !IsOwner) return;
             
             isDragging = false;
             
@@ -574,112 +600,49 @@ namespace Combat
             if (cardCanvas != null)
                 cardCanvas.sortingOrder -= 10;
             
+            bool validTarget = false;
+            
+            // End targeting if we have a targeting system
+            if (targetingSystem != null)
+            {
+                validTarget = targetingSystem.EndTargeting(Input.mousePosition);
+            }
+            
             if (validTarget)
             {
-                // Card was played successfully
-                PlayCard(target);
+                // Card was played successfully - it will be destroyed via the targeting system
+                // Notify the owning hand that this card was played
+                if (owningHand != null)
+                {
+                    owningHand.OnCardPlayed(this);
+                }
+                
+                // Animate card being played
+                transform.DOMove(new Vector3(Screen.width / 2, Screen.height / 2, 0), 0.3f)
+                    .SetEase(Ease.OutQuint);
+                
+                transform.DOScale(originalScale * 1.5f, 0.3f)
+                    .SetEase(Ease.OutQuint);
+                
+                // Fade out and destroy
+                if (cardCanvasGroup != null)
+                {
+                    cardCanvasGroup.DOFade(0, 0.3f)
+                        .SetDelay(0.3f)
+                        .OnComplete(() => {
+                            Destroy(gameObject);
+                        });
+                }
+                else
+                {
+                    // If no canvas group, destroy after delay
+                    Destroy(gameObject, 0.6f);
+                }
             }
             else
             {
                 // Card was not played, return to hand
                 ReturnToHand();
-            }
-        }
-        
-        // Play the card
-        public void PlayCard(ICombatant target = null)
-        {
-            // Apply card effects
-            if (cardData != null && cardData.cardEffects != null)
-            {
-                ApplyCardEffects(target);
-            }
-            
-            // Notify the owning hand that this card was played
-            if (owningHand != null)
-            {
-                owningHand.OnCardPlayed(this);
-            }
-            
-            // Animate card being played
-            transform.DOMove(new Vector3(Screen.width / 2, Screen.height / 2, 0), 0.3f)
-                .SetEase(Ease.OutQuint);
-            
-            transform.DOScale(originalScale * 1.5f, 0.3f)
-                .SetEase(Ease.OutQuint);
-            
-            // Fade out and destroy
-            if (cardCanvasGroup != null)
-            {
-                cardCanvasGroup.DOFade(0, 0.3f)
-                    .SetDelay(0.3f)
-                    .OnComplete(() => {
-                        Destroy(gameObject);
-                    });
-            }
-            else
-            {
-                // If no canvas group, destroy after delay
-                Destroy(gameObject, 0.6f);
-            }
-        }
-
-        private void ApplyCardEffects(ICombatant target)
-        {
-            if (owner == null) return;
-            
-            // Process each effect
-            foreach (CardEffect effect in cardData.cardEffects)
-            {
-                switch (effect.targetType)
-                {
-                    case TargetType.Self:
-                        ApplyEffect(effect, owner);
-                        break;
-                    case TargetType.SingleEnemy:
-                        if (target != null)
-                            ApplyEffect(effect, target);
-                        break;
-                    case TargetType.AllEnemies:
-                        foreach (ICombatant enemy in CombatManager.Instance.GetEnemies())
-                            ApplyEffect(effect, enemy);
-                        break;
-                    case TargetType.SingleAlly:
-                        if (target != null && !target.IsEnemy())
-                            ApplyEffect(effect, target);
-                        break;
-                    case TargetType.AllAllies:
-                        foreach (ICombatant ally in CombatManager.Instance.GetAllies())
-                            ApplyEffect(effect, ally);
-                        break;
-                }
-            }
-        }
-        
-        private void ApplyEffect(CardEffect effect, ICombatant target)
-        {
-            if (target == null) return;
-            
-            switch (effect.effectType)
-            {
-                case EffectType.Damage:
-                    target.TakeDamage(effect.effectValue);
-                    break;
-                case EffectType.Block:
-                    target.AddBlock(effect.effectValue);
-                    break;
-                case EffectType.Heal:
-                    target.Heal(effect.effectValue);
-                    break;
-                case EffectType.DrawCard:
-                    target.DrawCards(effect.effectValue);
-                    break;
-                case EffectType.ApplyBuff:
-                    target.ApplyBuff(effect.effectValue);
-                    break;
-                case EffectType.ApplyDebuff:
-                    target.ApplyDebuff(effect.effectValue);
-                    break;
             }
         }
         
@@ -714,7 +677,8 @@ namespace Combat
             hand.ArrangeCardsInHand();
         }
         
-        public void OnPointerEnter()
+        // Implements IPointerEnterHandler
+        public void OnPointerEnter(PointerEventData eventData)
         {
             if (isDragging) return;
             
@@ -726,7 +690,8 @@ namespace Combat
                 cardCanvas.sortingOrder += 5;
         }
         
-        public void OnPointerExit()
+        // Implements IPointerExitHandler
+        public void OnPointerExit(PointerEventData eventData)
         {
             if (isDragging) return;
             

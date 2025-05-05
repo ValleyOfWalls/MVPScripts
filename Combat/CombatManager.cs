@@ -10,6 +10,7 @@ using System.Reflection;
 using FishNet.Managing.Scened;
 using FishNet;
 using System;
+using FishNet.Object.Synchronizing;
 
 namespace Combat
 {
@@ -35,6 +36,7 @@ namespace Combat
         
         [Header("References")]
         [SerializeField] private GameObject combatCanvas;
+        [SerializeField] private GameObject cardTargetingSystemPrefab;
         
         // List of active combats
         private readonly Dictionary<NetworkPlayer, CombatData> activeCombats = new Dictionary<NetworkPlayer, CombatData>();
@@ -51,6 +53,18 @@ namespace Combat
         
         // List for Inspector visibility
         [SerializeField] private List<CombatAssignmentInfo> inspectorCombatAssignments = new List<CombatAssignmentInfo>();
+        
+        // Turn tracking - Changed to SyncVar<T>
+        private readonly SyncVar<int> _currentTurn = new SyncVar<int>();
+        private readonly SyncVar<bool> _isPlayerTurn = new SyncVar<bool>();
+        
+        // Public accessors for the value if needed elsewhere
+        public int CurrentTurn => _currentTurn.Value;
+        public bool IsPlayerTurn => _isPlayerTurn.Value;
+        
+        // Currently active combatants
+        private List<CombatPlayer> activePlayers = new List<CombatPlayer>();
+        private List<CombatPet> activePets = new List<CombatPet>();
         #endregion
 
         #region Unity Lifecycle
@@ -104,6 +118,22 @@ namespace Combat
             
             if (petHandPrefab == null)
                 Debug.LogError("[FALLBACK] No petHandPrefab assigned");
+        }
+
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+            
+            // Initialize the combat state
+            ResetCombat();
+        }
+        
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            
+            // Set up client-side components
+            SetupClientComponents();
         }
         #endregion
 
@@ -491,232 +521,217 @@ namespace Combat
         #endregion
 
         #region Turn Management
-        // Called when a player ends their turn
+        [Server]
+        private void ResetCombat()
+        {
+            // Reset turn counter
+            _currentTurn.Value = 0;
+            _isPlayerTurn.Value = true;
+            
+            // Find all active combatants
+            FindAllCombatants();
+            
+            // Reset all trackers in the CardEffectProcessor
+            CardEffectProcessor.ResetAllTrackers();
+            
+            // Start the first turn (player's turn)
+            StartCoroutine(DelayedStartFirstTurn());
+        }
+        
+        private IEnumerator DelayedStartFirstTurn()
+        {
+            // Small delay to let everything initialize
+            yield return new WaitForSeconds(1.0f);
+            
+            // Start player turn
+            StartPlayerTurn();
+        }
+        
+        [Server]
+        private void FindAllCombatants()
+        {
+            // Clear existing lists
+            activePlayers.Clear();
+            activePets.Clear();
+            
+            // Find all active CombatPlayers
+            CombatPlayer[] players = FindObjectsByType<CombatPlayer>(FindObjectsSortMode.None);
+            foreach (CombatPlayer player in players)
+            {
+                activePlayers.Add(player);
+            }
+            
+            // Find all active CombatPets
+            CombatPet[] pets = FindObjectsByType<CombatPet>(FindObjectsSortMode.None);
+            foreach (CombatPet pet in pets)
+            {
+                activePets.Add(pet);
+            }
+            
+            Debug.Log($"[CombatManager] Found {activePlayers.Count} active players and {activePets.Count} active pets");
+        }
+        
+        [Server]
+        public void StartPlayerTurn()
+        {
+            _isPlayerTurn.Value = true;
+            
+            // Increment turn count at the start of player turn
+            _currentTurn.Value++;
+            
+            // Update card effect processor turn count
+            CardEffectProcessor.IncrementTurnCount();
+            
+            // Start each player's turn
+            foreach (CombatPlayer player in activePlayers)
+            {
+                if (player != null && !player.IsDefeated())
+                {
+                    player.StartTurn();
+                }
+            }
+            
+            // Notify clients of turn change
+            RpcUpdateTurnUI(_currentTurn.Value, true);
+        }
+        
+        [Server]
+        public void StartPetTurn()
+        {
+            _isPlayerTurn.Value = false;
+            
+            // Start each pet's turn
+            foreach (CombatPet pet in activePets)
+            {
+                if (pet != null && !pet.IsDefeated())
+                {
+                    pet.StartTurn();
+                }
+            }
+            
+            // Notify clients of turn change
+            RpcUpdateTurnUI(_currentTurn.Value, false);
+        }
+        
         [Server]
         public void PlayerEndedTurn(CombatPlayer player)
         {
-            // Find the NetworkPlayer that owns this CombatPlayer
-            NetworkPlayer networkPlayer = null;
-            foreach (var kvp in activeCombats)
+            // Check if all players have ended their turn
+            bool allPlayersEnded = true;
+            foreach (CombatPlayer activePlayer in activePlayers)
             {
-                if (kvp.Value.CombatPlayer == player)
+                if (activePlayer != null && !activePlayer.IsDefeated() && activePlayer.IsMyTurn)
                 {
-                    networkPlayer = kvp.Key;
+                    allPlayersEnded = false;
                     break;
                 }
             }
             
-            if (networkPlayer == null)
+            // If all players have ended their turn, start pet turn
+            if (allPlayersEnded)
             {
-                Debug.LogError("[FALLBACK] Could not find NetworkPlayer for CombatPlayer that ended turn");
-                return;
-            }
-            
-            // Mark this player's turn as completed
-            if (activeCombats.TryGetValue(networkPlayer, out CombatData combatData))
-            {
-                combatData.TurnCompleted = true;
-                
-                // Now start the pet's turn
-                CombatPet opponentPet = combatData.OpponentPet;
-                if (opponentPet != null)
-                {
-                    opponentPet.StartTurn();
-                }
-                else
-                {
-                    Debug.LogError($"[FALLBACK] Cannot start pet turn - opponent pet for {networkPlayer.GetSteamName()} is null");
-                }
+                StartPetTurn();
             }
         }
         
-        // Called when a pet ends their turn
         [Server]
         public void PetEndedTurn(CombatPet pet)
         {
-            // Find the player combat data that has this pet as the opponent
-            NetworkPlayer petOwner = null;
-            NetworkPlayer opponentPlayer = null;
-            
-            foreach (var kvp in activeCombats)
+            // Check if all pets have ended their turn
+            bool allPetsEnded = true;
+            foreach (CombatPet activePet in activePets)
             {
-                if (kvp.Value.OpponentPet == pet)
+                if (activePet != null && !activePet.IsDefeated() && activePet.IsDefending)
                 {
-                    opponentPlayer = kvp.Key;
-                    petOwner = kvp.Value.OpponentPlayer;
+                    allPetsEnded = false;
                     break;
                 }
             }
             
-            if (opponentPlayer == null || petOwner == null)
+            // If all pets have ended their turn, start next player turn
+            if (allPetsEnded)
             {
-                Debug.LogError("[FALLBACK] Could not find players for PetEndedTurn");
-                return;
-            }
-            
-            // Give the turn back to the player
-            if (activeCombats.TryGetValue(opponentPlayer, out CombatData combatData))
-            {
-                // Reset turn completed flag for next round
-                combatData.TurnCompleted = false;
-                
-                // Draw new cards for the player
-                CombatPlayer playerCombat = combatData.CombatPlayer;
-                if (playerCombat != null)
-                {
-                    // Draw cards for the player
-                    playerCombat.DrawCards(3);
-                    
-                    // Start the player's turn using the new public method
-                    playerCombat.SetTurn(true);
-                    
-                    // Also send RPC for more reliable turn updates
-                    playerCombat.RpcNotifyTurnChanged(true);
-                }
-                else
-                {
-                    Debug.LogError($"[FALLBACK] Cannot start player turn - combatPlayer for {opponentPlayer.GetSteamName()} is null");
-                }
-            }
-        }
-        #endregion
-
-        #region Combat Resolution
-        // Complete a player's combat (win or lose)
-        [Server]
-        public void CompleteCombat(NetworkPlayer player, bool victory)
-        {
-            if (!activeCombats.ContainsKey(player))
-            {
-                Debug.LogError($"[FALLBACK] Tried to complete combat for player {player.GetSteamName()}, but no active combat found");
-                return;
-            }
-            
-            // Show the result to the player
-            RpcShowCombatResult(player.Owner, victory);
-            
-            // Mark as complete
-            activeCombats[player].CombatComplete = true;
-            
-            // Check if all combats have ended
-            CheckCombatEndState();
-        }
-        
-        // Mark a combat as complete
-        [Server]
-        public void MarkCombatComplete(NetworkPlayer player, bool win)
-        {
-            if (activeCombats.TryGetValue(player, out CombatData combatData))
-            {
-                combatData.CombatComplete = true;
-                
-                // Show the result UI to this player
-                RpcShowCombatResult(player.Owner, win);
-                
-                // Check if all combats have ended
-                CheckCombatEndState();
-            }
-            else
-            {
-                Debug.LogError($"[FALLBACK] No combat data found for {player.GetSteamName()} when marking complete");
+                StartPlayerTurn();
             }
         }
         
-        // Process combat damage and check for defeat
         [Server]
-        public void ProcessCombatDamage(NetworkPlayer player, int damage)
+        public void HandlePetDefeat(CombatPet pet)
         {
-            if (!activeCombats.TryGetValue(player, out CombatData combatData))
-                return;
-            
-            // Apply damage to player's pet
-            combatData.PlayerPet.TakeDamage(damage);
-            
-            // Check if player's pet is defeated
-            if (combatData.PlayerPet.IsDefeated())
+            // Find the owner of this pet
+            CombatPlayer owner = null;
+            foreach (CombatPlayer player in activePlayers)
             {
-                // Player lost the combat
-                RpcShowCombatResult(player.Owner, false);
-                // Mark combat as complete for this player
-                combatData.CombatComplete = true; 
-                
-                // Check if all combats have ended
-                CheckCombatEndState();
-            }
-            else
-            {
-                // Start a new turn for the player
-                combatData.TurnCompleted = false;
-                combatData.CombatPlayer.StartTurn();
-            }
-        }
-        
-        // Handle a pet being defeated
-        [Server]
-        public void HandlePetDefeat(CombatPet combatPet)
-        {
-            // Find the combat data for this pet
-            foreach (var kvp in activeCombats)
-            {
-                if (kvp.Value.PlayerPet == combatPet)
+                if (player.NetworkPlayer.CombatPet == pet)
                 {
-                    // Player's pet was defeated, they lost
-                    RpcShowCombatResult(kvp.Key.Owner, false);
-                    kvp.Value.CombatComplete = true;
-                }
-                else if (kvp.Value.OpponentPet == combatPet)
-                {
-                    // Opponent's pet was defeated, player won
-                    RpcShowCombatResult(kvp.Key.Owner, true);
-                    kvp.Value.CombatComplete = true;
-                }
-            }
-            
-            // Check if all combats have ended
-            CheckCombatEndState();
-        }
-        
-        // Check if all combats have ended
-        [Server]
-        private void CheckCombatEndState()
-        {
-            // If all players have completed their combat, end the overall combat
-            bool allComplete = true;
-            foreach (var kvp in activeCombats)
-            {
-                if (!kvp.Value.CombatComplete)
-                {
-                    allComplete = false;
+                    owner = player;
                     break;
                 }
             }
             
-            if (allComplete)
+            if (owner != null)
             {
-                Debug.Log("[FALLBACK] All combats complete, ending combat phase");
-                RpcEndCombat();
-                
-                // Reset combat state
-                combatStarted = false;
-                
-                // Clear references on NetworkPlayers involved
-                foreach(NetworkPlayer p in playersInCombat)
+                // Notify the client that the battle is over
+                NetworkPlayer networkPlayer = owner.NetworkPlayer;
+                if (networkPlayer != null)
                 {
-                    if (p != null) {
-                        p.ClearCombatReferences();
-                        p.SyncedOpponentPlayer.Value = null; // Clear synced opponent too
+                    // Find the opponent
+                    NetworkPlayer opponent = networkPlayer.OpponentNetworkPlayer;
+                    if (opponent != null)
+                    {
+                        // Show combat result - defeat for owner, victory for opponent
+                        RpcShowCombatResult(networkPlayer.Owner, false);
+                        RpcShowCombatResult(opponent.Owner, true);
                     }
                 }
+            }
+            
+            // Remove the defeated pet from active list
+            activePets.Remove(pet);
+            
+            // Check if combat is over
+            CheckCombatEnd();
+        }
+        
+        [Server]
+        private void CheckCombatEnd()
+        {
+            // If only one pet remains, the combat is over
+            if (activePets.Count <= 1)
+            {
+                // Combat is over
+                Debug.Log("[CombatManager] Combat has ended");
                 
-                activeCombats.Clear();
-                playersInCombat.Clear();
-                inspectorCombatAssignments.Clear(); // Clear the inspector list too
-                
-                // On server, notify LobbyManager that combat is over
-                if (LobbyManager.Instance != null)
-                {
-                    LobbyManager.Instance.OnCombatEnded();
-                }
+                // Additional end of combat logic would go here
+            }
+        }
+        
+        [ObserversRpc]
+        private void RpcUpdateTurnUI(int turnNumber, bool isPlayerTurn)
+        {
+            // Update client-side UI to reflect turn change
+            Debug.Log($"[CombatManager] Turn {turnNumber}: {(isPlayerTurn ? "Player" : "Pet")} Turn");
+            
+            // A CombatCanvasManager would be responsible for updating the UI
+            CombatCanvasManager canvasManager = FindObjectOfType<CombatCanvasManager>();
+            if (canvasManager != null)
+            {
+                // Potentially update turn indicator or other UI elements
+            }
+        }
+        
+        [TargetRpc]
+        private void RpcShowCombatResult(NetworkConnection conn, bool victory)
+        {
+            // Show combat result on the client
+            CombatCanvasManager canvasManager = FindObjectOfType<CombatCanvasManager>();
+            if (canvasManager != null)
+            {
+                canvasManager.ShowCombatResult(victory);
+            }
+            else
+            {
+                Debug.LogError("[FALLBACK] Cannot show combat result - CombatCanvasManager not found");
             }
         }
         #endregion
@@ -818,22 +833,7 @@ namespace Combat
             // Implement client-side animation showing opponent attacking
         }
         
-        [TargetRpc]
-        private void RpcShowCombatResult(NetworkConnection conn, bool victory)
-        {
-            string result = victory ? "Victory" : "Defeat";
-            
-            // Find the combat canvas manager
-            CombatCanvasManager canvasManager = FindFirstObjectByType<CombatCanvasManager>();
-            if (canvasManager != null)
-            {
-                canvasManager.ShowCombatResult(victory);
-            }
-            else
-            {
-                Debug.LogError("[FALLBACK] Cannot show combat result - CombatCanvasManager not found");
-            }
-        }
+     
         
         [ObserversRpc]
         private void RpcEndCombat()
@@ -857,6 +857,25 @@ namespace Combat
             }
         }
         #endregion
+
+        #region Setup Client Components
+        private void SetupClientComponents()
+        {
+            // Create CardTargetingSystem if needed
+            if (cardTargetingSystemPrefab != null && CardTargetingSystem.Instance == null)
+            {
+                Instantiate(cardTargetingSystemPrefab);
+            }
+        }
+        #endregion
+
+        // Called by CardTargetingSystem when a card is played
+        public void NotifyCardPlayed(string cardName, ICombatant source, ICombatant target)
+        {
+            Debug.Log($"[CombatManager] Card '{cardName}' played by {source} targeting {target}");
+            
+            // Additional logic for handling card plays could go here
+        }
     }
     
     // Helper data structure to track combat state for each player
