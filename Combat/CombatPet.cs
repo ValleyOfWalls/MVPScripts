@@ -787,14 +787,13 @@ namespace Combat
         {
             if (petHand != null)
             {
-                for (int i = 0; i < amount; i++)
-                {
-                    CardData card = DrawCardFromDeck();
-                    if (card != null)
-                    {
-                        petHand.ServerAddCard(card);
-                    }
-                }
+                // Use the PetHand's DrawCards method to handle the logic
+                // This ensures PetHand.DrawCards handles all card creation consistently
+                petHand.DrawCards(amount);
+            }
+            else
+            {
+                Debug.LogError("FALLBACK: Cannot draw cards - petHand is null");
             }
         }
         

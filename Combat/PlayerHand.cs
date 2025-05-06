@@ -137,10 +137,9 @@ namespace Combat
         [Server]
         public override void DrawCards(int count)
         {
-            // --- Log Entry --- 
+            // Log for tracing
             Debug.Log($"[Server DrawCards] Entered for PlayerHand ID: {this.GetInstanceID()}, Count: {count}. Current hand count: {cardsInHand.Count}");
             
-            // This method is for server-side card drawing
             // Check if there's a valid reference to the player's deck
             if (runtimeDeck == null && combatPlayer != null)
             {
@@ -169,29 +168,8 @@ namespace Combat
                 if (cardData != null && DeckManager.Instance != null)
                 {
                     Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Drawn '{cardData.cardName}'. Attempting to create object...");
-                    // Create card object (returns the GameObject)
-                    GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPlayer); 
-                    
-                    // --- CLEANUP: Remove redundant card addition logic --- 
-                    // The card is now added to the list within CardHandManager.ServerAddCard 
-                    // or potentially needs to be added where DeckManager.CreateCardObject is called if not via ServerAddCard.
-                    // if (cardObj != null)
-                    // {
-                    //     Card cardComponent = cardObj.GetComponent<Card>();
-                    //     if (cardComponent != null)
-                    //     {
-                    //         if (!cardsInHand.Contains(cardComponent))
-                    //         {
-                    //             cardsInHand.Add(cardComponent);
-                    //             Debug.Log($"[Server PlayerHand ID: {this.GetInstanceID()}] Added card '{cardComponent.CardName}' to server hand list. New count: {cardsInHand.Count}");
-                    //         }
-                    //     }
-                    //     else
-                    //     {
-                    //         Debug.LogError($"[Server PlayerHand] Created card object for {cardData.cardName} is missing Card component!");
-                    //     }
-                    // }
-                    // --- END CLEANUP ---
+                    // Use the CardHandManager.ServerAddCard method to create the card object
+                    ServerAddCard(cardData);
                 }
                 else if (cardData == null)
                 {
@@ -202,9 +180,7 @@ namespace Combat
                      Debug.LogError($"[Server DrawCards ID: {this.GetInstanceID()}] DeckManager.Instance is null!");
                 }
             }
-             Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Finished drawing loop. Final hand count: {cardsInHand.Count}");
-            // Optional: Arrange cards on server if needed for logic (visuals are client-side)
-            // ArrangeCardsInHand(); 
+            Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Finished drawing loop. Final hand count: {cardsInHand.Count}");
         }
         #endregion
 
@@ -278,7 +254,7 @@ namespace Combat
         [ServerRpc]
         public void CmdDrawCards(int count)
         {
-            // --- Log Entry --- 
+            // Log for tracing
             Debug.Log($"[Server CmdDrawCards] Received for PlayerHand ID: {this.GetInstanceID()}, Owner: {(owner != null ? owner.GetSteamName() : "null")}, Count: {count}");
             
             // Ensure owner reference is valid before proceeding
@@ -314,44 +290,6 @@ namespace Combat
             DrawCards(count);
         }
         
-        [ServerRpc]
-        private void CmdRemoveCardFromHand(int cardIndex, string cardName)
-        {
-            if (cardIndex < 0 || cardIndex >= cardsInHand.Count)
-            {
-                Debug.LogError($"FALLBACK: Invalid card index {cardIndex} for hand with {cardsInHand.Count} cards");
-                return;
-            }
-            
-            // Get the card reference
-            Card card = cardsInHand[cardIndex];
-            
-            // Remove from list
-            cardsInHand.RemoveAt(cardIndex);
-            
-            // Tell all clients to remove the card
-            RpcRemoveCardFromHand(cardIndex, cardName);
-            
-            // Destroy the networked card GameObject
-            if (card != null)
-            {
-                // Despawn the networked object
-                InstanceFinder.ServerManager.Despawn(card.gameObject);
-            }
-            
-            // Arrange remaining cards
-            ArrangeCardsInHand();
-        }
-        
-        [ServerRpc]
-        private void CmdPlayCard(int cardIndex, string cardName, CardType cardType)
-        {
-            if (!IsOwner) return;
-            
-            // Let the combat player handle the card effect
-            combatPlayer.PlayCard(cardName, cardType);
-        }
-        
         // Server authoritative discard hand - override to handle deck discarding
         [Server]
         public override void ServerDiscardHand()
@@ -376,10 +314,7 @@ namespace Combat
                 Debug.LogError("FALLBACK: Could not discard cards to deck - missing combatPlayer or playerDeck");
             }
 
-            // Call base implementation which clears list and triggers RPC
-            base.ServerDiscardHand();
-            
-            // Now destroy the card objects
+            // Now handle each card object
             foreach (Card card in cardsToDiscard)
             {
                 if (card != null)
@@ -399,26 +334,13 @@ namespace Combat
                     }
                 }
             }
+            
+            // Call base implementation to clear list and send RPC
+            base.ServerDiscardHand();
         }
         #endregion
 
         #region Observer RPCs
-        [ObserversRpc]
-        private void RpcRemoveCardFromHand(int cardIndex, string cardName)
-        {
-            // Skip for the server and owner - they'll see the card removal through network sync
-            if (IsServer || IsOwner) return;
-            
-            if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
-            {
-                // Remove from local list
-                cardsInHand.RemoveAt(cardIndex);
-                
-                // Arrange remaining cards
-                ArrangeCardsInHand();
-            }
-        }
-        
         // Server telling clients to animate discard and destroy
         [ObserversRpc]
         private void RpcAnimateDiscard(NetworkObject cardNetworkObject)
