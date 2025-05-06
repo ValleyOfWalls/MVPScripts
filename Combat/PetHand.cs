@@ -386,7 +386,7 @@ namespace Combat
             }
         }
         #endregion
-
+//  
         #region RPCs
         [ObserversRpc]
         private void RpcRemoveCardFromHand(int cardIndex, string cardName)
