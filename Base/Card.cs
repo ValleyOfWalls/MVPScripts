@@ -43,6 +43,9 @@ namespace Combat
         // Synced variable for owning hand reference
         private readonly SyncVar<NetworkObject> _syncedOwningHandObject = new SyncVar<NetworkObject>();
         
+        // Synced variable for owner reference
+        private readonly SyncVar<NetworkObject> _syncedOwnerObject = new SyncVar<NetworkObject>();
+        
         // Network Component
         private NetworkTransform networkTransform;
         
@@ -60,7 +63,40 @@ namespace Combat
         private Vector3 originalScale;
         private PlayerHand owningHand;
         private ICombatant owner;
-        public ICombatant Owner => owner;
+        public ICombatant Owner 
+        { 
+            get 
+            {
+                // If we have a direct reference, use it
+                if (owner != null) return owner;
+                
+                // Otherwise, try to get the combatant from the synced NetworkObject
+                if (_syncedOwnerObject.Value != null)
+                {
+                    // Try to get ICombatant from the NetworkObject
+                    ICombatant combatant = _syncedOwnerObject.Value.GetComponent<ICombatant>();
+                    if (combatant != null)
+                    {
+                        // Cache the reference
+                        owner = combatant;
+                        return owner;
+                    }
+                }
+                
+                // Fall back to looking for owningHand parent combatant
+                if (owningHand != null && owningHand.NetworkPlayer != null)
+                {
+                    CombatPlayer combatPlayer = owningHand.NetworkPlayer.CombatPlayer;
+                    if (combatPlayer != null)
+                    {
+                        owner = combatPlayer;
+                        return owner;
+                    }
+                }
+                
+                return null;
+            }
+        }
         
         private Canvas cardCanvas;
         private CanvasGroup cardCanvasGroup;
@@ -206,6 +242,20 @@ namespace Combat
                 }
             }
         }
+        
+        // Called when the synced owner reference changes
+        private void OnSyncedOwnerObjectChanged(NetworkObject prev, NetworkObject next, bool asServer)
+        {
+            if (next == null) return;
+            
+            // Update owner reference when the synced value changes
+            ICombatant combatant = next.GetComponent<ICombatant>();
+            if (combatant != null)
+            {
+                owner = combatant;
+                Debug.Log($"[Card] Owner updated from sync to: {(owner as Component)?.name ?? "Unknown"}");
+            }
+        }
         #endregion
 
         #region Network Callbacks
@@ -217,7 +267,10 @@ namespace Combat
         public override void OnStartClient()
         {
             base.OnStartClient();
-
+            
+            // Subscribe to synced owner object changes
+            _syncedOwnerObject.OnChange += OnSyncedOwnerObjectChanged;
+            
             // Manually trigger object name update if the value arrived before OnChange
             if (!string.IsNullOrEmpty(_syncedCardObjectName.Value))
             {
@@ -322,6 +375,21 @@ namespace Combat
             this.cardData = data; 
             this.owner = cardOwner;
             this.owningHand = hand; // Store player hand if applicable
+            
+            // Set the synced owner reference for clients
+            if (cardOwner != null && cardOwner is Component ownerComponent)
+            {
+                NetworkObject ownerNetObj = ownerComponent.GetComponent<NetworkObject>();
+                if (ownerNetObj != null)
+                {
+                    _syncedOwnerObject.Value = ownerNetObj;
+                    Debug.Log($"[Card] Setting synced owner to: {ownerComponent.name}");
+                }
+                else
+                {
+                    Debug.LogError($"[Card] Owner component does not have a NetworkObject component: {ownerComponent.name}");
+                }
+            }
             
             // Set the owning hand NetworkObject sync var if applicable
             if (hand != null && hand.NetworkObject != null)
@@ -636,15 +704,26 @@ namespace Combat
             if (validTarget)
             {
                 Debug.Log($"[Card] {CardName} was played successfully on a valid target. Not returning to hand.");
-                // Card was played successfully - it will be destroyed via the targeting system or RPC
-                // Notify the owning hand that this card was played (Server does the actual removal)
-                // if (owningHand != null)
-                // {
-                //     owningHand.OnCardPlayed(this); // This might be redundant if server handles removal
-                // }
                 
-                // Optional: Add a quick visual effect here before it gets despawned/destroyed
-                // e.g., a quick scale/fade animation managed locally
+                // Add client-side cleanup with fade animation
+                if (cardCanvasGroup != null)
+                {
+                    // Fade out the card
+                    cardCanvasGroup.DOFade(0f, 0.5f).OnComplete(() => {
+                        // After fade completes, disable the card locally to avoid visual clutter
+                        // The server will handle the actual removal from hand and despawning
+                        gameObject.SetActive(false);
+                    });
+                }
+                else
+                {
+                    // If no canvas group, just hide it immediately
+                    gameObject.SetActive(false);
+                }
+                
+                // Float card toward the target as a visual effect
+                transform.DOScale(originalScale * 0.5f, 0.5f);
+                transform.DOMove(Input.mousePosition + new Vector3(0, 50, 0), 0.5f);
             }
             else
             {

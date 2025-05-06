@@ -60,6 +60,9 @@ namespace Combat
         /// </summary>
         public virtual void ArrangeCardsInHand()
         {
+            // Add log here
+            Debug.Log($"[ArrangeCardsInHand] Called on {(IsServer ? "Server" : "Client")}. Hand: {this.name}, Card Count: {cardsInHand.Count}");
+            
             int cardCount = cardsInHand.Count;
             if (cardCount == 0) return;
             
@@ -269,7 +272,15 @@ namespace Combat
                 Debug.LogError($"[Server] Card at index {cardIndex} is null when trying to remove {cardName}.");
                  // Attempt to remove the null entry anyway and rearrange
                  cardsInHand.RemoveAt(cardIndex);
-                 RpcRemoveCardFromHandVisuals(cardIndex, cardName); // Still tell clients to clean up visuals
+                 // Corrected Call: Add Owner and ensure correct parameters
+                 if (Owner != null) 
+                 {
+                      RpcRemoveCardFromHandVisuals(Owner, cardIndex, cardName); // Still tell clients to clean up visuals
+                 }
+                 else
+                 {
+                      Debug.LogError($"[Server] Cannot send RpcRemoveCardFromHandVisuals for null card because Owner is null.");
+                 }
                 return;
             }
             
@@ -280,18 +291,31 @@ namespace Combat
             RpcAnimateAndDestroyCard(card.NetworkObject);
             
             // Tell clients to remove the logical card reference and rearrange
-            // Note: RpcRemoveCardFromHandVisuals might be better name now
-            RpcRemoveCardFromHandVisuals(cardIndex, cardName);
+            // Corrected Call: Ensure correct parameters and Owner check
+             if (Owner != null)
+             {
+                 Debug.Log($"[Server] Sending TargetRpc RpcRemoveCardFromHandVisuals to Owner ({Owner.ClientId}) for index {cardIndex}, card '{cardName}' on Hand: {this.name} ({this.NetworkObject.ObjectId})");
+                 RpcRemoveCardFromHandVisuals(Owner, cardIndex, cardName); // Use correct parameters
+             }
+             else
+             {
+                  Debug.LogError($"[Server] Cannot send TargetRpc RpcRemoveCardFromHandVisuals because Owner connection is null for Hand: {this.name}");
+             }
             
-            // Server doesn't arrange visuals
+            // Rearrange the cards on server
+            Debug.Log($"[Server] Calling ArrangeCardsInHand for Hand: {this.name} ({this.NetworkObject.ObjectId})");
+            ArrangeCardsInHand();
         }
         #endregion
 
         #region Observer RPCs
         // Renamed for clarity - handles visual removal and rearrangement
-        [ObserversRpc]
-        private void RpcRemoveCardFromHandVisuals(int cardIndex, string cardName)
+        [TargetRpc]
+        private void RpcRemoveCardFromHandVisuals(NetworkConnection conn, int cardIndex, string cardName)
         {
+            // Log owner check just in case
+            Debug.Log($"[Client TargetRpc] RpcRemoveCardFromHandVisuals received. IsOwner: {IsOwner}. Index: {cardIndex}, Name: {cardName}. Current hand size: {cardsInHand.Count}");
+            
             // Find the card visually - important if list order differs slightly
             Card cardToRemove = null;
             if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
@@ -299,14 +323,29 @@ namespace Combat
                  // Try index first
                  if (cardsInHand[cardIndex] != null && cardsInHand[cardIndex].CardName == cardName) {
                      cardToRemove = cardsInHand[cardIndex];
+                     Debug.Log($"[Client TargetRpc] Found card '{cardName}' at index {cardIndex}");
                  }
+                 else if(cardsInHand[cardIndex] != null)
+                 {
+                    Debug.LogWarning($"[Client TargetRpc] Card at index {cardIndex} is {cardsInHand[cardIndex].CardName}, not {cardName}. Searching by name.");
+                 }
+                 else 
+                 {
+                    Debug.LogWarning($"[Client TargetRpc] Card at index {cardIndex} is null. Searching by name.");
+                 }
+            }
+            else
+            {
+                Debug.LogWarning($"[Client TargetRpc] Invalid index {cardIndex} received. Searching by name.");
             }
             
             // Fallback: search by name if index failed or list was modified
             if (cardToRemove == null) {
+                Debug.Log($"[Client TargetRpc] Searching for card '{cardName}' by name...");
                 foreach(Card card in cardsInHand) {
                     if (card != null && card.CardName == cardName) {
                         cardToRemove = card;
+                        Debug.Log($"[Client TargetRpc] Found card '{cardName}' by name search.");
                         break;
                     }
                 }
@@ -314,20 +353,22 @@ namespace Combat
 
             if (cardToRemove != null)
             {
-                // Remove from local list
-                cardsInHand.Remove(cardToRemove);
+                // Remove from local list BEFORE arranging
+                bool removed = cardsInHand.Remove(cardToRemove);
+                Debug.Log($"[Client TargetRpc] Removed card '{cardName}' from local list: {removed}. New hand size: {cardsInHand.Count}");
             }
             else
             {
-                 Debug.LogWarning($"RpcRemoveCardFromHandVisuals: Could not find card {cardName} to remove visually.");
+                 Debug.LogWarning($"[Client TargetRpc] RpcRemoveCardFromHandVisuals: Could not find card {cardName} to remove visually.");
             }
             
             // Arrange remaining cards
+            Debug.Log($"[Client TargetRpc] Calling ArrangeCardsInHand after removal attempt.");
             ArrangeCardsInHand();
         }
         
         // NEW RPC: Client handles animation and destruction
-        [ObserversRpc(BufferLast = false)] // Don't buffer, it's a one-time event
+        [ObserversRpc(BufferLast = false)] 
         private void RpcAnimateAndDestroyCard(NetworkObject cardNetworkObject)
         {
             if (cardNetworkObject == null)
@@ -353,12 +394,11 @@ namespace Combat
                     // Check if object hasn't been destroyed already (e.g., by scene change)
                     if (card != null && card.gameObject != null)
                     {
-                        // If we are NOT the server, destroy the GameObject.
-                        // The server despawned the NetworkObject, which handles destruction there.
-                        if (!IsServer)
-                        {
-                           Destroy(card.gameObject);
-                        }
+                        // --- REMOVED CLIENT-SIDE DESTROY --- 
+                        // The server's despawn handles the actual network object removal.
+                        // We just need the visual animation here.
+                        // If the object lingers visually, we might just disable it:
+                        card.gameObject.SetActive(false); 
                     }
                 });
             }
@@ -389,17 +429,43 @@ namespace Combat
         [Server]
         public virtual void ServerAddCard(CardData cardData)
         {
+            // --- Log Entry ---
+            Debug.Log($"[Server CardHandManager] ServerAddCard called for hand ID: {this.GetInstanceID()}, Card: {(cardData != null ? cardData.cardName : "null")}");
+
             if (cardData == null)
             {
                 Debug.LogError("FALLBACK: Cannot add null card to hand");
                 return;
             }
-            
+
             // If we have a valid DeckManager, use it to create the card
             if (DeckManager.Instance != null)
             {
-                // Create the card (this will register it with the hand)
-                DeckManager.Instance.CreateCardObject(cardData, this.transform, this, GetCombatant());
+                // Create the card object
+                GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, GetCombatant());
+
+                // --- FIX: Explicitly add the created card to the server's list ---
+                if (cardObj != null)
+                {
+                    Card cardComponent = cardObj.GetComponent<Card>();
+                    if (cardComponent != null)
+                    {
+                        if (!cardsInHand.Contains(cardComponent))
+                        {
+                            cardsInHand.Add(cardComponent);
+                            Debug.Log($"[Server CardHandManager ID: {this.GetInstanceID()}] Added card '{cardComponent.CardName}' via ServerAddCard. New count: {cardsInHand.Count}");
+                        }
+                        else
+                        {
+                             Debug.LogWarning($"[Server CardHandManager ID: {this.GetInstanceID()}] Card '{cardComponent.CardName}' already in hand list when added via ServerAddCard.");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError($"[Server CardHandManager] Created card object for {cardData.cardName} is missing Card component!");
+                    }
+                }
+                // --- END FIX ---
             }
             else
             {
@@ -426,15 +492,40 @@ namespace Combat
                     // Remove the card from the hand list
                     cardsInHand.RemoveAt(i);
                     
-                    // Destroy the card object
+                    // Tell clients to animate and destroy the card visually
                     if (card.NetworkObject != null)
-                        card.NetworkObject.Despawn();
+                    {
+                        // Trigger animation on clients first (ObserversRpc)
+                        RpcAnimateAndDestroyCard(card.NetworkObject);
+
+                        // --- FIX: Despawn immediately, remove coroutine ---
+                        // Despawn after animation has time to start
+                        // StartCoroutine(DespawnAfterDelay(card.NetworkObject, 0.1f));
+                        if (card.NetworkObject.IsSpawned)
+                        {
+                            card.NetworkObject.Despawn(); // Despawn directly
+                        }
+                        // --- END FIX ---
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[ServerRemoveCard] Card '{cardName}' has null NetworkObject, skipping animation");
+                    }
                     
-                    // Rearrange the remaining cards
+                    // Also notify ONLY THE OWNER to update their logical card list (TargetRpc)
+                    if (Owner != null) // Ensure Owner connection is valid
+                    {
+                         Debug.Log($"[Server] Sending TargetRpc RpcRemoveCardFromHandVisuals to Owner ({Owner.ClientId}) for index {i}, card '{cardName}' on Hand: {this.name} ({this.NetworkObject.ObjectId})"); 
+                         RpcRemoveCardFromHandVisuals(Owner, i, cardName); // Pass Owner connection
+                    }
+                    else
+                    {
+                        Debug.LogError($"[Server] Cannot send TargetRpc RpcRemoveCardFromHandVisuals because Owner connection is null for Hand: {this.name}");
+                    }
+                    
+                    // Rearrange the cards on server
+                    Debug.Log($"[Server] Calling ArrangeCardsInHand for Hand: {this.name} ({this.NetworkObject.ObjectId})");
                     ArrangeCardsInHand();
-                    
-                    // Notify clients to remove this card (if needed)
-                    RpcRemoveCardFromHandVisuals(i, cardName);
                     
                     return;
                 }

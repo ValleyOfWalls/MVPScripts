@@ -120,14 +120,9 @@ namespace Combat
             // Only the owner should tell the server about played cards
             if (IsOwner)
             {
-                // Tell server to remove card from hand
-                CmdRemoveCardFromHand(cardIndex, card.CardName);
-                
-                // Get card type to send to server
-                CardType cardType = card.Type;
-                
-                // Tell server to play this card's effect
-                CmdPlayCard(cardIndex, card.CardName, cardType);
+                // We no longer need to send separate RPCs from here.
+                // The CardTargetingSystem's CmdApplyCardEffect handles both effect application AND card removal from hand on the server.
+                Debug.Log($"[PlayerHand] HandleCardPlayed called for {card.CardName}, but RPCs are now handled by CardTargetingSystem.");
             }
         }
         
@@ -142,33 +137,74 @@ namespace Combat
         [Server]
         public override void DrawCards(int count)
         {
+            // --- Log Entry --- 
+            Debug.Log($"[Server DrawCards] Entered for PlayerHand ID: {this.GetInstanceID()}, Count: {count}. Current hand count: {cardsInHand.Count}");
+            
             // This method is for server-side card drawing
             // Check if there's a valid reference to the player's deck
             if (runtimeDeck == null && combatPlayer != null)
             {
                 runtimeDeck = combatPlayer.PlayerDeck;
+                Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Assigned runtimeDeck.");
+            }
+            else if(runtimeDeck == null)
+            {
+                Debug.LogWarning($"[Server DrawCards ID: {this.GetInstanceID()}] runtimeDeck is null and combatPlayer is null or has no deck.");
             }
             
             // Draw and create cards
             for (int i = 0; i < count; i++)
             {
+                Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Loop {i+1}/{count}. Checking hand size ({cardsInHand.Count} < {maxHandSize})");
                 if (cardsInHand.Count >= maxHandSize)
                 {
+                    Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Hand is full, breaking loop.");
                     break;
                 }
                 
                 // Draw card from player's deck
+                Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Attempting to draw card from deck...");
                 CardData cardData = combatPlayer?.DrawCardFromDeck();
+                
                 if (cardData != null && DeckManager.Instance != null)
                 {
-                    // Create card object in the hand
-                    DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPlayer);
+                    Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Drawn '{cardData.cardName}'. Attempting to create object...");
+                    // Create card object (returns the GameObject)
+                    GameObject cardObj = DeckManager.Instance.CreateCardObject(cardData, this.transform, this, combatPlayer); 
+                    
+                    // --- CLEANUP: Remove redundant card addition logic --- 
+                    // The card is now added to the list within CardHandManager.ServerAddCard 
+                    // or potentially needs to be added where DeckManager.CreateCardObject is called if not via ServerAddCard.
+                    // if (cardObj != null)
+                    // {
+                    //     Card cardComponent = cardObj.GetComponent<Card>();
+                    //     if (cardComponent != null)
+                    //     {
+                    //         if (!cardsInHand.Contains(cardComponent))
+                    //         {
+                    //             cardsInHand.Add(cardComponent);
+                    //             Debug.Log($"[Server PlayerHand ID: {this.GetInstanceID()}] Added card '{cardComponent.CardName}' to server hand list. New count: {cardsInHand.Count}");
+                    //         }
+                    //     }
+                    //     else
+                    //     {
+                    //         Debug.LogError($"[Server PlayerHand] Created card object for {cardData.cardName} is missing Card component!");
+                    //     }
+                    // }
+                    // --- END CLEANUP ---
                 }
                 else if (cardData == null)
                 {
-                    Debug.LogError("FALLBACK: DrawCardFromDeck returned null card");
+                    Debug.LogError($"[Server DrawCards ID: {this.GetInstanceID()}] DrawCardFromDeck returned null card. CombatPlayer null? {combatPlayer == null}");
+                }
+                else if (DeckManager.Instance == null)
+                {
+                     Debug.LogError($"[Server DrawCards ID: {this.GetInstanceID()}] DeckManager.Instance is null!");
                 }
             }
+             Debug.Log($"[Server DrawCards ID: {this.GetInstanceID()}] Finished drawing loop. Final hand count: {cardsInHand.Count}");
+            // Optional: Arrange cards on server if needed for logic (visuals are client-side)
+            // ArrangeCardsInHand(); 
         }
         #endregion
 
@@ -242,6 +278,9 @@ namespace Combat
         [ServerRpc]
         public void CmdDrawCards(int count)
         {
+            // --- Log Entry --- 
+            Debug.Log($"[Server CmdDrawCards] Received for PlayerHand ID: {this.GetInstanceID()}, Owner: {(owner != null ? owner.GetSteamName() : "null")}, Count: {count}");
+            
             // Ensure owner reference is valid before proceeding
             if (owner == null)
             {

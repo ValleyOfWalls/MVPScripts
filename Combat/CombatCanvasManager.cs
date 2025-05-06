@@ -468,7 +468,10 @@ public class CombatCanvasManager : MonoBehaviour
                 if (playerHand != currentObservedPlayerHand)
                 {
                     playerHand.transform.SetParent(originalParent, false);
-                    playerHand.gameObject.SetActive(wasActive);
+                    
+                    // Explicitly deactivate the player hand that is not in the local fight
+                    // This ensures that only hands involved in the local fight remain active
+                    playerHand.gameObject.SetActive(false);
                 }
             }
         }
@@ -512,7 +515,7 @@ public class CombatCanvasManager : MonoBehaviour
                 if (petHand != currentObservedPetHand)
                 {
                     petHand.transform.SetParent(originalParent, false);
-                    petHand.gameObject.SetActive(wasActive);
+                    petHand.gameObject.SetActive(false); // Always deactivate non-observed pet hands
                 }
             }
         }

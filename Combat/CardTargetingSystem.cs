@@ -290,17 +290,54 @@ namespace Combat
             
             if (card == null || card.Data == null) 
             {
-                 Debug.Log("[CardTargetingSystem] Card or CardData is null.");
-                 return;
+                Debug.Log("[CardTargetingSystem] Card or CardData is null.");
+                return;
             }
             
             // Get the owner of the card
             ICombatant cardOwner = card.Owner;
             if (cardOwner == null) 
             {
-                Debug.Log("[CardTargetingSystem] Card Owner (ICombatant) is null.");
-                return;
+                Debug.Log("[CardTargetingSystem] Card Owner (ICombatant) is null. Attempting to find owner through alternative means...");
+                
+                // Fallback 1: Try to get the owner through the hand
+                PlayerHand playerHand = card.GetComponentInParent<PlayerHand>();
+                if (playerHand != null && playerHand.NetworkPlayer != null && playerHand.NetworkPlayer.CombatPlayer != null)
+                {
+                    cardOwner = playerHand.NetworkPlayer.CombatPlayer;
+                    Debug.Log($"[CardTargetingSystem] Found owner through PlayerHand: {(cardOwner as Component).name}");
+                }
+                
+                // Fallback 2: Try to get the local player's combat player as owner
+                if (cardOwner == null && IsClient)
+                {
+                    // Find the local player
+                    NetworkPlayer localPlayer = null;
+                    NetworkPlayer[] allPlayers = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+                    foreach (NetworkPlayer player in allPlayers)
+                    {
+                        if (player.IsOwner)
+                        {
+                            localPlayer = player;
+                            break;
+                        }
+                    }
+                    
+                    if (localPlayer != null && localPlayer.CombatPlayer != null)
+                    {
+                        cardOwner = localPlayer.CombatPlayer;
+                        Debug.Log($"[CardTargetingSystem] Using local player as card owner: {(cardOwner as Component).name}");
+                    }
+                }
+                
+                // If we still don't have an owner, we can't continue
+                if (cardOwner == null)
+                {
+                    Debug.LogError("[CardTargetingSystem] Failed to find card owner through fallbacks. Cannot determine valid targets.");
+                    return;
+                }
             }
+            
             Debug.Log($"[CardTargetingSystem] Card Owner: {(cardOwner as Component).name} (InstanceID: {(cardOwner as Component).GetInstanceID()})");
             
             // Get all combatants in the scene
@@ -372,6 +409,12 @@ namespace Combat
         
         private bool IsEnemy(ICombatant source, ICombatant target)
         {
+            if (source == null || target == null)
+            {
+                Debug.LogError($"[CardTargetingSystem] IsEnemy check received null source or target. Source null: {source == null}, Target null: {target == null}");
+                return false;
+            }
+            
             if (source == target) return false;
             
             // If one is a player and one is a pet, check ownership
@@ -380,26 +423,59 @@ namespace Combat
             CombatPet sourcePet = source as CombatPet;
             CombatPlayer targetPlayer = target as CombatPlayer;
 
+            // Log helpful debug information
+            string sourceType = source.GetType().Name;
+            string targetType = target.GetType().Name;
+            int sourceID = (source as Component)?.GetInstanceID() ?? -1;
+            int targetID = (target as Component)?.GetInstanceID() ?? -1;
+            
+            Debug.Log($"[CardTargetingSystem] IsEnemy check: Source=[{sourceType}:{sourceID}], Target=[{targetType}:{targetID}]");
+
             if (sourcePlayer != null && targetPet != null)
             {
-                // If target pet's reference owner matches source player's network player, they are NOT enemies
-                return targetPet.ReferencePet?.PlayerOwner != sourcePlayer.NetworkPlayer;
+                if (targetPet.ReferencePet == null)
+                {
+                    Debug.LogWarning($"[CardTargetingSystem] Target pet has null ReferencePet: {targetPet.name}");
+                    return true; // Assume enemy if we can't determine
+                }
+                
+                bool isEnemy = targetPet.ReferencePet.PlayerOwner != sourcePlayer.NetworkPlayer;
+                Debug.Log($"[CardTargetingSystem] Player-Pet check: {sourcePlayer.name} vs {targetPet.name}, isEnemy={isEnemy}");
+                return isEnemy;
             }
             else if (sourcePet != null && targetPlayer != null)
             {
-                // If source pet's reference owner matches target player's network player, they are NOT enemies
-                return sourcePet.ReferencePet?.PlayerOwner != targetPlayer.NetworkPlayer;
+                if (sourcePet.ReferencePet == null)
+                {
+                    Debug.LogWarning($"[CardTargetingSystem] Source pet has null ReferencePet: {sourcePet.name}");
+                    return true; // Assume enemy if we can't determine
+                }
+                
+                bool isEnemy = sourcePet.ReferencePet.PlayerOwner != targetPlayer.NetworkPlayer;
+                Debug.Log($"[CardTargetingSystem] Pet-Player check: {sourcePet.name} vs {targetPlayer.name}, isEnemy={isEnemy}");
+                return isEnemy;
             }
             
             // Check if both are Pets or both are Players
             if ((source is CombatPet && target is CombatPet) || (source is CombatPlayer && target is CombatPlayer))
             {
+                // Try to compare owners if both are pets
+                if (source is CombatPet sourcePet2 && target is CombatPet targetPet2 &&
+                    sourcePet2.ReferencePet != null && targetPet2.ReferencePet != null)
+                {
+                    bool sameOwner = sourcePet2.ReferencePet.PlayerOwner == targetPet2.ReferencePet.PlayerOwner;
+                    Debug.Log($"[CardTargetingSystem] Pet-Pet check with owners: {sourcePet2.name} vs {targetPet2.name}, sameOwner={sameOwner}");
+                    return !sameOwner; // If same owner, not enemies
+                }
+                
                  // If they are the same type but not the same instance, they are enemies
-                 return true; 
+                 bool isEnemy = true;
+                 Debug.Log($"[CardTargetingSystem] Same type check: {sourceType} vs {targetType}, isEnemy={isEnemy}");
+                 return isEnemy; 
             }
             
             // Fallback if types are mixed in an unexpected way or references are missing
-             Debug.LogWarning($"IsEnemy check fallback for types {source.GetType()} and {target.GetType()}. Assuming enemy.");
+            Debug.LogWarning($"[CardTargetingSystem] IsEnemy check fallback for types {source.GetType()} and {target.GetType()}. Assuming enemy.");
             return true; 
         }
         
@@ -528,37 +604,58 @@ namespace Combat
                     Debug.LogWarning("[Server] CombatManager.Instance is null, cannot notify card played.");
                 }
                 
-                // *** NEW CODE: Find and remove the played card ***
+                // *** Log before checking the source player's references ***
+                if (source is CombatPlayer spCheck) // Use different variable name to avoid conflict
+                {
+                     Debug.Log($"[Server] Checking source player: {spCheck.name}. NetworkPlayer is null? {spCheck.NetworkPlayer == null}");
+                     if(spCheck.NetworkPlayer != null) 
+                     {
+                          Debug.Log($"[Server] Source player's NetworkPlayer: {spCheck.NetworkPlayer.name}. PlayerHand is null? {spCheck.NetworkPlayer.PlayerHand == null}");
+                     }
+                }
+                else
+                {
+                     Debug.Log($"[Server] Source is not a CombatPlayer ({source.GetType().Name}), skipping card removal from hand.");
+                }
+                
+                // Find and remove the played card 
                 if (source is CombatPlayer sourcePlayer && sourcePlayer.NetworkPlayer != null)
                 {
                     // Get the player's hand
                     PlayerHand playerHand = sourcePlayer.NetworkPlayer.PlayerHand;
                     if (playerHand != null)
                     {
-                        // Find and remove the played card from hand
-                        Card playedCard = null;
+                        // --- ADD INSTANCE ID LOG --- 
+                        Debug.Log($"[Server CmdApplyCardEffect] Checking PlayerHand Instance ID: {playerHand.GetInstanceID()} for player {sourcePlayer.NetworkPlayer.GetSteamName()}");
+                        
+                        // Get a copy of the list
                         List<Card> cardsInHand = playerHand.GetCardsInHand();
+                        Debug.Log($"[Server] Checking hand for card '{cardName}'. Server hand list count: {cardsInHand.Count}"); // Log count
                         
                         for (int i = 0; i < cardsInHand.Count; i++)
                         {
                             Card card = cardsInHand[i];
+                            // Log each card being checked
+                            string serverCardName = (card != null) ? card.CardName : "NULL_CARD";
+                            Debug.Log($"[Server] Checking index {i}: Server Card Name = '{serverCardName}', Looking for = '{cardName}'"); 
+                                                        
                             if (card != null && card.CardName == cardName)
                             {
-                                playedCard = card;
                                 // Remove the card from hand using existing method
                                 int cardIndex = i;
+                                Debug.Log($"[Server] Match found! Calling ServerRemoveCard for '{cardName}' at index {cardIndex}");
                                 playerHand.ServerRemoveCard(cardName);
                                 
-                                Debug.Log($"[Server] Removed card '{cardName}' from player's hand at index {cardIndex}");
+                                // Log removed separately, though ServerRemoveCard should now log sending RPCs
+                                //Debug.Log($"[Server] Removed card '{cardName}' from player's hand at index {cardIndex}");
                                 break;
                             }
                         }
                         
-                        // If we found the card but it wasn't removed through ServerRemoveCard
-                        if (playedCard != null && playedCard.NetworkObject != null && playedCard.NetworkObject.IsSpawned)
+                        // Log if loop finishes without finding the card
+                        if (cardsInHand.Count == 0) 
                         {
-                            Debug.Log($"[Server] Despawning card GameObject '{playedCard.name}'");
-                            InstanceFinder.ServerManager.Despawn(playedCard.gameObject);
+                             Debug.LogWarning($"[Server] Loop finished. Card '{cardName}' was NOT found in server's hand list copy.");
                         }
                     }
                     else
@@ -566,7 +663,6 @@ namespace Combat
                         Debug.LogWarning($"[Server] Could not find PlayerHand for {sourcePlayer.NetworkPlayer.GetSteamName()} to remove played card");
                     }
                 }
-                // *** END NEW CODE ***
             }
             else
             {
