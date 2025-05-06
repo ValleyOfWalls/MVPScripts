@@ -632,6 +632,7 @@ namespace Combat
                         List<Card> cardsInHand = playerHand.GetCardsInHand();
                         Debug.Log($"[Server] Checking hand for card '{cardName}'. Server hand list count: {cardsInHand.Count}"); // Log count
                         
+                        bool foundAndRemoved = false;
                         for (int i = 0; i < cardsInHand.Count; i++)
                         {
                             Card card = cardsInHand[i];
@@ -639,15 +640,38 @@ namespace Combat
                             string serverCardName = (card != null) ? card.CardName : "NULL_CARD";
                             Debug.Log($"[Server] Checking index {i}: Server Card Name = '{serverCardName}', Looking for = '{cardName}'"); 
                                                         
-                            if (card != null && card.CardName == cardName)
+                            if (card != null && card.CardName == cardName && !foundAndRemoved)
                             {
-                                // Remove the card from hand using existing method
+                                // Remove the card from hand using existing method - but only the first instance we find
                                 int cardIndex = i;
                                 Debug.Log($"[Server] Match found! Calling ServerRemoveCard for '{cardName}' at index {cardIndex}");
-                                playerHand.ServerRemoveCard(cardName);
                                 
-                                // Log removed separately, though ServerRemoveCard should now log sending RPCs
-                                //Debug.Log($"[Server] Removed card '{cardName}' from player's hand at index {cardIndex}");
+                                // Instead of using ServerRemoveCard (which removes by name and might remove other instances),
+                                // We'll directly remove this specific card
+                                if (card.NetworkObject != null)
+                                {
+                                    // Get the actual index from the hand rather than our copy
+                                    int actualCardIndex = playerHand.GetCardsInHand().IndexOf(card);
+                                    if (actualCardIndex >= 0)
+                                    {
+                                        // Remove this specific card and no others
+                                        playerHand.RemoveCardAtIndex(actualCardIndex);
+                                        foundAndRemoved = true;
+                                    }
+                                    else
+                                    {
+                                        // Fallback to ServerRemoveCard if we can't find the actual card
+                                        playerHand.ServerRemoveCard(cardName);
+                                        foundAndRemoved = true;
+                                    }
+                                }
+                                else
+                                {
+                                    // Fallback for null NetworkObject
+                                    playerHand.ServerRemoveCard(cardName);
+                                    foundAndRemoved = true;
+                                }
+                                
                                 break;
                             }
                         }

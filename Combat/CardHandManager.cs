@@ -367,7 +367,7 @@ namespace Combat
             ArrangeCardsInHand();
         }
         
-        // NEW RPC: Client handles animation and destruction
+        // NEW RPC: Client handles animation and destruction for a specific card
         [ObserversRpc(BufferLast = false)] 
         private void RpcAnimateAndDestroyCard(NetworkObject cardNetworkObject)
         {
@@ -377,38 +377,104 @@ namespace Combat
                 return;
             }
 
-            Card card = cardNetworkObject.GetComponent<Card>();
-            if (card != null)
+            // Find the SPECIFIC card instance by its NetworkObject ID, not by name
+            Card targetCard = null;
+            uint targetNetworkId = (uint)cardNetworkObject.ObjectId; // Explicit cast here
+            
+            // Debug logging
+            Debug.Log($"[RpcAnimateAndDestroyCard] Animating card with NetworkObject ID: {targetNetworkId}");
+            
+            // We want to be absolutely certain we're only affecting the specific card instance
+            foreach (Card card in GetComponentsInChildren<Card>(true))
             {
-                // Ensure card is not interactable during animation
-                CanvasGroup cg = card.GetComponent<CanvasGroup>();
-                if (cg != null) cg.blocksRaycasts = false;
-
-                // Simple fade-out and scale-down animation
-                float duration = 0.4f;
-                Sequence sequence = DOTween.Sequence();
-                sequence.Append(card.transform.DOScale(Vector3.zero, duration).SetEase(Ease.InBack));
-                sequence.Join(card.GetComponent<CanvasGroup>()?.DOFade(0, duration)); // Fade out if CanvasGroup exists
-                sequence.OnComplete(() =>
+                if (card != null && card.NetworkObject != null && card.NetworkObject.ObjectId == targetNetworkId)
                 {
-                    // Check if object hasn't been destroyed already (e.g., by scene change)
-                    if (card != null && card.gameObject != null)
-                    {
-                        // --- REMOVED CLIENT-SIDE DESTROY --- 
-                        // The server's despawn handles the actual network object removal.
-                        // We just need the visual animation here.
-                        // If the object lingers visually, we might just disable it:
-                        card.gameObject.SetActive(false); 
-                    }
-                });
+                    targetCard = card;
+                    Debug.Log($"[RpcAnimateAndDestroyCard] Found exact card match: {card.CardName} with ID {targetNetworkId}");
+                    break;
+                }
             }
-            else
+            
+            // If we couldn't find by NetworkObject ID, fall back to the cardNetworkObject reference directly
+            if (targetCard == null)
             {
-                 Debug.LogWarning($"RpcAnimateAndDestroyCard could not find Card component on NetworkObject {cardNetworkObject.ObjectId}. Disabling object.");
-                 // Fallback: just disable the object if Card component is missing
-                 if (cardNetworkObject.gameObject != null) 
-                    cardNetworkObject.gameObject.SetActive(false);
+                targetCard = cardNetworkObject.GetComponent<Card>();
+                if (targetCard != null)
+                {
+                    Debug.Log($"[RpcAnimateAndDestroyCard] Using direct component reference for {targetCard.CardName}");
+                }
             }
+            
+            if (targetCard == null)
+            {
+                Debug.LogWarning($"[RpcAnimateAndDestroyCard] Could not find Card component on NetworkObject {cardNetworkObject.ObjectId}. Disabling object.");
+                // Fallback: just disable the object if Card component is missing
+                if (cardNetworkObject.gameObject != null) 
+                    cardNetworkObject.gameObject.SetActive(false);
+                return;
+            }
+            
+            // Ensure card is not interactable during animation
+            CanvasGroup cg = targetCard.GetComponent<CanvasGroup>();
+            if (cg != null) cg.blocksRaycasts = false;
+
+            // Store references to the transform and canvasGroup
+            Transform cardTransform = targetCard.transform;
+            
+            // Simple fade-out and scale-down animation
+            float duration = 0.4f;
+            Sequence sequence = DOTween.Sequence();
+            
+            // Keep track of whether the objects are still valid in callbacks
+            bool cardDestroyed = false;
+            
+            // OnUpdate callback to check if objects are still valid
+            sequence.OnUpdate(() => {
+                if (targetCard == null || cardTransform == null || !targetCard.gameObject.activeInHierarchy)
+                {
+                    cardDestroyed = true;
+                    if (sequence != null && sequence.IsActive() && !sequence.IsComplete())
+                    {
+                        sequence.Kill(false); // Kill without calling callbacks
+                    }
+                }
+            });
+            
+            if (cardTransform != null)
+            {
+                sequence.Append(cardTransform.DOScale(Vector3.zero, duration)
+                    .SetEase(Ease.InBack)
+                    .OnUpdate(() => {
+                        if (cardDestroyed || cardTransform == null)
+                        {
+                            sequence.Kill(false);
+                        }
+                    }));
+            }
+            
+            if (cg != null)
+            {
+                sequence.Join(cg.DOFade(0, duration)
+                    .OnUpdate(() => {
+                        if (cardDestroyed || cg == null)
+                        {
+                            sequence.Kill(false);
+                        }
+                    }));
+            }
+            
+            sequence.OnComplete(() =>
+            {
+                // Check if object hasn't been destroyed already
+                if (!cardDestroyed && targetCard != null && targetCard.gameObject != null)
+                {
+                    // Hide the card visually instead of destroying it
+                    targetCard.gameObject.SetActive(false);
+                }
+            });
+            
+            // Set an ID for this sequence for debugging
+            sequence.stringId = $"Card_{targetNetworkId}_FadeOut";
         }
 
         [ObserversRpc]
@@ -498,14 +564,21 @@ namespace Combat
                         // Trigger animation on clients first (ObserversRpc)
                         RpcAnimateAndDestroyCard(card.NetworkObject);
 
-                        // --- FIX: Despawn immediately, remove coroutine ---
-                        // Despawn after animation has time to start
-                        // StartCoroutine(DespawnAfterDelay(card.NetworkObject, 0.1f));
-                        if (card.NetworkObject.IsSpawned)
+                        // Wait briefly to allow the animation to start before despawning
+                        if (this.gameObject.activeInHierarchy)
                         {
-                            card.NetworkObject.Despawn(); // Despawn directly
+                            // Only start a coroutine if the game object is active
+                            StartCoroutine(DespawnCardWithDelay(card.NetworkObject, 0.5f));
                         }
-                        // --- END FIX ---
+                        else
+                        {
+                            // If inactive, despawn immediately
+                            Debug.Log($"[Server] GameObject inactive, despawning card immediately: {cardName}");
+                            if (card.NetworkObject.IsSpawned)
+                            {
+                                card.NetworkObject.Despawn();
+                            }
+                        }
                     }
                     else
                     {
@@ -533,6 +606,19 @@ namespace Combat
             
             Debug.LogWarning($"FALLBACK: Card '{cardName}' not found in hand to remove");
         }
+        
+        // Helper method to despawn card after a delay
+        private IEnumerator DespawnCardWithDelay(NetworkObject cardNetworkObject, float delay)
+        {
+            // Wait for animation to start
+            yield return new WaitForSeconds(delay);
+            
+            // Check if the card is still spawned before despawning
+            if (cardNetworkObject != null && cardNetworkObject.IsSpawned)
+            {
+                cardNetworkObject.Despawn();
+            }
+        }
 
         // Client-side method to animate drawing a card
         public virtual void ClientAnimateCardDraw(int count)
@@ -553,6 +639,73 @@ namespace Combat
         public virtual bool CanAnimateCardDraw()
         {
             return true;
+        }
+
+        // Server-side method to remove a card at specific index
+        [Server]
+        public virtual void RemoveCardAtIndex(int index)
+        {
+            if (index < 0 || index >= cardsInHand.Count)
+            {
+                Debug.LogError($"[Server] RemoveCardAtIndex: Invalid index {index} for hand with {cardsInHand.Count} cards");
+                return;
+            }
+            
+            Card card = cardsInHand[index];
+            if (card == null)
+            {
+                Debug.LogError($"[Server] RemoveCardAtIndex: Card at index {index} is null");
+                cardsInHand.RemoveAt(index);
+                return;
+            }
+            
+            // Get the card name for logging
+            string cardName = card.CardName;
+            
+            // Remove the card from the hand list
+            cardsInHand.RemoveAt(index);
+            
+            // Tell clients to animate and destroy the card visually
+            if (card.NetworkObject != null)
+            {
+                // Trigger animation on clients first (ObserversRpc)
+                RpcAnimateAndDestroyCard(card.NetworkObject);
+
+                // Wait briefly to allow the animation to start before despawning
+                if (this.gameObject.activeInHierarchy)
+                {
+                    // Only start a coroutine if the game object is active
+                    StartCoroutine(DespawnCardWithDelay(card.NetworkObject, 0.5f));
+                }
+                else
+                {
+                    // If inactive, despawn immediately
+                    Debug.Log($"[Server] GameObject inactive, despawning card immediately: {cardName}");
+                    if (card.NetworkObject.IsSpawned)
+                    {
+                        card.NetworkObject.Despawn();
+                    }
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[RemoveCardAtIndex] Card '{cardName}' has null NetworkObject, skipping animation");
+            }
+            
+            // Notify ONLY THE OWNER to update their logical card list (TargetRpc)
+            if (Owner != null) 
+            {
+                Debug.Log($"[Server] Sending TargetRpc RpcRemoveCardFromHandVisuals to Owner ({Owner.ClientId}) for index {index}, card '{cardName}' on Hand: {this.name} ({this.NetworkObject.ObjectId})"); 
+                RpcRemoveCardFromHandVisuals(Owner, index, cardName);
+            }
+            else
+            {
+                Debug.LogError($"[Server] Cannot send TargetRpc RpcRemoveCardFromHandVisuals because Owner connection is null for Hand: {this.name}");
+            }
+            
+            // Rearrange the cards on server
+            Debug.Log($"[Server] Calling ArrangeCardsInHand for Hand: {this.name} ({this.NetworkObject.ObjectId}) after removing card at index {index}");
+            ArrangeCardsInHand();
         }
 
         // Get a list of cards in the hand
