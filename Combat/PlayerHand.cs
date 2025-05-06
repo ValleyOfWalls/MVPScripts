@@ -6,6 +6,7 @@ using FishNet.Connection;
 using DG.Tweening;
 using System.Collections;
 using FishNet;
+using System.Linq;
 
 namespace Combat
 {
@@ -294,20 +295,32 @@ namespace Combat
         [Server]
         public override void ServerDiscardHand()
         {
+            Debug.Log($"[DIAGNOSTIC] PlayerHand.ServerDiscardHand called for {this.name}. Owner: {(combatPlayer?.NetworkPlayer?.GetSteamName() ?? "Unknown")}");
+            
             // Get cards to discard
             List<Card> cardsToDiscard = new List<Card>(cardsInHand);
+            
+            Debug.Log($"[DIAGNOSTIC] PlayerHand created discard list with {cardsToDiscard.Count} cards");
+            if (cardsToDiscard.Count > 0)
+            {
+                string cardNames = string.Join(", ", cardsToDiscard.Select(c => c?.CardName ?? "NULL_CARD"));
+                Debug.Log($"[DIAGNOSTIC] PlayerHand cards to discard: {cardNames}");
+            }
             
             // Add the card data for each card to discard pile before destroying the objects
             if (combatPlayer != null && combatPlayer.PlayerDeck != null)
             {
+                int discardedCount = 0;
                 foreach (Card card in cardsToDiscard)
                 {
                     if (card != null && card.Data != null)
                     {
                         // Add card data to discard pile in the deck
                         combatPlayer.PlayerDeck.DiscardCard(card.Data);
+                        discardedCount++;
                     }
                 }
+                Debug.Log($"[DIAGNOSTIC] PlayerHand added {discardedCount} cards to discard pile in deck");
             }
             else
             {
@@ -315,28 +328,41 @@ namespace Combat
             }
 
             // Now handle each card object
+            int animatedCount = 0;
+            int despawnedCount = 0;
+            int destroyedCount = 0;
+            
             foreach (Card card in cardsToDiscard)
             {
                 if (card != null)
                 {
+                    Debug.Log($"[DIAGNOSTIC] PlayerHand discarding card: {card.CardName}, IsSpawned: {card.IsSpawned}");
+                    
                     // Tell clients to animate
                     RpcAnimateDiscard(card.NetworkObject);
+                    animatedCount++;
                     
                     // Despawn the card object
                     if (card.IsSpawned)
                     {
                         InstanceFinder.ServerManager.Despawn(card.gameObject, DespawnType.Destroy);
+                        despawnedCount++;
                     }
                     else 
                     {
                         Debug.LogWarning($"FALLBACK: Card {card.CardName} was not spawned, destroying directly");
                         Destroy(card.gameObject);
+                        destroyedCount++;
                     }
                 }
             }
             
+            Debug.Log($"[DIAGNOSTIC] PlayerHand discarded cards: {animatedCount} animations sent, {despawnedCount} despawned, {destroyedCount} destroyed directly");
+            
             // Call base implementation to clear list and send RPC
             base.ServerDiscardHand();
+            
+            Debug.Log($"[DIAGNOSTIC] PlayerHand.ServerDiscardHand completed for {this.name}");
         }
         #endregion
 
@@ -354,13 +380,38 @@ namespace Combat
             Card card = cardNetworkObject.GetComponent<Card>();
             if (card != null)
             {
+                // Store a local reference to the game object to prevent null reference issues
+                GameObject cardGameObject = card.gameObject;
+                Transform cardTransform = card.transform;
+                
+                // Ensure the card has a unique identifier for the animation
+                string tweenId = $"Discard_{cardNetworkObject.ObjectId}";
+                
+                // Kill any existing tweens with this ID
+                DOTween.Kill(tweenId);
+
                 // Animate the card flying off screen
                 Vector3 randomDirection = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), 0).normalized;
                 float duration = 0.5f;
-                card.transform.DOMove(card.transform.position + (randomDirection * 1000), duration)
-                    .SetEase(Ease.InBack);
-                 
-                card.transform.DOScale(Vector3.zero, duration);
+                
+                Sequence sequence = DOTween.Sequence();
+                sequence.stringId = tweenId;
+                
+                // Add safety check for destroyed objects
+                sequence.OnUpdate(() => {
+                    if (cardGameObject == null || !cardGameObject.activeInHierarchy)
+                    {
+                        sequence.Kill(false);
+                    }
+                });
+                
+                // Only add the move animation if the transform is valid
+                if (cardTransform != null)
+                {
+                    sequence.Append(cardTransform.DOMove(cardTransform.position + (randomDirection * 1000), duration)
+                        .SetEase(Ease.InBack));
+                    sequence.Join(cardTransform.DOScale(Vector3.zero, duration));
+                }
                  
                 // Remove from local list immediately if owner (visual only)
                 if (IsOwner && cardsInHand.Contains(card))
@@ -368,14 +419,22 @@ namespace Combat
                     cardsInHand.Remove(card);
                 }
 
-                // Hide it while waiting for despawn
-                card.gameObject.SetActive(false);
+                sequence.OnComplete(() => {
+                    // Hide the card after animation completes
+                    if (cardGameObject != null && cardGameObject.activeInHierarchy)
+                    {
+                        cardGameObject.SetActive(false);
+                    }
+                });
             }
             else
             {
                 Debug.LogWarning("FALLBACK: RpcAnimateDiscard could not find Card component");
                 // Potentially just disable the object if Card component is missing
-                cardNetworkObject.gameObject.SetActive(false);
+                if (cardNetworkObject != null && cardNetworkObject.gameObject != null)
+                {
+                    cardNetworkObject.gameObject.SetActive(false);
+                }
             }
         }
         #endregion

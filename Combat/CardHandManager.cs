@@ -6,6 +6,7 @@ using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using DG.Tweening;
 using FishNet;
+using System.Linq;
 
 namespace Combat
 {
@@ -202,15 +203,77 @@ namespace Combat
         [Server]
         public virtual void ServerDiscardHand()
         {
-            // Create a temporary list to avoid issues while iterating and removing
-            List<Card> cardsToDiscard = new List<Card>(cardsInHand);
-            cardsInHand.Clear(); // Clear server's list
+            Debug.Log($"[DIAGNOSTIC] ServerDiscardHand called for {this.name}. Total cards in hand: {cardsInHand.Count}");
             
-            // Derived classes should call this base method
-            // and then handle deck discard logic specific to their implementation
+            // If hand is already empty, just notify clients and return
+            if (cardsInHand.Count == 0)
+            {
+                Debug.Log($"[DIAGNOSTIC] Hand already empty for {this.name}, just notifying clients");
+                RpcDiscardHand();
+                return;
+            }
+            
+            // Log all card names in the hand for debugging
+            if (cardsInHand.Count > 0)
+            {
+                string cardNames = string.Join(", ", cardsInHand.Select(c => c?.CardName ?? "NULL_CARD"));
+                Debug.Log($"[DIAGNOSTIC] Cards in hand before discard: {cardNames}");
+            }
+            
+            // Create a temporary list to avoid issues while iterating and removing
+            List<Card> cardsToDiscard = new List<Card>();
+            
+            // Copy only non-null cards
+            foreach (Card card in cardsInHand)
+            {
+                if (card != null)
+                {
+                    cardsToDiscard.Add(card);
+                }
+            }
+            
+            Debug.Log($"[DIAGNOSTIC] Created discard list with {cardsToDiscard.Count} cards, clearing original hand list");
+            
+            // Clear server's list AFTER creating the copy
+            cardsInHand.Clear();
+            
+            // Despawn all card NetworkObjects properly
+            foreach (Card card in cardsToDiscard)
+            {
+                if (card != null && card.NetworkObject != null && card.NetworkObject.IsSpawned)
+                {
+                    try
+                    {
+                        // Schedule despawn after a brief delay to allow the animation to complete
+                        // But ONLY if the gameObject is active, otherwise despawn immediately
+                        if (this.gameObject.activeInHierarchy)
+                        {
+                            StartCoroutine(DespawnCardWithDelay(card.NetworkObject, 0.2f));
+                        }
+                        else
+                        {
+                            // Despawn immediately if game object is inactive
+                            card.NetworkObject.Despawn();
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogError($"[DIAGNOSTIC] Error scheduling card despawn: {ex.Message}");
+                        // Try a direct despawn as fallback
+                        try 
+                        {
+                            if (card.NetworkObject.IsSpawned)
+                                card.NetworkObject.Despawn();
+                        }
+                        catch {}
+                    }
+                }
+            }
             
             // Tell clients to discard their hands via RPC
             RpcDiscardHand();
+            
+            Debug.Log($"[DIAGNOSTIC] ServerDiscardHand completed for {this.name}");
         }
         
         /// <summary>
@@ -219,17 +282,92 @@ namespace Combat
         [ObserversRpc]
         protected virtual void RpcDiscardHand()
         {
+            Debug.Log($"[DIAGNOSTIC] RpcDiscardHand received on {(IsServer ? "Server" : "Client")} for {this.name}. Current hand has {cardsInHand.Count} cards");
+            
+            if (cardsInHand.Count > 0)
+            {
+                string cardNames = string.Join(", ", cardsInHand.Select(c => c?.CardName ?? "NULL_CARD"));
+                Debug.Log($"[DIAGNOSTIC] Client cards to discard: {cardNames}");
+            }
+            
             // Destroy all card GameObjects
-            foreach (Card card in cardsInHand)
+            int destroyedCount = 0;
+            
+            // Make a copy to avoid modification issues during iteration
+            List<Card> cardsCopy = new List<Card>(cardsInHand);
+            
+            foreach (Card card in cardsCopy)
             {
                 if (card != null && card.gameObject != null)
                 {
-                    Destroy(card.gameObject);
+                    Debug.Log($"[DIAGNOSTIC] RpcDiscardHand destroying card: {card.CardName}");
+                    
+                    // Create a quick fade out animation
+                    try
+                    {
+                        // Only animate if we have the components
+                        CanvasGroup canvasGroup = card.GetComponent<CanvasGroup>();
+                        if (canvasGroup != null)
+                        {
+                            // Create a unique tween ID
+                            string tweenId = $"DiscardCard_{card.GetInstanceID()}";
+                            
+                            // Kill any existing tweens
+                            DOTween.Kill(tweenId);
+                            
+                            // Create a simple fade out + scale down animation
+                            Sequence sequence = DOTween.Sequence();
+                            sequence.stringId = tweenId;
+                            
+                            sequence.Append(canvasGroup.DOFade(0f, 0.3f));
+                            sequence.Join(card.transform.DOScale(Vector3.zero, 0.3f));
+                            
+                            // Set safety check to prevent null reference errors
+                            sequence.OnUpdate(() => {
+                                if (card == null || card.gameObject == null || !card.gameObject.activeInHierarchy)
+                                {
+                                    sequence.Kill(false);
+                                }
+                            });
+                            
+                            // Destroy the card after animation completes
+                            sequence.OnComplete(() => {
+                                if (card != null && card.gameObject != null)
+                                {
+                                    Destroy(card.gameObject);
+                                }
+                            });
+                        }
+                        else
+                        {
+                            // No CanvasGroup, just destroy immediately
+                            Destroy(card.gameObject);
+                        }
+                    }
+                    catch (System.Exception e)
+                    {
+                        Debug.LogError($"Error while animating card discard: {e.Message}");
+                        // Fallback to immediate destruction
+                        Destroy(card.gameObject);
+                    }
+                    
+                    destroyedCount++;
+                }
+                else if (card == null)
+                {
+                    Debug.LogWarning("[DIAGNOSTIC] RpcDiscardHand found null card in hand");
+                }
+                else if (card.gameObject == null)
+                {
+                    Debug.LogWarning($"[DIAGNOSTIC] RpcDiscardHand found card {card.CardName} with null gameObject");
                 }
             }
             
+            Debug.Log($"[DIAGNOSTIC] RpcDiscardHand destroyed {destroyedCount} cards");
+            
             // Clear the list
             cardsInHand.Clear();
+            Debug.Log("[DIAGNOSTIC] RpcDiscardHand cleared hand list");
         }
         
         /// <summary>
@@ -384,97 +522,87 @@ namespace Combat
             // Debug logging
             Debug.Log($"[RpcAnimateAndDestroyCard] Animating card with NetworkObject ID: {targetNetworkId}");
             
-            // We want to be absolutely certain we're only affecting the specific card instance
-            foreach (Card card in GetComponentsInChildren<Card>(true))
-            {
-                if (card != null && card.NetworkObject != null && card.NetworkObject.ObjectId == targetNetworkId)
-                {
-                    targetCard = card;
-                    Debug.Log($"[RpcAnimateAndDestroyCard] Found exact card match: {card.CardName} with ID {targetNetworkId}");
-                    break;
-                }
-            }
+            // First try to get the card directly from the NetworkObject
+            targetCard = cardNetworkObject.GetComponent<Card>();
             
-            // If we couldn't find by NetworkObject ID, fall back to the cardNetworkObject reference directly
+            // If that failed, we'll search through children to find by ID
             if (targetCard == null)
             {
-                targetCard = cardNetworkObject.GetComponent<Card>();
-                if (targetCard != null)
+                // We want to be absolutely certain we're only affecting the specific card instance
+                foreach (Card card in GetComponentsInChildren<Card>(true))
                 {
-                    Debug.Log($"[RpcAnimateAndDestroyCard] Using direct component reference for {targetCard.CardName}");
+                    if (card != null && card.NetworkObject != null && card.NetworkObject.ObjectId == targetNetworkId)
+                    {
+                        targetCard = card;
+                        Debug.Log($"[RpcAnimateAndDestroyCard] Found exact card match: {card.CardName} with ID {targetNetworkId}");
+                        break;
+                    }
                 }
             }
             
             if (targetCard == null)
             {
-                Debug.LogWarning($"[RpcAnimateAndDestroyCard] Could not find Card component on NetworkObject {cardNetworkObject.ObjectId}. Disabling object.");
+                Debug.LogWarning($"[RpcAnimateAndDestroyCard] Could not find Card component on NetworkObject {cardNetworkObject.ObjectId}. Disabling only this specific object.");
                 // Fallback: just disable the object if Card component is missing
                 if (cardNetworkObject.gameObject != null) 
                     cardNetworkObject.gameObject.SetActive(false);
                 return;
             }
             
+            // Store a local reference to the game object to avoid null references during animation
+            GameObject cardGameObject = targetCard.gameObject;
+            string cardName = targetCard.CardName;
+            
+            Debug.Log($"[RpcAnimateAndDestroyCard] Found card {cardName} with ID {targetNetworkId}, starting animation");
+            
             // Ensure card is not interactable during animation
             CanvasGroup cg = targetCard.GetComponent<CanvasGroup>();
             if (cg != null) cg.blocksRaycasts = false;
 
-            // Store references to the transform and canvasGroup
-            Transform cardTransform = targetCard.transform;
-            
             // Simple fade-out and scale-down animation
             float duration = 0.4f;
             Sequence sequence = DOTween.Sequence();
             
-            // Keep track of whether the objects are still valid in callbacks
-            bool cardDestroyed = false;
+            // Set an ID for this sequence that's unique to the instance - IMPORTANT
+            sequence.stringId = $"Card_{targetNetworkId}_FadeOut";
             
-            // OnUpdate callback to check if objects are still valid
+            // Safety check - kill any existing sequences with the same ID
+            DOTween.Kill(sequence.stringId);
+            
+            // Add null checks during animation to prevent errors
             sequence.OnUpdate(() => {
-                if (targetCard == null || cardTransform == null || !targetCard.gameObject.activeInHierarchy)
+                if (cardGameObject == null || !cardGameObject.activeInHierarchy)
                 {
-                    cardDestroyed = true;
-                    if (sequence != null && sequence.IsActive() && !sequence.IsComplete())
+                    if (sequence.IsActive() && !sequence.IsComplete())
                     {
-                        sequence.Kill(false); // Kill without calling callbacks
+                        sequence.Kill(false);
                     }
                 }
             });
             
-            if (cardTransform != null)
+            // Transform animation
+            if (cardGameObject != null && cardGameObject.transform != null)
             {
-                sequence.Append(cardTransform.DOScale(Vector3.zero, duration)
-                    .SetEase(Ease.InBack)
-                    .OnUpdate(() => {
-                        if (cardDestroyed || cardTransform == null)
-                        {
-                            sequence.Kill(false);
-                        }
-                    }));
-            }
-            
-            if (cg != null)
-            {
-                sequence.Join(cg.DOFade(0, duration)
-                    .OnUpdate(() => {
-                        if (cardDestroyed || cg == null)
-                        {
-                            sequence.Kill(false);
-                        }
-                    }));
+                sequence.Append(cardGameObject.transform.DOScale(Vector3.zero, duration)
+                    .SetEase(Ease.InBack));
+                    
+                // Add fade if canvas group exists
+                if (cg != null)
+                {
+                    sequence.Join(cg.DOFade(0, duration));
+                }
             }
             
             sequence.OnComplete(() =>
             {
                 // Check if object hasn't been destroyed already
-                if (!cardDestroyed && targetCard != null && targetCard.gameObject != null)
+                if (cardGameObject != null && cardGameObject.activeInHierarchy)
                 {
-                    // Hide the card visually instead of destroying it
-                    targetCard.gameObject.SetActive(false);
+                    Debug.Log($"[RpcAnimateAndDestroyCard] Animation complete, disabling specific card {cardName} with ID {targetNetworkId}");
+                    // IMPORTANT: Destroy this specific card, don't just disable it
+                    Destroy(cardGameObject);
                 }
             });
-            
-            // Set an ID for this sequence for debugging
-            sequence.stringId = $"Card_{targetNetworkId}_FadeOut";
         }
 
         [ObserversRpc]
@@ -610,13 +738,34 @@ namespace Combat
         // Helper method to despawn card after a delay
         private IEnumerator DespawnCardWithDelay(NetworkObject cardNetworkObject, float delay)
         {
-            // Wait for animation to start
+            // Safety check for null references before starting
+            if (cardNetworkObject == null)
+            {
+                Debug.LogWarning("[DIAGNOSTIC] DespawnCardWithDelay received null NetworkObject");
+                yield break;
+            }
+            
+            // Wait for animation to start - do this outside the try block
             yield return new WaitForSeconds(delay);
             
-            // Check if the card is still spawned before despawning
-            if (cardNetworkObject != null && cardNetworkObject.IsSpawned)
+            try
             {
-                cardNetworkObject.Despawn();
+                // Check if the card is still spawned before despawning
+                if (cardNetworkObject != null && cardNetworkObject.IsSpawned)
+                {
+                    cardNetworkObject.Despawn();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[DIAGNOSTIC] Error in DespawnCardWithDelay: {ex.Message}");
+                // Try a direct despawn as fallback in case of exception
+                try
+                {
+                    if (cardNetworkObject != null && cardNetworkObject.IsSpawned)
+                        cardNetworkObject.Despawn();
+                }
+                catch {}
             }
         }
 

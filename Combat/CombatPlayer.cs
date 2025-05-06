@@ -489,28 +489,79 @@ namespace Combat
         [Server]
         public CardData DrawCardFromDeck()
         {
-            if (playerDeck == null || playerDeck.DrawPileCount == 0)
+            if (playerDeck == null)
             {
-                Debug.LogWarning($"FALLBACK: Player {_networkPlayer.Value.GetSteamName()} tried to draw a card but deck is empty or null");
+                Debug.LogError($"[DIAGNOSTIC] Player {_networkPlayer.Value.GetSteamName()} tried to draw a card but deck is null");
                 return null;
             }
 
+            // First check if we need to reshuffle the discard pile
+            if (playerDeck.DrawPileCount == 0 && playerDeck.NeedsReshuffle())
+            {
+                Debug.Log($"[DIAGNOSTIC] Player {_networkPlayer.Value.GetSteamName()} needs to reshuffle their discard pile");
+                playerDeck.Reshuffle();
+            }
+
+            // Draw a card now that we've potentially reshuffled
             CardData drawnCard = playerDeck.DrawCard();
+            
             if (drawnCard == null)
             {
-                Debug.LogWarning($"FALLBACK: Player {_networkPlayer.Value.GetSteamName()} drew a null card");
-                return null;
+                // If still null after potential reshuffle, try one more time with explicit reshuffle
+                if (playerDeck.NeedsReshuffle())
+                {
+                    Debug.Log($"[DIAGNOSTIC] Player {_networkPlayer.Value.GetSteamName()} attempting explicit reshuffle after drawing null card");
+                    playerDeck.Reshuffle();
+                    drawnCard = playerDeck.DrawCard(); // Try drawing again
+                }
+                
+                if (drawnCard == null) // If still null, log and return null
+                {
+                    Debug.LogWarning($"[DIAGNOSTIC] Player {_networkPlayer.Value.GetSteamName()} unable to draw card - deck empty after reshuffle attempts");
+                    return null;
+                }
             }
 
+            Debug.Log($"[DIAGNOSTIC] Player {_networkPlayer.Value.GetSteamName()} drew card: {drawnCard.cardName}");
             return drawnCard;
         }
         
         [Server]
         public void DiscardHand()
         {
+            Debug.Log($"[DIAGNOSTIC] DiscardHand called for player {_networkPlayer.Value.GetSteamName()}");
+            
             if (playerHand != null)
             {
+                // Convert the cards in hand to CardData before discarding
+                if (playerHand.HandSize > 0 && playerDeck != null)
+                {
+                    List<Card> cardsInHand = playerHand.GetCardsInHand();
+                    List<CardData> cardDataList = new List<CardData>();
+                    
+                    foreach (Card card in cardsInHand)
+                    {
+                        if (card != null && card.Data != null)
+                        {
+                            cardDataList.Add(card.Data);
+                            Debug.Log($"[DIAGNOSTIC] Adding card {card.CardName} to discard pile");
+                        }
+                    }
+                    
+                    // Discard the cards to the deck's discard pile
+                    if (cardDataList.Count > 0)
+                    {
+                        playerDeck.DiscardHand(cardDataList);
+                        Debug.Log($"[DIAGNOSTIC] Discarded {cardDataList.Count} cards to deck discard pile");
+                    }
+                }
+                
+                // Call the hand's discard method to handle visual removal
                 playerHand.ServerDiscardHand();
+            }
+            else
+            {
+                Debug.LogWarning($"[DIAGNOSTIC] DiscardHand - playerHand is null for {_networkPlayer.Value.GetSteamName()}");
             }
         }
         #endregion

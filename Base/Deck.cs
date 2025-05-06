@@ -82,18 +82,30 @@ namespace Combat
             // If draw pile is empty, shuffle discard pile into draw pile
             if (drawPile.Count == 0)
             {
+                Debug.Log($"[DIAGNOSTIC] DrawCard: Draw pile is empty for deck {deckName}. Discard pile has {discardPile.Count} cards.");
+                
                 if (discardPile.Count == 0)
                 {
+                    Debug.LogWarning($"[DIAGNOSTIC] No cards left in either draw or discard pile for deck {deckName}!");
                     return null; // No cards left
                 }
                 
                 // Use the Reshuffle method instead of duplicating logic
                 Reshuffle();
+                
+                // Double-check that reshuffling actually worked
+                if (drawPile.Count == 0)
+                {
+                    Debug.LogError($"[DIAGNOSTIC] Reshuffle failed! Draw pile is still empty for deck {deckName}");
+                    return null;
+                }
             }
             
             // Draw the top card
             CardData drawnCard = drawPile[0];
             drawPile.RemoveAt(0);
+            
+            Debug.Log($"[DIAGNOSTIC] Drew card {drawnCard.cardName} from deck {deckName}. Remaining: {drawPile.Count} in draw pile, {discardPile.Count} in discard.");
             
             return drawnCard;
         }
@@ -101,28 +113,58 @@ namespace Combat
         // Discard a card
         public void DiscardCard(CardData card)
         {
+            if (card == null)
+            {
+                Debug.LogWarning($"[DIAGNOSTIC] Attempted to discard null card to deck {deckName}");
+                return;
+            }
+            
             discardPile.Add(card);
+            Debug.Log($"[DIAGNOSTIC] Discarded card {card.cardName} to {deckName}. Discard pile now has {discardPile.Count} cards.");
         }
 
         // Discard all cards in hand
         public void DiscardHand(List<CardData> hand)
         {
-            discardPile.AddRange(hand);
+            if (hand == null || hand.Count == 0)
+            {
+                Debug.Log($"[DIAGNOSTIC] No cards to discard from hand to deck {deckName}");
+                return;
+            }
+            
+            int validCards = 0;
+            foreach (CardData card in hand)
+            {
+                if (card != null)
+                {
+                    discardPile.Add(card);
+                    validCards++;
+                }
+            }
+            
+            Debug.Log($"[DIAGNOSTIC] Discarded {validCards} cards from hand to deck {deckName}. Discard pile now has {discardPile.Count} cards.");
             hand.Clear();
         }
 
         // Check if discard pile should be reshuffled into draw pile
         public bool NeedsReshuffle()
         {
-            return drawPile.Count == 0 && discardPile.Count > 0;
+            bool needs = drawPile.Count == 0 && discardPile.Count > 0;
+            if (needs)
+            {
+                Debug.Log($"[DIAGNOSTIC] Deck {deckName} needs reshuffling. Draw pile: {drawPile.Count}, Discard pile: {discardPile.Count}");
+            }
+            return needs;
         }
 
         // Reshuffle the discard pile into the draw pile
         public void Reshuffle()
         {
+            Debug.Log($"[DIAGNOSTIC] Attempting to reshuffle deck {deckName}. Draw pile: {drawPile.Count}, Discard pile: {discardPile.Count}");
+            
             if (discardPile.Count == 0)
             {
-                Debug.LogWarning($"Cannot reshuffle: Discard pile is empty for deck {deckName}");
+                Debug.LogWarning($"[DIAGNOSTIC] Cannot reshuffle: Discard pile is empty for deck {deckName}");
                 return;
             }
 
@@ -133,7 +175,7 @@ namespace Combat
             // Shuffle the draw pile
             Shuffle();
             
-            Debug.Log($"Reshuffled {drawPile.Count} cards from discard pile into draw pile for deck {deckName}");
+            Debug.Log($"[DIAGNOSTIC] Reshuffled {drawPile.Count} cards from discard pile into draw pile for deck {deckName}");
         }
     }
 } 

@@ -6,6 +6,7 @@ using FishNet.Connection;
 using System.Collections.Generic;
 using DG.Tweening;
 using FishNet.Transporting; // Needed for ObserversRpc
+using System.Linq;
 
 namespace Combat
 {
@@ -802,8 +803,15 @@ namespace Combat
         {
             if (petDeck == null)
             {
-                Debug.LogError("FALLBACK: CombatPet cannot draw card: petDeck is null");
+                Debug.LogError("[DIAGNOSTIC] CombatPet cannot draw card: petDeck is null");
                 return null;
+            }
+
+            // First check if we need to reshuffle the discard pile
+            if (petDeck.DrawPileCount == 0 && petDeck.NeedsReshuffle())
+            {
+                Debug.Log($"[DIAGNOSTIC] CombatPet {this.name} needs to reshuffle their discard pile. Discard pile has {petDeck.DiscardPileCount} cards.");
+                petDeck.Reshuffle();
             }
 
             // Draw from the actual RuntimeDeck
@@ -812,21 +820,22 @@ namespace Combat
             // Handle results
             if (drawnCard == null)
             {
-                // Handle empty deck by reshuffling discard pile
+                // Try one more explicit reshuffle if needed
                 if (petDeck.NeedsReshuffle())
                 {
+                    Debug.Log($"[DIAGNOSTIC] CombatPet {this.name} attempting explicit reshuffle after drawing null card");
                     petDeck.Reshuffle();
-                    
-                    // Try drawing again after reshuffle
-                    drawnCard = petDeck.DrawCard();
-                    
-                    if (drawnCard == null)
-                    {
-                        Debug.LogError("FALLBACK: CombatPet no cards available, deck empty and cannot reshuffle");
-                    }
+                    drawnCard = petDeck.DrawCard(); // Try drawing again
+                }
+                
+                if (drawnCard == null) // If still null after reshuffling, log error
+                {
+                    Debug.LogError("[DIAGNOSTIC] CombatPet no cards available, deck empty and cannot reshuffle");
+                    return null;
                 }
             }
 
+            Debug.Log($"[DIAGNOSTIC] CombatPet {this.name} drew card: {drawnCard.cardName}");
             return drawnCard;
         }
         
@@ -884,6 +893,12 @@ namespace Combat
         [Server]
         public void StartTurn()
         {
+            Debug.Log($"[DIAGNOSTIC] CombatPet.StartTurn called for {this.name} (NetworkObject ID: {NetworkObject.ObjectId})");
+            _isDefending.Value = true; // Mark as the currently active pet
+            
+            // Note: We don't draw cards at the start of pet's turn anymore
+            // Cards should be drawn at the start of combat round (player turn)
+            
             // Take AI turn after a short delay
             StartCoroutine(TakeTurnAfterDelay(1.0f));
         }
@@ -891,8 +906,10 @@ namespace Combat
         // Coroutine to introduce a delay before AI actions
         private System.Collections.IEnumerator TakeTurnAfterDelay(float delay)
         {
+            Debug.Log($"[DIAGNOSTIC] CombatPet.TakeTurnAfterDelay started for {this.name}, waiting {delay} seconds");
             yield return new WaitForSeconds(delay);
             
+            Debug.Log($"[DIAGNOSTIC] CombatPet.TakeTurnAfterDelay delay completed, calling TakeTurn for {this.name}");
             // Take the AI turn
             TakeTurn();
         }
@@ -901,11 +918,20 @@ namespace Combat
         [Server]
         private void TakeTurn()
         {
+            Debug.Log($"[DIAGNOSTIC] CombatPet.TakeTurn called for {this.name}");
+            
             // Simple AI: Play all cards in hand
             if (petHand != null)
             {
                 // Get cards in the pet's hand
                 List<Card> cardsInHand = petHand.GetCardsInHand();
+                Debug.Log($"[DIAGNOSTIC] CombatPet has {cardsInHand.Count} cards in hand");
+                
+                if (cardsInHand.Count > 0)
+                {
+                    string cardNames = string.Join(", ", cardsInHand.Select(c => c?.CardName ?? "NULL_CARD"));
+                    Debug.Log($"[DIAGNOSTIC] CombatPet cards in hand: {cardNames}");
+                }
                 
                 // Play each card with a delay
                 StartCoroutine(PlayCardsSequentially(cardsInHand));
@@ -918,108 +944,194 @@ namespace Combat
             }
         }
 
-        // Play cards one after another with delay
-        private System.Collections.IEnumerator PlayCardsSequentially(List<Card> cards)
-        {
-            if (cards == null || cards.Count == 0)
-            {
-                EndTurn();
-                yield break;
-            }
-            
-            // Find the target ONCE (opponent player's pet, or just any other pet)
-            CombatPet targetPet = FindOpponentPet(); 
-            CombatPlayer targetPlayer = FindOpponentPlayer(); // Find the opponent player
-            ICombatant target = null;
-            if(targetPet != null) 
-                target = targetPet; // Prioritize targeting the pet
-            else if (targetPlayer != null)
-                target = targetPlayer; // Fallback to player if pet not found
-            
-            if (target == null)
-            {
-                Debug.LogError("Pet AI could not find any valid target!");
-                EndTurn();
-                yield break;
-            }
-
-            foreach (Card card in new List<Card>(cards)) // Create a copy of the list to avoid modification issues
-            {
-                if (card == null || card.Data == null) 
-                {
-                    Debug.LogWarning("Pet AI found null card or card data in hand, skipping.");
-                    continue; // Skip this card
-                }
-
-                // Use the CardEffectProcessor to apply the card's effects
-                // The processor will handle targeting logic (Self, Enemy, Ally) based on the card's effects
-                // For now, the default enemy target is passed
-                CardEffectProcessor.ApplyCardEffects(card.Data, this, target); 
-                
-                // Remove card from hand (server-side)
-                petHand.RemoveCard(card);
-                
-                // Wait before playing next card
-                yield return new WaitForSeconds(1.0f);
-            }
-            
-            // End turn after all cards played
-            EndTurn();
-        }
-
         // Find the opponent's pet (keep existing logic)
         private CombatPet FindOpponentPet()
         {
-            CombatPet[] pets = FindObjectsByType<CombatPet>(FindObjectsSortMode.None);
-            foreach (CombatPet pet in pets)
-            {
-                if (pet != this)
-                {
-                    return pet;
-                }
-            }
+            Debug.Log($"[DIAGNOSTIC] CombatPet.FindOpponentPet called for {this.name}");
+            // Actually, we don't need to target other pets - we only target players
+            // This is kept only for backward compatibility but returns null
+            Debug.Log($"[DIAGNOSTIC] As per design, pets only target players, not other pets");
             return null;
         }
 
         // Add a helper to find the opponent player
         private CombatPlayer FindOpponentPlayer()
         {
+            Debug.Log($"[DIAGNOSTIC] CombatPet.FindOpponentPlayer called for {this.name}");
             CombatPlayer[] players = FindObjectsByType<CombatPlayer>(FindObjectsSortMode.None);
+            Debug.Log($"[DIAGNOSTIC] Found {players.Length} total players in scene");
+            
+            // Try to find through owned relationship first
+            Debug.Log($"[DIAGNOSTIC] Trying to find opponent via owner relationship");
             foreach(CombatPlayer player in players)
             {
                 // Check if this player owns this pet
                 if(player.NetworkPlayer != null && player.NetworkPlayer.CombatPet == this)
                 {
+                    Debug.Log($"[DIAGNOSTIC] Found owner player: {player.name}");
                     // If so, find *their* opponent
                     if(player.NetworkPlayer.OpponentNetworkPlayer != null)
                     {
+                        Debug.Log($"[DIAGNOSTIC] Found opponent player: {player.NetworkPlayer.OpponentNetworkPlayer.name}");
                         return player.NetworkPlayer.OpponentNetworkPlayer.CombatPlayer;
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[DIAGNOSTIC] Found owner player {player.name} but they have no OpponentNetworkPlayer");
                     }
                 }
             }
+            
             // Fallback: find any player that doesn't own this pet
+            Debug.Log($"[DIAGNOSTIC] Falling back to finding any player that doesn't own this pet");
             foreach(CombatPlayer player in players)
             {
                 if(player.NetworkPlayer != null && player.NetworkPlayer.CombatPet != this)
                 {
+                    Debug.Log($"[DIAGNOSTIC] Found fallback opponent player: {player.name}");
                     return player;
                 }
             }
+            Debug.LogWarning($"[DIAGNOSTIC] Could not find any opponent player for {this.name}");
             return null;
+        }
+
+        // Play cards one after another with delay
+        private System.Collections.IEnumerator PlayCardsSequentially(List<Card> cards)
+        {
+            Debug.Log($"[DIAGNOSTIC] CombatPet.PlayCardsSequentially called for {this.name} with {cards?.Count ?? 0} cards");
+            
+            if (cards == null || cards.Count == 0)
+            {
+                Debug.Log($"[DIAGNOSTIC] CombatPet has no cards to play, ending turn immediately");
+                EndTurn();
+                yield break;
+            }
+            
+            // Make a COPY of the cards list to avoid modification issues during iteration
+            List<Card> cardsCopy = new List<Card>();
+            foreach (Card card in cards)
+            {
+                if (card != null && card.Data != null && card.gameObject.activeInHierarchy) 
+                {
+                    cardsCopy.Add(card);
+                }
+            }
+            
+            Debug.Log($"[DIAGNOSTIC] CombatPet has {cardsCopy.Count} valid cards to play (after filtering nulls)");
+            
+            if (cardsCopy.Count == 0)
+            {
+                Debug.Log($"[DIAGNOSTIC] CombatPet has no valid cards to play after filtering, ending turn immediately");
+                EndTurn();
+                yield break;
+            }
+            
+            // Find ONLY player targets - pets should always target players in combat
+            CombatPlayer targetPlayer = FindOpponentPlayer(); 
+            
+            // We ONLY use player targets, never pet targets
+            ICombatant target = targetPlayer;
+            
+            if (target == null)
+            {
+                Debug.LogError("[DIAGNOSTIC] Pet AI could not find a valid player target! Ending turn.");
+                EndTurn();
+                yield break;
+            }
+            
+            Debug.Log($"[DIAGNOSTIC] CombatPet targeting player: {targetPlayer.name}");
+
+            int cardsPlayed = 0;
+            // Use the copied list to avoid modification issues
+            for (int i = 0; i < cardsCopy.Count; i++)
+            {
+                Card card = cardsCopy[i];
+                
+                // Double-check the card is still valid (may have been destroyed by another operation)
+                if (card == null || card.Data == null || !card.gameObject.activeInHierarchy) 
+                {
+                    Debug.LogWarning($"[DIAGNOSTIC] Pet AI skipping card at index {i} - card is null, inactive, or has null data");
+                    continue; // Skip this card
+                }
+
+                string cardName = card.CardName;
+                Debug.Log($"[DIAGNOSTIC] CombatPet playing card {cardName} (card {cardsPlayed+1}/{cardsCopy.Count})");
+                
+                try
+                {
+                    // Use the CardEffectProcessor to apply the card's effects
+                    CardEffectProcessor.ApplyCardEffects(card.Data, this, target); 
+                    
+                    // Get the NetworkObject reference BEFORE removing from hand (to avoid null refs)
+                    NetworkObject cardNetworkObject = card.NetworkObject;
+                    
+                    // Remove card from hand (server-side) - using a safe method that checks for nulls
+                    if (petHand != null)
+                    {
+                        Debug.Log($"[DIAGNOSTIC] CombatPet removing card {cardName} from hand");
+                        petHand.RemoveCard(card);
+                        cardsPlayed++;
+                    }
+                    else
+                    {
+                        Debug.LogError($"[DIAGNOSTIC] PetHand is null when trying to remove card {cardName}");
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"[DIAGNOSTIC] Error playing card {cardName}: {ex.Message}");
+                }
+                
+                Debug.Log($"[DIAGNOSTIC] CombatPet waiting before playing next card");
+                // Wait before playing next card
+                yield return new WaitForSeconds(1.0f);
+            }
+            
+            Debug.Log($"[DIAGNOSTIC] CombatPet played {cardsPlayed} cards, ending turn");
+            // End turn after all cards played
+            EndTurn();
         }
 
         // End the pet's turn
         [Server]
         private void EndTurn()
         {
+            Debug.Log($"[DIAGNOSTIC] CombatPet.EndTurn called for {this.name}");
+            
             // Discard remaining cards
             if (petHand != null)
             {
-                petHand.ServerDiscardHand();
+                Debug.Log($"[DIAGNOSTIC] CombatPet discarding hand at end of turn");
+                
+                // Check if the gameObject is active before calling ServerDiscardHand to prevent coroutine errors
+                if (petHand.gameObject.activeInHierarchy)
+                {
+                    petHand.ServerDiscardHand();
+                }
+                else
+                {
+                    Debug.LogWarning($"[DIAGNOSTIC] CombatPet.EndTurn: PetHand gameObject is inactive, skipping ServerDiscardHand");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[DIAGNOSTIC] CombatPet.EndTurn: petHand is null, cannot discard hand");
             }
             
+            // Mark as no longer the active pet
+            _isDefending.Value = false;
+            
             // Notify combat manager that turn is over
-            CombatManager.Instance.PetEndedTurn(this);
+            if (CombatManager.Instance != null)
+            {
+                Debug.Log($"[DIAGNOSTIC] CombatPet notifying CombatManager that turn is over");
+                CombatManager.Instance.PetEndedTurn(this);
+            }
+            else
+            {
+                Debug.LogError($"[DIAGNOSTIC] CombatManager.Instance is null, cannot notify pet turn ended");
+            }
         }
         #endregion
     }

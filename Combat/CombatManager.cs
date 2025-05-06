@@ -582,6 +582,24 @@ namespace Combat
             // Update card effect processor turn count
             CardEffectProcessor.IncrementTurnCount();
             
+            // Draw cards for opponent pets first (at the start of round)
+            foreach (var combat in activeCombats)
+            {
+                CombatPet opponentPet = combat.Value.OpponentPet;
+                PetHand petHand = combat.Value.PetHand;
+                
+                if (opponentPet != null && !opponentPet.IsDefeated() && petHand != null)
+                {
+                    // Determine how many cards to draw to get to 3 cards
+                    int cardsToDraw = 3 - petHand.HandSize;
+                    if (cardsToDraw > 0)
+                    {
+                        Debug.Log($"[DIAGNOSTIC] Drawing {cardsToDraw} cards for opponent pet {opponentPet.name} at start of player turn");
+                        opponentPet.DrawCards(cardsToDraw);
+                    }
+                }
+            }
+            
             // Start each player's turn
             foreach (CombatPlayer player in activePlayers)
             {
@@ -598,112 +616,215 @@ namespace Combat
         [Server]
         public void StartPetTurn()
         {
+            Debug.Log($"[DIAGNOSTIC] CombatManager.StartPetTurn called. Current turn: {_currentTurn.Value}");
+            
             _isPlayerTurn.Value = false;
             
-            // Start each pet's turn
+            // Refresh the list of active combatants to ensure we have the latest pets
+            FindAllCombatants();
+            
+            // If no pets found via FindObjectsByType, try to get them from activeCombats dictionary
+            if (activePets.Count == 0)
+            {
+                Debug.Log($"[DIAGNOSTIC] No pets found with FindObjectsByType, falling back to activeCombats dictionary with {activeCombats.Count} entries");
+                
+                foreach (var combat in activeCombats)
+                {
+                    CombatPet opponentPet = combat.Value.OpponentPet;
+                    if (opponentPet != null && !opponentPet.IsDefeated())
+                    {
+                        activePets.Add(opponentPet);
+                    }
+                }
+            }
+            
+            // Update the UI to show it's the pet turn
+            RpcUpdateTurnUI(_currentTurn.Value, false);
+            
+            // Start each active pet's turn
+            int activatedPets = 0;
             foreach (CombatPet pet in activePets)
             {
                 if (pet != null && !pet.IsDefeated())
                 {
                     pet.StartTurn();
+                    activatedPets++;
                 }
             }
             
-            // Notify clients of turn change
-            RpcUpdateTurnUI(_currentTurn.Value, false);
+            Debug.Log($"[DIAGNOSTIC] Started turn for {activatedPets} pet(s)");
+            
+            // Edge case: If no pets are active, immediately go back to player turn
+            if (activatedPets == 0)
+            {
+                Debug.Log("[DIAGNOSTIC] No active pets found, immediately starting player turn");
+                StartPlayerTurn();
+            }
         }
         
         [Server]
         public void PlayerEndedTurn(CombatPlayer player)
         {
-            // Check if all players have ended their turn
-            bool allPlayersEnded = true;
-            foreach (CombatPlayer activePlayer in activePlayers)
+            Debug.Log($"[DIAGNOSTIC] CombatManager.PlayerEndedTurn called for player: {player?.name ?? "null"}");
+            
+            if (player == null)
             {
-                if (activePlayer != null && !activePlayer.IsDefeated() && activePlayer.IsMyTurn)
-                {
-                    allPlayersEnded = false;
-                    break;
-                }
+                Debug.LogError("[DIAGNOSTIC] PlayerEndedTurn called with null player");
+                return;
             }
             
-            // If all players have ended their turn, start pet turn
-            if (allPlayersEnded)
+            // Find the combat data for this player
+            NetworkPlayer networkPlayer = player.NetworkPlayer;
+            if (networkPlayer != null && activeCombats.TryGetValue(networkPlayer, out CombatData combatData))
             {
-                StartPetTurn();
+                // Mark this player's turn as completed
+                combatData.TurnCompleted = true;
+                
+                // Get the opponent pet directly from combat data
+                CombatPet opponentPet = combatData.OpponentPet;
+                
+                // If this is a local combat (meaning we have both the player and their opponent pet),
+                // immediately start the pet's turn without waiting for other players
+                if (opponentPet != null && !opponentPet.IsDefeated())
+                {
+                    Debug.Log($"[DIAGNOSTIC] Local combat - immediately starting turn for opponent pet {opponentPet.name}");
+                    
+                    // Start the specific pet's turn that's fighting this player
+                    StartSpecificPetTurn(opponentPet);
+                }
+                else
+                {
+                    Debug.LogWarning($"[DIAGNOSTIC] Could not find opponent pet for player {player.name} or pet is defeated");
+                    // If we can't find the opponent pet or it's defeated, we should move to the next player turn
+                    StartPlayerTurn();
+                }
+            }
+            else
+            {
+                Debug.LogError($"[DIAGNOSTIC] Could not find combat data for player {player.name}");
             }
         }
         
         [Server]
         public void PetEndedTurn(CombatPet pet)
         {
-            // Check if all pets have ended their turn
-            bool allPetsEnded = true;
-            foreach (CombatPet activePet in activePets)
+            Debug.Log($"[DIAGNOSTIC] CombatManager.PetEndedTurn called for pet: {pet?.name ?? "null"}");
+            
+            if (pet == null)
             {
-                if (activePet != null && !activePet.IsDefeated() && activePet.IsDefending)
+                Debug.LogError("[DIAGNOSTIC] PetEndedTurn called with null pet");
+                return;
+            }
+            
+            // Find the player this pet is fighting against
+            CombatPlayer opponentPlayer = null;
+            NetworkPlayer petOwner = null;
+            
+            // First try to find through the pet's reference
+            if (pet.ReferencePet != null && pet.ReferencePet.PlayerOwner != null)
+            {
+                petOwner = pet.ReferencePet.PlayerOwner;
+                
+                // Find the opponent through the pet owner's opponent reference
+                if (petOwner.OpponentNetworkPlayer != null)
                 {
-                    allPetsEnded = false;
-                    break;
+                    opponentPlayer = petOwner.OpponentNetworkPlayer.CombatPlayer;
                 }
             }
             
-            // If all pets have ended their turn, start next player turn
-            if (allPetsEnded)
+            // If we didn't find the opponent through references, search through active combats
+            if (opponentPlayer == null)
             {
-                StartPlayerTurn();
-            }
-        }
-        
-        [Server]
-        public void HandlePetDefeat(CombatPet pet)
-        {
-            // Find the owner of this pet
-            CombatPlayer owner = null;
-            foreach (CombatPlayer player in activePlayers)
-            {
-                if (player.NetworkPlayer.CombatPet == pet)
+                foreach (var kvp in activeCombats)
                 {
-                    owner = player;
-                    break;
-                }
-            }
-            
-            if (owner != null)
-            {
-                // Notify the client that the battle is over
-                NetworkPlayer networkPlayer = owner.NetworkPlayer;
-                if (networkPlayer != null)
-                {
-                    // Find the opponent
-                    NetworkPlayer opponent = networkPlayer.OpponentNetworkPlayer;
-                    if (opponent != null)
+                    if (kvp.Value.OpponentPet == pet)
                     {
-                        // Show combat result - defeat for owner, victory for opponent
-                        RpcShowCombatResult(networkPlayer.Owner, false);
-                        RpcShowCombatResult(opponent.Owner, true);
+                        opponentPlayer = kvp.Value.CombatPlayer;
+                        break;
                     }
                 }
             }
             
-            // Remove the defeated pet from active list
-            activePets.Remove(pet);
-            
-            // Check if combat is over
-            CheckCombatEnd();
+            // This pet's turn is over, start the next player turn for the specific player
+            // fighting this pet without waiting for other pets
+            if (opponentPlayer != null && !opponentPlayer.IsDefeated())
+            {
+                Debug.Log($"[DIAGNOSTIC] Local combat - immediately starting turn for player {opponentPlayer.name}");
+                StartSpecificPlayerTurn(opponentPlayer);
+            }
+            else
+            {
+                Debug.LogWarning($"[DIAGNOSTIC] Could not find opponent player for pet {pet.name} or player is defeated");
+                // If we can't find the opponent player or they're defeated, we can move to the next player phase
+                StartPlayerTurn();
+            }
         }
         
+        // Start a turn for a specific pet (instead of all pets)
         [Server]
-        private void CheckCombatEnd()
+        public void StartSpecificPetTurn(CombatPet pet)
         {
-            // If only one pet remains, the combat is over
-            if (activePets.Count <= 1)
+            Debug.Log($"[DIAGNOSTIC] CombatManager.StartSpecificPetTurn called for pet: {pet?.name ?? "null"}");
+            
+            if (pet == null || pet.IsDefeated())
             {
-                // Combat is over
-                Debug.Log("[CombatManager] Combat has ended");
-                
-                // Additional end of combat logic would go here
+                Debug.LogWarning($"[DIAGNOSTIC] Cannot start turn for null or defeated pet");
+                return;
             }
+            
+            _isPlayerTurn.Value = false;
+            
+            // Set this specific pet as active
+            pet.StartTurn();
+            
+            // Update the UI to show it's the pet's turn
+            RpcUpdateTurnUI(_currentTurn.Value, false);
+        }
+
+        // Start a turn for a specific player (instead of all players)
+        [Server]
+        public void StartSpecificPlayerTurn(CombatPlayer player)
+        {
+            Debug.Log($"[DIAGNOSTIC] CombatManager.StartSpecificPlayerTurn called for player: {player?.name ?? "null"}");
+            
+            if (player == null || player.IsDefeated())
+            {
+                Debug.LogWarning($"[DIAGNOSTIC] Cannot start turn for null or defeated player");
+                return;
+            }
+            
+            // Increment turn counter if this is a new player phase
+            if (!_isPlayerTurn.Value)
+            {
+                _currentTurn.Value++;
+            }
+            
+            _isPlayerTurn.Value = true;
+            
+            // Find and draw cards for the opponent pet of this specific player
+            NetworkPlayer networkPlayer = player.NetworkPlayer;
+            if (networkPlayer != null && activeCombats.TryGetValue(networkPlayer, out CombatData combatData))
+            {
+                CombatPet opponentPet = combatData.OpponentPet;
+                PetHand petHand = combatData.PetHand;
+                
+                if (opponentPet != null && !opponentPet.IsDefeated() && petHand != null)
+                {
+                    // Determine how many cards to draw to get to 3 cards
+                    int cardsToDraw = 3 - petHand.HandSize;
+                    if (cardsToDraw > 0)
+                    {
+                        Debug.Log($"[DIAGNOSTIC] Drawing {cardsToDraw} cards for opponent pet {opponentPet.name} at start of specific player turn");
+                        opponentPet.DrawCards(cardsToDraw);
+                    }
+                }
+            }
+            
+            // Start the specific player's turn
+            player.StartTurn();
+            
+            // Update the UI to show it's the player's turn
+            RpcUpdateTurnUI(_currentTurn.Value, true);
         }
         
         [ObserversRpc]
@@ -898,6 +1019,57 @@ namespace Combat
             Debug.Log($"[CombatManager] Card '{cardName}' played by {source} targeting {target}");
             
             // Additional logic for handling card plays could go here
+        }
+
+        [Server]
+        public void HandlePetDefeat(CombatPet pet)
+        {
+            // Find the owner of this pet
+            CombatPlayer owner = null;
+            foreach (CombatPlayer player in activePlayers)
+            {
+                if (player.NetworkPlayer.CombatPet == pet)
+                {
+                    owner = player;
+                    break;
+                }
+            }
+            
+            if (owner != null)
+            {
+                // Notify the client that the battle is over
+                NetworkPlayer networkPlayer = owner.NetworkPlayer;
+                if (networkPlayer != null)
+                {
+                    // Find the opponent
+                    NetworkPlayer opponent = networkPlayer.OpponentNetworkPlayer;
+                    if (opponent != null)
+                    {
+                        // Show combat result - defeat for owner, victory for opponent
+                        RpcShowCombatResult(networkPlayer.Owner, false);
+                        RpcShowCombatResult(opponent.Owner, true);
+                    }
+                }
+            }
+            
+            // Remove the defeated pet from active list
+            activePets.Remove(pet);
+            
+            // Check if combat is over
+            CheckCombatEnd();
+        }
+
+        [Server]
+        private void CheckCombatEnd()
+        {
+            // If only one pet remains, the combat is over
+            if (activePets.Count <= 1)
+            {
+                // Combat is over
+                Debug.Log("[CombatManager] Combat has ended");
+                
+                // Additional end of combat logic would go here
+            }
         }
     }
     

@@ -311,18 +311,100 @@ namespace Combat
         {
             Debug.Log($"[CLIENT] RpcRemoveCardFromHand: Removing card {cardName} at index {cardIndex} from hand with {cardsInHand.Count} cards");
             
+            // Check if hand is already empty - do nothing in this case
+            if (cardsInHand.Count == 0)
+            {
+                Debug.Log($"[CLIENT] RpcRemoveCardFromHand: Hand is already empty, nothing to remove for {cardName}");
+                return;
+            }
+            
+            Card cardToRemove = null;
+            
+            // First try to get the card by index if valid
             if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
             {
-                // Remove the card and rearrange
-                Destroy(cardsInHand[cardIndex].gameObject);
-                cardsInHand.RemoveAt(cardIndex);
+                cardToRemove = cardsInHand[cardIndex];
+            }
+            else
+            {
+                Debug.LogError($"[CLIENT] RpcRemoveCardFromHand: Invalid index {cardIndex} for hand with {cardsInHand.Count} cards");
+                
+                // If index is invalid, try to find by name as fallback
+                foreach (Card card in cardsInHand)
+                {
+                    if (card != null && card.CardName == cardName)
+                    {
+                        cardToRemove = card;
+                        cardIndex = cardsInHand.IndexOf(card);
+                        Debug.Log($"[CLIENT] Found card '{cardName}' by name instead of index");
+                        break;
+                    }
+                }
+            }
+            
+            if (cardToRemove != null)
+            {
+                // Store a local reference to prevent null reference exceptions
+                GameObject cardObject = cardToRemove.gameObject;
+                
+                // Remove from list FIRST before destroying to prevent inconsistencies
+                if (cardIndex >= 0 && cardIndex < cardsInHand.Count)
+                {
+                    cardsInHand.RemoveAt(cardIndex);
+                }
+                else
+                {
+                    cardsInHand.Remove(cardToRemove);
+                }
+                
+                // Animate and destroy with safety checks
+                if (cardObject != null)
+                {
+                    // Simple fade out animation
+                    CanvasGroup canvasGroup = cardObject.GetComponent<CanvasGroup>();
+                    if (canvasGroup != null)
+                    {
+                        // Create a unique ID for this tween
+                        string tweenId = $"PetCard_{cardName}_{cardObject.GetInstanceID()}";
+                        DOTween.Kill(tweenId); // Kill any existing tween with this ID
+                        
+                        // Create a sequence for the animation
+                        Sequence sequence = DOTween.Sequence();
+                        sequence.stringId = tweenId;
+                        
+                        // Animate fade and scale
+                        sequence.Append(canvasGroup.DOFade(0f, 0.3f));
+                        sequence.Join(cardObject.transform.DOScale(Vector3.zero, 0.3f));
+                        
+                        // Add safety check during animation
+                        sequence.OnUpdate(() => {
+                            if (cardObject == null || !cardObject.activeInHierarchy)
+                            {
+                                sequence.Kill(false);
+                            }
+                        });
+                        
+                        // Destroy the object when animation completes
+                        sequence.OnComplete(() => {
+                            if (cardObject != null)
+                            {
+                                Destroy(cardObject);
+                            }
+                        });
+                    }
+                    else
+                    {
+                        // No canvas group, just destroy immediately
+                        Destroy(cardObject);
+                    }
+                }
                 
                 // Rearrange the remaining cards
                 ArrangeCardsInHand();
             }
             else
             {
-                Debug.LogError($"[CLIENT] RpcRemoveCardFromHand: Invalid index {cardIndex} for hand with {cardsInHand.Count} cards");
+                Debug.LogWarning($"[CLIENT] RpcRemoveCardFromHand: Could not find card '{cardName}' in hand with {cardsInHand.Count} cards");
             }
         }
         
@@ -362,31 +444,67 @@ namespace Combat
         [Server]
         public override void ServerDiscardHand()
         {
-            // Clear synced list
-            syncedCardIDs.Clear();
+            Debug.Log($"[DIAGNOSTIC] PetHand.ServerDiscardHand called for {this.name}. Cards in hand: {cardsInHand.Count}, synced cards: {syncedCardIDs.Count}");
             
-            // Get a copy of the cards to avoid issues while modifying the list
-            List<Card> cardsToDiscard = new List<Card>(cardsInHand);
+            if (cardsInHand.Count == 0)
+            {
+                Debug.Log($"[DIAGNOSTIC] PetHand.ServerDiscardHand - Hand is already empty, nothing to discard");
+                // Ensure synced list is cleared
+                syncedCardIDs.Clear();
+                
+                // Still notify clients to ensure UI is updated properly
+                RpcDiscardHand();
+                return;
+            }
             
-            // Add the cards to the discard pile in the deck before destroying them
+            // Add cards to the pet's discard pile first
             if (combatPet != null && combatPet.PetDeck != null)
             {
-                foreach (Card card in cardsToDiscard)
+                List<CardData> cardsToDiscard = new List<CardData>();
+                foreach (Card card in cardsInHand)
                 {
                     if (card != null && card.Data != null)
                     {
-                        // Add card data to discard pile in the deck
-                        combatPet.PetDeck.DiscardCard(card.Data);
+                        cardsToDiscard.Add(card.Data);
+                        Debug.Log($"[DIAGNOSTIC] Adding card {card.CardName} to pet's discard pile");
                     }
+                }
+
+                if (cardsToDiscard.Count > 0)
+                {
+                    combatPet.PetDeck.DiscardHand(cardsToDiscard);
+                    Debug.Log($"[DIAGNOSTIC] Discarded {cardsToDiscard.Count} cards to pet's discard pile");
                 }
             }
             else
             {
-                Debug.LogError("FALLBACK: Could not discard pet cards to deck - missing combatPet or petDeck");
+                Debug.LogWarning($"[DIAGNOSTIC] Cannot discard to pet deck - CombatPet or deck is null");
             }
             
-            // Call the base implementation to handle common logic
-            base.ServerDiscardHand();
+            // Get a copy of the cards to avoid issues while modifying the list
+            List<Card> handCopy = new List<Card>(cardsInHand);
+            Debug.Log($"[DIAGNOSTIC] PetHand.ServerDiscardHand - Created discard list with {handCopy.Count} cards");
+            
+            // Clear synced card list
+            syncedCardIDs.Clear();
+            
+            // Clear hand list
+            cardsInHand.Clear();
+            Debug.Log($"[DIAGNOSTIC] Cleared cards in hand list and synced IDs list");
+            
+            // Despawn all card NetworkObjects
+            foreach (Card card in handCopy)
+            {
+                if (card != null && card.NetworkObject != null && card.NetworkObject.IsSpawned)
+                {
+                    card.NetworkObject.Despawn();
+                }
+            }
+            
+            // Tell clients to discard their hand
+            RpcDiscardHand();
+            
+            Debug.Log($"[DIAGNOSTIC] PetHand.ServerDiscardHand completed for {this.name}");
         }
         #endregion
     }
