@@ -10,7 +10,7 @@ public class EffectManager
     }
 
     // Server-side method to apply a card's effect
-    public void ApplyEffect(NetworkBehaviour caster, NetworkBehaviour target, Card cardData)
+    public void ApplyEffect(NetworkBehaviour caster, NetworkBehaviour target, CardData cardData)
     {
         if (caster == null || target == null || cardData == null)
         {
@@ -72,7 +72,7 @@ public class EffectManager
             case CardEffectType.ApplyStatus:
                 // Example: targetPlayer.ApplyStatusEffect(StatusType.Poison, cardData.Amount); // Amount could be duration or strength
                 // CurrentStatuses on NetworkPlayer/Pet is a simple string, would need parsing and management.
-                string statusToApply = cardData.name; // Or a specific status property on the card
+                string statusToApply = cardData.CardName; // Or a specific status property on the card
                 if (targetPlayer != null) 
                 {
                     if (string.IsNullOrEmpty(targetPlayer.CurrentStatuses.Value)) targetPlayer.CurrentStatuses.Value = statusToApply;

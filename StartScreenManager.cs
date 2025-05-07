@@ -7,15 +7,15 @@ public class StartScreenManager : MonoBehaviour
     [SerializeField] private GameObject lobbyCanvas;
     [SerializeField] private GameObject startScreenCanvas;
 
-    private SteamAndLobbyHandler steamAndLobbyHandler;
+    private SteamNetworkIntegration steamNetworkIntegration;
 
     void Start()
     {
-        // Try to find the instance. Ensure SteamAndLobbyHandler's Awake runs first or it's already in scene.
-        steamAndLobbyHandler = SteamAndLobbyHandler.Instance;
-        if (steamAndLobbyHandler == null)
+        // Try to find the instance. Ensure SteamNetworkIntegration's Awake runs first or it's already in scene.
+        steamNetworkIntegration = SteamNetworkIntegration.Instance;
+        if (steamNetworkIntegration == null)
         {
-            Debug.LogError("StartScreenManager: SteamAndLobbyHandler instance not found. Steam lobby functionality may not work.");
+            Debug.LogError("StartScreenManager: SteamNetworkIntegration instance not found. Steam lobby functionality may not work.");
         }
 
         if (startButton != null)
@@ -40,14 +40,14 @@ public class StartScreenManager : MonoBehaviour
 
     void OnStartButtonPressed()
     {
-        if (steamAndLobbyHandler != null)
+        if (steamNetworkIntegration != null)
         {
-            Debug.Log("Start button pressed, attempting to initiate Steam connection and lobby...");
-            steamAndLobbyHandler.InitiateSteamConnectionAndLobby();
+            Debug.Log("Start button pressed, attempting to host or join a Steam lobby...");
+            steamNetworkIntegration.RequestLobbiesList();
         }
         else
         {
-            Debug.LogError("Cannot initiate Steam lobby: SteamAndLobbyHandler instance is null.");
+            Debug.LogError("Cannot initiate Steam lobby: SteamNetworkIntegration instance is null.");
         }
 
         if (lobbyCanvas != null)

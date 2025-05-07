@@ -1,5 +1,6 @@
 using UnityEngine;
-using FishNet.Object;
+using UnityEngine.UI; // For Image
+using TMPro; // For TextMeshProUGUI
 
 public enum CardEffectType
 {
@@ -20,7 +21,7 @@ public enum CardEffectType
 // though a non-NetworkBehaviour ScriptableObject or simple class for CardData is often preferred for the definition,
 // and then a separate NetworkObject for the in-game representation if needed.
 
-public class Card : NetworkBehaviour // Or MonoBehaviour if cards are locally controlled based on synced IDs
+public class Card : MonoBehaviour // Changed from NetworkBehaviour
 {
     // If this Card script is on a prefab that is NOT a NetworkObject itself, 
     // but is instantiated by a NetworkObject (like NetworkPlayer/Pet who owns the card instance),
@@ -31,44 +32,40 @@ public class Card : NetworkBehaviour // Or MonoBehaviour if cards are locally co
     // Let's go with MonoBehaviour and assume card instances are managed by their owners (Player/Pet).
     // If card instances need to be transferred or have their own networked state, then it should be a NetworkBehaviour.
 
-    [Header("Card Info")]
-    [SerializeField] private int _cardId; // Unique ID for this card type
-    [SerializeField] private string _cardName = "Default Card";
-    [TextArea]
-    [SerializeField] private string _description = "Default card description.";
-    [SerializeField] private Sprite _cardArtwork;
+    [Header("UI References (Assign in Prefab)")]
+    [SerializeField] private TextMeshProUGUI nameText;
+    [SerializeField] private TextMeshProUGUI descriptionText;
+    [SerializeField] private Image artworkImage;
+    [SerializeField] private TextMeshProUGUI energyCostText;
 
-    [Header("Card Effect")]
-    [SerializeField] private CardEffectType _effectType = CardEffectType.Damage;
-    [SerializeField] private int _amount = 5; // e.g., damage amount, heal amount, cards to draw
-    [SerializeField] private int _energyCost = 1;
+    public CardData cardData { get; private set; }
 
-    // Potentially add target type (self, enemy, all enemies, specific ally etc.)
+    // Public quick accessors (optional, can just use cardData.PropertyName)
+    public int CardId => cardData != null ? cardData.CardId : -1;
+    public string CardName => cardData != null ? cardData.CardName : "No Data";
+    public int EnergyCost => cardData != null ? cardData.EnergyCost : 0;
+    public CardEffectType EffectType => cardData != null ? cardData.EffectType : default(CardEffectType);
+    public int Amount => cardData != null ? cardData.Amount : 0;
 
-    // --- Runtime Properties (if instantiated in scene) ---
-    // These would NOT be serialized on the prefab asset, but set on instances.
-    public NetworkPlayer OwningPlayer { get; set; } // If card is owned by a player
-    public NetworkPet OwningPet { get; set; } // If card is owned by a pet
-
-    // --- Accessors ---
-    public int CardId => _cardId;
-    public string CardName => _cardName;
-    public string Description => _description;
-    public Sprite CardArtwork => _cardArtwork;
-    public CardEffectType EffectType => _effectType;
-    public int Amount => _amount;
-    public int EnergyCost => _energyCost;
-
-    // If this is a prefab that gets instantiated, an Init method might be useful.
-    public void InitializeCard(int id, string cardName, string description, CardEffectType effectType, int amount, int energyCost, Sprite artwork = null)
+    public void Initialize(CardData data)
     {
-        _cardId = id;
-        _cardName = cardName;
-        _description = description;
-        _effectType = effectType;
-        _amount = amount;
-        _energyCost = energyCost;
-        _cardArtwork = artwork;
+        cardData = data;
+        if (cardData == null)
+        {
+            Debug.LogError("Cannot initialize card with null CardData.", this.gameObject);
+            // Optionally set UI to indicate an error or missing data
+            if (nameText != null) nameText.text = "Error";
+            if (descriptionText != null) descriptionText.text = "No Card Data Loaded";
+            if (energyCostText != null) energyCostText.text = "X";
+            return;
+        }
+
+        if (nameText != null) nameText.text = cardData.CardName;
+        if (descriptionText != null) descriptionText.text = cardData.Description;
+        if (artworkImage != null) artworkImage.sprite = cardData.CardArtwork; // Make sure sprite is assigned in CardData SO
+        if (energyCostText != null) energyCostText.text = cardData.EnergyCost.ToString();
+        
+        this.gameObject.name = $"Card_{cardData.CardName}_{cardData.CardId}";
     }
 
     // For in-game spawned cards, you might have a different script or NetworkObject representation.

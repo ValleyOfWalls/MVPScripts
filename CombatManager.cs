@@ -41,7 +41,7 @@ public class CombatManager : NetworkBehaviour
     public HandManager handManager; // Made public
     private EffectManager effectManager; // To be created
     private GameManager gameManager;
-    private SteamAndLobbyHandler steamAndLobbyHandler;
+    private SteamNetworkIntegration steamNetworkIntegration; // Changed
     private CombatCanvasManager combatCanvasManager; // For local UI updates like end turn button
 
     // A simple queue for players whose turn it is, assuming not all fights start/end turns simultaneously.
@@ -61,11 +61,11 @@ public class CombatManager : NetworkBehaviour
         handManager = new HandManager(this); // Assuming HandManager is not a MonoBehaviour
         effectManager = new EffectManager(); // Assuming EffectManager is not a MonoBehaviour
         gameManager = FindFirstObjectByType<GameManager>();
-        steamAndLobbyHandler = SteamAndLobbyHandler.Instance;
+        steamNetworkIntegration = SteamNetworkIntegration.Instance; // Changed
 
         if (fightManager == null) Debug.LogError("FightManager not found by CombatManager.");
         if (gameManager == null) Debug.LogError("GameManager not found by CombatManager.");
-        if (steamAndLobbyHandler == null) Debug.LogError("SteamAndLobbyHandler not found by CombatManager.");
+        if (steamNetworkIntegration == null) Debug.LogError("SteamNetworkIntegration not found by CombatManager."); // Changed
     }
 
     public override void OnStartClient()
@@ -202,7 +202,7 @@ public class CombatManager : NetworkBehaviour
         {
             if (pet.playerHandCardIds.Contains(cardId)) // Card might have been removed by another effect
             {
-                Card cardData = GetCardDataFromId(cardId); // This needs a Card Database
+                CardData cardData = GetCardDataFromId(cardId); // This needs a Card Database
                 if (cardData != null && pet.CurrentEnergy.Value >= cardData.EnergyCost)
                 {
                     Debug.Log($"Pet {pet.PetName.Value} playing card ID: {cardId} (Cost: {cardData.EnergyCost}) on Player {player.PlayerName.Value}");
@@ -322,7 +322,7 @@ public class CombatManager : NetworkBehaviour
             return;
         }
 
-        Card cardData = GetCardDataFromId(cardId);
+        CardData cardData = GetCardDataFromId(cardId);
         if (cardData == null)
         {
             // GetCardDataFromId already logs an error.
@@ -362,17 +362,18 @@ public class CombatManager : NetworkBehaviour
 
     // Helper to get Card data from an ID - YOU NEED TO IMPLEMENT THIS
     // This might involve looking up a ScriptableObject or a prefab based on ID.
-    private Card GetCardDataFromId(int cardId)
+    private CardData GetCardDataFromId(int cardId)
     {
         // Or have a dedicated CardDatabase singleton.
-        // CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
-        // if (combatSetup != null && combatSetup.cardGamePrefab != null) {
-        //     Card cardOnPrefab = combatSetup.cardGamePrefab.GetComponent<Card>();
-        //     if (cardOnPrefab != null) {
-        //         return cardOnPrefab; 
-        //     }
-        // }
-        Debug.LogError($"GetCardDataFromId: Card database not implemented or card ID {cardId} not found. This system needs a proper Card Database. Returning null.");
+        if (CardDatabase.Instance != null)
+        { 
+            CardData data = CardDatabase.Instance.GetCardById(cardId);
+            if (data == null) {
+                 Debug.LogError($"GetCardDataFromId: Card ID {cardId} not found in CardDatabase. Ensure CardDatabase is in scene and card ID is correct.");
+            }
+            return data;
+        }
+        Debug.LogError($"GetCardDataFromId: CardDatabase.Instance is null. Make sure CardDatabase is in the scene and initialized before combat.");
         return null; 
     }
 
@@ -444,7 +445,7 @@ public class CombatManager : NetworkBehaviour
     {
         NetworkBehaviour caster = GetNetworkObjectComponent<NetworkBehaviour>(casterId);
         NetworkBehaviour target = GetNetworkObjectComponent<NetworkBehaviour>(targetId);
-        Card cardData = GetCardDataFromId(cardId); // Client also needs card data for visuals
+        CardData cardData = GetCardDataFromId(cardId); // Client also needs card data for visuals
         string cardName = cardData != null ? cardData.CardName : "Unknown Card";
         Debug.Log($"Client notified: Caster {casterId} played card {cardName} (ID: {cardId}) on Target {targetId}.");
         // Client-side: Play animations, show card effect visuals, update UI from SyncVar changes.

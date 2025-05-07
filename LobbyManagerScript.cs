@@ -258,4 +258,39 @@ public class LobbyManagerScript : NetworkBehaviour
             }
         }
     }
+
+    // Called when a client is joining a lobby to ensure UI shows the lobby state
+    public void UpdateUIForJoiningLobby()
+    {
+        Debug.Log("LobbyManagerScript: Updating UI for client joining lobby");
+        
+        // Show the lobby canvas, hide other canvases
+        if (lobbyCanvas != null)
+        {
+            lobbyCanvas.SetActive(true);
+        }
+        
+        if (combatCanvas != null)
+        {
+            combatCanvas.SetActive(false);
+        }
+
+        // Start with empty player list until server sends the actual list
+        if (playerListText != null)
+        {
+            playerListText.text = "Players in Lobby:\nConnecting to lobby...";
+        }
+        
+        // Disable start button for client
+        if (startButton != null)
+        {
+            startButton.interactable = false;
+        }
+        
+        // Ready button should be available once connected
+        if (readyButton != null) 
+        {
+            readyButton.interactable = true;
+        }
+    }
 } 

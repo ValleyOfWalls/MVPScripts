@@ -21,7 +21,7 @@ public class NetworkPet : NetworkBehaviour
 
     public readonly SyncVar<string> CurrentStatuses = new SyncVar<string>();
 
-    [SerializeField] public List<Card> StarterDeckPrefabs = new List<Card>();
+    [SerializeField] public DeckData StarterDeckDefinition; // Assign DeckData SO in Inspector
 
     public readonly SyncList<int> currentDeckCardIds = new SyncList<int>();
     public readonly SyncList<int> playerHandCardIds = new SyncList<int>(); // "PlayerHand" for pet refers to its own hand
@@ -66,13 +66,13 @@ public class NetworkPet : NetworkBehaviour
         playerHandCardIds.Clear();
         discardPileCardIds.Clear();
 
-        if (StarterDeckPrefabs != null)
+        if (StarterDeckDefinition != null && StarterDeckDefinition.CardsInDeck != null)
         {
-            foreach (Card cardPrefab in StarterDeckPrefabs)
+            foreach (CardData cardDataSO in StarterDeckDefinition.CardsInDeck)
             {
-                if (cardPrefab != null)
+                if (cardDataSO != null)
                 {
-                    currentDeckCardIds.Add(cardPrefab.CardId);
+                    currentDeckCardIds.Add(cardDataSO.CardId);
                 }
             }
         }

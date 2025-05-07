@@ -3,13 +3,14 @@ using FishNet.Object;
 using System.Collections.Generic;
 using System.Linq;
 using FishNet.Connection;
+using FishNet.Managing; // Added for NetworkManager
 
 public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to perform server-side setup
 {
     [SerializeField] private GameObject combatCanvas; // Should already be active when this runs
     
     // References to be set in inspector or found
-    private SteamAndLobbyHandler steamAndLobbyHandler;
+    private SteamNetworkIntegration steamNetworkIntegration;
     private FightManager fightManager;
     private CombatManager combatManager;
     private CombatCanvasManager combatCanvasManager;
@@ -33,20 +34,20 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
 
         Debug.Log("CombatSetup OnStartServer: Initializing combat...");
 
-        steamAndLobbyHandler = SteamAndLobbyHandler.Instance;
+        steamNetworkIntegration = SteamNetworkIntegration.Instance;
         fightManager = FindFirstObjectByType<FightManager>();
         combatManager = FindFirstObjectByType<CombatManager>();
         combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
         gameManager = FindFirstObjectByType<GameManager>();
 
-        if (steamAndLobbyHandler == null) Debug.LogError("SteamAndLobbyHandler not found by CombatSetup.");
+        if (steamNetworkIntegration == null) Debug.LogError("SteamNetworkIntegration not found by CombatSetup.");
         if (fightManager == null) Debug.LogError("FightManager not found by CombatSetup.");
         if (combatManager == null) Debug.LogError("CombatManager not found by CombatSetup.");
         if (combatCanvasManager == null) Debug.LogError("CombatCanvasManager not found by CombatSetup.");
         if (gameManager == null) Debug.LogError("GameManager not found by CombatSetup.");
         if (cardGamePrefab == null) Debug.LogError("Card Game Prefab is not assigned in CombatSetup.");
 
-        if (steamAndLobbyHandler != null && fightManager != null && combatManager != null && gameManager != null && cardGamePrefab != null)
+        if (steamNetworkIntegration != null && fightManager != null && combatManager != null && gameManager != null && cardGamePrefab != null)
         {
             InitializeCombat();
         }
@@ -105,14 +106,27 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
     [Server]
     private void AssignFights()
     {
-        if (fightManager == null || steamAndLobbyHandler == null)
+        if (fightManager == null) // steamNetworkIntegration no longer directly needed for player/pet lists here
         {
-            Debug.LogError("Cannot assign fights: FightManager or SteamAndLobbyHandler is missing.");
+            Debug.LogError("Cannot assign fights: FightManager is missing.");
             return;
         }
 
-        List<NetworkPlayer> players = steamAndLobbyHandler.networkPlayers.Select(no => no.GetComponent<NetworkPlayer>()).Where(p => p != null).ToList();
-        List<NetworkPet> pets = steamAndLobbyHandler.networkPets.Select(no => no.GetComponent<NetworkPet>()).Where(p => p != null).ToList();
+        if (FishNet.InstanceFinder.NetworkManager == null || !FishNet.InstanceFinder.NetworkManager.ServerManager.Started)
+        {
+            Debug.LogError("Cannot assign fights: FishNet NetworkManager is not available or server not started.");
+            return;
+        }
+
+        List<NetworkPlayer> players = FishNet.InstanceFinder.NetworkManager.ServerManager.Objects.Spawned.Values
+            .Select(nob => nob.GetComponent<NetworkPlayer>())
+            .Where(p => p != null)
+            .ToList();
+
+        List<NetworkPet> pets = FishNet.InstanceFinder.NetworkManager.ServerManager.Objects.Spawned.Values
+            .Select(nob => nob.GetComponent<NetworkPet>())
+            .Where(p => p != null)
+            .ToList();
 
         // Basic assignment: try to pair each player with a unique pet.
         // This needs more robust logic for different numbers of players/pets.

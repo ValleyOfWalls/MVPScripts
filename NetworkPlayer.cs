@@ -25,7 +25,7 @@ public class NetworkPlayer : NetworkBehaviour
     // StarterDeck should be a list of Card ScriptableObjects or identifiers
     // For simplicity, let's assume it's a list of Card script references if Card is a MonoBehaviour on a prefab
     // Or better, use CardData (struct/class) if Card is not a MonoBehaviour itself.
-    [SerializeField] public List<Card> StarterDeckPrefabs = new List<Card>(); // Assign Card prefabs in Inspector
+    [SerializeField] public DeckData StarterDeckDefinition; // Assign DeckData SO in Inspector
 
     // CurrentDeck and PlayerHand will manage instantiated Card objects.
     public readonly SyncList<int> currentDeckCardIds = new SyncList<int>(); 
@@ -80,17 +80,17 @@ public class NetworkPlayer : NetworkBehaviour
         playerHandCardIds.Clear();
         discardPileCardIds.Clear();
 
-        if (StarterDeckPrefabs != null)
+        if (StarterDeckDefinition != null && StarterDeckDefinition.CardsInDeck != null)
         {
-            foreach (Card cardPrefab in StarterDeckPrefabs)
+            foreach (CardData cardDataSO in StarterDeckDefinition.CardsInDeck)
             {
-                if (cardPrefab != null)
+                if (cardDataSO != null)
                 {
                     // Assuming Card script has a unique ID or we use its instance ID (if it were a ScriptableObject)
                     // For simplicity, let's assume Card has an ID field we can use or we generate one.
                     // This needs a proper Card Data system.
                     // For now, let's placeholder with a simple hash or a predefined ID on the Card script.
-                    currentDeckCardIds.Add(cardPrefab.GetInstanceID()); // Placeholder - use a proper card ID system
+                    currentDeckCardIds.Add(cardDataSO.CardId); // Use CardId from CardData SO
                 }
             }
         }
