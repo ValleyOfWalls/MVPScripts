@@ -21,6 +21,10 @@ public struct FightAssignmentData // Not a NetworkBehaviour
     }
 }
 
+/// <summary>
+/// Manages the assignments of players to pets for combat encounters.
+/// Attach to: A persistent NetworkObject in the scene to track fight pairings.
+/// </summary>
 public class FightManager : NetworkBehaviour
 {
     public static FightManager Instance { get; private set; }

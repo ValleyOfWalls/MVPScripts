@@ -4,57 +4,60 @@ using FishNet.Object.Synchronizing;
 using System.Collections.Generic;
 using System.Linq;
 
-// Not a MonoBehaviour. Instantiated by CombatManager.
-public class HandManager
+/// <summary>
+/// Manages card movement between deck, hand, and discard pile during gameplay.
+/// Attach to: Both NetworkPlayer and NetworkPet prefabs to handle their card operations.
+/// </summary>
+// Convert to MonoBehaviour to be attached to NetworkPlayer and NetworkPet prefabs
+public class HandManager : MonoBehaviour
 {
-    private CombatManager combatManagerInstance;
     private System.Random rng = new System.Random();
+    private NetworkBehaviour parentEntity; // Reference to the NetworkPlayer or NetworkPet this is attached to
 
-    public HandManager(CombatManager manager)
+    private void Awake()
     {
-        combatManagerInstance = manager;
+        // Get the parent NetworkBehaviour (either NetworkPlayer or NetworkPet)
+        parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
+        if (parentEntity == null)
+        {
+            parentEntity = GetComponent<NetworkPet>() as NetworkBehaviour;
+        }
+
+        if (parentEntity == null)
+        {
+            Debug.LogError("HandManager: Not attached to a NetworkPlayer or NetworkPet. This component must be attached to one of these.");
+        }
     }
 
     // Server-side logic for drawing initial cards
-    public void DrawInitialCardsForEntity(NetworkBehaviour entity, int drawAmount)
+    public void DrawInitialCardsForEntity(int drawAmount)
     {
-        if (!combatManagerInstance.IsServerStarted) return;
+        if (parentEntity == null || !parentEntity.IsServerStarted) return;
 
-        SyncList<int> deck = null;
-        SyncList<int> hand = null;
         string entityName = "Unknown Entity";
-
-        if (entity is NetworkPlayer player)
+        
+        if (parentEntity is NetworkPlayer player)
         {
-            deck = player.currentDeckCardIds;
-            hand = player.playerHandCardIds;
             entityName = player.PlayerName.Value;
-            ShuffleDeck(player); // Shuffle before drawing
+            ShuffleDeck(); // Shuffle before drawing
         }
-        else if (entity is NetworkPet pet)
+        else if (parentEntity is NetworkPet pet)
         {
-            deck = pet.currentDeckCardIds;
-            hand = pet.playerHandCardIds;
             entityName = pet.PetName.Value;
-            ShuffleDeck(pet); // Shuffle before drawing
-        }
-        else
-        {
-            Debug.LogError("DrawInitialCardsForEntity: Entity is not a NetworkPlayer or NetworkPet.");
-            return;
+            ShuffleDeck(); // Shuffle before drawing
         }
 
         Debug.Log($"HandManager: Drawing {drawAmount} cards for {entityName}.");
         for (int i = 0; i < drawAmount; i++)
         {
-            DrawOneCard(entity);
+            DrawOneCard();
         }
     }
 
     // Server-side logic for drawing one card
-    public void DrawOneCard(NetworkBehaviour entity)
+    public void DrawOneCard()
     {
-        if (!combatManagerInstance.IsServerStarted) return;
+        if (parentEntity == null || !parentEntity.IsServerStarted) return;
 
         SyncList<int> deckIds = null;
         SyncList<int> handIds = null;
@@ -62,8 +65,8 @@ public class HandManager
         Transform handTransform = null; 
         string entityName = "Unknown Entity";
 
-        NetworkPlayer player = entity as NetworkPlayer;
-        NetworkPet pet = entity as NetworkPet;
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        NetworkPet pet = parentEntity as NetworkPet;
 
         if (player != null)
         {
@@ -91,7 +94,7 @@ public class HandManager
                 Debug.Log($"{entityName} has no cards in deck or discard to draw.");
                 return; // No cards left anywhere
             }
-            ReshuffleDiscardIntoDeck(entity);
+            ReshuffleDiscardIntoDeck(); 
             if (deckIds.Count == 0) { // Still no cards (discard was empty too)
                  Debug.Log($"{entityName} deck is still empty after attempting reshuffle.");
                  return;
@@ -113,17 +116,17 @@ public class HandManager
         // If actual NetworkObject cards were being moved, server would change their parent and FishNet would sync that.
     }
 
-    [Server]
-    public void DiscardHand(NetworkBehaviour entity)
+    // Server-side logic for discarding entire hand
+    public void DiscardHand()
     {
-        if (!combatManagerInstance.IsServerStarted) return;
+        if (parentEntity == null || !parentEntity.IsServerStarted) return;
 
         SyncList<int> handIds = null;
         SyncList<int> discardIds = null;
         string entityName = "Unknown Entity";
 
-        NetworkPlayer player = entity as NetworkPlayer;
-        NetworkPet pet = entity as NetworkPet;
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        NetworkPet pet = parentEntity as NetworkPet;
 
         if (player != null)
         {
@@ -132,35 +135,41 @@ public class HandManager
             entityName = player.PlayerName.Value;
         }
         else if (pet != null)
-        { 
+        {
             handIds = pet.playerHandCardIds;
             discardIds = pet.discardPileCardIds;
             entityName = pet.PetName.Value;
         }
         else return;
 
-        if (handIds.Count > 0) {
-            Debug.Log($"{entityName} discarding hand. Cards: {handIds.Count}");
-            // Add all cards from hand to discard, then clear hand
-            foreach (int cardId in handIds)
-            {
-                discardIds.Add(cardId);
-            }
-            handIds.Clear();
+        if (handIds.Count == 0)
+        {
+            Debug.Log($"{entityName} has no cards in hand to discard.");
+            return;
         }
+
+        // Make a copy because we'll be modifying the collection
+        List<int> cardsToDiscard = new List<int>(handIds);
+        foreach (int cardId in cardsToDiscard)
+        {
+            handIds.Remove(cardId);
+            discardIds.Add(cardId);
+        }
+
+        Debug.Log($"{entityName} discarded {cardsToDiscard.Count} cards.");
     }
 
-    [Server]
-    public void MoveCardToDiscard(NetworkBehaviour entity, int cardId)
+    // Server-side logic for moving a specific card from hand to discard
+    public void MoveCardToDiscard(int cardId)
     {
-        if (!combatManagerInstance.IsServerStarted) return;
+        if (parentEntity == null || !parentEntity.IsServerStarted) return;
 
         SyncList<int> handIds = null;
         SyncList<int> discardIds = null;
         string entityName = "Unknown Entity";
 
-        NetworkPlayer player = entity as NetworkPlayer;
-        NetworkPet pet = entity as NetworkPet;
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        NetworkPet pet = parentEntity as NetworkPet;
 
         if (player != null)
         {
@@ -188,49 +197,62 @@ public class HandManager
         }
     }
 
-    [Server]
-    private void ShuffleDeck(NetworkBehaviour entity)
+    // Server-side logic to shuffle the deck
+    private void ShuffleDeck()
     {
+        if (parentEntity == null || !parentEntity.IsServerStarted) return;
+
         SyncList<int> deckIds = null;
         string entityName = "Unknown Entity";
 
-        if (entity is NetworkPlayer player) { deckIds = player.currentDeckCardIds; entityName = player.PlayerName.Value; }
-        else if (entity is NetworkPet pet) { deckIds = pet.currentDeckCardIds; entityName = pet.PetName.Value; }
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        NetworkPet pet = parentEntity as NetworkPet;
+
+        if (player != null)
+        {
+            deckIds = player.currentDeckCardIds;
+            entityName = player.PlayerName.Value;
+        }
+        else if (pet != null)
+        {
+            deckIds = pet.currentDeckCardIds;
+            entityName = pet.PetName.Value;
+        }
         else return;
 
-        // Basic Fisher-Yates shuffle on the SyncList (server-side)
-        // SyncList doesn't have a direct Sort or random access for shuffle easily.
-        // Best to copy to a list, shuffle, clear SyncList, and add back.
-        if (deckIds.Count > 1)
+        if (deckIds.Count <= 1) return; // No need to shuffle 0 or 1 card
+
+        // Fisher-Yates shuffle
+        List<int> tempDeck = new List<int>(deckIds);
+        for (int i = tempDeck.Count - 1; i > 0; i--)
         {
-            List<int> tempList = new List<int>(deckIds);
-            int n = tempList.Count;
-            while (n > 1)
-            {
-                n--;
-                int k = rng.Next(n + 1);
-                int value = tempList[k];
-                tempList[k] = tempList[n];
-                tempList[n] = value;
-            }
-            deckIds.Clear();
-            foreach (int cardId in tempList)
-            {
-                deckIds.Add(cardId);
-            }
-            Debug.Log($"{entityName}'s deck shuffled. Cards: {deckIds.Count}");
+            int j = rng.Next(0, i + 1);
+            int temp = tempDeck[i];
+            tempDeck[i] = tempDeck[j];
+            tempDeck[j] = temp;
         }
+
+        // Clear and repopulate the SyncList
+        deckIds.Clear();
+        foreach (int cardId in tempDeck)
+        {
+            deckIds.Add(cardId);
+        }
+
+        Debug.Log($"{entityName}'s deck shuffled. Deck size: {deckIds.Count}");
     }
 
-    [Server]
-    private void ReshuffleDiscardIntoDeck(NetworkBehaviour entity)
+    // Server-side logic to move cards from discard to deck and shuffle
+    private void ReshuffleDiscardIntoDeck()
     {
+        if (parentEntity == null || !parentEntity.IsServerStarted) return;
+
         SyncList<int> deckIds = null;
         SyncList<int> discardIds = null;
         string entityName = "Unknown Entity";
 
-        NetworkPlayer player = entity as NetworkPlayer;
-        NetworkPet pet = entity as NetworkPet;
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        NetworkPet pet = parentEntity as NetworkPet;
 
         if (player != null)
         {
@@ -246,16 +268,23 @@ public class HandManager
         }
         else return;
 
-        if (discardIds.Count > 0)
+        if (discardIds.Count == 0)
         {
-            Debug.Log($"Reshuffling {discardIds.Count} cards from {entityName}'s discard pile into deck.");
-            foreach (int cardId in discardIds)
-            {
-                deckIds.Add(cardId);
-            }
-            discardIds.Clear();
-            ShuffleDeck(entity);
+            Debug.Log($"{entityName} has no cards in discard to reshuffle.");
+            return;
         }
+
+        // Move all cards from discard to deck
+        foreach (int cardId in discardIds.ToList())
+        {
+            deckIds.Add(cardId);
+        }
+        discardIds.Clear();
+
+        // Shuffle the deck
+        ShuffleDeck();
+
+        Debug.Log($"{entityName}'s discard reshuffled into deck. New deck size: {deckIds.Count}");
     }
 
     // Card GameObjects parenting/movement in the scene hierarchy:

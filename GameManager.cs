@@ -2,6 +2,10 @@ using UnityEngine;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 
+/// <summary>
+/// Centralized manager for global game rules and settings.
+/// Attach to: A persistent NetworkObject in the scene that will manage game-wide rules.
+/// </summary>
 public class GameManager : NetworkBehaviour
 {
     public static GameManager Instance { get; private set; }

@@ -5,6 +5,10 @@ using TMPro;
 using System.Linq;
 using FishNet.Object.Synchronizing;
 
+/// <summary>
+/// Manages the UI elements for the combat phase, including card display, turn indicators, and notifications.
+/// Attach to: The CombatCanvas GameObject that contains all combat UI elements.
+/// </summary>
 public class CombatCanvasManager : MonoBehaviour
 {
     // UI Element References (assign in Inspector for the CombatCanvas prefab)
@@ -19,11 +23,76 @@ public class CombatCanvasManager : MonoBehaviour
     [Header("Controls")]
     [SerializeField] private Button endTurnButton;
 
+    [Header("UI References")]
+    [SerializeField] private TextMeshProUGUI turnIndicatorText;
+    [SerializeField] private GameObject cardPlayedEffectPrefab;
+    [SerializeField] private GameObject notificationPrefab;
+    [SerializeField] private Transform effectsContainer;
+    [SerializeField] private GameObject fightEndedPanel;
+    [SerializeField] private TextMeshProUGUI fightEndedText;
+
     private NetworkPlayer localPlayer;
     private NetworkPet opponentPetForLocalPlayer;
 
     private FightManager fightManager;
     private CombatManager combatManager;
+
+    public void Initialize(CombatManager manager, NetworkPlayer player)
+    {
+        combatManager = manager;
+        localPlayer = player;
+    }
+
+    public void UpdateTurnIndicator(string currentTurnEntityName)
+    {
+        if (turnIndicatorText != null)
+        {
+            turnIndicatorText.text = $"{currentTurnEntityName}'s Turn";
+        }
+    }
+
+    public void ShowCardPlayedEffect(int cardId, NetworkBehaviour caster, NetworkBehaviour target)
+    {
+        if (cardPlayedEffectPrefab == null || effectsContainer == null) return;
+
+        // Get card data
+        CardData cardData = CardDatabase.Instance.GetCardById(cardId);
+        if (cardData == null) return;
+
+        // Instantiate effect
+        GameObject effectObj = Instantiate(cardPlayedEffectPrefab, effectsContainer);
+        CardPlayedEffect effect = effectObj.GetComponent<CardPlayedEffect>();
+        
+        if (effect != null)
+        {
+            string casterName = caster is NetworkPlayer player ? player.PlayerName.Value : ((NetworkPet)caster).PetName.Value;
+            string targetName = target is NetworkPlayer targetPlayer ? targetPlayer.PlayerName.Value : ((NetworkPet)target).PetName.Value;
+            
+            effect.Initialize(cardData, casterName, targetName);
+        }
+    }
+
+    public void ShowFightEndedUI(NetworkPlayer player, NetworkPet pet, bool petWon)
+    {
+        if (fightEndedPanel == null || fightEndedText == null) return;
+
+        string winnerName = petWon ? pet.PetName.Value : player.PlayerName.Value;
+        fightEndedText.text = $"{winnerName} has won the fight!";
+        fightEndedPanel.SetActive(true);
+    }
+
+    public void ShowNotificationMessage(string message)
+    {
+        if (notificationPrefab == null || effectsContainer == null) return;
+
+        GameObject notificationObj = Instantiate(notificationPrefab, effectsContainer);
+        NotificationMessage notification = notificationObj.GetComponent<NotificationMessage>();
+        
+        if (notification != null)
+        {
+            notification.Initialize(message);
+        }
+    }
 
     public void SetupCombatUI()
     {
@@ -74,7 +143,7 @@ public class CombatCanvasManager : MonoBehaviour
     {
         if (endTurnButton != null && combatManager != null && localPlayer != null)
         {
-            endTurnButton.onClick.AddListener(() => combatManager.CmdEndPlayerTurn(localPlayer.Owner));
+            endTurnButton.onClick.AddListener(() => combatManager.CmdEndPlayerTurn());
         }
         else
         {
@@ -200,7 +269,7 @@ public class CombatCanvasManager : MonoBehaviour
         }
         
         Debug.Log($"Player clicked on card '{cardDataInstance.CardName}' (ID: {cardDataInstance.CardId}). Requesting to play.");
-        combatManager.CmdPlayerRequestsPlayCard(localPlayer.Owner, cardDataInstance.CardId);
+        combatManager.CmdPlayerRequestsPlayCard(cardDataInstance.CardId);
     }
 
     public void SetEndTurnButtonInteractable(bool interactable)

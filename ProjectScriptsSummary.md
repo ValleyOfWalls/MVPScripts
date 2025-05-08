@@ -10,274 +10,508 @@ This document summarizes the C# scripts created for the project, outlining their
 - **Key Features**:
     - Reference to a "Start" button.
     - On start button press:
-        - Calls `CustomNetworkManager.InitiateSteamConnectionAndLobby()` to attempt Steam lobby hosting.
+        - Calls `SteamNetworkIntegration.Instance.RequestLobbiesList()` to attempt Steam lobby searching/joining/hosting.
         - Activates the `LobbyCanvas`.
         - Deactivates the `StartScreenCanvas`.
-- **Dependencies**: `CustomNetworkManager`.
+- **Dependencies**: `SteamNetworkIntegration`.
 
 ### 2. `LobbyManagerScript.cs`
-- **Purpose**: Manages the player lobby UI and logic.
+- **Purpose**: Manages the player lobby UI and logic (ready status, player list, starting game).
 - **Attached to**: `LobbyCanvas` GameObject.
 - **Inherits**: `NetworkBehaviour`.
 - **Key Features**:
-    - References "Ready" and "Start Game" buttons.
-    - Displays a list of connected players and their ready status (`playerListText`).
-    - `Awake()`: Attempts to find `NetworkManager` (should be `CustomNetworkManager`).
-        - TODO: Needs explicit call to connect/host via `CustomNetworkManager` if not already handled by `StartScreenManager`.
+    - References "Ready" and "Start Game" buttons, and `playerListText` TMP component.
+    - Uses Dictionaries (`playerReadyStates`, `playerDisplayNames`) keyed by `NetworkConnection` to track player state on the server.
+    - `OnStartClient()`: Client calls `CmdServerAddPlayer` to register itself with the server, attempting to use Steam name.
+    - `CmdServerAddPlayer` (ServerRpc): Adds player to server lists (`connectedPlayers`, `playerReadyStates`, `playerDisplayNames`).
     - `OnReadyButtonPressed()`: Client calls `CmdTogglePlayerReadyState`.
-    - `CmdTogglePlayerReadyState` (ServerRpc): Toggles the calling player's ready status.
-    - `CheckAllPlayersReady()` (Server): Enables the "Start Game" button if all players are ready and there's more than one player.
+    - `CmdTogglePlayerReadyState` (ServerRpc): Toggles the calling player's ready status in `playerReadyStates`.
+    - `BroadcastFullPlayerList` (Server): Constructs display names with ready status and sends to all clients via `TargetRpcUpdatePlayerListUI`.
+    - `TargetRpcUpdatePlayerListUI` (TargetRpc): Updates the `playerListText` UI on the client.
+    - `CheckAllPlayersReady()` (Server): Enables the server's "Start Game" button interactable state if all connected players are ready. Calls `RpcUpdateStartButtonState`.
+    - `RpcUpdateStartButtonState` (ObserversRpc): Updates the interactable state of the "Start Game" button on all clients based on server's decision.
     - `OnStartButtonPressed()` (Server-side check): If conditions met, calls `RpcStartGame`.
     - `RpcStartGame` (ObserversRpc): Deactivates `LobbyCanvas` and activates `CombatCanvas`.
-    - Handles adding player names to UI and updating across clients.
-    - `HandlePlayerDisconnect()`: Called by `CustomNetworkManager` to update player list and ready states.
-- **Dependencies**: `CustomNetworkManager`, `CombatCanvas`.
+    - `ServerHandlePlayerDisconnect()` (Server): Removes player data, updates lists, called by `SteamNetworkIntegration`.
+    - `PrepareUIForLobbyJoin()`: Local UI setup when joining.
+- **Dependencies**: `FishNet.NetworkManager`, `SteamNetworkIntegration` (for names), `CombatCanvas`.
 
 ### 3. `CombatCanvasManager.cs`
 - **Purpose**: Manages the UI elements specifically for the combat scene on each client.
 - **Attached to**: `CombatCanvas` GameObject (not networked itself).
 - **Key Features**:
-    - References UI elements for:
-        - Local player's name, health, energy, hand, deck, discard.
-        - Opponent pet's name, health, hand (visuals).
-        - "End Turn" button.
-    - `SetupCombatUI()`: Called by `CombatSetup` (via RPC) to initialize the UI for the local player.
-        - Finds the local `NetworkPlayer` and their assigned `NetworkPet` via `FightManager`.
-        - Subscribes to `SyncVar` and `SyncList` changes on `localPlayer` and `opponentPetForLocalPlayer` to update UI.
-    - `RenderHand()`: Clears and re-instantiates card visuals in the hand display area based on `SyncList<int> cardIds`.
-        - Instantiates `cardGamePrefab` (from `CombatSetup`).
-        - Adds click listeners to player's hand cards to call `CombatManager.CmdPlayerRequestsPlayCard()`.
-    - `SetEndTurnButtonInteractable()`: Controls interactability of the end turn button.
+    - References UI elements for player/pet info, hand, deck, discard, end turn button.
+    - `SetupCombatUI()`: Called locally (potentially triggered by `CombatSetup` RPC) to initialize the UI for the local player.
+        - Finds local `NetworkPlayer` and opponent `NetworkPet` via `FightManager`.
+        - Subscribes to `SyncVar`/`SyncList` changes on entities for UI updates.
+    - `RenderHand()`: Instantiates/updates card visuals in hand.
+    - `SetEndTurnButtonInteractable()`: Controls end turn button.
 - **Dependencies**: `FightManager`, `CombatManager`, `NetworkPlayer`, `NetworkPet`, `CombatSetup` (for `cardGamePrefab`).
+
+### 4. `DraftCanvasManager.cs`
+- **Purpose**: Manages the UI elements for the draft phase.
+- **Attached to**: `DraftCanvas` GameObject.
+- **Key Features**:
+    - References UI elements for draft packs, card shop, artifact shop, and player deck.
+    - Called by `DraftSetup` to initialize the draft UI.
+    - Displays draft packs, card shop, and artifact shop areas.
+    - Handles UI updates when cards are drafted or purchased.
+- **Dependencies**: `DraftSetup`, `DraftManager`, `NetworkPlayer`.
 
 ## Networking and Core Logic
 
-### 4. `CustomNetworkManager.cs`
-- **Purpose**: Central networking hub, Steamworks integration, and entity management.
-- **Inherits**: `FishNet.Managing.NetworkManager`.
+### 5. `SteamNetworkIntegration.cs` (Replaces `SteamManager` and `SteamLobbyManager`)
+- **Purpose**: Central Steamworks integration hub (Initialization, Lobby Management) and bridge to FishNet connection logic.
+- **Inherits**: `MonoBehaviour`.
 - **Singleton**: Yes (`Instance`).
 - **Key Features**:
     - **Steamworks Integration**:
         - Initializes `SteamAPI` on `Awake()`.
-        - Handles Steam Callbacks for lobby creation (`OnLobbyCreated`), join requests (`OnGameLobbyJoinRequested`), and lobby entry (`OnLobbyEntered`).
-        - `HostLobby()`: Creates a Steam lobby.
+        - Handles Steam Callbacks (`LobbyCreated_t`, `LobbyEnter_t`, `LobbyMatchList_t`, `LobbyDataUpdate_t`, etc.).
+        - `RequestLobbiesList()`: Searches for lobbies; joins first found or calls `CreateLobby()`.
+        - `CreateLobby()`: Creates a public Steam lobby, sets metadata.
         - `JoinLobby(CSteamID)`: Joins an existing Steam lobby.
-        - `InitiateSteamConnectionAndLobby()`: Called by `StartScreenManager` to host a lobby.
-        - Uses `Tugboat` transport, sets client address to SteamID for P2P.
-        - Uses randomized port for local testing.
-        - **Note**: Requires `steam_appid.txt` in project root (e.g., with `480`) for editor testing.
-    - **Entity Tracking**:
-        - `[SerializeField] public List<NetworkObject> networkPlayers`
-        - `[SerializeField] public List<NetworkObject> networkPets`
+        - `LeaveLobby()`: Leaves current Steam lobby and stops FishNet connection.
+    - **FishNet Integration**:
+        - Caches `NetworkManager` reference.
+        - Gets reference to `PlayerSpawner` component on the same GameObject.
+        - Starts FishNet host (server+client) in `OnLobbyCreatedCallback`.
+        - Starts FishNet client in `OnLobbyEnteredCallback` (for joining clients).
+        - Calls `PlayerSpawner.SpawnPlayerForConnection(conn)` for new clients.
+        - Calls `LobbyManagerScript.ServerHandlePlayerDisconnect()` when a remote client disconnects.
     - **Prefabs**:
-        - `[SerializeField] public NetworkObject playerPrefab;`
-        - `[SerializeField] public NetworkObject petPrefab;`
-    - **Player Spawning**:
-        - Instantiates `PlayerSpawner`.
-        - `ServerManager_OnRemoteConnectionState`: When a client connects, calls `playerSpawner.SpawnPlayerForConnection(conn)`.
-        - Handles client disconnections: `RemoveNetworkedEntitiesForConnection`, notifies `LobbyManagerScript`.
-    - Registers/Unregisters `NetworkPlayer` and `NetworkPet` instances.
-- **Dependencies**: `Steamworks.NET`, `Tugboat` (FishNet Transport), `PlayerSpawner`, `LobbyManagerScript`.
+        - `[SerializeField] public GameObject NetworkPlayerPrefab;`
+        - `[SerializeField] public GameObject NetworkPetPrefab;`
+    - Provides player/friend name retrieval (`GetPlayerName`, `GetFriendName`).
+- **Dependencies**: `Steamworks.NET`, `FishNet.NetworkManager`, `PlayerSpawner`, `LobbyManagerScript` (to notify on disconnect).
 
-### 5. `PlayerSpawner.cs`
-- **Purpose**: (Non-MonoBehaviour class) Handles the server-side spawning of `NetworkPlayer` and associated `NetworkPet` prefabs.
-- **Instantiated by**: `CustomNetworkManager`.
+### 6. `PlayerSpawner.cs`
+- **Purpose**: Handles the server-side spawning logic for `NetworkPlayer` and `NetworkPet`.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: Same GameObject as `SteamNetworkIntegration`.
 - **Key Features**:
-    - Constructor takes `CustomNetworkManager` instance.
-        - Retrieves `networkPlayerPrefab` and `networkPetPrefab` from `CustomNetworkManager`.
+    - `Awake()`: Gets references to `SteamNetworkIntegration` component and `NetworkManager`.
     - `SpawnPlayerForConnection(NetworkConnection conn)` (Server-side):
-        - Spawns the `networkPlayerPrefab` using `ServerManager.Spawn(prefab, conn)`.
-        - Registers the new player instance with `CustomNetworkManager`.
-        - Spawns the `networkPetPrefab` for the same connection.
-        - Registers the new pet instance.
-        - TODO: Link pet to player (e.g., `netPet.SetOwnerPlayer(netPlayer)`).
-    - `DespawnEntitiesForConnection(NetworkConnection conn)`: Despawns player and associated pet.
-- **Dependencies**: `CustomNetworkManager`, `NetworkPlayer` (prefab), `NetworkPet` (prefab).
+        - Checks if `NetworkManager.ServerManager.Started`.
+        - Spawns the `NetworkPlayerPrefab` using `ServerManager.Spawn(prefab, conn)`. Logs OwnerId.
+        - Attempts to set player name using Steam name for host, placeholder for clients.
+        - Spawns the `NetworkPetPrefab` for the same connection. Logs OwnerId.
+        - Calls `netPet.SetOwnerPlayer(netPlayer)`.
+    - `DespawnEntitiesForConnection(NetworkConnection conn)`: Placeholder, notes FishNet handles despawn.
+- **Dependencies**: `SteamNetworkIntegration` (for prefabs, names), `FishNet.NetworkManager`, `NetworkPlayer` (script), `NetworkPet` (script).
 
-### 6. `GameManager.cs`
+### 7. `GameManager.cs`
 - **Purpose**: Networked singleton to store and sync global game rules.
 - **Inherits**: `NetworkBehaviour`.
 - **Singleton**: Yes (`Instance`).
 - **Key Features**:
-    - Serializable and Synced Variables (`SyncVar`):
-        - `PlayerDrawAmount`
-        - `PetDrawAmount`
-        - `PlayerMaxEnergy`
-        - `PetMaxEnergy`
-        - `PlayerMaxHealth`
-        - `PetMaxHealth`
-    - These values are used by `NetworkPlayer`, `NetworkPet`, and `CombatManager`.
-- **Dependencies**: None explicit, but provides data for many other scripts.
+    - `SyncVar`s for: `PlayerDrawAmount`, `PetDrawAmount`, `PlayerMaxEnergy`, `PetMaxEnergy`, `PlayerMaxHealth`, `PetMaxHealth`.
+- **Dependencies**: Provides data for `NetworkPlayer`, `NetworkPet`, `CombatManager`.
 
 ## Combat System
 
-### 7. `CombatSetup.cs`
-- **Purpose**: Server-side script to initialize the combat phase once the `CombatCanvas` is active.
-- **Attached to**: `CombatCanvas` GameObject.
+### 8. `CombatSetup.cs`
+- **Purpose**: Server-side script to initialize the combat phase.
+- **Attached to**: `CombatCanvas` GameObject (or similar scene setup object).
 - **Inherits**: `NetworkBehaviour`.
 - **Key Features**:
-    - `OnStartServer()`: Finds necessary managers (`CustomNetworkManager`, `FightManager`, `CombatManager`, `GameManager`).
+    - `OnStartServer()`: Finds necessary managers (`FightManager`, `CombatManager`, `GameManager`).
     - `InitializeCombat()` (Server-side):
         - Calls `AssignFights()`.
-        - Calls `RpcTriggerCombatCanvasManagerSetup()` to tell clients to set up their local combat UI.
+        - Calls `RpcTriggerCombatCanvasManagerSetup()` to trigger client UI setup.
         - Calls `combatManager.StartCombat()`.
     - `AssignFights()` (Server-side):
-        - Retrieves lists of `NetworkPlayer`s and `NetworkPet`s from `CustomNetworkManager`.
-        - Assigns each player to a unique pet (simple 1-to-1 logic for now).
-        - Calls `fightManager.AddFightAssignment(player, opponentPet)`.
-    - `[SerializeField] private GameObject cardGamePrefab`: Prefab for visual card representation in scene, used by `CombatCanvasManager` and potentially this script for spawning.
-    - `SpawnCardObject()`: Placeholder method for spawning card GameObjects (currently simplified, real implementation would involve a Card Database).
-- **Dependencies**: `CustomNetworkManager`, `FightManager`, `CombatManager`, `CombatCanvasManager`, `GameManager`.
+        - Retrieves lists of active `NetworkPlayer`s and `NetworkPet`s from `FishNet.NetworkManager.ServerManager.Objects`.
+        - Assigns fights (player vs. pet) and calls `fightManager.AddFightAssignment()`.
+    - `[SerializeField] public GameObject cardGamePrefab`: Prefab for visual card representation.
+    - `SpawnCardObject()`: Placeholder method.
+- **Dependencies**: `FishNet.NetworkManager`, `FightManager`, `CombatManager`, `CombatCanvasManager`, `GameManager`.
 
-### 8. `FightManager.cs`
-- **Purpose**: Networked singleton to track and manage fight assignments between players and pets.
+### 9. `FightManager.cs`
+- **Purpose**: Networked singleton to track and manage fight assignments.
 - **Inherits**: `NetworkBehaviour`.
 - **Singleton**: Yes (`Instance`).
 - **Key Features**:
-    - `FightAssignmentData` struct: Stores `PlayerObjectId`, `PetObjectId`. (Note: `PlayerConnection` in struct might be problematic for `SyncList` serialization, ObjectIDs are safer).
-    - `[SyncObject] private readonly SyncList<FightAssignmentData> fightAssignments`: Synced list of active fights.
-    - Server-side dictionaries (`playerToPetMap`, `petToPlayerMap`) for quick lookups (rebuilt from `SyncList` on change).
-    - `AddFightAssignment(NetworkPlayer player, NetworkPet pet)` (Server): Adds a new fight pairing.
-    - `GetOpponentForPlayer(NetworkPlayer player)`: Returns the `NetworkPet` assigned to the given player.
-    - `GetOpponentForPet(NetworkPet pet)`: Returns the `NetworkPlayer` assigned to the given pet.
+    - `FightAssignmentData` struct (using ObjectIds).
+    - `[SyncObject] private readonly SyncList<FightAssignmentData> fightAssignments`.
+    - Server-side dictionaries for lookups.
+    - `AddFightAssignment(NetworkPlayer player, NetworkPet pet)` (Server).
+    - `GetOpponentForPlayer(NetworkPlayer player)`, `GetOpponentForPet(NetworkPet pet)`.
 - **Dependencies**: `NetworkPlayer`, `NetworkPet`.
 
-### 9. `CombatManager.cs`
-- **Purpose**: Networked singleton that orchestrates the entire combat flow, including rounds, turns, and actions.
+### 10. `CombatManager.cs`
+- **Purpose**: Networked singleton orchestrating combat flow (rounds, turns, actions).
 - **Inherits**: `NetworkBehaviour`.
 - **Singleton**: Yes (`Instance`).
 - **Key Features**:
-    - `currentRound` (`SyncVar`): Tracks the current combat round.
-    - `FightTurnState` struct (server-side): Tracks `playerConnection`, `currentTurn` (`PlayerTurn`, `PetTurn`), `playerObjId`, `petObjId` for each ongoing fight.
-    - Instantiates `HandManager` and `EffectManager`.
-    - `StartCombat()` (Server): Called by `CombatSetup`. Initializes fight states and starts the first round.
-    - `StartNewRound()` (Server):
-        - Increments `currentRound`.
-        - Replenishes energy for all players and pets in active fights.
-        - Calls `handManager.DrawInitialCardsForEntity()` for players and pets.
-        - Sets turn to `PlayerTurn` for each fight and notifies clients via `TargetRpcNotifyTurnChanged`.
-    - `CmdEndPlayerTurn(NetworkConnection conn)` (ServerRpc):
-        - Called by client when "End Turn" button is pressed.
-        - Player discards hand (`handManager.DiscardHand`).
-        - Transitions turn to `PetTurn` for that fight.
-        - Starts `ProcessPetTurn()` coroutine.
-    - `ProcessPetTurn()` (Server Coroutine):
-        - Basic AI: Pet plays affordable cards from hand against its opponent player.
-        - Uses `effectManager.ApplyEffect()` and `handManager.MoveCardToDiscard()`.
-        - After pet's actions, pet discards hand.
-        - Checks for fight end conditions or proceeds to next round if all pet turns are done.
-    - `CmdPlayerRequestsPlayCard(NetworkConnection conn, int cardId)` (ServerRpc):
-        - Validates turn, card presence in hand, and energy cost.
-        - Applies card cost.
-        - Calls `effectManager.ApplyEffect()`.
-        - Calls `handManager.MoveCardToDiscard()`.
-        - Checks for fight end conditions.
-    - `GetCardDataFromId(int cardId)`: **Placeholder function**, needs implementation with a Card Database.
-    - `IsPlayerTurn(NetworkPlayer player)`: Checks if it's the given player's turn in their fight.
-    - Various RPCs to notify clients about round start, turn changes, cards played, messages, and fight end.
-- **Dependencies**: `FightManager`, `HandManager`, `EffectManager`, `GameManager`, `CustomNetworkManager`, `CombatCanvasManager`, `NetworkPlayer`, `NetworkPet`, `Card`.
+    - `currentRound` (`SyncVar`).
+    - Server-side `FightTurnState` struct/list.
+    - `StartCombat()` (Server): Initializes fight states, starts round 1.
+    - `StartNewRound()` (Server): Increments round, replenishes energy, calls `HandManager.DrawInitialCardsForEntity` on player and pet components, sets turns.
+    - `CmdEndPlayerTurn` (ServerRpc): Handles player ending turn, calls `player.GetComponent<HandManager>().DiscardHand()`, starts `ProcessPetTurn`.
+    - `ProcessPetTurn()` (Server Coroutine): Uses `pet.GetComponent<HandleCardPlay>().PlayCard(cardId)` to play cards. Checks for fight end.
+    - `CmdPlayerRequestsPlayCard` (ServerRpc): Delegates card play to `player.GetComponent<HandleCardPlay>().PlayCard(cardId)`. Checks for fight end.
+    - RPCs for notifying clients.
+    - Triggers `DraftSetup.InitializeDraft()` when all combats are complete.
+- **Dependencies**: `FightManager`, `GameManager`, `SteamNetworkIntegration`, `CombatCanvasManager`, `NetworkPlayer`, `NetworkPet`, `HandManager`, `HandleCardPlay`, `Card`, `CardDatabase`, `DraftSetup`.
 
-### 10. `HandManager.cs`
-- **Purpose**: (Non-MonoBehaviour class) Handles all logic related to card drawing, discarding, and moving cards between deck, hand, and discard piles for entities.
-- **Instantiated by**: `CombatManager`.
-- **Key Features** (all server-side logic acting on `SyncList<int>` card ID lists in `NetworkPlayer`/`NetworkPet`):
-    - `DrawInitialCardsForEntity(NetworkBehaviour entity, int drawAmount)`: Shuffles deck and draws specified cards.
-    - `DrawOneCard(NetworkBehaviour entity)`: Draws a single card. Handles empty deck by reshuffling discard pile.
-    - `DiscardHand(NetworkBehaviour entity)`: Moves all cards from hand to discard pile.
-    - `MoveCardToDiscard(NetworkBehaviour entity, int cardId)`: Moves a specific card from hand to discard.
-    - `ShuffleDeck(NetworkBehaviour entity)`: Shuffles the entity's deck (`currentDeckCardIds`).
-    - `ReshuffleDiscardIntoDeck(NetworkBehaviour entity)`: Moves all cards from discard to deck and shuffles.
-- **Dependencies**: `CombatManager`, `NetworkPlayer`, `NetworkPet`.
+### 11. `HandManager.cs`
+- **Purpose**: Handles card draw, discard, shuffle logic.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs.
+- **Key Features**: 
+    - `DrawInitialCardsForEntity(int drawAmount)`: Draws initial cards.
+    - `DrawOneCard()`: Draws one card from deck.
+    - `DiscardHand()`: Discards all cards in hand.
+    - `MoveCardToDiscard(int cardId)`: Moves specific card to discard.
+    - `ShuffleDeck()`: Shuffles deck.
+    - `ReshuffleDiscardIntoDeck()`: Moves cards from discard to deck and shuffles.
+    - Now interacts with `CombatDeck`, `CombatHand`, and `CombatDiscard` components.
+- **Dependencies**: `NetworkPlayer`, `NetworkPet`, `CombatDeck`, `CombatHand`, `CombatDiscard`.
 
-### 11. `EffectManager.cs`
-- **Purpose**: (Non-MonoBehaviour class) Responsible for applying the effects of played cards.
-- **Instantiated by**: `CombatManager`.
+### 12. `EffectManager.cs`
+- **Purpose**: Applies card effects to entity targets.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs.
+- **Key Features**: 
+    - `ApplyEffect(NetworkBehaviour target, CardData cardData)`: Applies effects based on `cardData.EffectType` (Damage, Heal, DrawCard, etc.).
+    - Switches on `cardData.EffectType` to call appropriate methods.
+    - For DrawCard effects, finds target's HandManager component.
+- **Dependencies**: `NetworkPlayer`, `NetworkPet`, `HandManager`, `Card`.
+
+### 13. `HandleCardPlay.cs`
+- **Purpose**: Manages card playing logic for entities.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs.
+- **Key Features**: 
+    - `PlayCard(int cardId)`: Validates card play (in hand, enough energy), gets target from FightManager, calls target's EffectManager.
+    - Checks card is in hand and entity has sufficient energy.
+    - Gets correct target from FightManager (player→pet or pet→player).
+    - Applies energy cost to caster.
+    - Uses target's EffectManager to apply card effects.
+    - Calls HandManager to move played card to discard.
+- **Dependencies**: `FightManager`, `HandManager`, `EffectManager`, `NetworkPlayer`, `NetworkPet`, `Card`, `CardDatabase`.
+
+### 14. `CombatDeckSetup.cs`
+- **Purpose**: Prepares entity's combat deck for a new combat.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
 - **Key Features**:
-    - `ApplyEffect(NetworkBehaviour caster, NetworkBehaviour target, Card cardData)` (Server-side):
-        - Takes caster, target, and `Card` data.
-        - Switches on `cardData.EffectType`:
-            - `Damage`: Calls `TakeDamage()` on target.
-            - `Heal`: Calls `Heal()` on target.
-            - `DrawCard`: Calls `handManager.DrawOneCard()` for the caster. (Requires `CombatManager` to expose `HandManager` or this method be on `CombatManager`).
-            - `BuffStats`, `DebuffStats`, `ApplyStatus`: Placeholders with basic logging; requires more detailed implementation on `NetworkPlayer`/`NetworkPet` and `Card` data.
-- **Dependencies**: `CombatManager` (potentially for `HandManager` access), `NetworkPlayer`, `NetworkPet`, `Card`.
+    - Called by `CombatSetup`.
+    - Copies cards from `NetworkEntityDeck` to `CombatDeck`.
+    - Initializes decks for combat.
+- **Dependencies**: `NetworkEntityDeck`, `CombatDeck`.
+
+### 15. `CombatDeck.cs`
+- **Purpose**: Manages the entity's deck of cards during combat.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
+- **Key Features**:
+    - Stores list of cards in current combat deck.
+    - Accessed by `HandManager` for drawing cards.
+- **Dependencies**: `Card`, `HandManager`.
+
+### 16. `CombatDiscard.cs`
+- **Purpose**: Manages the entity's discard pile during combat.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
+- **Key Features**:
+    - Stores list of cards in current combat discard pile.
+    - Accessed by `HandManager` for discarding and reshuffling.
+- **Dependencies**: `Card`, `HandManager`.
+
+### 17. `CombatHand.cs`
+- **Purpose**: Manages the entity's hand during combat.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
+- **Key Features**:
+    - Stores list of cards in current combat hand.
+    - References a `combathand` GameObject in hierarchy for card visuals.
+    - Accessed by `HandManager` for hand management.
+- **Dependencies**: `Card`, `HandManager`.
+
+## Draft System
+
+### 18. `DraftSetup.cs`
+- **Purpose**: Initializes the draft phase after combat.
+- **Attached to**: `DraftManager` GameObject in the scene.
+- **Inherits**: `NetworkBehaviour`.
+- **Key Features**:
+    - `InitializeDraft()` (Server-side):
+        - Called by `CombatManager` when all combats are complete.
+        - Deactivates `CombatCanvas`.
+        - Activates `DraftCanvas`.
+        - Sets up visual areas on draft canvas.
+        - Calls `DraftPackSetup.SetupDraftPacks()`.
+        - Initializes card shop and artifact shop.
+- **Dependencies**: `DraftCanvasManager`, `DraftPackSetup`, `CardShopManager`, `ArtifactShopManager`.
+
+### 19. `DraftManager.cs`
+- **Purpose**: Controls the flow of the drafting phase.
+- **Attached to**: `DraftManager` GameObject.
+- **Inherits**: `NetworkBehaviour`.
+- **Singleton**: Yes (`Instance`).
+- **Key Features**:
+    - Manages draft packs distribution to players.
+    - Handles pack passing logic when a card is selected.
+    - Queues packs for players.
+    - Tracks draft completion status.
+    - Triggers next combat when draft is complete.
+- **Dependencies**: `DraftPack`, `NetworkPlayer`, `CombatSetup`.
+
+### 20. `DraftPack.cs`
+- **Purpose**: Contains a list of draftable cards.
+- **Attached to**: `DraftPack` prefab.
+- **Inherits**: `NetworkBehaviour`.
+- **Key Features**:
+    - Stores list of cards available in the pack.
+    - Handles removal of selected cards.
+    - Manages visual representation of cards in pack.
+- **Dependencies**: `Card`.
+
+### 21. `DraftPackSetup.cs`
+- **Purpose**: Creates and populates draft packs.
+- **Attached to**: Component triggered by `DraftSetup`.
+- **Inherits**: `NetworkBehaviour`.
+- **Key Features**:
+    - `SetupDraftPacks()` (Server-side):
+        - Creates draft packs (equal to number of players).
+        - Populates each pack with random draftable cards.
+        - Distributes initial packs to players.
+- **Dependencies**: `DraftPack`, `DraftManager`, `NetworkPlayer`, `CardDatabase`.
+
+### 22. `DraftSelectionManager.cs`
+- **Purpose**: Handles card selection during draft.
+- **Attached to**: Card prefabs in draft.
+- **Inherits**: `MonoBehaviour`.
+- **Key Features**:
+    - Triggers when player selects a card from a draft pack.
+    - Adds selected card to player's `NetworkEntityDeck`.
+    - Notifies `DraftManager` to pass the pack to the next player.
+- **Dependencies**: `DraftManager`, `DeckManager`, `NetworkPlayer`.
+
+### 23. `CardShopManager.cs`
+- **Purpose**: Manages card shop in draft phase.
+- **Attached to**: `CardShop` prefab.
+- **Inherits**: `NetworkBehaviour`.
+- **Key Features**:
+    - Populates shop with random purchasable cards.
+    - Handles card purchase transactions.
+    - Updates available cards when purchases are made.
+- **Dependencies**: `Card`, `CardDatabase`, `NetworkPlayer`.
+
+### 24. `CardSelectionManager.cs`
+- **Purpose**: Handles card selection from card shop.
+- **Attached to**: Card prefabs in shop.
+- **Inherits**: `MonoBehaviour`.
+- **Key Features**:
+    - Triggers when player selects a card from the shop.
+    - Verifies player has enough currency.
+    - Adds selected card to player's `NetworkEntityDeck`.
+    - Deducts cost from player's currency.
+- **Dependencies**: `CardShopManager`, `DeckManager`, `NetworkPlayer`.
+
+### 25. `ArtifactShopManager.cs`
+- **Purpose**: Manages artifact shop in draft phase.
+- **Attached to**: `ArtifactShop` prefab.
+- **Inherits**: `NetworkBehaviour`.
+- **Key Features**:
+    - Populates shop with random purchasable artifacts.
+    - Handles artifact purchase transactions.
+    - Updates available artifacts when purchases are made.
+- **Dependencies**: `Artifact`, `NetworkPlayer`.
+
+### 26. `ArtifactSelectionManager.cs`
+- **Purpose**: Handles artifact selection from artifact shop.
+- **Attached to**: Artifact prefabs in shop.
+- **Inherits**: `MonoBehaviour`.
+- **Key Features**:
+    - Triggers when player selects an artifact from the shop.
+    - Verifies player has enough currency.
+    - Adds selected artifact to player's `NetworkEntityArtifacts`.
+    - Deducts cost from player's currency.
+- **Dependencies**: `ArtifactShopManager`, `ArtifactManager`, `NetworkPlayer`.
 
 ## Game Entities & Data
 
-### 12. `NetworkPlayer.cs`
-- **Purpose**: Represents a player in the game. Attached to the NetworkPlayer prefab.
+### 27. `NetworkPlayer.cs`
+- **Purpose**: Represents a player. Attached to NetworkPlayer prefab.
 - **Inherits**: `NetworkBehaviour`.
-- **Key Features**:
-    - **Synced Data (`SyncVar`)**:
-        - `PlayerName`
-        - `MaxHealth`, `CurrentHealth`
-        - `MaxEnergy`, `CurrentEnergy`
-        - `CurrentStatuses` (string, simple implementation)
-    - **Card Management (`SyncList<int>`)**:
-        - `currentDeckCardIds`
-        - `playerHandCardIds`
-        - `discardPileCardIds`
-    - **Serialized Fields**:
-        - `List<Card> StarterDeckPrefabs`: List of `Card` prefabs defining the initial deck.
-        - `Transform PlayerHandTransform`, `DeckTransform`, `DiscardTransform`: For client-side visual organization of card GameObjects.
-    - `OnStartServer()`: Initializes health/energy from `GameManager`, calls `InitializeDeck()`.
-    - `InitializeDeck()` (Server): Populates `currentDeckCardIds` from `StarterDeckPrefabs` (using `GetInstanceID()` as a placeholder for real card IDs).
-    - `CmdSetPlayerName()` (ServerRpc): Allows client to set its name (e.g., from Steam).
-    - Methods: `TakeDamage()`, `Heal()`, `ChangeEnergy()`, `ReplenishEnergy()`.
-- **Dependencies**: `GameManager`, `Card` (prefabs).
+- **Key Features**: `SyncVar`s (`PlayerName`, Health, Energy, Statuses), Methods for taking damage, healing, managing energy. Now uses new deck and artifact systems.
+- **Dependencies**: `GameManager`, `Card` (prefabs), `HandManager`, `EffectManager`, `HandleCardPlay`, `NetworkEntityDeck`, `NetworkEntityArtifacts`, `RelationshipManager`, `DeckManager`, `ArtifactManager`.
 
-### 13. `NetworkPet.cs`
-- **Purpose**: Represents a player-controlled or AI pet. Attached to the NetworkPet prefab.
+### 28. `NetworkPet.cs`
+- **Purpose**: Represents a pet. Attached to NetworkPet prefab.
 - **Inherits**: `NetworkBehaviour`.
-- **Key Features**:
-    - Similar structure to `NetworkPlayer` for stats and card management.
-    - **Synced Data (`SyncVar`)**:
-        - `OwnerPlayerObjectId` (to link to a `NetworkPlayer`)
-        - `PetName`
-        - `MaxHealth`, `CurrentHealth`
-        - `MaxEnergy`, `CurrentEnergy`
-        - `CurrentStatuses`
-    - **Card Management (`SyncList<int>`)**:
-        - `currentDeckCardIds`
-        - `playerHandCardIds`
-        - `discardPileCardIds`
-    - **Serialized Fields**:
-        - `List<Card> StarterDeckPrefabs`
-        - `Transform PetHandTransform`, `DeckTransform`, `DiscardTransform`.
-    - `OnStartServer()`: Initializes stats from `GameManager`, calls `InitializeDeck()`.
-    - `InitializeDeck()` (Server): Similar to `NetworkPlayer`.
-    - `SetOwnerPlayer(NetworkPlayer ownerPlayer)` (Server): Sets the `OwnerPlayerObjectId`.
-    - `GetOwnerPlayer()`: Retrieves the owner `NetworkPlayer` object.
-    - Methods: `TakeDamage()`, `Heal()`, `ChangeEnergy()`, `ReplenishEnergy()`.
-- **Dependencies**: `GameManager`, `Card` (prefabs), `NetworkPlayer`.
+- **Key Features**: Similar to `NetworkPlayer`. Includes `OwnerPlayerObjectId` (`SyncVar`), `SetOwnerPlayer()`. Now uses new deck and artifact systems.
+- **Dependencies**: `GameManager`, `Card` (prefabs), `NetworkPlayer`, `HandManager`, `EffectManager`, `HandleCardPlay`, `NetworkEntityDeck`, `NetworkEntityArtifacts`, `RelationshipManager`, `DeckManager`, `ArtifactManager`.
 
-### 14. `Card.cs`
-- **Purpose**: Defines the properties and effects of a single card. Attached to Card prefabs.
-- **Inherits**: `NetworkBehaviour` (currently, though `MonoBehaviour` might be sufficient if card GameObjects aren't independently networked).
+### 29. `EntityDeckSetup.cs`
+- **Purpose**: Initializes entity's starting deck.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
 - **Key Features**:
-    - `CardEffectType` enum (Damage, Heal, DrawCard, etc.).
-    - **Serialized Fields (Card Definition)**:
-        - `_cardId` (int, for unique identification)
-        - `_cardName` (string)
-        - `_description` (string)
-        - `_cardArtwork` (Sprite)
-        - `_effectType` (`CardEffectType`)
-        - `_amount` (int, for effect magnitude)
-        - `_energyCost` (int)
-    - Public accessors for card properties.
-    - `InitializeCard()`: Method to set card properties (useful if creating card data programmatically).
-    - Runtime properties `OwningPlayer`, `OwningPet` (not serialized, set on instantiated card GameObjects).
+    - Called after `PlayerSpawner` creates entities.
+    - Populates `NetworkEntityDeck` with starter deck cards.
+- **Dependencies**: `NetworkEntityDeck`, `Card`.
+
+### 30. `NetworkEntityDeck.cs`
+- **Purpose**: Maintains entity's collected cards across combats.
+- **Inherits**: `NetworkBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
+- **Key Features**:
+    - `SyncList<int>` of card IDs the entity owns.
+    - Provides methods to add/remove cards.
+    - Persists between combat and draft phases.
+- **Dependencies**: `Card`, `CardDatabase`.
+
+### 31. `NetworkEntityArtifacts.cs`
+- **Purpose**: Maintains entity's collected artifacts.
+- **Inherits**: `NetworkBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
+- **Key Features**:
+    - `SyncList<int>` of artifact IDs the entity owns.
+    - Provides methods to add/remove artifacts.
+    - Persists between combat and draft phases.
+- **Dependencies**: `Artifact`.
+
+### 32. `RelationshipManager.cs`
+- **Purpose**: Manages entity relationships (allies, enemies).
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
+- **Key Features**:
+    - References to allied entities.
+    - Set after `PlayerSpawner` creates entities.
+    - Provides methods to access allied entities.
+- **Dependencies**: `NetworkPlayer`, `NetworkPet`.
+
+### 33. `DeckManager.cs`
+- **Purpose**: Manages operations on entity's card collection.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
+- **Key Features**:
+    - Interacts with `NetworkEntityDeck`.
+    - Provides methods to add cards from draft/shop.
+    - Handles deck modification during draft phase.
+- **Dependencies**: `NetworkEntityDeck`, `Card`.
+
+### 34. `ArtifactManager.cs`
+- **Purpose**: Manages operations on entity's artifact collection.
+- **Inherits**: `MonoBehaviour`.
+- **Attached to**: `NetworkPlayer` and `NetworkPet` prefabs at root.
+- **Key Features**:
+    - Interacts with `NetworkEntityArtifacts`.
+    - Provides methods to add artifacts from draft/shop.
+    - Handles artifact effects during combat.
+- **Dependencies**: `NetworkEntityArtifacts`, `Artifact`.
+
+### 35. `Card.cs`
+- **Purpose**: Defines card properties/effects. Attached to Card prefabs (or used as ScriptableObjects).
+- **Inherits**: `MonoBehaviour` or `ScriptableObject`. (If `NetworkBehaviour`, reconsider if needed).
+- **Key Features**: `CardEffectType` enum, Serialized fields for ID, Name, Description, Artwork, Effect Type, Amount, Cost. Public accessors.
 - **Dependencies**: None.
 
-### 15. `Deck.cs`
-- **Purpose**: A data container script, attached to a "Deck Prefab," representing a list of predefined `Card` prefabs.
+### 36. `Artifact.cs`
+- **Purpose**: Represents an artifact item with special effects.
 - **Inherits**: `MonoBehaviour`.
+- **Attached to**: Artifact prefabs.
 - **Key Features**:
-    - `[SerializeField] private List<Card> cardsInDeck`: Assign `Card` prefabs in the Inspector to define a deck composition.
-    - `DeckName` (string).
-    - `GetCardDefinitions()`: Returns the list of `Card`s.
-    - Referenced by `NetworkPlayer` and `NetworkPet` in their `StarterDeckPrefabs` field (though this should ideally be a reference to the `Deck` prefab itself, and then the player/pet would get the `cardsInDeck` from it).
-- **Dependencies**: `Card` (prefabs).
+    - References `ArtifactData`.
+    - Visualizes artifact in UI.
+    - Handles selection in shop.
+- **Dependencies**: `ArtifactData`.
+
+### 37. `ArtifactData.cs`
+- **Purpose**: Defines artifact properties and effects.
+- **Inherits**: `ScriptableObject`.
+- **Key Features**:
+    - ID, Name, Description, Icon.
+    - Effect type and parameters.
+    - Similar structure to `Card`/`CardData`.
+- **Dependencies**: None.
+
+### 38. `CardDatabase.cs` (Assumed/Required)
+- **Purpose**: Singleton (likely `ScriptableObject` or `MonoBehaviour`) to provide access to `CardData` (e.g., `Card` scriptable objects or prefabs) based on a card ID.
+- **Key Features**: `GetCardById(int cardId)` method. Loaded at runtime.
+- **Dependencies**: `Card`.
 
 ---
-This summary should provide a good overview for future reference. 
+# Duplicate Functionality Analysis
+
+After reviewing the codebase and implementing the requested changes, the following areas of duplicate or overlapping functionality were identified:
+
+## 1. Card Display and Rendering Logic
+
+Current duplication:
+- **CombatCanvasManager.RenderHand()** - Contains logic to create and display card visuals
+- **DraftCanvasManager** - Has similar logic for rendering cards in draft packs
+- **CardShopManager** - Contains yet another implementation of card rendering
+
+**Recommendation**: Create a unified `CardRenderer` or `CardDisplayManager` class that handles all card visualization. This class would take a list of card IDs, a parent transform, and optional callback for card interaction, then handle all the instantiation and setup.
+
+## 2. Player/Pet Ownership and References
+
+Current duplication:
+- Multiple scripts looking up player/pet references in various ways
+- Different approaches to finding the local player across UI managers
+
+**Recommendation**: Create a `GameEntityRegistry` singleton that maintains references to all NetworkPlayer and NetworkPet instances. This would provide a standardized way to get entities by ID, get the local player, or find entities by ownership.
+
+## 3. Deck Management
+
+This has been largely addressed in our refactoring, but some areas might still have overlap:
+- `NetworkEntityDeck` - Persistent deck storage
+- `CombatDeck` - Combat-specific deck management 
+- `DeckManager` - User interface for deck modification
+
+These scripts all manage aspects of card collections. Consider whether all three components are necessary or if some functionality could be consolidated.
+
+## 4. Card Selection Logic
+
+Even with our unified `CardSelectionManager`, there might still be duplication:
+- Draft pack card selection
+- Card shop purchase logic
+- Both have similar flows for validating and executing selection
+
+**Recommendation**: Further refine the `CardSelectionManager` to use a strategy pattern where different selection types (draft, shop) are defined by interfaces but share common validation and execution patterns.
+
+## 5. Network Connection Handling
+
+Current duplication:
+- Multiple scripts handling network connection events
+- Redundant connection state monitoring
+
+**Recommendation**: Create a `NetworkSessionManager` that provides a single interface for monitoring connection state and handling disconnections.
+
+## 6. Combat Turn Management
+
+Current duplication:
+- `CombatManager` contains turn state management
+- Individual entity scripts also track turn state
+
+**Recommendation**: Move all turn state management into `CombatManager` and have entity scripts reference it rather than maintaining their own state.
+
+## 7. Card Effect Application
+
+Current duplication:
+- Some effect logic in `HandleCardPlay`
+- Some in `EffectManager`
+- Potential for duplication in combat resolution code
+
+**Recommendation**: Centralize all effect application in `EffectManager` and have other scripts delegate to it.
+
+## 8. UI Management
+
+Current duplication:
+- Multiple canvas managers with similar patterns
+- Redundant setup and teardown logic
+
+**Recommendation**: Create a base `UICanvasManager` class that handles common functionality like finding references and setting up UI, then have specific managers inherit from it.
+
+## 9. Game State Management
+
+Current duplication:
+- State transitions handled in multiple places
+- Combat, draft, and lobby state managed separately
+
+**Recommendation**: Create a central `GameStateManager` that coordinates all state transitions and ensures consistent state across the application. 

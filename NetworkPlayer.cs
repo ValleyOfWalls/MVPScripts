@@ -5,6 +5,10 @@ using FishNet.Connection;
 using System.Collections.Generic;
 using Steamworks; // For potentially linking to Steam ID
 
+/// <summary>
+/// Represents a player entity in the networked game with health, energy, cards, and other game-related stats.
+/// Attach to: The NetworkPlayerPrefab GameObject that is instantiated for each connected client.
+/// </summary>
 public class NetworkPlayer : NetworkBehaviour
 {
     // Link to the owner connection (automatically handled by FishNet if spawned with ownership)
@@ -21,6 +25,12 @@ public class NetworkPlayer : NetworkBehaviour
 
     // Example for statuses. You might want a more complex type or a list of status effect objects.
     public readonly SyncVar<string> CurrentStatuses = new SyncVar<string>();
+
+    // Add Currency system
+    public readonly SyncVar<int> Currency = new SyncVar<int>();
+    
+    // Event for currency changes
+    public event System.Action<int> OnCurrencyChanged;
 
     // StarterDeck should be a list of Card ScriptableObjects or identifiers
     // For simplicity, let's assume it's a list of Card script references if Card is a MonoBehaviour on a prefab
@@ -57,7 +67,7 @@ public class NetworkPlayer : NetworkBehaviour
 
         CurrentHealth.Value = MaxHealth.Value;
         CurrentEnergy.Value = MaxEnergy.Value;
-        InitializeDeck();
+        // InitializeDeck method removed - now handled by EntityDeckSetup
     }
 
     public override void OnStartClient()
@@ -73,30 +83,7 @@ public class NetworkPlayer : NetworkBehaviour
         // The SyncLists for card IDs will automatically update on clients.
     }
 
-    [Server]
-    private void InitializeDeck()
-    {
-        currentDeckCardIds.Clear();
-        playerHandCardIds.Clear();
-        discardPileCardIds.Clear();
-
-        if (StarterDeckDefinition != null && StarterDeckDefinition.CardsInDeck != null)
-        {
-            foreach (CardData cardDataSO in StarterDeckDefinition.CardsInDeck)
-            {
-                if (cardDataSO != null)
-                {
-                    // Assuming Card script has a unique ID or we use its instance ID (if it were a ScriptableObject)
-                    // For simplicity, let's assume Card has an ID field we can use or we generate one.
-                    // This needs a proper Card Data system.
-                    // For now, let's placeholder with a simple hash or a predefined ID on the Card script.
-                    currentDeckCardIds.Add(cardDataSO.CardId); // Use CardId from CardData SO
-                }
-            }
-        }
-        Debug.Log($"Player {PlayerName.Value} (ID: {ObjectId}) deck initialized with {currentDeckCardIds.Count} cards.");
-        // ShuffleDeck(); // Implement shuffling logic here
-    }
+    // InitializeDeck method removed - now handled by EntityDeckSetup
 
     // Example method to set player name (could be called after Steam authentication)
     [ServerRpc(RequireOwnership = false)] // Owner client can call this, or server can set it directly
@@ -139,6 +126,80 @@ public class NetworkPlayer : NetworkBehaviour
         CurrentEnergy.Value = MaxEnergy.Value;
     }
 
+    [Server]
+    public void AddCurrency(int amount)
+    {
+        Currency.Value += amount;
+        if (IsClientInitialized)
+        {
+            OnCurrencyChanged?.Invoke(Currency.Value);
+        }
+    }
+
+    [Server]
+    public void DeductCurrency(int amount)
+    {
+        Currency.Value = Mathf.Max(0, Currency.Value - amount);
+        if (IsClientInitialized)
+        {
+            OnCurrencyChanged?.Invoke(Currency.Value);
+        }
+    }
+
+    [Server]
+    public void SetCurrency(int amount)
+    {
+        Currency.Value = Mathf.Max(0, amount);
+        if (IsClientInitialized)
+        {
+            OnCurrencyChanged?.Invoke(Currency.Value);
+        }
+    }
+
+    [Server]
+    public void IncreaseMaxHealth(int amount)
+    {
+        MaxHealth.Value += amount;
+        CurrentHealth.Value += amount;
+    }
+
+    [Server]
+    public void IncreaseMaxEnergy(int amount)
+    {
+        MaxEnergy.Value += amount;
+        CurrentEnergy.Value += amount;
+    }
+
     // Further methods for drawing cards, playing cards, etc., will be managed by CombatManager/HandManager
     // but might involve ServerRpc calls to this script to modify its state (e.g., card lists).
+
+    [ServerRpc(RequireOwnership = true)]
+    public void CmdAddCardToDeck(int cardId)
+    {
+        NetworkEntityDeck entityDeck = GetComponent<NetworkEntityDeck>();
+        if (entityDeck != null)
+        {
+            entityDeck.AddCard(cardId);
+            Debug.Log($"Player {PlayerName.Value} added card ID {cardId} to their deck via ServerRpc.");
+        }
+        else
+        {
+            Debug.LogError($"Cannot add card to deck: NetworkEntityDeck component not found on player {PlayerName.Value}.");
+        }
+    }
+    
+    [ServerRpc(RequireOwnership = true)]
+    public void CmdRemoveCardFromDeck(int cardId)
+    {
+        NetworkEntityDeck entityDeck = GetComponent<NetworkEntityDeck>();
+        if (entityDeck != null)
+        {
+            bool removed = entityDeck.RemoveCard(cardId);
+            Debug.Log($"Player {PlayerName.Value} {(removed ? "removed" : "failed to remove")} card ID {cardId} from their deck via ServerRpc.");
+        }
+        else
+        {
+            Debug.LogError($"Cannot remove card from deck: NetworkEntityDeck component not found on player {PlayerName.Value}.");
+        }
+    }
 } 

@@ -5,6 +5,10 @@ using FishNet.Connection;
 using System.Collections.Generic;
 using FishNet.Managing;
 
+/// <summary>
+/// Represents a pet entity in the networked game with health, energy, cards, and other game-related stats.
+/// Attach to: The NetworkPetPrefab GameObject that is instantiated for each connected client's pet.
+/// </summary>
 public class NetworkPet : NetworkBehaviour
 {
     // Link to the owner (could be a NetworkPlayer instance or the connection)
@@ -50,34 +54,12 @@ public class NetworkPet : NetworkBehaviour
 
         CurrentHealth.Value = MaxHealth.Value;
         CurrentEnergy.Value = MaxEnergy.Value;
-        InitializeDeck();
     }
 
     public override void OnStartClient()
     {
         base.OnStartClient();
         // Client-side initialization for pet visuals or UI linked to this pet
-    }
-
-    [Server]
-    private void InitializeDeck()
-    {
-        currentDeckCardIds.Clear();
-        playerHandCardIds.Clear();
-        discardPileCardIds.Clear();
-
-        if (StarterDeckDefinition != null && StarterDeckDefinition.CardsInDeck != null)
-        {
-            foreach (CardData cardDataSO in StarterDeckDefinition.CardsInDeck)
-            {
-                if (cardDataSO != null)
-                {
-                    currentDeckCardIds.Add(cardDataSO.CardId);
-                }
-            }
-        }
-        Debug.Log($"Pet {PetName.Value} (ID: {ObjectId}) deck initialized with {currentDeckCardIds.Count} cards.");
-        // ShuffleDeck();
     }
 
     [Server]
@@ -146,5 +128,19 @@ public class NetworkPet : NetworkBehaviour
     [Server]
     public void ReplenishEnergy(){
         CurrentEnergy.Value = MaxEnergy.Value;
+    }
+
+    [Server]
+    public void IncreaseMaxHealth(int amount)
+    {
+        MaxHealth.Value += amount;
+        CurrentHealth.Value += amount;
+    }
+
+    [Server]
+    public void IncreaseMaxEnergy(int amount)
+    {
+        MaxEnergy.Value += amount;
+        CurrentEnergy.Value += amount;
     }
 } 

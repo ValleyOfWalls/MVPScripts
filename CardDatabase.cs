@@ -89,4 +89,24 @@ public class CardDatabase : MonoBehaviour
     {
         return new List<CardData>(cardDataById.Values);
     }
+
+    public List<CardData> GetRandomCards(int count)
+    {
+        if (count <= 0) return new List<CardData>();
+        
+        // Create a shuffled list of available cards
+        List<CardData> availableCards = new List<CardData>(allCardDataList);
+        int n = availableCards.Count;
+        while (n > 1)
+        {
+            n--;
+            int k = Random.Range(0, n + 1);
+            CardData temp = availableCards[k];
+            availableCards[k] = availableCards[n];
+            availableCards[n] = temp;
+        }
+        
+        // Return the requested number of cards (or all if count > available)
+        return availableCards.Take(Mathf.Min(count, availableCards.Count)).ToList();
+    }
 } 

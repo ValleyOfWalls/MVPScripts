@@ -5,6 +5,10 @@ using System.Linq;
 using FishNet.Connection;
 using FishNet.Managing; // Added for NetworkManager
 
+/// <summary>
+/// Initializes the combat phase including entity deck setup, fight assignments, and UI preparation.
+/// Attach to: A NetworkObject in the scene that coordinates the combat setup process.
+/// </summary>
 public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to perform server-side setup
 {
     [SerializeField] private GameObject combatCanvas; // Should already be active when this runs
@@ -58,27 +62,13 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
     }
 
     [Server]
-    private void InitializeCombat()
+    public void InitializeCombat()
     {
         if (setupDone) return;
         Debug.Log("CombatSetup: Server is initializing combat.");
 
-        // 1. Create/Instantiate cards from player and pet decks
-        // This step is tricky. "Spawning cards under a deck gameobject" implies physical cards.
-        // NetworkPlayer/Pet already have card IDs. We need a system to map IDs to CardData (prefabs/ScriptableObjects).
-        // Then, for visual representation, CombatSetup (server-side) could tell clients to display these cards.
-        // Or, if Card GameObjects are NetworkObjects themselves, spawn them.
-        // Let's assume NetworkPlayer/Pet have StarterDeckPrefabs and their currentDeckCardIds are populated.
-        // We will instantiate visual card representations based on these IDs.
-
-        // This part is more about preparing the card data structures than spawning GameObjects immediately,
-        // as HandManager will deal with drawing and moving visual cards.
-        // However, the request mentions spawning under deck gameobject.
-        // Let's assume NetworkPlayer/Pet have DeckTransforms where these *could* be parented if physically represented from start.
-        // For now, ensure NetworkPlayer/Pet have their decks initialized.
-        // The actual spawning of card GameObjects will likely be handled by HandManager when cards are drawn.
-
-        Debug.Log("Card data initialization in NetworkPlayer/Pet should already be done. Visual card spawning handled by HandManager/CombatManager during draw.");
+        // 1. Setup combat decks for all players and pets
+        SetupCombatDecks();
 
         // 2. Assign fights
         AssignFights();
@@ -88,7 +78,7 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
         // The server can send an RPC to all clients to trigger their local CombatCanvasManager setup.
         RpcTriggerCombatCanvasManagerSetup();
 
-        // 4. Trigger CombatManager
+        // 4. Trigger CombatManager to start combat
         if (combatManager != null)
         {
             Debug.Log("CombatSetup: Triggering CombatManager to start combat process.");
@@ -101,6 +91,56 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
         
         setupDone = true;
         Debug.Log("CombatSetup: Initialization complete.");
+    }
+
+    [Server]
+    private void SetupCombatDecks()
+    {
+        if (FishNet.InstanceFinder.NetworkManager == null || !FishNet.InstanceFinder.NetworkManager.ServerManager.Started)
+        {
+            Debug.LogError("Cannot setup combat decks: FishNet NetworkManager is not available or server not started.");
+            return;
+        }
+
+        List<NetworkPlayer> players = FishNet.InstanceFinder.NetworkManager.ServerManager.Objects.Spawned.Values
+            .Select(nob => nob.GetComponent<NetworkPlayer>())
+            .Where(p => p != null)
+            .ToList();
+
+        List<NetworkPet> pets = FishNet.InstanceFinder.NetworkManager.ServerManager.Objects.Spawned.Values
+            .Select(nob => nob.GetComponent<NetworkPet>())
+            .Where(p => p != null)
+            .ToList();
+
+        // Setup combat decks for players
+        foreach (NetworkPlayer player in players)
+        {
+            CombatDeckSetup deckSetup = player.GetComponent<CombatDeckSetup>();
+            if (deckSetup != null)
+            {
+                deckSetup.SetupCombatDeck();
+                Debug.Log($"Setup combat deck for player {player.PlayerName.Value}");
+            }
+            else
+            {
+                Debug.LogError($"CombatDeckSetup component not found on player {player.PlayerName.Value}");
+            }
+        }
+
+        // Setup combat decks for pets
+        foreach (NetworkPet pet in pets)
+        {
+            CombatDeckSetup deckSetup = pet.GetComponent<CombatDeckSetup>();
+            if (deckSetup != null)
+            {
+                deckSetup.SetupCombatDeck();
+                Debug.Log($"Setup combat deck for pet {pet.PetName.Value}");
+            }
+            else
+            {
+                Debug.LogError($"CombatDeckSetup component not found on pet {pet.PetName.Value}");
+            }
+        }
     }
 
     [Server]
@@ -138,47 +178,78 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
         List<NetworkPet> availablePets = new List<NetworkPet>(pets);
         foreach (NetworkPlayer player in players)
         {
-            if (availablePets.Count == 0)
+            if (availablePets.Count > 0)
             {
-                Debug.LogWarning($"Not enough pets to assign to all players. Player {player.PlayerName} will not have an opponent.");
-                continue;
+                // Find player's own pet to avoid pairing with it
+                uint playerOwnedPetId = 0;
+                foreach (NetworkPet pet in pets)
+                {
+                    if (pet.OwnerPlayerObjectId.Value == (uint)player.ObjectId)
+                    {
+                        playerOwnedPetId = (uint)pet.ObjectId;
+                        break;
+                    }
             }
 
-            // Simple assignment: take the first available pet.
-            // TODO: Add logic to prevent a player fighting their own pet if pets are tied to specific players.
-            NetworkPet opponentPet = availablePets[0];
-            availablePets.RemoveAt(0);
+                // Select a pet that is not owned by this player, if possible
+                NetworkPet opponent = null;
+                foreach (NetworkPet pet in availablePets)
+                {
+                    if ((uint)pet.ObjectId != playerOwnedPetId)
+                    {
+                        opponent = pet;
+                        break;
+                    }
+                }
 
-            fightManager.AddFightAssignment(player, opponentPet);
-            Debug.Log($"Assigned Player {player.PlayerName} (ID: {player.ObjectId}) vs Pet {opponentPet.PetName} (ID: {opponentPet.ObjectId})");
+                // If we couldn't find a non-owned pet, just take the first available
+                if (opponent == null && availablePets.Count > 0)
+                {
+                    opponent = availablePets[0];
+                }
+
+                if (opponent != null)
+                {
+                    fightManager.AddFightAssignment(player, opponent);
+                    availablePets.Remove(opponent);
+                    Debug.Log($"Assigned player {player.PlayerName.Value} to fight against pet {opponent.PetName.Value}");
         }
-
-        if (availablePets.Count > 0)
+                else
+                {
+                    Debug.LogWarning($"Could not find suitable pet opponent for player {player.PlayerName.Value}");
+                }
+            }
+            else
         {
-            Debug.LogWarning($"{availablePets.Count} pets were not assigned to any fight.");
+                Debug.LogWarning($"No available pets for player {player.PlayerName.Value}");
+            }
         }
     }
 
     [ObserversRpc]
     private void RpcTriggerCombatCanvasManagerSetup()
     {
-        Debug.Log("RpcTriggerCombatCanvasManagerSetup called on clients.");
-        CombatCanvasManager localCombatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
-        if (localCombatCanvasManager != null)
+        Debug.Log("RpcTriggerCombatCanvasManagerSetup received on client. Setting up combat UI.");
+        if (combatCanvas != null)
         {
-            localCombatCanvasManager.SetupCombatUI();
+            combatCanvas.SetActive(true);
         }
         else
         {
-            Debug.LogError("Local CombatCanvasManager not found on client.");
+            Debug.LogError("Combat Canvas reference is null.");
+        }
+
+        CombatCanvasManager canvasManager = FindFirstObjectByType<CombatCanvasManager>();
+        if (canvasManager != null)
+        {
+            canvasManager.SetupCombatUI();
+        }
+        else
+        {
+            Debug.LogError("CombatCanvasManager not found in the scene.");
         }
     }
     
-    // This method will be called by CombatManager or other systems that need card data.
-    // Card instances are GameObjects based on cardGamePrefab, with a Card component holding data.
-    [Server]
-    public Card SpawnCardObject(NetworkConnection ownerConn, Transform parent, int cardId /* or CardData */)
-    {
         // This method is quite problematic because it tries to instantiate a prefab and get a Card component
         // which implies the card data is ON the prefab. A real system would look up CardData (e.g. ScriptableObject)
         // based on cardId and then potentially instantiate a visual prefab, applying the data to it.
@@ -186,6 +257,8 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
 
         // For now, returning null as this part needs a bigger refactor with a Card Database.
         // CombatManager's GetCardDataFromId also relies on this flawed approach.
+    private Card SpawnCardObject(int cardId, NetworkConnection ownerConn, Transform parent)
+    {
         Debug.LogWarning("SpawnCardObject in CombatSetup is a placeholder and needs a proper Card Database system.");
         return null; 
         /*

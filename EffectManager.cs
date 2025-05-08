@@ -1,37 +1,49 @@
 using UnityEngine;
 using FishNet.Object; // For NetworkBehaviour type checking
 
-// Not a MonoBehaviour. Instantiated by CombatManager.
-public class EffectManager
+/// <summary>
+/// Applies card effects to entity targets during combat, such as damage, healing, and status effects.
+/// Attach to: Both NetworkPlayer and NetworkPet prefabs to handle receiving effects from played cards.
+/// </summary>
+public class EffectManager : MonoBehaviour
 {
-    public EffectManager()
+    private NetworkBehaviour parentEntity; // Reference to the NetworkPlayer or NetworkPet this is attached to
+
+    private void Awake()
     {
-        // Constructor if needed
+        // Get the parent NetworkBehaviour (either NetworkPlayer or NetworkPet)
+        parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
+        if (parentEntity == null)
+        {
+            parentEntity = GetComponent<NetworkPet>() as NetworkBehaviour;
+        }
+
+        if (parentEntity == null)
+        {
+            Debug.LogError("EffectManager: Not attached to a NetworkPlayer or NetworkPet. This component must be attached to one of these.");
+        }
     }
 
     // Server-side method to apply a card's effect
-    public void ApplyEffect(NetworkBehaviour caster, NetworkBehaviour target, CardData cardData)
+    public void ApplyEffect(NetworkBehaviour target, CardData cardData)
     {
-        if (caster == null || target == null || cardData == null)
+        if (parentEntity == null || target == null || cardData == null)
         {
-            Debug.LogError("ApplyEffect: Caster, Target, or CardData is null.");
+            Debug.LogError("ApplyEffect: Parent Entity, Target, or CardData is null.");
             return;
         }
 
         // Ensure this runs on the server where state changes are authoritative
-        if (!caster.IsServerStarted)
+        if (!parentEntity.IsServerStarted)
         {
             Debug.LogWarning("ApplyEffect called on client. Effects should be applied on the server.");
             return;
         }
 
-        Debug.Log($"EffectManager: Applying '{cardData.CardName}' (Effect: {cardData.EffectType}, Amount: {cardData.Amount}) from {caster.name} to {target.name}");
+        Debug.Log($"EffectManager: Applying '{cardData.CardName}' (Effect: {cardData.EffectType}, Amount: {cardData.Amount}) from {parentEntity.name} to {target.name}");
 
         NetworkPlayer targetPlayer = target as NetworkPlayer;
         NetworkPet targetPet = target as NetworkPet;
-        // Caster could also be player or pet
-        // NetworkPlayer casterPlayer = caster as NetworkPlayer;
-        // NetworkPet casterPet = caster as NetworkPet;
 
         switch (cardData.EffectType)
         {
@@ -46,15 +58,18 @@ public class EffectManager
                 break;
 
             case CardEffectType.DrawCard:
-                // The caster draws cards. CombatManager will need a reference to HandManager.
-                // This shows a dependency that CombatManager might need to expose HandManager or call it.
-                HandManager handManager = CombatManager.Instance.GetComponent<CombatManager>()?.handManager; // Assuming CombatManager has public handManager
-                if (handManager != null) {
-                    for(int i = 0; i < cardData.Amount; i++) {
-                         handManager.DrawOneCard(caster);
+                // Find the target's HandManager component
+                HandManager targetHandManager = target.GetComponent<HandManager>();
+                if (targetHandManager != null) 
+                {
+                    for(int i = 0; i < cardData.Amount; i++) 
+                    {
+                        targetHandManager.DrawOneCard();
                     }
-                } else {
-                     Debug.LogError("HandManager instance not found on CombatManager for DrawCard effect.");
+                } 
+                else 
+                {
+                    Debug.LogError("HandManager component not found on target for DrawCard effect.");
                 }
                 break;
 

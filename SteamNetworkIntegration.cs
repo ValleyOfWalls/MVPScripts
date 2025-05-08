@@ -3,8 +3,14 @@ using Steamworks;
 using System.Collections.Generic;
 using System;
 using FishNet.Managing; // Ensured this is active
+using FishNet.Transporting;
+using FishNet.Connection; // Added this line
 // using FishNet.Transporting; // Example for transport states
 
+/// <summary>
+/// Centralizes Steamworks integration with FishNet networking, handling lobbies, player connections, and Steam callbacks.
+/// Attach to: A persistent GameObject in the scene, often alongside a PlayerSpawner component.
+/// </summary>
 public class SteamNetworkIntegration : MonoBehaviour
 {
     // --- Singleton Pattern ---
@@ -69,9 +75,8 @@ public class SteamNetworkIntegration : MonoBehaviour
     public GameObject NetworkPlayerPrefab; // Assign in Inspector
     public GameObject NetworkPetPrefab;    // Assign in Inspector
 
-    // Reference to PlayerSpawner (can be assigned in Inspector or found)
-    // public PlayerSpawner playerSpawner;
-
+    private PlayerSpawner playerSpawner; // Reference to component rather than instance
+    private NetworkManager fishNetManager; // To cache NetworkManager instance
 
     private void Awake()
     {
@@ -106,15 +111,33 @@ public class SteamNetworkIntegration : MonoBehaviour
         m_personaStateChange = Callback<PersonaStateChange_t>.Create(OnPersonaStateChangeCallback);
         m_lobbyChatUpdate = Callback<LobbyChatUpdate_t>.Create(OnLobbyChatUpdateCallback);
 
-        // Example: Find PlayerSpawner if not assigned
-        // if (playerSpawner == null)
-        // {
-        //     playerSpawner = FindObjectOfType<PlayerSpawner>();
-        //     if (playerSpawner == null)
-        //     {
-        //         Debug.LogError("PlayerSpawner not found in the scene!");
-        //     }
-        // }
+        fishNetManager = UnityEngine.Object.FindFirstObjectByType<NetworkManager>();
+        if (fishNetManager == null)
+        {
+            Debug.LogError("SteamNetworkIntegration: NetworkManager not found in scene! Player spawning will fail.");
+            return;
+        }
+
+        // Get the PlayerSpawner component instead of creating a new instance
+        playerSpawner = GetComponent<PlayerSpawner>();
+        if (playerSpawner == null)
+        {
+            Debug.LogError("SteamNetworkIntegration: PlayerSpawner component not found on the same GameObject.");
+        }
+
+        // Subscribe to FishNet events
+        fishNetManager.ServerManager.OnRemoteConnectionState += ServerManager_OnRemoteConnectionState;
+        fishNetManager.ClientManager.OnClientConnectionState += ClientManager_OnClientConnectionState;
+    }
+
+    private void OnDestroy() // Or OnDisable
+    {
+        if (fishNetManager != null)
+        {
+            fishNetManager.ServerManager.OnRemoteConnectionState -= ServerManager_OnRemoteConnectionState;
+            fishNetManager.ClientManager.OnClientConnectionState -= ClientManager_OnClientConnectionState;
+        }
+        // Steam Callbacks are automatically unregistered by Steamworks.NET if this GameObject is destroyed.
     }
 
     private void Update()
@@ -231,15 +254,13 @@ public class SteamNetworkIntegration : MonoBehaviour
         m_currentLobbyMembers.Clear();
         OnPlayerListUpdatedEvent?.Invoke(new List<CSteamID>(m_currentLobbyMembers)); // Send empty list
 
-        // If we're in the game, disconnect from the server (FishNet specific logic)
-        // Example: if (FishNet.InstanceFinder.NetworkManager != null && FishNet.InstanceFinder.NetworkManager.IsClient)
-        // {
-        //     FishNet.InstanceFinder.NetworkManager.ClientManager.StopConnection();
-        // }
-        // else if (FishNet.InstanceFinder.NetworkManager != null && FishNet.InstanceFinder.NetworkManager.IsServer)
-        // {
-        //     FishNet.InstanceFinder.NetworkManager.ServerManager.StopConnection(true);
-        // }
+        if (fishNetManager != null)
+        {
+            if (fishNetManager.IsClientStarted)
+                fishNetManager.ClientManager.StopConnection();
+            if (fishNetManager.IsServerStarted)
+                 fishNetManager.ServerManager.StopConnection(true);
+        }
     }
 
     public void RequestLobbiesList()
@@ -325,7 +346,7 @@ public class SteamNetworkIntegration : MonoBehaviour
 
     public void SetLobbyData(string key, string value)
     {
-        if (IsInLobby && IsCurrentPlayerLobbyOwner())
+        if (IsInLobby && IsUserSteamHost)
         {
             SteamMatchmaking.SetLobbyData(m_currentLobbyId, key, value);
         }
@@ -360,11 +381,10 @@ public class SteamNetworkIntegration : MonoBehaviour
         OnLobbyCreatedEvent?.Invoke(true, m_currentLobbyId);
         RefreshPlayerList();
 
-        // --- FishNet: Start Host ---
-        if (FishNet.InstanceFinder.NetworkManager != null)
+        if (fishNetManager != null)
         {
-            FishNet.InstanceFinder.NetworkManager.ServerManager.StartConnection();
-            FishNet.InstanceFinder.NetworkManager.ClientManager.StartConnection(); // Host is also a client
+            fishNetManager.ServerManager.StartConnection();
+            fishNetManager.ClientManager.StartConnection(); 
             Debug.Log("FishNet Host Started (Server and Client for host).");
         }
         else
@@ -409,10 +429,10 @@ public class SteamNetworkIntegration : MonoBehaviour
 
         if (shouldConnectAsFishNetClient)
         {
-            if (FishNet.InstanceFinder.NetworkManager != null)
+            if (fishNetManager != null)
             {
                 Debug.LogWarning("FishNet Client StartConnection: Attempting to connect to localhost for testing. Host address retrieval from lobby data is recommended for production.");
-                FishNet.InstanceFinder.NetworkManager.ClientManager.StartConnection();
+                fishNetManager.ClientManager.StartConnection();
             }
             else
             {
@@ -588,5 +608,72 @@ public class SteamNetworkIntegration : MonoBehaviour
         // }
     }
 
+    #endregion
+
+    #region FishNet Event Handlers
+    private void ServerManager_OnRemoteConnectionState(NetworkConnection conn, RemoteConnectionStateArgs args)
+    {
+        if (args.ConnectionState == RemoteConnectionState.Started)
+        {
+            // If the connecting client has ClientId 0, it's the host's own server-side representation of its client component.
+            // The actual player object for the host (who is also a client with ClientId -1) is spawned 
+            // via ClientManager_OnClientConnectionState when its local client fully connects.
+            // So, we skip spawning here for ClientId 0 to avoid duplicates for the host.
+            if (conn.ClientId == 0) 
+            {
+                Debug.Log($"ServerManager_OnRemoteConnectionState: ClientId {conn.ClientId} connected. This is the host's own server-side client component. Player spawn handled by ClientManager event.");
+                return;
+            }
+
+            Debug.Log($"Remote client {conn.ClientId} connected. Spawning player.");
+            if (playerSpawner != null)
+            {
+                playerSpawner.SpawnPlayerForConnection(conn);
+            }
+            else
+            {
+                Debug.LogError("PlayerSpawner component is null when remote client connected.");
+            }
+        }
+        else if (args.ConnectionState == RemoteConnectionState.Stopped)
+        {   
+            // Ensure we don't try to despawn for ClientId 0 if it was never fully processed as a separate player
+            if (conn.ClientId != 0)
+            {
+                Debug.Log($"Remote client {conn.ClientId} disconnected.");
+                // if (playerSpawner != null) playerSpawner.DespawnEntitiesForConnection(conn);
+            }
+            else
+            {
+                Debug.Log($"Host's server-side client component (ClientId {conn.ClientId}) disconnected/stopped.");
+            }
+        }
+    }
+
+    private void ClientManager_OnClientConnectionState(ClientConnectionStateArgs args)
+    {
+        if (args.ConnectionState == LocalConnectionState.Started)
+        {
+            Debug.Log($"Local client (ClientId: {fishNetManager.ClientManager.Connection.ClientId}) connected to server.");
+            // This instance is the host if ServerManager is started and it's the Steam Host.
+            if (fishNetManager.ServerManager.Started && IsUserSteamHost) 
+            {
+                Debug.Log("Host's local client connected. Spawning player for host.");
+                if (playerSpawner != null)
+                {
+                    playerSpawner.SpawnPlayerForConnection(fishNetManager.ClientManager.Connection); // This connection has ClientId -1 for host
+                }
+                else
+                {
+                    Debug.LogError("PlayerSpawner component is null when host's local client connected.");
+                }
+            }
+            // Non-host clients that connect will be handled by ServerManager_OnRemoteConnectionState on the server.
+        }
+        else if (args.ConnectionState == LocalConnectionState.Stopped)
+        {
+            // Client disconnection handling
+        }
+    }
     #endregion
 } 
