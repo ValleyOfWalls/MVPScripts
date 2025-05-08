@@ -19,7 +19,7 @@ public enum CardEffectType
 public class CardData : ScriptableObject
 {
     [Header("Card Identification")]
-    // Removed: [SerializeField] private int _cardId; 
+    [SerializeField] private int _cardId = 0; // Add serialized ID field for consistent IDs across clients
     [SerializeField] private string _cardName = "New Card";
     [TextArea(3, 5)]
     [SerializeField] private string _description = "Card Description";
@@ -33,7 +33,7 @@ public class CardData : ScriptableObject
     [SerializeField] private int _energyCost = 1;
 
     // Public accessors
-    public int CardId => this.GetInstanceID(); // Returns the runtime instance ID of this ScriptableObject
+    public int CardId => _cardId; // Use the serialized ID instead of GetInstanceID()
     public string CardName => _cardName;
     public string Description => _description;
     public Sprite CardArtwork => _cardArtwork;

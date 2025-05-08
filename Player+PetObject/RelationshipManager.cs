@@ -7,25 +7,29 @@ using FishNet.Object.Synchronizing;
 /// </summary>
 public class RelationshipManager : NetworkBehaviour
 {
-    // Reference to allied entity, synchronized across network
-    private readonly SyncVar<NetworkObject> _syncedAllyObject = new SyncVar<NetworkObject>();
+    // Reference to allied entity using SyncVar to ensure proper replication to clients
+    // Updated to FishNet v4 syntax
+    public readonly SyncVar<NetworkBehaviour> allyEntity = new SyncVar<NetworkBehaviour>();
     
-    // Cached reference to ally entity
-    private NetworkBehaviour _cachedAlly;
+    // Inspector-visible representation of the allied entity (read-only)
+    [Header("Alliance Information (Read-Only)")]
+    [SerializeField, Tooltip("Current ally of this entity. For debugging only.")]
+    private NetworkBehaviour inspectorAllyReference;
     
     /// <summary>
     /// Gets the allied entity
     /// </summary>
-    public NetworkBehaviour Ally 
-    { 
-        get 
+    public NetworkBehaviour Ally => allyEntity.Value;
+    
+    private void Update()
+    {
+        // Update inspector reference (only in editor)
+        #if UNITY_EDITOR
+        if (allyEntity.Value != inspectorAllyReference)
         {
-            if (_cachedAlly == null && _syncedAllyObject.Value != null)
-            {
-                _cachedAlly = _syncedAllyObject.Value.GetComponent<NetworkBehaviour>();
-            }
-            return _cachedAlly;
+            inspectorAllyReference = allyEntity.Value;
         }
+        #endif
     }
     
     /// <summary>
@@ -36,20 +40,8 @@ public class RelationshipManager : NetworkBehaviour
     public void SetAlly(NetworkBehaviour ally)
     {
         if (!IsServerInitialized) return;
-        
-        _cachedAlly = ally;
-        _syncedAllyObject.Value = ally?.GetComponent<NetworkObject>();
-    }
-    
-    public override void OnStartClient()
-    {
-        base.OnStartClient();
-        
-        // Try to cache the ally reference when object starts on client
-        if (_syncedAllyObject.Value != null && _cachedAlly == null)
-        {
-            _cachedAlly = _syncedAllyObject.Value.GetComponent<NetworkBehaviour>();
-        }
+        allyEntity.Value = ally;
+        inspectorAllyReference = ally; // Update the inspector reference immediately
     }
     
     /// <summary>

@@ -44,6 +44,9 @@ public class NetworkEntityDeck : NetworkBehaviour
         
         // Update inspector lists on client start
         UpdateInspectorLists();
+        
+        // Try to refresh again after a short delay to ensure CardDatabase is available
+        Invoke("ForceRefreshInspectorView", 1.0f);
     }
 
     public override void OnStopClient()
@@ -178,21 +181,7 @@ public class NetworkEntityDeck : NetworkBehaviour
             return cachedData;
         }
         
-        // Check if CardDatabase is available
-        if (CardDatabase.Instance == null)
-        {
-            Debug.LogWarning($"[{gameObject.name}] GetCardData: CardDatabase.Instance is null when trying to load card {cardId}");
-            return null;
-        }
-        
-        // Verify that the card exists in the database
-        if (!CardDatabase.Instance.ContainsCard(cardId))
-        {
-            Debug.LogWarning($"[{gameObject.name}] Card ID {cardId} not found in database. This may indicate a synchronization issue.");
-            return null;
-        }
-        
-        // Try to load from CardDatabase
+        // Otherwise load it from the CardDatabase
         CardData data = CardDatabase.Instance.GetCardById(cardId);
         
         // Cache the data if found
@@ -209,8 +198,8 @@ public class NetworkEntityDeck : NetworkBehaviour
     /// </summary>
     private void HandleCardListChanged(SyncListOperation op, int index, int oldItem, int newItem, bool asServer)
     {
-        // Wait a frame to ensure card database is ready before trying to update
-        Invoke(nameof(UpdateInspectorLists), 0.1f);
+        // Update the inspector lists when cards change
+        UpdateInspectorLists();
         
         // Notify subscribers that the card collection has changed
         OnDeckChanged?.Invoke();
@@ -221,13 +210,6 @@ public class NetworkEntityDeck : NetworkBehaviour
     /// </summary>
     private void UpdateInspectorLists()
     {
-        if (CardDatabase.Instance == null)
-        {
-            // Delay the update until the database is available
-            Invoke(nameof(UpdateInspectorLists), 0.5f);
-            return;
-        }
-        
         // Update the inspector card list
         inspectorCardList.Clear();
         inspectorCardNames.Clear();
@@ -237,16 +219,52 @@ public class NetworkEntityDeck : NetworkBehaviour
             inspectorCardList.Add(cardId);
             
             // Try to get card name if available
-            CardData cardData = GetCardData(cardId);
-            string cardName = cardData != null ? cardData.CardName : $"Unknown Card {cardId}";
+            string cardName = "Unknown Card";
+            
+            // Check if CardDatabase is available
+            if (CardDatabase.Instance != null)
+            {
+                CardData cardData = GetCardData(cardId);
+                
+                if (cardData != null)
+                {
+                    cardName = $"ID:{cardId} - {cardData.CardName}";
+                }
+                else
+                {
+                    cardName = $"ID:{cardId} - Not Found";
+                    Debug.LogWarning($"Card ID {cardId} not found in database.");
+                }
+            }
+            else
+            {
+                cardName = $"ID:{cardId} - No Database";
+                // Don't log here to avoid log spam, as this might be called frequently
+            }
+            
             inspectorCardNames.Add(cardName);
         }
+        
+        // Verify that the names list is being populated
+        if (inspectorCardNames.Count > 0 && inspectorCardList.Count != inspectorCardNames.Count)
+        {
+            Debug.LogWarning($"Mismatch between card list count ({inspectorCardList.Count}) and names list count ({inspectorCardNames.Count})");
+        }
+    }
+    
+    /// <summary>
+    /// Force refresh the inspector lists, useful when the CardDatabase becomes available
+    /// </summary>
+    public void ForceRefreshInspectorView()
+    {
+        UpdateInspectorLists();
+        Debug.Log($"Card names refreshed for {gameObject.name}. Found {inspectorCardNames.Count} cards.");
     }
     
     // Call this method in the Unity Editor to manually refresh the inspector view
     [ContextMenu("Refresh Inspector View")]
     public void RefreshInspectorView()
     {
-        UpdateInspectorLists();
+        ForceRefreshInspectorView();
     }
 } 
