@@ -178,7 +178,21 @@ public class NetworkEntityDeck : NetworkBehaviour
             return cachedData;
         }
         
-        // Otherwise load it from the CardDatabase
+        // Check if CardDatabase is available
+        if (CardDatabase.Instance == null)
+        {
+            Debug.LogWarning($"[{gameObject.name}] GetCardData: CardDatabase.Instance is null when trying to load card {cardId}");
+            return null;
+        }
+        
+        // Verify that the card exists in the database
+        if (!CardDatabase.Instance.ContainsCard(cardId))
+        {
+            Debug.LogWarning($"[{gameObject.name}] Card ID {cardId} not found in database. This may indicate a synchronization issue.");
+            return null;
+        }
+        
+        // Try to load from CardDatabase
         CardData data = CardDatabase.Instance.GetCardById(cardId);
         
         // Cache the data if found
@@ -195,8 +209,8 @@ public class NetworkEntityDeck : NetworkBehaviour
     /// </summary>
     private void HandleCardListChanged(SyncListOperation op, int index, int oldItem, int newItem, bool asServer)
     {
-        // Update the inspector lists when cards change
-        UpdateInspectorLists();
+        // Wait a frame to ensure card database is ready before trying to update
+        Invoke(nameof(UpdateInspectorLists), 0.1f);
         
         // Notify subscribers that the card collection has changed
         OnDeckChanged?.Invoke();
@@ -207,6 +221,13 @@ public class NetworkEntityDeck : NetworkBehaviour
     /// </summary>
     private void UpdateInspectorLists()
     {
+        if (CardDatabase.Instance == null)
+        {
+            // Delay the update until the database is available
+            Invoke(nameof(UpdateInspectorLists), 0.5f);
+            return;
+        }
+        
         // Update the inspector card list
         inspectorCardList.Clear();
         inspectorCardNames.Clear();

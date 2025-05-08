@@ -2,7 +2,12 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 using FishNet.Object;
+using FishNet.Object.Synchronizing;
 
+/// <summary>
+/// Manages all card data definitions in the game.
+/// Should be placed in the scene before any objects that need to access card data.
+/// </summary>
 public class CardDatabase : NetworkBehaviour
 {
     public static CardDatabase Instance { get; private set; }
@@ -14,14 +19,16 @@ public class CardDatabase : NetworkBehaviour
     // [SerializeField] private string cardDataPathInResources = "CardData"; 
 
     private Dictionary<int, CardData> cardDataById = new Dictionary<int, CardData>();
+    
+    // Initialization tracking
+    private bool isDatabaseInitialized = false;
 
     private void Awake()
     {
-        // Handle singleton pattern in Awake
         if (Instance == null)
         {
             Instance = this;
-            // Note: The object should be marked as DontDestroyOnLoad in the Unity Inspector instead
+            InitializeLocalDatabase(); // Initialize immediately in Awake for both server and client
         }
         else
         {
@@ -29,17 +36,38 @@ public class CardDatabase : NetworkBehaviour
         }
     }
 
-    public override void OnStartNetwork()
+    public override void OnStartClient()
     {
-        base.OnStartNetwork();
-        InitializeDatabase();
+        base.OnStartClient();
+        
+        // Ensure database is initialized on client
+        if (Instance == this)
+        {
+            InitializeLocalDatabase();
+        }
     }
 
-    private void InitializeDatabase()
+    public override void OnStartServer()
     {
-        cardDataById.Clear();
+        base.OnStartServer();
+        
+        // Mark as initialized on server and ensure database is loaded
+        if (Instance == this)
+        {
+            InitializeLocalDatabase();
+        }
+    }
 
-        // Option 1: If using the list assigned in Inspector
+    /// <summary>
+    /// Initialize the local database with card data from the inspector
+    /// </summary>
+    private void InitializeLocalDatabase()
+    {
+        if (isDatabaseInitialized) return; // Skip if already initialized
+
+        cardDataById.Clear();
+        
+        // Load cards from the list assigned in Inspector
         foreach (CardData data in allCardDataList)
         {
             if (data != null)
@@ -54,53 +82,61 @@ public class CardDatabase : NetworkBehaviour
                 }
             }
         }
-        Debug.Log($"CardDatabase initialized with {cardDataById.Count} cards from Inspector list.");
-
-        // Option 2: If loading from Resources folder
-        /*
-        CardData[] loadedCards = Resources.LoadAll<CardData>(cardDataPathInResources);
-        foreach (CardData data in loadedCards)
-        {
-            if (data != null)
-            {
-                if (!cardDataById.ContainsKey(data.CardId))
-                {
-                    cardDataById.Add(data.CardId, data);
-                }
-                else
-                {
-                    Debug.LogWarning($"CardDatabase: Duplicate CardId {data.CardId} found for '{data.CardName}' and '{cardDataById[data.CardId].CardName}'. Ignoring duplicate.");
-                }
-            }
-        }
-        Debug.Log($"CardDatabase initialized with {cardDataById.Count} cards from Resources folder: Assets/Resources/{cardDataPathInResources}");
-        */
+        
+        Debug.Log($"CardDatabase initialized with {cardDataById.Count} cards from Inspector list on {(IsServerInitialized ? "server" : "client")}.");
+        isDatabaseInitialized = true;
 
         if (cardDataById.Count == 0)
         {
-            Debug.LogWarning("CardDatabase is empty. Make sure to assign CardData ScriptableObjects to the list in the Inspector or place them in the Resources folder if using that loading method.");
+            Debug.LogWarning("CardDatabase is empty. Make sure to assign CardData ScriptableObjects to the list in the Inspector.");
         }
     }
 
+    /// <summary>
+    /// Get a card by ID
+    /// </summary>
     public CardData GetCardById(int cardId)
     {
+        // Ensure database is initialized
+        if (!isDatabaseInitialized)
+        {
+            InitializeLocalDatabase();
+        }
+
+        // Try to get the card
         if (cardDataById.TryGetValue(cardId, out CardData data))
         {
             return data;
         }
-        Debug.LogWarning($"CardDatabase: Card with ID {cardId} not found.");
+        
+        Debug.LogError($"CardDatabase: Card with ID {cardId} not found. This indicates a synchronization issue between server and clients.");
         return null;
     }
 
+    /// <summary>
+    /// Get all cards in the database
+    /// </summary>
     public List<CardData> GetAllCards()
     {
+        if (!isDatabaseInitialized)
+        {
+            InitializeLocalDatabase();
+        }
         return new List<CardData>(cardDataById.Values);
     }
 
+    /// <summary>
+    /// Get a list of random cards
+    /// </summary>
     public List<CardData> GetRandomCards(int count)
     {
         if (count <= 0) return new List<CardData>();
         
+        if (!isDatabaseInitialized)
+        {
+            InitializeLocalDatabase();
+        }
+
         // Create a shuffled list of available cards
         List<CardData> availableCards = new List<CardData>(allCardDataList);
         int n = availableCards.Count;
@@ -115,5 +151,17 @@ public class CardDatabase : NetworkBehaviour
         
         // Return the requested number of cards (or all if count > available)
         return availableCards.Take(Mathf.Min(count, availableCards.Count)).ToList();
+    }
+
+    /// <summary>
+    /// Check if database contains a card with the specified ID
+    /// </summary>
+    public bool ContainsCard(int cardId)
+    {
+        if (!isDatabaseInitialized)
+        {
+            InitializeLocalDatabase();
+        }
+        return cardDataById.ContainsKey(cardId);
     }
 } 
