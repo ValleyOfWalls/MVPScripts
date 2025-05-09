@@ -65,15 +65,23 @@ public class PlayerSpawner : MonoBehaviour
             return; 
         }
 
-        Debug.Log($"PlayerSpawner: Attempting to spawn NetworkPlayer for client {conn.ClientId}.");
+        // Log connection info for debugging
+        bool isHostConnection = fishNetManager.IsHostStarted && conn.ClientId == 0;
+        Debug.Log($"PlayerSpawner: Attempting to spawn NetworkPlayer for client {conn.ClientId}. IsHost: {isHostConnection}");
+        
+        // Create player instance
         GameObject playerGameObjectInstance = Object.Instantiate(networkPlayerPrefab.gameObject);
+        
+        // Spawn on server with the connection as the owner
         fishNetManager.ServerManager.Spawn(playerGameObjectInstance, conn);
         NetworkObject playerInstance = playerGameObjectInstance.GetComponent<NetworkObject>();
 
         if (playerInstance != null)
         {
-            Debug.Log($"Spawned NetworkPlayer (ID: {playerInstance.ObjectId}, OwnerId: {playerInstance.OwnerId}) for client {conn.ClientId}");
+            // Verify ownership assignment, especially for host
+            Debug.Log($"Spawned NetworkPlayer (ID: {playerInstance.ObjectId}, OwnerId: {playerInstance.OwnerId}, HasOwner: {playerInstance.Owner != null}) for client {conn.ClientId}");
             NetworkPlayer netPlayer = playerInstance.GetComponent<NetworkPlayer>();
+            
             if(netPlayer != null) {
                 // Set player name (e.g., from Steam or connection ID)
                 if (steamNetworkIntegration != null && steamNetworkIntegration.IsSteamInitialized)
@@ -99,6 +107,12 @@ public class PlayerSpawner : MonoBehaviour
                 {
                     netPlayer.PlayerName.Value = "Player " + conn.ClientId;
                 }
+
+                // Verify Player IsOwner status directly after spawn
+                if (isHostConnection)
+                {
+                    Debug.Log($"Host player: IsOwner={netPlayer.IsOwner}, HasOwner={netPlayer.Owner != null}, OwnerId={netPlayer.OwnerId}");
+                }
             }
 
             Debug.Log($"PlayerSpawner: Attempting to spawn NetworkPet for client {conn.ClientId}.");
@@ -108,7 +122,7 @@ public class PlayerSpawner : MonoBehaviour
 
             if (petInstance != null)
             {
-                Debug.Log($"Spawned NetworkPet (ID: {petInstance.ObjectId}, OwnerId: {petInstance.OwnerId}) for client {conn.ClientId}");
+                Debug.Log($"Spawned NetworkPet (ID: {petInstance.ObjectId}, OwnerId: {petInstance.OwnerId}, HasOwner: {petInstance.Owner != null}) for client {conn.ClientId}");
                 NetworkPet netPet = petInstance.GetComponent<NetworkPet>();
                 if(netPet != null && netPlayer != null)
                 {
@@ -116,6 +130,9 @@ public class PlayerSpawner : MonoBehaviour
                     
                     // Establish relationship between player and pet
                     RelationshipManager.SetupPlayerPetRelationship(netPlayer, netPet);
+                    
+                    // Verify pet-player relationship
+                    Debug.Log($"Connected pet (ID: {petInstance.ObjectId}) to player (ID: {playerInstance.ObjectId}). Pet.OwnerPlayerObjectId={netPet.OwnerPlayerObjectId.Value}");
                 }
             }
             else

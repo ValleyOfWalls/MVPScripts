@@ -15,6 +15,8 @@ public class NetworkPlayerUI : MonoBehaviour
     [Header("References")]
     [SerializeField] private NetworkPlayer player;
     [SerializeField] private NetworkEntityDeck entityDeck;
+    [SerializeField] private CombatDiscard combatDiscard;
+    [SerializeField] private CanvasGroup canvasGroup;
     
     [Header("UI Elements")]
     [SerializeField] private Transform playerHandTransform;
@@ -27,6 +29,10 @@ public class NetworkPlayerUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private TextMeshProUGUI currencyText;
     [SerializeField] private Image healthBar;
+    
+    [Header("Card System UI")]
+    [SerializeField] private TextMeshProUGUI deckCountText;
+    [SerializeField] private TextMeshProUGUI discardCountText;
     
     private void Awake()
     {
@@ -42,6 +48,14 @@ public class NetworkPlayerUI : MonoBehaviour
         
         if (player == null) player = GetComponent<NetworkPlayer>();
         if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
+        if (combatDiscard == null) combatDiscard = GetComponent<CombatDiscard>();
+        if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
+        
+        // Add CanvasGroup if not already present
+        if (canvasGroup == null)
+        {
+            canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        }
         
         if (player == null)
         {
@@ -52,6 +66,14 @@ public class NetworkPlayerUI : MonoBehaviour
         {
             Debug.LogError("NetworkPlayerUI: Cannot find NetworkEntityDeck component.");
         }
+        
+        if (combatDiscard == null)
+        {
+            Debug.LogError("NetworkPlayerUI: Cannot find CombatDiscard component.");
+        }
+        
+        // Default to hidden until the game state determines visibility
+        SetVisible(false);
     }
     
     private void OnEnable()
@@ -59,6 +81,11 @@ public class NetworkPlayerUI : MonoBehaviour
         if (entityDeck != null)
         {
             entityDeck.OnDeckChanged += UpdateDeckDisplay;
+        }
+        
+        if (combatDiscard != null)
+        {
+            combatDiscard.OnDiscardChanged += UpdateDiscardDisplay;
         }
         
         if (player != null)
@@ -80,6 +107,11 @@ public class NetworkPlayerUI : MonoBehaviour
             entityDeck.OnDeckChanged -= UpdateDeckDisplay;
         }
         
+        if (combatDiscard != null)
+        {
+            combatDiscard.OnDiscardChanged -= UpdateDiscardDisplay;
+        }
+        
         if (player != null)
         {
             // Unsubscribe from player stat changes
@@ -98,6 +130,27 @@ public class NetworkPlayerUI : MonoBehaviour
         {
             // Initial UI setup
             UpdatePlayerUI();
+        }
+        
+        // Initialize card system UI
+        UpdateDeckDisplay();
+        UpdateDiscardDisplay();
+    }
+    
+    /// <summary>
+    /// Set the visibility of this UI
+    /// </summary>
+    public void SetVisible(bool visible)
+    {
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = visible ? 1.0f : 0.0f;
+            canvasGroup.interactable = visible;
+            canvasGroup.blocksRaycasts = visible;
+        }
+        else
+        {
+            gameObject.SetActive(visible);
         }
     }
     
@@ -199,8 +252,27 @@ public class NetworkPlayerUI : MonoBehaviour
     /// </summary>
     private void UpdateDeckDisplay()
     {
-        // Deck visualization is now handled by CardSpawner
-        // This method is kept for backwards compatibility but doesn't need to do anything
+        if (deckCountText != null && player != null)
+        {
+            int deckCount = 0;
+            CombatDeck combatDeck = GetComponent<CombatDeck>();
+            if (combatDeck != null)
+            {
+                deckCount = combatDeck.GetDeckSize();
+            }
+            deckCountText.text = $"Deck: {deckCount}";
+        }
+    }
+    
+    /// <summary>
+    /// Updates the discard pile display
+    /// </summary>
+    private void UpdateDiscardDisplay()
+    {
+        if (discardCountText != null && combatDiscard != null)
+        {
+            discardCountText.text = $"Discard: {combatDiscard.GetCardCount()}";
+        }
     }
     
     /// <summary>

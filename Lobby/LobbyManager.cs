@@ -11,9 +11,9 @@ using System.Collections.Generic;
 public class LobbyManager : NetworkBehaviour
 {
     [SerializeField] private LobbyUIManager uiManager;
-    [SerializeField] private GameObject combatCanvas;
     
     private NetworkManager fishNetManager;
+    private GamePhaseManager gamePhaseManager;
     
     private List<NetworkConnection> connectedPlayers = new List<NetworkConnection>();
     private Dictionary<NetworkConnection, bool> playerReadyStates = new Dictionary<NetworkConnection, bool>();
@@ -32,10 +32,11 @@ public class LobbyManager : NetworkBehaviour
         {
             Debug.LogError("LobbyManager: LobbyUIManager reference not assigned in the Inspector.");
         }
-
-        if (combatCanvas == null)
+        
+        gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        if (gamePhaseManager == null)
         {
-            Debug.LogError("LobbyManager: Combat Canvas reference not assigned in the Inspector.");
+            Debug.LogError("LobbyManager: GamePhaseManager not found in scene.");
         }
     }
 
@@ -182,20 +183,36 @@ public class LobbyManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcStartGame()
     {
-        Debug.Log("RpcStartGame received. Switching to combat canvas.");
+        Debug.Log("RpcStartGame received. Transitioning to combat phase.");
         
         // Tell UI manager to hide lobby UI
         uiManager.HideLobbyUI();
         
-        // Show combat canvas
-        if (combatCanvas != null) combatCanvas.SetActive(true);
+        // Use GamePhaseManager to transition to Combat phase
+        if (gamePhaseManager != null)
+        {
+            // Update the game phase locally
+            gamePhaseManager.SetCombatPhase();
+        }
+        else
+        {
+            Debug.LogError("GamePhaseManager is null in LobbyManager.RpcStartGame");
+        }
         
-        // If CombatSetup is scene object and needs initialization on clients after canvas switch
+        // Find and initialize the combat setup
         CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
         if (combatSetup != null)
         {
-            // Initialize combat setup
-            combatSetup.InitializeCombat();
+            // If we're the server, initialize combat setup
+            if (IsServerStarted)
+            {
+                Debug.Log("Server is initializing combat setup");
+                combatSetup.InitializeCombat();
+            }
+        }
+        else
+        {
+            Debug.LogError("CombatSetup not found in scene");
         }
     }
 

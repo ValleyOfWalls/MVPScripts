@@ -13,10 +13,13 @@ public class CardSpawner : NetworkBehaviour
 {
     [Header("References")]
     [SerializeField] public GameObject cardPrefab;
+    [SerializeField] private Transform cardPrefabParent;
     
     // Internal references
     private CombatHand combatHand;
-    private Dictionary<int, GameObject> spawnedCards = new Dictionary<int, GameObject>();
+    private Dictionary<int, List<GameObject>> spawnedCardsByType = new Dictionary<int, List<GameObject>>();
+    private Dictionary<string, GameObject> spawnedCardInstances = new Dictionary<string, GameObject>();
+    private Dictionary<int, int> cardInstanceCounter = new Dictionary<int, int>();
     
     // UI references
     private NetworkPlayerUI playerUI;
@@ -42,6 +45,11 @@ public class CardSpawner : NetworkBehaviour
         localPlayer = GetComponent<NetworkPlayer>();
         localPet = GetComponent<NetworkPet>();
         
+        if (localPlayer == null && localPet == null)
+        {
+            Debug.LogError("CardSpawner must be attached to either a NetworkPlayer or NetworkPet");
+        }
+        
         if (localPlayer != null)
         {
             playerUI = GetComponent<NetworkPlayerUI>();
@@ -61,7 +69,7 @@ public class CardSpawner : NetworkBehaviour
         
         if (handTransform == null)
         {
-            Debug.LogError("CardSpawner couldn't find a hand transform reference");
+            Debug.LogError("CardSpawner: Hand transform reference is null");
         }
     }
     
@@ -71,7 +79,7 @@ public class CardSpawner : NetworkBehaviour
         combatManager = FindFirstObjectByType<CombatManager>();
         if (combatManager == null)
         {
-            Debug.LogWarning("CardSpawner couldn't find CombatManager. Card playing functionality may be limited.");
+            Debug.LogWarning("CardSpawner: CombatManager not found in scene");
         }
         
         // Check if card prefab is assigned
@@ -131,33 +139,63 @@ public class CardSpawner : NetworkBehaviour
         
         List<int> currentHandCards = combatHand.GetAllCards();
         
-        // First, identify cards that are no longer in hand and need to be removed
-        List<int> cardsToRemove = new List<int>();
-        foreach (var cardId in spawnedCards.Keys)
+        // Create a dictionary to track which cards we've already counted in this update
+        Dictionary<int, int> cardCounts = new Dictionary<int, int>();
+        
+        // Count how many of each card ID we have in the hand
+        foreach (int cardId in currentHandCards)
         {
-            if (!currentHandCards.Contains(cardId))
+            if (cardCounts.ContainsKey(cardId))
             {
-                cardsToRemove.Add(cardId);
+                cardCounts[cardId]++;
+            }
+            else
+            {
+                cardCounts[cardId] = 1;
             }
         }
         
         // Remove cards that are no longer in hand
-        foreach (var cardId in cardsToRemove)
+        List<string> instancesToRemove = new List<string>();
+        foreach (var instanceEntry in spawnedCardInstances)
         {
-            RemoveCardFromDisplay(cardId);
+            string instanceId = instanceEntry.Key;
+            int cardId = ExtractCardIdFromInstanceId(instanceId);
+            
+            // Check if this card ID is still in the hand in sufficient quantities
+            if (!cardCounts.TryGetValue(cardId, out int count) || count <= 0)
+            {
+                // This card or this instance of the card is no longer needed
+                RemoveCardInstance(instanceId);
+                instancesToRemove.Add(instanceId);
+            }
+            else
+            {
+                // Decrease the count for this card ID since we've accounted for one instance
+                cardCounts[cardId]--;
+            }
         }
         
-        // Add new cards that weren't previously displayed
-        foreach (var cardId in currentHandCards)
+        // Actually remove the instances from our tracking dictionary
+        foreach (string instanceId in instancesToRemove)
         {
-            if (!spawnedCards.ContainsKey(cardId))
+            spawnedCardInstances.Remove(instanceId);
+        }
+        
+        // Add new cards for any remaining counts
+        foreach (var cardCount in cardCounts)
+        {
+            int cardId = cardCount.Key;
+            int count = cardCount.Value;
+            
+            // We need to spawn 'count' more instances of this card ID
+            for (int i = 0; i < count; i++)
             {
                 AddCardToDisplay(cardId);
             }
         }
         
-        // Arrange cards in hand
-        ArrangeCardsInHand();
+        // No need to arrange cards - we're using a horizontal layout group instead
     }
     
     /// <summary>
@@ -179,8 +217,28 @@ public class CardSpawner : NetworkBehaviour
             return;
         }
         
+        // Generate a unique instance ID for this card
+        if (!cardInstanceCounter.ContainsKey(cardId))
+        {
+            cardInstanceCounter[cardId] = 0;
+        }
+        int instanceNum = cardInstanceCounter[cardId]++;
+        string instanceId = $"{cardId}_{instanceNum}";
+        
         // Instantiate the card
         GameObject cardObject = Instantiate(cardPrefab, handTransform);
+        
+        // Ensure the card is active when spawned
+        cardObject.SetActive(true);
+
+        // Make sure all child objects are also active
+        foreach (Transform child in cardObject.transform)
+        {
+            child.gameObject.SetActive(true);
+        }
+
+        Debug.Log($"Card {cardData.CardName} (ID: {cardId}) instantiated with active state: {cardObject.activeSelf}");
+        
         Card cardComponent = cardObject.GetComponent<Card>();
         
         if (cardComponent != null)
@@ -188,22 +246,52 @@ public class CardSpawner : NetworkBehaviour
             // Initialize the card
             cardComponent.Initialize(cardData);
             
-            // Store reference to the card
-            spawnedCards[cardId] = cardObject;
+            // Store reference to the card in both tracking structures
+            if (!spawnedCardsByType.ContainsKey(cardId))
+            {
+                spawnedCardsByType[cardId] = new List<GameObject>();
+            }
+            spawnedCardsByType[cardId].Add(cardObject);
+            spawnedCardInstances[instanceId] = cardObject;
+            
+            // Store the instance ID on the card object for later retrieval
+            cardObject.name = $"Card_{cardData.CardName}_{instanceId}";
+            
+            // Get the HandleCardPlay component and set its parent entity
+            HandleCardPlay handleCardPlay = cardObject.GetComponent<HandleCardPlay>();
+            if (handleCardPlay != null)
+            {
+                if (localPlayer != null)
+                {
+                    handleCardPlay.SetOwnerEntity(localPlayer.gameObject);
+                }
+                else if (localPet != null)
+                {
+                    handleCardPlay.SetOwnerEntity(localPet.gameObject);
+                }
+                else
+                {
+                    Debug.LogError("CardSpawner: Cannot set owner entity for HandleCardPlay - no NetworkPlayer or NetworkPet found.");
+                }
+            }
             
             // If this is a player card (not AI pet), add click event
-            if (localPlayer != null && localPlayer.IsOwner)
+            if (localPlayer != null && (localPlayer.IsOwner || FishNet.InstanceFinder.IsHostStarted || IsClientOnlyInitialized))
             {
+                // Log for debugging who can click
+                Debug.Log($"Adding click handler to card {cardData.CardName} for {localPlayer.PlayerName.Value}. " +
+                          $"IsOwner: {localPlayer.IsOwner}, IsHost: {FishNet.InstanceFinder.IsHostStarted}, IsClientOnly: {IsClientOnlyInitialized}");
+                
                 // Add or get Button component for click handling
                 Button cardButton = cardObject.GetComponent<Button>();
                 if (cardButton == null) cardButton = cardObject.AddComponent<Button>();
                 
-                // Add click event
-                cardButton.onClick.AddListener(() => OnCardClicked(cardId, cardData));
+                // Add click event - pass the instance ID to identify exactly which card was clicked
+                cardButton.onClick.AddListener(() => OnCardClicked(cardId, instanceId, cardData));
             }
             
             // Log a message to verify card was added
-            Debug.Log($"Added card {cardData.CardName} (ID: {cardId}) to display for {(localPlayer != null ? localPlayer.PlayerName.Value : localPet.PetName.Value)}");
+            Debug.Log($"Added card {cardData.CardName} (ID: {cardId}, Instance: {instanceId}) to display for {(localPlayer != null ? localPlayer.PlayerName.Value : localPet.PetName.Value)}");
         }
         else
         {
@@ -213,9 +301,22 @@ public class CardSpawner : NetworkBehaviour
     }
     
     /// <summary>
+    /// Extract the card ID from an instance ID
+    /// </summary>
+    private int ExtractCardIdFromInstanceId(string instanceId)
+    {
+        string[] parts = instanceId.Split('_');
+        if (parts.Length >= 1 && int.TryParse(parts[0], out int cardId))
+        {
+            return cardId;
+        }
+        return -1;
+    }
+    
+    /// <summary>
     /// Handle card click event
     /// </summary>
-    private void OnCardClicked(int cardId, CardData cardData)
+    private void OnCardClicked(int cardId, string instanceId, CardData cardData)
     {
         if (combatManager == null)
         {
@@ -223,9 +324,47 @@ public class CardSpawner : NetworkBehaviour
             return;
         }
         
-        if (localPlayer == null || !localPlayer.IsOwner)
+        // Log detailed information about the card and the entities involved
+        Debug.Log($"DETAILED CARD INFO - Card: {cardData.CardName} (ID: {cardId}, Instance: {instanceId}) " +
+                 $"owned by Player: {(localPlayer != null ? localPlayer.PlayerName.Value : "none")} (ID: {(localPlayer != null ? localPlayer.ObjectId : -1)}), " +
+                 $"Combat Manager ID: {combatManager.ObjectId}, " +
+                 $"Local Pet: {(localPet != null ? localPet.PetName.Value : "none")} (ID: {(localPet != null ? localPet.ObjectId : -1)})");
+        
+        // Special handling for host - allow interactions even if IsOwner is false
+        bool canPlayCard = false;
+        if (localPlayer != null)
         {
-            Debug.LogWarning("CardSpawner: Cannot play card - Not the local player or not owner");
+            // Simplified check - if we're on the client side, we should allow card play
+            // for cards displayed in the player's hand
+            if (localPlayer.IsOwner || IsClientOnlyInitialized)
+            {
+                canPlayCard = true;
+                Debug.Log($"Client {(localPlayer.IsOwner ? "owner" : "non-owner")} clicked on card {cardData.CardName}. Allowing card play for {localPlayer.PlayerName.Value}");
+            }
+            else if (FishNet.InstanceFinder.IsHostStarted)
+            {
+                // If this is the host, allow them to play cards
+                canPlayCard = true;
+                Debug.Log($"Host click detected on card {cardData.CardName}. Allowing card play for host player: {localPlayer.PlayerName.Value}");
+            }
+        }
+        
+        if (!canPlayCard)
+        {
+            Debug.LogWarning($"CardSpawner: Cannot play card - Not authorized. Player: {(localPlayer != null ? localPlayer.PlayerName.Value : "null")}, " +
+                           $"IsOwner: {(localPlayer != null ? localPlayer.IsOwner.ToString() : "n/a")}, " +
+                           $"IsHost: {FishNet.InstanceFinder.IsHostStarted}, " +
+                           $"IsClientOnly: {IsClientOnlyInitialized}");
+            return;
+        }
+
+        // Debug information about the combat state
+        Debug.Log($"OnCardClicked: Player {localPlayer.PlayerName.Value} (ID: {localPlayer.ObjectId}) attempting to play card {cardData.CardName} (ID: {cardId})");
+        
+        // Check if combat has been properly initialized
+        if (!combatManager.IsCombatInitialized())
+        {
+            Debug.LogWarning("Cannot play card: Combat has not been properly initialized yet");
             return;
         }
         
@@ -236,17 +375,52 @@ public class CardSpawner : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"Player clicked on card '{cardData.CardName}' (ID: {cardId}). Requesting to play.");
-        combatManager.CmdPlayerRequestsPlayCard(cardId);
+        Debug.Log($"Player clicked on card '{cardData.CardName}' (ID: {cardId}, Instance: {instanceId}). Requesting to play.");
+        
+        // Store the instance ID for later removal after server confirmation
+        // We'll remove it when we get the NotifyCardPlayed callback from the server
+        combatManager.CmdPlayerRequestsPlayCard(localPlayer.ObjectId, cardId, instanceId);
     }
     
     /// <summary>
-    /// Removes a card from the visual display
+    /// Called when the server confirms a card has been played
+    /// This would be called from a notification method after server processing
     /// </summary>
-    private void RemoveCardFromDisplay(int cardId)
+    public void OnServerConfirmCardPlayed(int cardId)
     {
-        if (spawnedCards.TryGetValue(cardId, out GameObject cardObject))
+        // Find and remove the first instance of this card type
+        RemoveCardFromDisplay(cardId);
+    }
+    
+    /// <summary>
+    /// Called when the server confirms a card has been played
+    /// This would be called from a notification method after server processing
+    /// </summary>
+    public void OnServerConfirmCardPlayed(int cardId, string instanceId)
+    {
+        // If we have an instance ID, use that to remove the specific card
+        if (!string.IsNullOrEmpty(instanceId) && spawnedCardInstances.ContainsKey(instanceId))
         {
+            RemoveCardInstance(instanceId);
+            spawnedCardInstances.Remove(instanceId);
+            Debug.Log($"Removed specific card instance {instanceId} from display");
+        }
+        else
+        {
+            // Fallback to removing by card ID if we don't have a valid instance ID
+            RemoveCardFromDisplay(cardId);
+        }
+    }
+    
+    /// <summary>
+    /// Removes a specific card instance from the display
+    /// </summary>
+    private void RemoveCardInstance(string instanceId)
+    {
+        if (spawnedCardInstances.TryGetValue(instanceId, out GameObject cardObject))
+        {
+            int cardId = ExtractCardIdFromInstanceId(instanceId);
+            
             // Remove click event listener if this is a player card
             Button cardButton = cardObject.GetComponent<Button>();
             if (cardButton != null)
@@ -254,13 +428,46 @@ public class CardSpawner : NetworkBehaviour
                 cardButton.onClick.RemoveAllListeners();
             }
             
-            // Remove from dictionary
-            spawnedCards.Remove(cardId);
+            // Remove from type-based dictionary
+            if (spawnedCardsByType.TryGetValue(cardId, out List<GameObject> cardObjectList))
+            {
+                cardObjectList.Remove(cardObject);
+                if (cardObjectList.Count == 0)
+                {
+                    spawnedCardsByType.Remove(cardId);
+                }
+            }
             
             // Destroy the card object
             Destroy(cardObject);
             
-            Debug.Log($"Removed card ID {cardId} from display");
+            Debug.Log($"Removed card instance {instanceId} from display");
+        }
+    }
+    
+    /// <summary>
+    /// Removes a card from the visual display - finds the first instance of the card type
+    /// </summary>
+    private void RemoveCardFromDisplay(int cardId)
+    {
+        if (spawnedCardsByType.TryGetValue(cardId, out List<GameObject> cardObjects) && cardObjects.Count > 0)
+        {
+            // Find the corresponding instance ID
+            string instanceIdToRemove = null;
+            foreach (var entry in spawnedCardInstances)
+            {
+                if (entry.Value == cardObjects[0] && ExtractCardIdFromInstanceId(entry.Key) == cardId)
+                {
+                    instanceIdToRemove = entry.Key;
+                    break;
+                }
+            }
+            
+            if (instanceIdToRemove != null)
+            {
+                RemoveCardInstance(instanceIdToRemove);
+                spawnedCardInstances.Remove(instanceIdToRemove);
+            }
         }
     }
     
@@ -269,55 +476,20 @@ public class CardSpawner : NetworkBehaviour
     /// </summary>
     private void ClearAllCards()
     {
-        foreach (var cardObject in spawnedCards.Values)
+        foreach (var cardList in spawnedCardsByType.Values)
         {
-            if (cardObject != null)
+            foreach (var cardObject in cardList)
             {
-                Destroy(cardObject);
-            }
-        }
-        
-        spawnedCards.Clear();
-    }
-    
-    /// <summary>
-    /// Arranges cards in a visually appealing layout
-    /// </summary>
-    private void ArrangeCardsInHand()
-    {
-        if (spawnedCards.Count == 0) return;
-        
-        int cardCount = spawnedCards.Count;
-        float spacing = 100f; // Horizontal spacing between cards
-        float arcHeight = 50f; // How much the cards arc upward in the middle
-        float startX = -(spacing * (cardCount - 1)) / 2f; // Center the cards
-        
-        int index = 0;
-        foreach (var cardObj in spawnedCards.Values)
-        {
-            if (cardObj != null)
-            {
-                // Calculate position in an arc
-                float xPos = startX + (index * spacing);
-                float yPos = -(Mathf.Pow(xPos / (spacing * 2), 2)) * arcHeight; // Parabolic arc
-                
-                // Set local position
-                RectTransform rectTransform = cardObj.GetComponent<RectTransform>();
-                if (rectTransform != null)
+                if (cardObject != null)
                 {
-                    rectTransform.localPosition = new Vector3(xPos, yPos, 0);
-                    
-                    // Calculate rotation (cards fan out)
-                    float rotationAngle = Mathf.Lerp(-10f, 10f, (float)index / (cardCount - 1));
-                    rectTransform.localRotation = Quaternion.Euler(0, 0, rotationAngle);
-                    
-                    // Set z-order for proper layering
-                    rectTransform.SetSiblingIndex(index);
+                    Destroy(cardObject);
                 }
-                
-                index++;
             }
         }
+        
+        spawnedCardsByType.Clear();
+        spawnedCardInstances.Clear();
+        cardInstanceCounter.Clear();
     }
     
     /// <summary>
@@ -326,6 +498,5 @@ public class CardSpawner : NetworkBehaviour
     public void OnCardPlayed(int cardId)
     {
         RemoveCardFromDisplay(cardId);
-        ArrangeCardsInHand();
     }
 } 

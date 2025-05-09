@@ -15,6 +15,8 @@ public class LobbyUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI playerListText;
     
     [SerializeField] private LobbyManager lobbyManager;
+    [SerializeField] private GamePhaseManager gamePhaseManager;
+    [SerializeField] private CombatSetup combatSetup;
 
     private void Awake()
     {
@@ -52,6 +54,26 @@ public class LobbyUIManager : MonoBehaviour
         {
             Debug.LogError("LobbyUIManager: LobbyManager reference is not assigned in the Inspector.");
         }
+        
+        // Find the GamePhaseManager if not set in inspector
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            if (gamePhaseManager == null)
+            {
+                Debug.LogWarning("LobbyUIManager: GamePhaseManager not found. Phase transitions may not work correctly.");
+            }
+        }
+        
+        // Find the CombatSetup if not set in inspector
+        if (combatSetup == null)
+        {
+            combatSetup = FindFirstObjectByType<CombatSetup>();
+            if (combatSetup == null)
+            {
+                Debug.LogWarning("LobbyUIManager: CombatSetup not found. Combat initialization may not work correctly.");
+            }
+        }
     }
 
     private void Start()
@@ -86,7 +108,16 @@ public class LobbyUIManager : MonoBehaviour
         
         if (lobbyManager != null)
         {
+            // Let LobbyManager handle everything including phase change
+            Debug.Log("LobbyUIManager: Notifying LobbyManager to start combat phase");
             lobbyManager.RequestStartGame();
+            
+            // REMOVED: Direct calls to GamePhaseManager and CombatSetup
+            // LobbyManager will handle these via its RpcStartGame method
+        }
+        else
+        {
+            Debug.LogError("LobbyUIManager: LobbyManager reference is null. Cannot start game.");
         }
     }
 

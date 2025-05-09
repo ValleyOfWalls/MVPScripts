@@ -27,18 +27,8 @@ public class CombatHand : NetworkBehaviour
     [SerializeField, Tooltip("Names of cards in the hand (if available in CardDatabase)")]
     private List<string> inspectorHandNames = new List<string>();
     
-    // Visual container for hand cards
-    [Header("References")]
-    [SerializeField] private Transform handCardsContainer;
-    
     // Reference to HandManager component
     private HandManager handManager;
-    
-    // Dictionary to track instantiated card objects by card ID
-    private Dictionary<int, GameObject> cardObjects = new Dictionary<int, GameObject>();
-    
-    // Card prefab for visual representation
-    [SerializeField] private GameObject cardPrefab;
     
     // Event for hand changes
     public event Action OnHandChanged;

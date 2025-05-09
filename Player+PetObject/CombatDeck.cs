@@ -6,7 +6,7 @@ using FishNet.Serializing;
 using System.Linq;
 
 /// <summary>
-/// Maintains a deck of cards used during combat, manages shuffling, drawing, and discard piles.
+/// Maintains a deck of cards used during combat, manages shuffling and drawing.
 /// Attach to: Both NetworkPlayer and NetworkPet prefabs to handle their combat decks.
 /// </summary>
 [System.Serializable]
@@ -14,9 +14,6 @@ public class CombatDeck : NetworkBehaviour
 {
     // List of card IDs in the deck, synced across network
     private readonly SyncList<int> deckCardIds = new();
-    
-    // List of card IDs in the discard pile, synced across network
-    private readonly SyncList<int> discardPileCardIds = new();
     
     // Inspector-visible representation of the deck (read-only, for debugging)
     [Header("Current Deck (Read-Only)")]
@@ -26,38 +23,22 @@ public class CombatDeck : NetworkBehaviour
     [SerializeField, Tooltip("Names of cards in the deck (if available in CardDatabase)")]
     private List<string> inspectorDeckNames = new List<string>();
     
-    // Inspector-visible representation of the discard pile (read-only, for debugging)
-    [Header("Discard Pile (Read-Only)")]
-    [SerializeField, Tooltip("Cards currently in this entity's discard pile. Read-only representation for debugging.")]
-    private List<int> inspectorDiscardList = new List<int>();
-    
-    [SerializeField, Tooltip("Names of cards in the discard pile (if available in CardDatabase)")]
-    private List<string> inspectorDiscardNames = new List<string>();
-    
-    // Visual transforms for card containers - serialized in inspector
-    [Header("Transform References")]
-    [SerializeField] private Transform deckTransform;
-    [SerializeField] private Transform discardTransform;
-    
     // Random number generator for shuffling
     private System.Random rng = new System.Random();
     
     // Flag to track if setup has been done
     private bool setupDone = false;
-
-    public override void OnStartNetwork()
-    {
-        base.OnStartNetwork();
-        // Initialize calls removed - no longer needed in FishNet v4
-    }
     
+    // Event for deck changes
+    public delegate void DeckChanged();
+    public event DeckChanged OnDeckChanged;
+
     public override void OnStartClient()
     {
         base.OnStartClient();
         
         // Register for changes to the card lists
         deckCardIds.OnChange += HandleDeckChanged;
-        discardPileCardIds.OnChange += HandleDiscardChanged;
         
         // Update inspector lists on client start
         UpdateInspectorLists();
@@ -69,7 +50,6 @@ public class CombatDeck : NetworkBehaviour
         
         // Unregister from changes
         deckCardIds.OnChange -= HandleDeckChanged;
-        discardPileCardIds.OnChange -= HandleDiscardChanged;
     }
     
     /// <summary>
@@ -141,39 +121,17 @@ public class CombatDeck : NetworkBehaviour
             // Check if deck is empty
             if (deckCardIds.Count == 0)
             {
-                // Reshuffle discard pile into deck if possible
-                if (discardPileCardIds.Count > 0)
-                {
-                    ShuffleDiscardIntoDeck();
-                }
-                else
-                {
-                    // No more cards to draw
-                    break;
-                }
+                // No more cards to draw
+                break;
             }
             
             // Draw the top card
-            if (deckCardIds.Count > 0)
-            {
-                int cardId = deckCardIds[0];
-                deckCardIds.RemoveAt(0);
-                drawnCards.Add(cardId);
-            }
+            int cardId = deckCardIds[0];
+            deckCardIds.RemoveAt(0);
+            drawnCards.Add(cardId);
         }
         
         return drawnCards;
-    }
-    
-    /// <summary>
-    /// Discards a specific card
-    /// </summary>
-    /// <param name="cardId">The ID of the card to discard</param>
-    [Server]
-    public void DiscardCard(int cardId)
-    {
-        if (!IsServerInitialized) return;
-        discardPileCardIds.Add(cardId);
     }
     
     /// <summary>
@@ -209,30 +167,27 @@ public class CombatDeck : NetworkBehaviour
     }
     
     /// <summary>
-    /// Moves all cards from the discard pile back into the deck and shuffles
+    /// Adds cards to the deck and shuffles them in
     /// </summary>
     [Server]
-    public void ShuffleDiscardIntoDeck()
+    public void AddCardsToDeck(List<int> cardIds)
     {
         if (!IsServerInitialized) return;
         
-        // Add all discard pile cards to the deck
-        foreach (int cardId in discardPileCardIds)
+        // Add all cards to the deck
+        foreach (int cardId in cardIds)
         {
             deckCardIds.Add(cardId);
         }
         
-        // Clear the discard pile
-        discardPileCardIds.Clear();
-        
         // Shuffle the deck
         ShuffleDeck();
         
-        Debug.Log($"Discard pile shuffled into deck for {gameObject.name}.");
+        Debug.Log($"Added {cardIds.Count} cards to deck for {gameObject.name}.");
     }
     
     /// <summary>
-    /// Clears the deck and discard pile
+    /// Clears the deck
     /// </summary>
     [Server]
     public void ClearDeck()
@@ -240,9 +195,8 @@ public class CombatDeck : NetworkBehaviour
         if (!IsServerInitialized) return;
         
         deckCardIds.Clear();
-        discardPileCardIds.Clear();
         
-        Debug.Log($"Combat deck and discard pile cleared for {gameObject.name}.");
+        Debug.Log($"Combat deck cleared for {gameObject.name}.");
     }
     
     /// <summary>
@@ -255,15 +209,6 @@ public class CombatDeck : NetworkBehaviour
     }
     
     /// <summary>
-    /// Gets all card IDs in the discard pile
-    /// </summary>
-    /// <returns>List of card IDs</returns>
-    public List<int> GetDiscardPileCardIds()
-    {
-        return new List<int>(discardPileCardIds);
-    }
-    
-    /// <summary>
     /// Gets the number of cards in the deck
     /// </summary>
     /// <returns>Card count</returns>
@@ -273,28 +218,14 @@ public class CombatDeck : NetworkBehaviour
     }
     
     /// <summary>
-    /// Gets the number of cards in the discard pile
-    /// </summary>
-    /// <returns>Card count</returns>
-    public int GetDiscardPileSize()
-    {
-        return discardPileCardIds.Count;
-    }
-    
-    /// <summary>
     /// Handler for deck changes
     /// </summary>
     private void HandleDeckChanged(SyncListOperation op, int index, int oldItem, int newItem, bool asServer)
     {
         UpdateInspectorLists();
-    }
-    
-    /// <summary>
-    /// Handler for discard pile changes
-    /// </summary>
-    private void HandleDiscardChanged(SyncListOperation op, int index, int oldItem, int newItem, bool asServer)
-    {
-        UpdateInspectorLists();
+        
+        // Notify subscribers of deck changes
+        OnDeckChanged?.Invoke();
     }
     
     /// <summary>
@@ -313,19 +244,6 @@ public class CombatDeck : NetworkBehaviour
             // Try to get card name if available
             string cardName = GetCardName(cardId);
             inspectorDeckNames.Add(cardName);
-        }
-        
-        // Update the inspector discard pile list
-        inspectorDiscardList.Clear();
-        inspectorDiscardNames.Clear();
-        
-        foreach (int cardId in discardPileCardIds)
-        {
-            inspectorDiscardList.Add(cardId);
-            
-            // Try to get card name if available
-            string cardName = GetCardName(cardId);
-            inspectorDiscardNames.Add(cardName);
         }
     }
     

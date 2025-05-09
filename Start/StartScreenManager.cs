@@ -1,96 +1,132 @@
 using UnityEngine;
+using FishNet;
 
 /// <summary>
-/// Orchestrates the game startup sequence and handles game-level initialization.
-/// Attach to: A dedicated StartManager GameObject.
+/// Manages the initial game setup and start screen functionality.
+/// Attach to: A networked object in the scene that manages initialization flow.
 /// </summary>
 public class StartScreenManager : MonoBehaviour
 {
-    [SerializeField] private StartScreenUIManager uiManager;
-    [SerializeField] private bool allowOfflinePlay = true; // Add option for offline play
+    [SerializeField] private StartScreenUIManager startScreenUIManager;
+    [SerializeField] private GameObject startScreenCanvas;
     
-    private SteamNetworkIntegration steamNetworkIntegration;
+    // Reference to the GamePhaseManager
+    private GamePhaseManager gamePhaseManager;
+    
+    // Server status flags
     private bool isSteamAvailable = false;
-
-    void Awake()
+    private bool allowOfflinePlay = true;
+    
+    public void SetGamePhaseManager(GamePhaseManager phaseManager)
     {
-        if (uiManager == null)
-        {
-            Debug.LogError("StartScreenManager: StartScreenUIManager reference is not assigned in the Inspector.");
-        }
-    }
-
-    void Start()
-    {
-        // Try to find the SteamNetworkIntegration instance
-        steamNetworkIntegration = SteamNetworkIntegration.Instance;
-        if (steamNetworkIntegration == null)
-        {
-            Debug.LogError("StartScreenManager: SteamNetworkIntegration instance not found. Steam lobby functionality may not work.");
-            isSteamAvailable = false;
-        }
-        else
-        {
-            isSteamAvailable = steamNetworkIntegration.IsSteamInitialized;
-            if (!isSteamAvailable)
-            {
-                Debug.LogWarning("StartScreenManager: Steam is not initialized. Using offline mode if allowed.");
-            }
-        }
+        gamePhaseManager = phaseManager;
         
-        // Update UI to reflect Steam availability
-        if (uiManager != null)
+        // Register the start screen canvas with the GamePhaseManager
+        if (gamePhaseManager != null && startScreenCanvas != null)
         {
-            uiManager.UpdateSteamAvailabilityStatus(isSteamAvailable, allowOfflinePlay);
+            // We only register our own canvas, other managers should register theirs
+            // Let the GamePhaseManager retrieve other canvases from respective managers
+            gamePhaseManager.SetStartScreenCanvas(startScreenCanvas);
         }
     }
-
+    
     /// <summary>
-    /// Called by GameStartScript to begin the game initialization process
+    /// Initialize the game, show the start screen, and check for Steam
     /// </summary>
     public void InitializeGame()
     {
         Debug.Log("StartScreenManager: Initializing game...");
         
-        // Initialize any game systems here before showing UI
+        // Check if we have required references
+        if (startScreenUIManager == null)
+        {
+            Debug.LogError("StartScreenManager: StartScreenUIManager reference is null.");
+            return;
+        }
         
-        // Trigger the UI manager to show the start screen
-        if (uiManager != null)
+        if (gamePhaseManager == null)
         {
-            uiManager.ShowStartScreen();
+            Debug.LogWarning("StartScreenManager: GamePhaseManager reference is null. Finding it in the scene...");
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            
+            if (gamePhaseManager == null)
+            {
+                Debug.LogError("StartScreenManager: GamePhaseManager not found in the scene!");
+            }
+            else
+            {
+                // Register only our canvas with the GamePhaseManager
+                if (startScreenCanvas != null)
+                {
+                    gamePhaseManager.SetStartScreenCanvas(startScreenCanvas);
+                }
+            }
         }
-    }
-
-    /// <summary>
-    /// Called by StartScreenUIManager when the start button is pressed
-    /// </summary>
-    public void OnStartGameRequested()
-    {
-        if (isSteamAvailable && steamNetworkIntegration != null)
+        
+        // Check for Steam availability
+        CheckSteamAvailability();
+        
+        // Show start screen
+        if (gamePhaseManager != null)
         {
-            Debug.Log("StartScreenManager: Start button pressed, attempting to host or join a Steam lobby...");
-            steamNetworkIntegration.RequestLobbiesList();
-        }
-        else if (allowOfflinePlay)
-        {
-            Debug.Log("StartScreenManager: Start button pressed, starting in offline mode...");
-            // Handle offline mode - perhaps load a different scene or start in single player
-            // For example: SceneManager.LoadScene("OfflineGameScene");
+            // Tell the GamePhaseManager to set the Start phase
+            Debug.Log("StartScreenManager: Transitioning to Start phase via GamePhaseManager");
+            gamePhaseManager.SetStartPhase();
         }
         else
         {
-            Debug.LogError("StartScreenManager: Cannot initiate game: Steam unavailable and offline play not allowed.");
-            if (uiManager != null)
-            {
-                uiManager.ShowErrorMessage("Steam is not available. Please make sure Steam is running and try again.");
-                return; // Don't proceed to lobby
-            }
+            // Fall back to direct canvas activation if GamePhaseManager isn't available
+            startScreenUIManager.ShowStartScreen();
         }
-
-        // Notify UI manager to transition to the lobby screen
-        if (uiManager != null)
+    }
+    
+    /// <summary>
+    /// Check if Steam is available (placeholder for actual SteamNetworkIntegration call)
+    /// </summary>
+    private void CheckSteamAvailability()
+    {
+        // In a real implementation, this would check SteamNetworkIntegration
+        // For now, we'll just assume Steam is available
+        isSteamAvailable = true;
+        
+        // Update UI based on Steam availability
+        startScreenUIManager.UpdateSteamAvailabilityStatus(isSteamAvailable, allowOfflinePlay);
+    }
+    
+    /// <summary>
+    /// Called when the player clicks the Start Game button
+    /// </summary>
+    public void OnStartGameRequested()
+    {
+        Debug.Log("StartScreenManager: Start game requested");
+        
+        if (isSteamAvailable || allowOfflinePlay)
         {
-            uiManager.TransitionToLobbyScreen();
+            // Begin transition to lobby
+            TransitionToLobby();
+        }
+        else
+        {
+            startScreenUIManager.ShowErrorMessage("Steam is not available. Please start Steam and try again.");
+        }
+    }
+    
+    /// <summary>
+    /// Transition from start screen to lobby
+    /// </summary>
+    private void TransitionToLobby()
+    {
+        Debug.Log("StartScreenManager: Transitioning to lobby");
+        
+        if (gamePhaseManager != null)
+        {
+            // Tell the GamePhaseManager to set the Lobby phase
+            gamePhaseManager.SetLobbyPhase();
+        }
+        else
+        {
+            // Fall back to direct UI transition if GamePhaseManager isn't available
+            startScreenUIManager.TransitionToLobbyScreen();
         }
     }
 } 

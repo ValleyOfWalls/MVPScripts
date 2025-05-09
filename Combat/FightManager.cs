@@ -40,6 +40,23 @@ public class FightManager : NetworkBehaviour
     
     // Connection-based lookup for better performance with many players
     private readonly Dictionary<int, FightAssignmentData> connectionToFightMap = new Dictionary<int, FightAssignmentData>(); // ConnectionId -> Fight
+    
+    // Event for fight assignments changes
+    public event System.Action<bool> OnFightsChanged; // true if fights exist, false if all fights cleared
+
+    // Debug visualization for the inspector
+    [Header("Debug Visualization")]
+    [SerializeField, Tooltip("Debug visualization of current fight assignments")] 
+    private List<FightAssignmentDebug> debugAssignments = new List<FightAssignmentDebug>();
+
+    [System.Serializable]
+    private class FightAssignmentDebug
+    {
+        public string PlayerName;
+        public uint PlayerObjectId;
+        public string PetName;
+        public uint PetObjectId;
+    }
 
     private void Awake()
     {
@@ -90,6 +107,78 @@ public class FightManager : NetworkBehaviour
         
         // Both server and client can rebuild their fast-access maps if they use them.
         RebuildLocalLookups(fightAssignments.ToList());
+        
+        // Notify about fight status changes
+        bool hasFights = fightAssignments.Count > 0;
+        OnFightsChanged?.Invoke(hasFights);
+        
+        // Make sure entity visibility is updated on clients
+        if (!asServer)
+        {
+            // Find EntityVisibilityManager either through GamePhaseManager or directly
+            GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+            EntityVisibilityManager entityVisManager = null;
+            
+            if (gamePhaseManager != null)
+            {
+                entityVisManager = gamePhaseManager.GetComponent<EntityVisibilityManager>();
+            }
+            
+            if (entityVisManager == null)
+            {
+                entityVisManager = FindFirstObjectByType<EntityVisibilityManager>();
+            }
+            
+            if (entityVisManager != null)
+            {
+                entityVisManager.UpdateAllEntitiesVisibility();
+            }
+        }
+
+        // Update debug visualization
+        UpdateDebugVisualization();
+    }
+
+    // Update the inspector visualization for debugging
+    private void UpdateDebugVisualization()
+    {
+        debugAssignments.Clear();
+        
+        foreach (var assignment in fightAssignments)
+        {
+            FightAssignmentDebug debug = new FightAssignmentDebug();
+            debug.PlayerObjectId = assignment.PlayerObjectId;
+            debug.PetObjectId = assignment.PetObjectId;
+            
+            // Try to get names
+            NetworkPlayer player = GetNetworkObjectComponent<NetworkPlayer>(assignment.PlayerObjectId);
+            NetworkPet pet = GetNetworkObjectComponent<NetworkPet>(assignment.PetObjectId);
+            
+            debug.PlayerName = player != null ? player.PlayerName.Value : "Unknown Player";
+            debug.PetName = pet != null ? pet.PetName.Value : "Unknown Pet";
+            
+            debugAssignments.Add(debug);
+        }
+    }
+
+    // Helper function to get a component from a NetworkObject ID
+    private T GetNetworkObjectComponent<T>(uint objectId) where T : NetworkBehaviour
+    {
+        NetworkObject nob = null;
+        if (base.IsServerStarted)
+        {
+            NetworkManager.ServerManager.Objects.Spawned.TryGetValue((int)objectId, out nob);
+        }
+        else if (base.IsClientStarted)
+        {
+            NetworkManager.ClientManager.Objects.Spawned.TryGetValue((int)objectId, out nob);
+        }
+        
+        if (nob != null)
+        {
+            return nob.GetComponent<T>();
+        }
+        return null;
     }
 
     [Server]
@@ -122,6 +211,9 @@ public class FightManager : NetworkBehaviour
         }
 
         Debug.Log($"FightManager: Added assignment PlayerID {player.ObjectId} vs PetID {pet.ObjectId}");
+        
+        // Update debug visualization
+        UpdateDebugVisualization();
     }
 
     [Server]
@@ -141,6 +233,9 @@ public class FightManager : NetworkBehaviour
             }
             
             Debug.Log($"FightManager: Removed assignment for PlayerID {player.ObjectId}");
+            
+            // Update debug visualization
+            UpdateDebugVisualization();
         }
     }
 
@@ -152,6 +247,9 @@ public class FightManager : NetworkBehaviour
         petToPlayerMap.Clear();
         connectionToFightMap.Clear();
         Debug.Log("FightManager: All fight assignments cleared.");
+        
+        // Update debug visualization
+        UpdateDebugVisualization();
     }
 
     // Client or Server can call these to get opponents
@@ -283,6 +381,20 @@ public class FightManager : NetworkBehaviour
     
     public List<FightAssignmentData> GetAllFightAssignments()
     {
-        return new List<FightAssignmentData>(fightAssignments);
+        return fightAssignments.ToList();
+    }
+
+    // Added method to check if assignments have been synced to clients
+    public bool AreAssignmentsComplete()
+    {
+        return fightAssignments.Count > 0;
+    }
+
+    /// <summary>
+    /// Check if there are any active fights
+    /// </summary>
+    public bool HasActiveFights()
+    {
+        return fightAssignments.Count > 0;
     }
 } 

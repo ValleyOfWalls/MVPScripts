@@ -22,10 +22,6 @@ public class CombatDiscard : NetworkBehaviour
     // Delegate for discard pile changes
     public delegate void DiscardChanged();
     public event DiscardChanged OnDiscardChanged;
-    
-    // UI element to show discard count
-    [Header("UI References")]
-    [SerializeField] private TMPro.TextMeshProUGUI discardCountText;
 
     public override void OnStartClient()
     {
@@ -33,9 +29,6 @@ public class CombatDiscard : NetworkBehaviour
         
         // Register for discard pile changes
         discardCardIds.OnChange += HandleDiscardChanged;
-        
-        // Update the UI
-        UpdateDiscardCountUI();
         
         // Initialize inspector lists
         UpdateInspectorLists();
@@ -126,25 +119,11 @@ public class CombatDiscard : NetworkBehaviour
     /// </summary>
     private void HandleDiscardChanged(SyncListOperation op, int index, int oldValue, int newValue, bool asServer)
     {
-        // Update the UI
-        UpdateDiscardCountUI();
-        
         // Update inspector lists
         UpdateInspectorLists();
         
         // Notify subscribers
         OnDiscardChanged?.Invoke();
-    }
-
-    /// <summary>
-    /// Updates the UI element showing discard count
-    /// </summary>
-    private void UpdateDiscardCountUI()
-    {
-        if (discardCountText != null)
-        {
-            discardCountText.text = $"Discard: {discardCardIds.Count}";
-        }
     }
     
     /// <summary>

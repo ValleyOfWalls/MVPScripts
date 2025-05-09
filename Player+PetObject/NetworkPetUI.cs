@@ -15,6 +15,8 @@ public class NetworkPetUI : MonoBehaviour
     [Header("References")]
     [SerializeField] private NetworkPet pet;
     [SerializeField] private NetworkEntityDeck entityDeck;
+    [SerializeField] private CombatDiscard combatDiscard;
+    [SerializeField] private CanvasGroup canvasGroup;
     
     [Header("UI Elements")]
     [SerializeField] private Transform petHandTransform;
@@ -26,6 +28,10 @@ public class NetworkPetUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private Image healthBar;
+    
+    [Header("Card System UI")]
+    [SerializeField] private TextMeshProUGUI deckCountText;
+    [SerializeField] private TextMeshProUGUI discardCountText;
     
     private void Awake()
     {
@@ -41,6 +47,14 @@ public class NetworkPetUI : MonoBehaviour
         
         if (pet == null) pet = GetComponent<NetworkPet>();
         if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
+        if (combatDiscard == null) combatDiscard = GetComponent<CombatDiscard>();
+        if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
+        
+        // Add CanvasGroup if not already present
+        if (canvasGroup == null)
+        {
+            canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        }
         
         if (pet == null)
         {
@@ -51,6 +65,14 @@ public class NetworkPetUI : MonoBehaviour
         {
             Debug.LogError("NetworkPetUI: Cannot find NetworkEntityDeck component.");
         }
+        
+        if (combatDiscard == null)
+        {
+            Debug.LogError("NetworkPetUI: Cannot find CombatDiscard component.");
+        }
+        
+        // Default to hidden until the game state determines visibility
+        SetVisible(false);
     }
     
     private void OnEnable()
@@ -58,6 +80,11 @@ public class NetworkPetUI : MonoBehaviour
         if (entityDeck != null)
         {
             entityDeck.OnDeckChanged += UpdateDeckDisplay;
+        }
+        
+        if (combatDiscard != null)
+        {
+            combatDiscard.OnDiscardChanged += UpdateDiscardDisplay;
         }
         
         if (pet != null)
@@ -78,6 +105,11 @@ public class NetworkPetUI : MonoBehaviour
             entityDeck.OnDeckChanged -= UpdateDeckDisplay;
         }
         
+        if (combatDiscard != null)
+        {
+            combatDiscard.OnDiscardChanged -= UpdateDiscardDisplay;
+        }
+        
         if (pet != null)
         {
             // Unsubscribe from pet stat changes
@@ -95,6 +127,27 @@ public class NetworkPetUI : MonoBehaviour
         {
             // Initial UI setup
             UpdatePetUI();
+        }
+        
+        // Initialize card system UI
+        UpdateDeckDisplay();
+        UpdateDiscardDisplay();
+    }
+    
+    /// <summary>
+    /// Set the visibility of this UI
+    /// </summary>
+    public void SetVisible(bool visible)
+    {
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = visible ? 1.0f : 0.0f;
+            canvasGroup.interactable = visible;
+            canvasGroup.blocksRaycasts = visible;
+        }
+        else
+        {
+            gameObject.SetActive(visible);
         }
     }
     
@@ -195,8 +248,27 @@ public class NetworkPetUI : MonoBehaviour
     /// </summary>
     private void UpdateDeckDisplay()
     {
-        // Deck visualization is now handled by CardSpawner
-        // This method is kept for backwards compatibility but doesn't need to do anything
+        if (deckCountText != null && pet != null)
+        {
+            int deckCount = 0;
+            CombatDeck combatDeck = GetComponent<CombatDeck>();
+            if (combatDeck != null)
+            {
+                deckCount = combatDeck.GetDeckSize();
+            }
+            deckCountText.text = $"Deck: {deckCount}";
+        }
+    }
+    
+    /// <summary>
+    /// Updates the discard pile display
+    /// </summary>
+    private void UpdateDiscardDisplay()
+    {
+        if (discardCountText != null && combatDiscard != null)
+        {
+            discardCountText.text = $"Discard: {combatDiscard.GetCardCount()}";
+        }
     }
     
     /// <summary>

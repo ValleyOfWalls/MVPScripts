@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using FishNet.Connection;
 using FishNet.Managing; // Added for NetworkManager
+using FishNet.Observing; // Added for NetworkObserver
+using System.Collections;
 
 /// <summary>
 /// Initializes the combat phase including entity deck setup, fight assignments, and UI preparation.
@@ -19,11 +21,26 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
     [SerializeField] private CombatManager combatManager;
     [SerializeField] private CombatCanvasManager combatCanvasManager;
     [SerializeField] private GameManager gameManager;
+    [SerializeField] private GamePhaseManager gamePhaseManager; // Added GamePhaseManager reference
     
     // Optional reference that can be resolved at runtime
     private SteamNetworkIntegration steamNetworkIntegration;
 
     private bool setupDone = false;
+
+    private void Awake()
+    {
+        // Register our combat canvas with the GamePhaseManager if available
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        }
+        
+        if (gamePhaseManager != null && combatCanvas != null)
+        {
+            gamePhaseManager.SetCombatCanvas(combatCanvas);
+        }
+    }
 
     // We'll initialize references here but NOT automatically start combat setup
     public override void OnStartServer()
@@ -47,6 +64,7 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
         if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
         if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
         if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
+        if (gamePhaseManager == null) gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
 
         // Log any missing components as errors
         if (steamNetworkIntegration == null) Debug.LogError("SteamNetworkIntegration not found by CombatSetup.");
@@ -54,6 +72,13 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
         if (combatManager == null) Debug.LogError("CombatManager not found by CombatSetup.");
         if (combatCanvasManager == null) Debug.LogError("CombatCanvasManager not found by CombatSetup.");
         if (gameManager == null) Debug.LogError("GameManager not found by CombatSetup.");
+        if (gamePhaseManager == null) Debug.LogError("GamePhaseManager not found by CombatSetup.");
+        
+        // Register our combat canvas with the GamePhaseManager if not done in Awake
+        if (gamePhaseManager != null && combatCanvas != null)
+        {
+            gamePhaseManager.SetCombatCanvas(combatCanvas);
+        }
     }
 
     [Server]
@@ -84,22 +109,43 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
             return;
         }
 
+        // Update the GamePhaseManager to transition to Combat phase
+        if (gamePhaseManager != null)
+        {
+            gamePhaseManager.SetCombatPhase();
+            Debug.Log("CombatSetup: Triggered GamePhaseManager to set Combat phase");
+        }
+        else
+        {
+            Debug.LogWarning("CombatSetup: GamePhaseManager is null, cannot transition game phase properly");
+        }
+
         // 1. Setup combat decks for all players and pets
+        Debug.Log("CombatSetup: Starting to setup combat decks...");
         SetupCombatDecks();
+        Debug.Log("CombatSetup: Combat decks setup complete.");
 
         // 2. Assign fights
+        Debug.Log("CombatSetup: Starting to assign fights...");
         AssignFights();
+        Debug.Log("CombatSetup: Fight assignments complete.");
+        
+        // 3. Add all player connections as observers to the CombatManager
+        Debug.Log("CombatSetup: Setting up player observers...");
+        EnsurePlayersAreObservers();
+        Debug.Log("CombatSetup: Player observers setup complete.");
 
-        // 3. Trigger CombatCanvasManager (usually client-side for local UI setup)
-        // This is tricky. CombatCanvasManager is likely a local script.
-        // The server can send an RPC to all clients to trigger their local CombatCanvasManager setup.
+        // 4. Trigger CombatCanvasManager (usually client-side for local UI setup)
+        Debug.Log("CombatSetup: Triggering combat canvas setup on clients...");
         RpcTriggerCombatCanvasManagerSetup();
+        Debug.Log("CombatSetup: Combat canvas RPC sent to clients.");
 
-        // 4. Trigger CombatManager to start combat
+        // 5. Trigger CombatManager to start combat
         if (combatManager != null)
         {
             Debug.Log("CombatSetup: Triggering CombatManager to start combat process.");
             combatManager.StartCombat();
+            Debug.Log("CombatSetup: CombatManager.StartCombat() called successfully.");
         }
         else
         {
@@ -238,10 +284,94 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
         }
     }
 
+    [Server]
+    private void EnsurePlayersAreObservers()
+    {
+        if (combatManager == null || fightManager == null)
+        {
+            Debug.LogError("CombatSetup: Cannot set up combat visibility - CombatManager or FightManager is null");
+            return;
+        }
+        
+        Debug.Log("CombatSetup: Setting up visibility using EntityVisibilityManager");
+        
+        // Get the EntityVisibilityManager to update visibility based on fight assignments
+        EntityVisibilityManager visibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        if (visibilityManager == null)
+        {
+            Debug.LogError("CombatSetup: EntityVisibilityManager not found. UI visibility may not work correctly.");
+        }
+        else
+        {
+            // Tell the EntityVisibilityManager to update visibility for all entities
+            // It will use the fight assignments from the FightManager to determine what each client should see
+            visibilityManager.SetCombatState();
+            visibilityManager.UpdateAllEntitiesVisibility();
+            Debug.Log("CombatSetup: Updated entity visibility for combat");
+        }
+        
+        // Log the fight assignments for debugging
+        if (fightManager != null)
+        {
+            var fightAssignments = fightManager.GetAllFightAssignments();
+            Debug.Log($"Combat has {fightAssignments.Count} active fights assigned");
+            
+            foreach (var assignment in fightAssignments)
+            {
+                // Find the player and pet objects to get their names
+                NetworkPlayer player = null;
+                NetworkPet pet = null;
+                
+                foreach (var nob in FishNet.InstanceFinder.NetworkManager.ServerManager.Objects.Spawned.Values)
+                {
+                    if (nob.ObjectId == assignment.PlayerObjectId)
+                        player = nob.GetComponent<NetworkPlayer>();
+                    else if (nob.ObjectId == assignment.PetObjectId)
+                        pet = nob.GetComponent<NetworkPet>();
+                    
+                    if (player != null && pet != null) break;
+                }
+                
+                string playerName = player != null ? player.PlayerName.Value : "Unknown";
+                string petName = pet != null ? pet.PetName.Value : "Unknown";
+                int clientId = player != null && player.Owner != null ? player.Owner.ClientId : -1;
+                
+                Debug.Log($"Fight Assignment: Player {playerName} (ID: {assignment.PlayerObjectId}, ClientId: {clientId}) " +
+                         $"vs Pet {petName} (ID: {assignment.PetObjectId})");
+            }
+        }
+    }
+
     [ObserversRpc]
     private void RpcTriggerCombatCanvasManagerSetup()
     {
         Debug.Log("RpcTriggerCombatCanvasManagerSetup received on client. Setting up combat UI.");
+        
+        // Debug: Log all NetworkPlayer objects in the scene
+        var networkPlayers = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        Debug.Log($"Found {networkPlayers.Length} NetworkPlayer objects in the scene:");
+        foreach (var player in networkPlayers)
+        {
+            Debug.Log($"  - Player: {player.PlayerName.Value}, ObjectId: {player.ObjectId}, " +
+                      $"IsOwner: {player.IsOwner}, HasOwner: {player.Owner != null}, " +
+                      $"OwnerId: {(player.Owner != null ? player.Owner.ClientId : -1)}");
+        }
+        
+        // Debug: Log all NetworkPet objects in the scene
+        var networkPets = FindObjectsByType<NetworkPet>(FindObjectsSortMode.None);
+        Debug.Log($"Found {networkPets.Length} NetworkPet objects in the scene:");
+        foreach (var pet in networkPets)
+        {
+            Debug.Log($"  - Pet: {pet.PetName.Value}, ObjectId: {pet.ObjectId}, " +
+                      $"IsOwner: {pet.IsOwner}, HasOwner: {pet.Owner != null}, " +
+                      $"OwnerId: {(pet.Owner != null ? pet.Owner.ClientId : -1)}, " +
+                      $"OwnerPlayerObjectId: {pet.OwnerPlayerObjectId.Value}");
+        }
+        
+        // Debug: Log local connection info
+        var localConnection = FishNet.InstanceFinder.ClientManager.Connection;
+        Debug.Log($"Local connection: {(localConnection != null ? $"ClientId: {localConnection.ClientId}" : "null")}");
+        
         if (combatCanvas != null)
         {
             combatCanvas.SetActive(true);
@@ -251,6 +381,28 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
             Debug.LogWarning("combatCanvas is null in CombatSetup.RpcTriggerCombatCanvasManagerSetup.");
         }
 
+        // Delay UI setup to allow FightManager time to process all network updates
+        StartCoroutine(SetupCombatUIWithDelay());
+    }
+    
+    private IEnumerator SetupCombatUIWithDelay()
+    {
+        // Wait a short time to ensure all FightManager assignments are received and processed
+        // This solves timing issues where UI setup happens before combat assignments are fully synced
+        yield return new WaitForSeconds(0.5f);
+        
+        // Verify FightManager has assignments before proceeding
+        FightManager fightManager = FindFirstObjectByType<FightManager>();
+        int maxAttempts = 5;
+        int attempts = 0;
+        
+        while (fightManager != null && fightManager.GetAllFightAssignments().Count == 0 && attempts < maxAttempts)
+        {
+            Debug.Log("Waiting for FightManager to receive assignments...");
+            yield return new WaitForSeconds(0.5f);
+            attempts++;
+        }
+        
         if (combatCanvasManager == null)
         {
             // Try to find it if not already set

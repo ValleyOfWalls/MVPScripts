@@ -17,9 +17,15 @@ public class NetworkPlayer : NetworkBehaviour
     public readonly SyncVar<string> PlayerName = new SyncVar<string>();
 
     // Max stats can be read from GameManager or set at spawn
+    [Header("Health & Energy (Editable in Inspector for Debugging)")]
+    [SerializeField] private int _maxHealth = 100;
+    [SerializeField] private int _maxEnergy = 3;
+    [SerializeField] private int _currentHealth = 100;
+    [SerializeField] private int _currentEnergy = 3;
+
+    // SyncVars backed by serialized fields for easier debugging
     public readonly SyncVar<int> MaxHealth = new SyncVar<int>();
     public readonly SyncVar<int> MaxEnergy = new SyncVar<int>();
-
     public readonly SyncVar<int> CurrentHealth = new SyncVar<int>();
     public readonly SyncVar<int> CurrentEnergy = new SyncVar<int>();
 
@@ -48,37 +54,113 @@ public class NetworkPlayer : NetworkBehaviour
     {
         base.OnStartServer();
         GameManager gameManager = FindFirstObjectByType<GameManager>(); // Updated FindObjectOfType
+        
+        // Use serialized fields as initial values
+        MaxHealth.Value = _maxHealth;
+        MaxEnergy.Value = _maxEnergy;
+        CurrentHealth.Value = _currentHealth;
+        CurrentEnergy.Value = _currentEnergy;
+        
+        // Override with GameManager values if available
         if (gameManager != null)
         {
             MaxHealth.Value = gameManager.PlayerMaxHealth.Value;
             MaxEnergy.Value = gameManager.PlayerMaxEnergy.Value;
+            CurrentHealth.Value = MaxHealth.Value;
+            CurrentEnergy.Value = MaxEnergy.Value;
         }
-        else Debug.LogWarning("GameManager not found in NetworkPlayer.OnStartServer. Max stats will use defaults.");
+        else Debug.LogWarning("GameManager not found in NetworkPlayer.OnStartServer. Using serialized field values.");
         
-        // Set defaults if GameManager didn't override
+        // Set defaults if GameManager didn't override and serialized fields are zero
         if(MaxHealth.Value == 0) MaxHealth.Value = 100;
         if(MaxEnergy.Value == 0) MaxEnergy.Value = 3;
         if(PlayerName.Value == null) PlayerName.Value = "DefaultPlayerName";
-
-        CurrentHealth.Value = MaxHealth.Value;
-        CurrentEnergy.Value = MaxEnergy.Value;
-        // InitializeDeck method removed - now handled by EntityDeckSetup
+        
+        // Synchronize serialized fields with SyncVars
+        _maxHealth = MaxHealth.Value;
+        _maxEnergy = MaxEnergy.Value;
+        _currentHealth = CurrentHealth.Value;
+        _currentEnergy = CurrentEnergy.Value;
     }
 
     public override void OnStartClient()
     { 
         base.OnStartClient();
-        // Client-side initialization if needed, often for UI or visual setup based on SyncVar values
-        // For example, if player name comes from Steam
-        if (IsOwner) // Only the owner client might fetch their specific Steam name
+        
+        // Add more detailed ownership debugging, especially for host
+        bool isLocalConnection = Owner == FishNet.InstanceFinder.ClientManager.Connection;
+        bool isHostConnection = FishNet.InstanceFinder.IsHostStarted && Owner != null && Owner.ClientId == 0;
+        
+        Debug.Log($"NetworkPlayer OnStartClient - Name: {PlayerName.Value}, ID: {ObjectId}, IsOwner: {IsOwner}, " +
+                  $"HasOwner: {Owner != null}, OwnerId: {(Owner != null ? Owner.ClientId : -1)}, " + 
+                  $"IsLocalConnection: {isLocalConnection}, IsHostConnection: {isHostConnection}");
+        
+        // Register with EntityVisibilityManager if available
+        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+        if (gamePhaseManager != null)
         {
-            // CmdSetPlayerName(SteamFriends.GetPersonaName()); // Example RPC to set name from client
+            EntityVisibilityManager entityVisManager = gamePhaseManager.GetComponent<EntityVisibilityManager>();
+            if (entityVisManager != null)
+            {
+                entityVisManager.RegisterPlayer(this);
+            }
+            else
+            {
+                Debug.LogWarning($"NetworkPlayer: EntityVisibilityManager not found on GamePhaseManager for {PlayerName.Value}");
+            }
+        }
+        else
+        {
+            // Try to find EntityVisibilityManager directly as fallback
+            EntityVisibilityManager entityVisManager = FindFirstObjectByType<EntityVisibilityManager>();
+            if (entityVisManager != null)
+            {
+                entityVisManager.RegisterPlayer(this);
+            }
+            else
+            {
+                Debug.LogWarning($"NetworkPlayer: Neither GamePhaseManager nor EntityVisibilityManager found for {PlayerName.Value}");
+            }
+        }
+        
+        // Client-side initialization if needed, often for UI or visual setup based on SyncVar values
+        // Special handling for host
+        if (IsOwner || (FishNet.InstanceFinder.IsHostStarted && isHostConnection)) 
+        {
+            Debug.Log($"NetworkPlayer: Identified as owned by local client - Name: {PlayerName.Value}, ID: {ObjectId}");
+            
+            // You can add host-specific logic here if needed
+            // For example, if player name comes from Steam
+            // CmdSetPlayerName(SteamFriends.GetPersonaName());
         }
         // Cards are typically handled by server commands and RPCs to clients for visual updates.
         // The SyncLists for card IDs will automatically update on clients.
     }
-
-    // InitializeDeck method removed - now handled by EntityDeckSetup
+    
+    public override void OnStopClient()
+    {
+        base.OnStopClient();
+        
+        // Unregister from EntityVisibilityManager when despawned
+        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+        if (gamePhaseManager != null)
+        {
+            EntityVisibilityManager entityVisManager = gamePhaseManager.GetComponent<EntityVisibilityManager>();
+            if (entityVisManager != null)
+            {
+                entityVisManager.UnregisterPlayer(this);
+            }
+        }
+        else
+        {
+            // Try to find EntityVisibilityManager directly as fallback
+            EntityVisibilityManager entityVisManager = FindFirstObjectByType<EntityVisibilityManager>();
+            if (entityVisManager != null)
+            {
+                entityVisManager.UnregisterPlayer(this);
+            }
+        }
+    }
 
     // Example method to set player name (could be called after Steam authentication)
     [ServerRpc(RequireOwnership = false)] // Owner client can call this, or server can set it directly
@@ -99,6 +181,8 @@ public class NetworkPlayer : NetworkBehaviour
             // Handle player death
             Debug.Log($"Player {PlayerName.Value} has been defeated.");
         }
+        // Update serialized field
+        _currentHealth = CurrentHealth.Value;
     }
 
     [Server]
@@ -106,6 +190,8 @@ public class NetworkPlayer : NetworkBehaviour
     {
         CurrentHealth.Value += amount;
         if (CurrentHealth.Value > MaxHealth.Value) CurrentHealth.Value = MaxHealth.Value;
+        // Update serialized field
+        _currentHealth = CurrentHealth.Value;
     }
 
     [Server]
@@ -114,11 +200,15 @@ public class NetworkPlayer : NetworkBehaviour
         CurrentEnergy.Value += amount;
         if (CurrentEnergy.Value < 0) CurrentEnergy.Value = 0;
         if (CurrentEnergy.Value > MaxEnergy.Value) CurrentEnergy.Value = MaxEnergy.Value;
+        // Update serialized field
+        _currentEnergy = CurrentEnergy.Value;
     }
 
     [Server]
     public void ReplenishEnergy(){
         CurrentEnergy.Value = MaxEnergy.Value;
+        // Update serialized field
+        _currentEnergy = CurrentEnergy.Value;
     }
 
     [Server]
@@ -156,6 +246,9 @@ public class NetworkPlayer : NetworkBehaviour
     {
         MaxHealth.Value += amount;
         CurrentHealth.Value += amount;
+        // Update serialized fields
+        _maxHealth = MaxHealth.Value;
+        _currentHealth = CurrentHealth.Value;
     }
 
     [Server]
@@ -163,6 +256,9 @@ public class NetworkPlayer : NetworkBehaviour
     {
         MaxEnergy.Value += amount;
         CurrentEnergy.Value += amount;
+        // Update serialized fields
+        _maxEnergy = MaxEnergy.Value;
+        _currentEnergy = CurrentEnergy.Value;
     }
     
     /// <summary>
@@ -173,11 +269,57 @@ public class NetworkPlayer : NetworkBehaviour
     {
         if (!IsClientInitialized) return;
         
+        Debug.Log($"NotifyCardPlayed received on client for card ID {cardId}, IsOwner: {IsOwner}, IsLocalPlayer: {IsClientInitialized && IsOwner}");
+        
         // On client side, get the CardSpawner and tell it to remove the card
         CardSpawner cardSpawner = GetComponent<CardSpawner>();
         if (cardSpawner != null)
         {
-            cardSpawner.OnCardPlayed(cardId);
+            // Only remove cards from the local player's hand if this is the owner's player object
+            // This ensures cards are only removed from the player who actually played them
+            if (IsOwner || IsClientOnlyInitialized || (FishNet.InstanceFinder.IsHostStarted && ObjectId == GetComponent<NetworkObject>().ObjectId))
+            {
+                // Use the new method for server-confirmed card removal
+                cardSpawner.OnServerConfirmCardPlayed(cardId);
+                Debug.Log($"Server confirmed card {cardId} played - removing from display");
+            }
+            else
+            {
+                Debug.Log($"Ignoring card removal for non-owner player. Card: {cardId}, Player: {PlayerName.Value}, ObjectId: {ObjectId}");
+            }
+        }
+        else
+        {
+            Debug.LogError("NetworkPlayer.NotifyCardPlayed: CardSpawner component not found.");
+        }
+    }
+
+    /// <summary>
+    /// Notifies clients that a card has been played by this player
+    /// </summary>
+    [ObserversRpc]
+    public void NotifyCardPlayed(int cardId, string cardInstanceId)
+    {
+        if (!IsClientInitialized) return;
+        
+        Debug.Log($"NotifyCardPlayed received on client for card ID {cardId}, Instance ID {cardInstanceId}, IsOwner: {IsOwner}, IsLocalPlayer: {IsClientInitialized && IsOwner}");
+        
+        // On client side, get the CardSpawner and tell it to remove the card
+        CardSpawner cardSpawner = GetComponent<CardSpawner>();
+        if (cardSpawner != null)
+        {
+            // Only remove cards from the local player's hand if this is the owner's player object
+            // This ensures cards are only removed from the player who actually played them
+            if (IsOwner || IsClientOnlyInitialized || (FishNet.InstanceFinder.IsHostStarted && ObjectId == GetComponent<NetworkObject>().ObjectId))
+            {
+                // Use the new method for server-confirmed card removal with instance ID
+                cardSpawner.OnServerConfirmCardPlayed(cardId, cardInstanceId);
+                Debug.Log($"Server confirmed card {cardId} (Instance: {cardInstanceId}) played - removing from display");
+            }
+            else
+            {
+                Debug.Log($"Ignoring card removal for non-owner player. Card: {cardId}, Instance: {cardInstanceId}, Player: {PlayerName.Value}, ObjectId: {ObjectId}");
+            }
         }
         else
         {

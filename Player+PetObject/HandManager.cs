@@ -14,6 +14,8 @@ public class HandManager : MonoBehaviour
     private System.Random rng = new System.Random();
     private NetworkBehaviour parentEntity; // Reference to the NetworkPlayer or NetworkPet this is attached to
     private CombatHand combatHand; // Reference to the CombatHand component
+    private CombatDeck combatDeck; // Reference to the CombatDeck component
+    private CombatDiscard combatDiscard; // Reference to the CombatDiscard component
 
     private void Awake()
     {
@@ -29,11 +31,23 @@ public class HandManager : MonoBehaviour
             Debug.LogError("HandManager: Not attached to a NetworkPlayer or NetworkPet. This component must be attached to one of these.");
         }
         
-        // Get the CombatHand component
+        // Get the required components
         combatHand = GetComponent<CombatHand>();
         if (combatHand == null)
         {
             Debug.LogError("HandManager: CombatHand component not found. This component must be attached to the same GameObject.");
+        }
+        
+        combatDeck = GetComponent<CombatDeck>();
+        if (combatDeck == null)
+        {
+            Debug.LogError("HandManager: CombatDeck component not found. This component must be attached to the same GameObject.");
+        }
+        
+        combatDiscard = GetComponent<CombatDiscard>();
+        if (combatDiscard == null)
+        {
+            Debug.LogError("HandManager: CombatDiscard component not found. This component must be attached to the same GameObject.");
         }
     }
 
@@ -80,40 +94,43 @@ public class HandManager : MonoBehaviour
             return;
         }
 
-        SyncList<int> deckIds = GetDeckCards();
         string entityName = GetEntityName();
 
-        if (deckIds == null)
-        {
-            Debug.LogError($"HandManager: Cannot draw card for {entityName} - deck not found.");
-            return;
-        }
-
-        if (deckIds.Count == 0)
+        // Check if deck is empty
+        if (combatDeck.GetDeckSize() == 0)
         {
             // Reshuffle discard into deck if deck is empty
-            SyncList<int> discardIds = GetDiscardPile();
-            if (discardIds == null || discardIds.Count == 0)
+            if (combatDiscard.GetCardCount() > 0)
+            {
+                ReshuffleDiscardIntoDeck(); 
+                if (combatDeck.GetDeckSize() == 0) { // Still no cards (reshuffle failed)
+                     Debug.Log($"{entityName} deck is still empty after attempting reshuffle.");
+                     return;
+                }
+            }
+            else
             {
                 Debug.Log($"{entityName} has no cards in deck or discard to draw.");
                 return; // No cards left anywhere
             }
-            ReshuffleDiscardIntoDeck(); 
-            if (deckIds.Count == 0) { // Still no cards (discard was empty too)
-                 Debug.Log($"{entityName} deck is still empty after attempting reshuffle.");
-                 return;
-            }
         }
 
-        int cardIdToDraw = deckIds[0]; // Take from the top (assuming shuffled)
-        deckIds.RemoveAt(0);
+        // Draw one card from deck
+        List<int> drawnCards = combatDeck.DrawCards(1);
+        if (drawnCards.Count == 0)
+        {
+            Debug.LogWarning($"{entityName} failed to draw a card from deck.");
+            return;
+        }
+        
+        int cardIdToDraw = drawnCards[0];
         
         // Add to CombatHand
         bool added = combatHand.AddCard(cardIdToDraw);
         if (!added)
         {
             // If adding to hand failed, put card back in deck
-            deckIds.Insert(0, cardIdToDraw);
+            combatDeck.AddCard(cardIdToDraw);
             Debug.LogWarning($"{entityName} failed to add card ID: {cardIdToDraw} to hand. Card returned to deck.");
             return;
         }
@@ -125,20 +142,13 @@ public class HandManager : MonoBehaviour
     public void DiscardHand()
     {
         if (parentEntity == null || !parentEntity.IsServerStarted) return;
-        if (combatHand == null)
+        if (combatHand == null || combatDiscard == null)
         {
-            Debug.LogError("HandManager: Cannot discard hand - CombatHand component not found.");
+            Debug.LogError("HandManager: Cannot discard hand - CombatHand or CombatDiscard component not found.");
             return;
         }
 
-        SyncList<int> discardIds = GetDiscardPile();
         string entityName = GetEntityName();
-
-        if (discardIds == null)
-        {
-            Debug.LogError($"HandManager: Cannot discard hand for {entityName} - discard pile not found.");
-            return;
-        }
 
         if (combatHand.IsEmpty())
         {
@@ -150,7 +160,7 @@ public class HandManager : MonoBehaviour
         List<int> cardsToDiscard = combatHand.GetAllCards();
         foreach (int cardId in cardsToDiscard)
         {
-            discardIds.Add(cardId);
+            combatDiscard.AddCard(cardId);
         }
         
         // Clear the hand
@@ -163,20 +173,13 @@ public class HandManager : MonoBehaviour
     public void MoveCardToDiscard(int cardId)
     {
         if (parentEntity == null || !parentEntity.IsServerStarted) return;
-        if (combatHand == null)
+        if (combatHand == null || combatDiscard == null)
         {
-            Debug.LogError("HandManager: Cannot move card to discard - CombatHand component not found.");
+            Debug.LogError("HandManager: Cannot move card to discard - CombatHand or CombatDiscard component not found.");
             return;
         }
 
-        SyncList<int> discardIds = GetDiscardPile();
         string entityName = GetEntityName();
-
-        if (discardIds == null)
-        {
-            Debug.LogError($"HandManager: Cannot move card to discard for {entityName} - discard pile not found.");
-            return;
-        }
 
         if (combatHand.HasCard(cardId))
         {
@@ -184,7 +187,7 @@ public class HandManager : MonoBehaviour
             combatHand.RemoveCard(cardId);
             
             // Add to discard pile
-            discardIds.Add(cardId);
+            combatDiscard.AddCard(cardId);
             
             Debug.Log($"{entityName} moved card ID {cardId} from hand to discard.");
         }
@@ -197,107 +200,44 @@ public class HandManager : MonoBehaviour
     // Server-side logic to shuffle the deck
     private void ShuffleDeck()
     {
-        if (parentEntity == null || !parentEntity.IsServerStarted) return;
-
-        SyncList<int> deckIds = GetDeckCards();
-        string entityName = GetEntityName();
-
-        if (deckIds == null)
-        {
-            Debug.LogError($"HandManager: Cannot shuffle deck for {entityName} - deck not found.");
-            return;
-        }
-
-        if (deckIds.Count <= 1) return; // No need to shuffle 0 or 1 card
-
-        // Fisher-Yates shuffle
-        List<int> tempDeck = new List<int>(deckIds);
-        for (int i = tempDeck.Count - 1; i > 0; i--)
-        {
-            int j = rng.Next(0, i + 1);
-            int temp = tempDeck[i];
-            tempDeck[i] = tempDeck[j];
-            tempDeck[j] = temp;
-        }
-
-        // Clear and repopulate the SyncList
-        deckIds.Clear();
-        foreach (int cardId in tempDeck)
-        {
-            deckIds.Add(cardId);
-        }
-
-        Debug.Log($"{entityName}'s deck shuffled. Deck size: {deckIds.Count}");
+        if (parentEntity == null || !parentEntity.IsServerStarted || combatDeck == null) return;
+        
+        combatDeck.ShuffleDeck();
     }
 
     // Server-side logic to move cards from discard to deck and shuffle
     private void ReshuffleDiscardIntoDeck()
     {
         if (parentEntity == null || !parentEntity.IsServerStarted) return;
-
-        SyncList<int> deckIds = GetDeckCards();
-        SyncList<int> discardIds = GetDiscardPile();
-        string entityName = GetEntityName();
-
-        if (deckIds == null || discardIds == null)
+        if (combatDeck == null || combatDiscard == null)
         {
-            Debug.LogError($"HandManager: Cannot reshuffle discard for {entityName} - deck or discard pile not found.");
+            Debug.LogError($"HandManager: Cannot reshuffle discard for {GetEntityName()} - CombatDeck or CombatDiscard component not found.");
             return;
         }
 
-        if (discardIds.Count == 0)
+        string entityName = GetEntityName();
+
+        if (combatDiscard.GetCardCount() == 0)
         {
             Debug.Log($"{entityName} has no cards in discard to reshuffle.");
             return;
         }
 
-        // Move all cards from discard to deck
-        foreach (int cardId in discardIds.ToList())
+        // Get all cards from discard
+        List<int> discardCards = combatDiscard.GetAllCards();
+        if (discardCards.Count == 0)
         {
-            deckIds.Add(cardId);
+            Debug.LogWarning($"Failed to get discard cards for {entityName}.");
+            return;
         }
-        discardIds.Clear();
+        
+        // Add to deck and shuffle
+        combatDeck.AddCardsToDeck(discardCards);
+        
+        // Clear the discard pile
+        combatDiscard.ClearDiscard();
 
-        // Shuffle the deck
-        ShuffleDeck();
-
-        Debug.Log($"{entityName}'s discard reshuffled into deck. New deck size: {deckIds.Count}");
-    }
-    
-    // Get the deck cards for the entity
-    private SyncList<int> GetDeckCards()
-    {
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        NetworkPet pet = parentEntity as NetworkPet;
-        
-        if (player != null)
-        {
-            return player.currentDeckCardIds;
-        }
-        else if (pet != null)
-        {
-            return pet.currentDeckCardIds;
-        }
-        
-        return null;
-    }
-    
-    // Get the discard pile for the entity
-    private SyncList<int> GetDiscardPile()
-    {
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        NetworkPet pet = parentEntity as NetworkPet;
-        
-        if (player != null)
-        {
-            return player.discardPileCardIds;
-        }
-        else if (pet != null)
-        {
-            return pet.discardPileCardIds;
-        }
-        
-        return null;
+        Debug.Log($"{entityName}'s discard reshuffled into deck. New deck size: {combatDeck.GetDeckSize()}");
     }
     
     // Get entity name for logging
