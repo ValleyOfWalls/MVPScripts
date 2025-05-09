@@ -42,21 +42,22 @@ public class HandManager : MonoBehaviour
     {
         if (parentEntity == null || !parentEntity.IsServerStarted) return;
 
-        string entityName = "Unknown Entity";
+        string entityName = GetEntityName();
         
-        if (parentEntity is NetworkPlayer player)
-        {
-            entityName = player.PlayerName.Value;
-            ShuffleDeck(); // Shuffle before drawing
-        }
-        else if (parentEntity is NetworkPet pet)
-        {
-            entityName = pet.PetName.Value;
-            ShuffleDeck(); // Shuffle before drawing
-        }
-
+        ShuffleDeck(); // Shuffle before drawing
+        
         Debug.Log($"HandManager: Drawing {drawAmount} cards for {entityName}.");
-        for (int i = 0; i < drawAmount; i++)
+
+        // Check hand capacity before drawing
+        int availableSpace = combatHand != null ? combatHand.GetAvailableSpace() : 0;
+        int actualDrawAmount = Mathf.Min(drawAmount, availableSpace);
+        
+        if (actualDrawAmount < drawAmount)
+        {
+            Debug.LogWarning($"HandManager: {entityName} can only draw {actualDrawAmount} of {drawAmount} cards due to hand size limit.");
+        }
+        
+        for (int i = 0; i < actualDrawAmount; i++)
         {
             DrawOneCard();
         }
@@ -72,32 +73,27 @@ public class HandManager : MonoBehaviour
             return;
         }
 
-        SyncList<int> deckIds = null;
-        Transform handTransform = null; 
-        string entityName = "Unknown Entity";
-
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        NetworkPet pet = parentEntity as NetworkPet;
-
-        if (player != null)
+        // Check if hand is full before attempting to draw
+        if (combatHand.IsFull())
         {
-            deckIds = player.currentDeckCardIds;
-            handTransform = player.PlayerHandTransform;
-            entityName = player.PlayerName.Value;
+            Debug.Log($"{GetEntityName()} hand is full. Cannot draw more cards.");
+            return;
         }
-        else if (pet != null)
+
+        SyncList<int> deckIds = GetDeckCards();
+        string entityName = GetEntityName();
+
+        if (deckIds == null)
         {
-            deckIds = pet.currentDeckCardIds;
-            handTransform = pet.PetHandTransform;
-            entityName = pet.PetName.Value;
+            Debug.LogError($"HandManager: Cannot draw card for {entityName} - deck not found.");
+            return;
         }
-        else return;
 
         if (deckIds.Count == 0)
         {
             // Reshuffle discard into deck if deck is empty
             SyncList<int> discardIds = GetDiscardPile();
-            if (discardIds.Count == 0)
+            if (discardIds == null || discardIds.Count == 0)
             {
                 Debug.Log($"{entityName} has no cards in deck or discard to draw.");
                 return; // No cards left anywhere
@@ -113,7 +109,14 @@ public class HandManager : MonoBehaviour
         deckIds.RemoveAt(0);
         
         // Add to CombatHand
-        combatHand.AddCard(cardIdToDraw);
+        bool added = combatHand.AddCard(cardIdToDraw);
+        if (!added)
+        {
+            // If adding to hand failed, put card back in deck
+            deckIds.Insert(0, cardIdToDraw);
+            Debug.LogWarning($"{entityName} failed to add card ID: {cardIdToDraw} to hand. Card returned to deck.");
+            return;
+        }
 
         Debug.Log($"{entityName} drew card ID: {cardIdToDraw}. Hand size: {combatHand.GetCardCount()}");
     }
@@ -128,23 +131,14 @@ public class HandManager : MonoBehaviour
             return;
         }
 
-        SyncList<int> discardIds = null;
-        string entityName = "Unknown Entity";
+        SyncList<int> discardIds = GetDiscardPile();
+        string entityName = GetEntityName();
 
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        NetworkPet pet = parentEntity as NetworkPet;
-
-        if (player != null)
+        if (discardIds == null)
         {
-            discardIds = player.discardPileCardIds;
-            entityName = player.PlayerName.Value;
+            Debug.LogError($"HandManager: Cannot discard hand for {entityName} - discard pile not found.");
+            return;
         }
-        else if (pet != null)
-        {
-            discardIds = pet.discardPileCardIds;
-            entityName = pet.PetName.Value;
-        }
-        else return;
 
         if (combatHand.IsEmpty())
         {
@@ -175,23 +169,14 @@ public class HandManager : MonoBehaviour
             return;
         }
 
-        SyncList<int> discardIds = null;
-        string entityName = "Unknown Entity";
+        SyncList<int> discardIds = GetDiscardPile();
+        string entityName = GetEntityName();
 
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        NetworkPet pet = parentEntity as NetworkPet;
-
-        if (player != null)
+        if (discardIds == null)
         {
-            discardIds = player.discardPileCardIds;
-            entityName = player.PlayerName.Value;
+            Debug.LogError($"HandManager: Cannot move card to discard for {entityName} - discard pile not found.");
+            return;
         }
-        else if (pet != null)
-        {
-            discardIds = pet.discardPileCardIds;
-            entityName = pet.PetName.Value;
-        }
-        else return;
 
         if (combatHand.HasCard(cardId))
         {
@@ -214,23 +199,14 @@ public class HandManager : MonoBehaviour
     {
         if (parentEntity == null || !parentEntity.IsServerStarted) return;
 
-        SyncList<int> deckIds = null;
-        string entityName = "Unknown Entity";
+        SyncList<int> deckIds = GetDeckCards();
+        string entityName = GetEntityName();
 
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        NetworkPet pet = parentEntity as NetworkPet;
-
-        if (player != null)
+        if (deckIds == null)
         {
-            deckIds = player.currentDeckCardIds;
-            entityName = player.PlayerName.Value;
+            Debug.LogError($"HandManager: Cannot shuffle deck for {entityName} - deck not found.");
+            return;
         }
-        else if (pet != null)
-        {
-            deckIds = pet.currentDeckCardIds;
-            entityName = pet.PetName.Value;
-        }
-        else return;
 
         if (deckIds.Count <= 1) return; // No need to shuffle 0 or 1 card
 
@@ -259,26 +235,15 @@ public class HandManager : MonoBehaviour
     {
         if (parentEntity == null || !parentEntity.IsServerStarted) return;
 
-        SyncList<int> deckIds = null;
-        SyncList<int> discardIds = null;
-        string entityName = "Unknown Entity";
+        SyncList<int> deckIds = GetDeckCards();
+        SyncList<int> discardIds = GetDiscardPile();
+        string entityName = GetEntityName();
 
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        NetworkPet pet = parentEntity as NetworkPet;
-
-        if (player != null)
+        if (deckIds == null || discardIds == null)
         {
-            deckIds = player.currentDeckCardIds;
-            discardIds = player.discardPileCardIds;
-            entityName = player.PlayerName.Value;
+            Debug.LogError($"HandManager: Cannot reshuffle discard for {entityName} - deck or discard pile not found.");
+            return;
         }
-        else if (pet != null)
-        {
-            deckIds = pet.currentDeckCardIds;
-            discardIds = pet.discardPileCardIds;
-            entityName = pet.PetName.Value;
-        }
-        else return;
 
         if (discardIds.Count == 0)
         {
@@ -299,6 +264,24 @@ public class HandManager : MonoBehaviour
         Debug.Log($"{entityName}'s discard reshuffled into deck. New deck size: {deckIds.Count}");
     }
     
+    // Get the deck cards for the entity
+    private SyncList<int> GetDeckCards()
+    {
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        NetworkPet pet = parentEntity as NetworkPet;
+        
+        if (player != null)
+        {
+            return player.currentDeckCardIds;
+        }
+        else if (pet != null)
+        {
+            return pet.currentDeckCardIds;
+        }
+        
+        return null;
+    }
+    
     // Get the discard pile for the entity
     private SyncList<int> GetDiscardPile()
     {
@@ -315,6 +298,24 @@ public class HandManager : MonoBehaviour
         }
         
         return null;
+    }
+    
+    // Get entity name for logging
+    private string GetEntityName()
+    {
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        NetworkPet pet = parentEntity as NetworkPet;
+        
+        if (player != null)
+        {
+            return player.PlayerName.Value;
+        }
+        else if (pet != null)
+        {
+            return pet.PetName.Value;
+        }
+        
+        return "Unknown Entity";
     }
 
     // Card GameObjects parenting/movement in the scene hierarchy:

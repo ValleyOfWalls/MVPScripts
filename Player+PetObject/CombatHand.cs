@@ -157,6 +157,15 @@ public class CombatHand : NetworkBehaviour
     }
 
     /// <summary>
+    /// Gets the number of card slots available in hand
+    /// </summary>
+    /// <returns>Number of available slots</returns>
+    public int GetAvailableSpace()
+    {
+        return maxHandSize - handCardIds.Count;
+    }
+
+    /// <summary>
     /// Checks if the hand is full
     /// </summary>
     /// <returns>True if the hand has reached max capacity</returns>

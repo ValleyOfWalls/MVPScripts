@@ -42,10 +42,19 @@ public class CombatManager : NetworkBehaviour
     // This list is server-authoritative and not directly synced. RPCs will inform clients of turn changes.
     private List<FightTurnState> fightTurnStates = new List<FightTurnState>();
 
-    private FightManager fightManager;
-    private GameManager gameManager;
+    [SerializeField] private FightManager fightManager;
+    [SerializeField] private GameManager gameManager;
+    [SerializeField] private DraftSetup draftSetup;
+    
     private SteamNetworkIntegration steamNetworkIntegration;
     private CombatCanvasManager combatCanvasManager; // For local UI updates like end turn button
+    
+    // Cache for network objects to avoid repeated lookups
+    private Dictionary<uint, NetworkPlayer> playerCache = new Dictionary<uint, NetworkPlayer>();
+    private Dictionary<uint, NetworkPet> petCache = new Dictionary<uint, NetworkPet>();
+    
+    // Track active fights for game completion detection
+    private int activeFightCount = 0;
 
     private void Awake()
     { 
@@ -56,13 +65,18 @@ public class CombatManager : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        fightManager = FightManager.Instance;
-        gameManager = FindFirstObjectByType<GameManager>();
+        
+        // Find required components if not set in inspector
+        if (fightManager == null) fightManager = FightManager.Instance;
+        if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
+        if (draftSetup == null) draftSetup = FindFirstObjectByType<DraftSetup>();
+        
         steamNetworkIntegration = SteamNetworkIntegration.Instance;
 
         if (fightManager == null) Debug.LogError("FightManager not found by CombatManager.");
         if (gameManager == null) Debug.LogError("GameManager not found by CombatManager.");
         if (steamNetworkIntegration == null) Debug.LogError("SteamNetworkIntegration not found by CombatManager.");
+        if (draftSetup == null) Debug.LogError("DraftSetup not found by CombatManager.");
     }
 
     public override void OnStartClient()
@@ -124,6 +138,10 @@ public class CombatManager : NetworkBehaviour
                 Debug.LogError($"Failed to initialize fight state. Player or pet not found for IDs: {fightAssignment.PlayerObjectId}, {fightAssignment.PetObjectId}");
             }
         }
+        
+        // Track how many fights are active for completion detection
+        activeFightCount = fightTurnStates.Count;
+        Debug.Log($"Combat started with {activeFightCount} active fights");
     }
 
     [Server]
@@ -175,8 +193,8 @@ public class CombatManager : NetworkBehaviour
                 int index = fightTurnStates.IndexOf(fightState);
                 fightTurnStates[index] = updatedFightState;
 
-                // Notify clients about whose turn it is
-                RpcUpdateTurnState((uint)player.ObjectId, (uint)pet.ObjectId, CombatTurn.PlayerTurn);
+                // Notify only the clients involved in this fight about whose turn it is
+                TargetRpcUpdateTurnState(player.Owner, (uint)player.ObjectId, (uint)pet.ObjectId, CombatTurn.PlayerTurn);
 
                 // If on a client who is the one controlling this player, enable End Turn button.
                 TargetRpcEnableEndTurnButton(player.Owner, true);
@@ -230,8 +248,8 @@ public class CombatManager : NetworkBehaviour
         int index = fightTurnStates.IndexOf(fightState);
         fightTurnStates[index] = updatedFightState;
 
-        // Notify clients
-        RpcUpdateTurnState(fightState.playerObjId, fightState.petObjId, CombatTurn.PetTurn);
+        // Notify only the clients involved in this fight
+        TargetRpcUpdateTurnState(conn, fightState.playerObjId, fightState.petObjId, CombatTurn.PetTurn);
         TargetRpcEnableEndTurnButton(conn, false);
 
         // Start pet turn process
@@ -275,7 +293,8 @@ public class CombatManager : NetworkBehaviour
                     // Use the HandleCardPlay component to play the card
                     petCardHandler.PlayCard(cardId);
                     
-                    RpcNotifyCardPlayed((uint)pet.ObjectId, (uint)player.ObjectId, cardId);
+                    // Only notify the player involved in this fight
+                    TargetRpcNotifyCardPlayed(player.Owner, (uint)pet.ObjectId, (uint)player.ObjectId, cardId);
                     yield return new WaitForSeconds(1f); // Simulate thinking/action time
                 }
             }
@@ -308,7 +327,7 @@ public class CombatManager : NetworkBehaviour
             fightTurnStates[index] = updatedFightState;
 
             // Notify clients
-            RpcUpdateTurnState(fightState.playerObjId, fightState.petObjId, CombatTurn.PlayerTurn);
+            TargetRpcUpdateTurnState(player.Owner, fightState.playerObjId, fightState.petObjId, CombatTurn.PlayerTurn);
             TargetRpcEnableEndTurnButton(player.Owner, true);
 
             Debug.Log($"Player {player.PlayerName.Value}'s turn has started again.");
@@ -321,18 +340,38 @@ public class CombatManager : NetworkBehaviour
         string winnerName = player.CurrentHealth.Value <= 0 ? pet.PetName.Value : player.PlayerName.Value;
         Debug.Log($"Fight between {player.PlayerName.Value} and {pet.PetName.Value} has ended. Winner: {winnerName}");
 
-        // Remove from active fights, update UI, etc.
+        // Remove from active fights
         fightTurnStates.Remove(fightState);
+        activeFightCount--;
 
-        // Notify clients
-        RpcNotifyFightEnded(fightState.playerObjId, fightState.petObjId, player.CurrentHealth.Value <= 0);
+        // Notify only the clients involved in this fight
+        TargetRpcNotifyFightEnded(player.Owner, fightState.playerObjId, fightState.petObjId, player.CurrentHealth.Value <= 0);
 
-        // If all fights are done, transition to end game or new round
-        if (fightTurnStates.Count == 0)
+        // If all fights are done, transition to draft phase
+        if (activeFightCount <= 0)
         {
             // All fights are done
-            Debug.Log("All fights have concluded.");
-            // End combat or transition to a new phase
+            Debug.Log("All fights have concluded. Transitioning to draft phase.");
+            
+            // Wait a short time before transitioning
+            StartCoroutine(TransitionToDraftPhase());
+        }
+    }
+    
+    [Server]
+    private IEnumerator TransitionToDraftPhase()
+    {
+        // Allow some time for final fight end visuals
+        yield return new WaitForSeconds(3f);
+        
+        // Transition to draft phase
+        if (draftSetup != null)
+        {
+            draftSetup.InitializeDraft();
+        }
+        else
+        {
+            Debug.LogError("Cannot transition to draft phase: DraftSetup reference is null");
         }
     }
 
@@ -376,6 +415,14 @@ public class CombatManager : NetworkBehaviour
             return;
         }
 
+        // Check if player has enough energy for the card
+        CardData cardData = GetCardDataFromId(cardId);
+        if (cardData != null && player.CurrentEnergy.Value < cardData.EnergyCost)
+        {
+            TargetRpcNotifyMessage(conn, $"Not enough energy! Need {cardData.EnergyCost} energy.");
+            return;
+        }
+
         // Use the HandleCardPlay component to play the card
         playerCardHandler.PlayCard(cardId);
 
@@ -383,7 +430,8 @@ public class CombatManager : NetworkBehaviour
         NetworkPet targetPet = GetNetworkObjectComponent<NetworkPet>(fightState.petObjId);
         if (targetPet != null)
         {
-            RpcNotifyCardPlayed((uint)player.ObjectId, (uint)targetPet.ObjectId, cardId);
+            // Only notify the client involved in this fight
+            TargetRpcNotifyCardPlayed(player.Owner, (uint)player.ObjectId, (uint)targetPet.ObjectId, cardId);
         }
 
         // Check for game over after card play
@@ -396,14 +444,35 @@ public class CombatManager : NetworkBehaviour
     // Helper method to get entity from ObjectId
     private T GetNetworkObjectComponent<T>(uint objectId) where T : NetworkBehaviour
     {
+        // First check cache for faster lookups
+        if (typeof(T) == typeof(NetworkPlayer))
+        {
+            if (playerCache.TryGetValue(objectId, out NetworkPlayer player))
+                return player as T;
+        }
+        else if (typeof(T) == typeof(NetworkPet))
+        {
+            if (petCache.TryGetValue(objectId, out NetworkPet pet))
+                return pet as T;
+        }
+        
+        // If not in cache, look up in NetworkManager
         if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue((int)objectId, out NetworkObject netObj) && netObj != null)
         {
-            return netObj.GetComponent<T>();
+            T component = netObj.GetComponent<T>();
+            
+            // Cache the result for future lookups
+            if (component is NetworkPlayer playerComponent)
+                playerCache[objectId] = playerComponent;
+            else if (component is NetworkPet petComponent)
+                petCache[objectId] = petComponent;
+                
+            return component;
         }
         return null;
     }
 
-    // Get CardData from CardId (placeholder)
+    // Get CardData from CardId
     private CardData GetCardDataFromId(int cardId)
     {
         // This should use a proper card database in your actual implementation
@@ -418,8 +487,8 @@ public class CombatManager : NetworkBehaviour
 
     #region RPCs and client notifications
 
-    [ObserversRpc]
-    private void RpcUpdateTurnState(uint playerObjId, uint petObjId, CombatTurn newTurnState)
+    [TargetRpc]
+    private void TargetRpcUpdateTurnState(NetworkConnection conn, uint playerObjId, uint petObjId, CombatTurn newTurnState)
     {
         NetworkPlayer player = null;
         NetworkPet pet = null;
@@ -438,7 +507,7 @@ public class CombatManager : NetworkBehaviour
         {
             Debug.Log($"Turn update: {(newTurnState == CombatTurn.PlayerTurn ? player.PlayerName.Value : pet.PetName.Value)}'s turn");
 
-            // If this client is the local player, update UI accordingly
+            // Update UI accordingly
             if (combatCanvasManager != null)
             {
                 combatCanvasManager.UpdateTurnIndicator(newTurnState == CombatTurn.PlayerTurn ? player.PlayerName.Value : pet.PetName.Value);
@@ -455,8 +524,8 @@ public class CombatManager : NetworkBehaviour
         }
     }
 
-    [ObserversRpc]
-    private void RpcNotifyCardPlayed(uint casterObjId, uint targetObjId, int cardId)
+    [TargetRpc]
+    private void TargetRpcNotifyCardPlayed(NetworkConnection conn, uint casterObjId, uint targetObjId, int cardId)
     {
         NetworkBehaviour caster = null;
         NetworkBehaviour target = null;
@@ -486,8 +555,8 @@ public class CombatManager : NetworkBehaviour
         }
     }
 
-    [ObserversRpc]
-    private void RpcNotifyFightEnded(uint playerObjId, uint petObjId, bool petWon)
+    [TargetRpc]
+    private void TargetRpcNotifyFightEnded(NetworkConnection conn, uint playerObjId, uint petObjId, bool petWon)
     {
         NetworkPlayer player = null;
         NetworkPet pet = null;
@@ -526,44 +595,6 @@ public class CombatManager : NetworkBehaviour
     }
 
     #endregion
-
-    private NetworkObject GetNetworkObject(int objectId, bool isServer)
-    {
-        if (isServer)
-        {
-            return NetworkManager.ServerManager.Objects.Spawned.TryGetValue(objectId, out NetworkObject obj) ? obj : null;
-        }
-        else
-        {
-            return NetworkManager.ClientManager.Objects.Spawned.TryGetValue(objectId, out NetworkObject obj) ? obj : null;
-        }
-    }
-
-    [Server]
-    private void HandleCardPlayed(int playerObjectId, int cardId)
-    {
-        // Get player object
-        NetworkObject playerObj = GetNetworkObject(playerObjectId, true);
-        if (playerObj == null) return;
-
-        NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
-        if (player == null) return;
-
-        // ... rest of the method ...
-    }
-
-    [Client]
-    private void HandleCardPlayedClient(int playerObjectId, int cardId)
-    {
-        // Get player object
-        NetworkObject playerObj = GetNetworkObject(playerObjectId, false);
-        if (playerObj == null) return;
-
-        NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
-        if (player == null) return;
-
-        // ... rest of the method ...
-    }
 
     // Helper method to check if it's a player's turn
     public bool IsPlayerTurn(NetworkPlayer player)

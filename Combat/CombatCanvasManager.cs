@@ -6,19 +6,12 @@ using System.Linq;
 using FishNet.Object.Synchronizing;
 
 /// <summary>
-/// Manages the UI elements for the combat phase, including card display, turn indicators, and notifications.
+/// Manages the UI elements for the combat phase, including turn indicators, and notifications.
 /// Attach to: The CombatCanvas GameObject that contains all combat UI elements.
 /// </summary>
 public class CombatCanvasManager : MonoBehaviour
 {
-    // UI Element References (assign in Inspector for the CombatCanvas prefab)
-    // [Header("Player Area")]
-    // [SerializeField] private Transform playerHandDisplayArea; // Removed
-    // [SerializeField] private Transform playerDeckDisplayArea; // Removed
-    // [SerializeField] private Transform playerDiscardDisplayArea; // Removed
-
-    // [Header("Opponent Pet Area")]
-    // [SerializeField] private Transform opponentPetHandDisplayArea; // Removed
+    // Card rendering logic has been moved to CardSpawner
 
     [Header("Controls")]
     [SerializeField] private Button endTurnButton;
@@ -30,9 +23,6 @@ public class CombatCanvasManager : MonoBehaviour
     [SerializeField] private Transform effectsContainer;
     [SerializeField] private GameObject fightEndedPanel;
     [SerializeField] private TextMeshProUGUI fightEndedText;
-    
-    // Card prefab for visual representation - moved from CombatSetup
-    [SerializeField] private GameObject cardPrefab;
 
     private NetworkPlayer localPlayer;
     private NetworkPet opponentPetForLocalPlayer;
@@ -131,10 +121,8 @@ public class CombatCanvasManager : MonoBehaviour
         }
 
         InitializeButtonListeners();
-        SubscribeToCardEvents();
         
-        // Hand rendering is now handled by CardSpawner component
-        // No need to manually call RenderHand anymore
+        // Card rendering is now fully handled by CardSpawner component
     }
 
     private void InitializeButtonListeners()
@@ -151,59 +139,9 @@ public class CombatCanvasManager : MonoBehaviour
         }
     }
 
-    private void SubscribeToCardEvents()
-    {
-        if (localPlayer != null)
-        {
-            // This is no longer needed as CardSpawner handles rendering
-            // Keeping the subscription for compatibility but it doesn't need to do anything
-            localPlayer.playerHandCardIds.OnChange += OnPlayerHandChanged;
-        }
-    }
-
     private void OnDestroy()
     {
         if (endTurnButton != null) endTurnButton.onClick.RemoveAllListeners();
-        UnsubscribeFromCardEvents();
-    }
-
-    private void UnsubscribeFromCardEvents()
-    {
-        if (localPlayer != null)
-        {
-            localPlayer.playerHandCardIds.OnChange -= OnPlayerHandChanged;
-        }
-    }
-
-    private void OnPlayerHandChanged(SyncListOperation op, int index, int oldItem, int newItem, bool asServer)
-    {
-        // Hand rendering is now handled by CardSpawner
-        // This method is kept for backward compatibility
-        Debug.Log($"Player hand changed. Operation: {op}, Index: {index}, NewItem ID: {newItem}. CardSpawner will update the display.");
-    }
-
-    // This method is no longer used since CardSpawner handles rendering
-    // Keeping it for reference but with a warning
-    private void RenderHand(SyncList<int> cardIds, Transform handArea, bool isPlayerHand)
-    {
-        Debug.LogWarning("RenderHand is deprecated. Card rendering is now handled by CardSpawner component.");
-        
-        // Method implementation removed as it's no longer needed
-    }
-
-    private void OnPlayerCardClicked(CardData cardDataInstance)
-    {
-        if (localPlayer == null || combatManager == null)
-        {
-            Debug.LogError("Cannot play card: LocalPlayer or CombatManager is null.");
-            return;
-        }
-
-        if (cardDataInstance != null)
-        {
-            Debug.Log($"Player clicked card: {cardDataInstance.CardName}");
-            combatManager.CmdPlayerRequestsPlayCard(cardDataInstance.CardId);
-        }
     }
 
     public void SetEndTurnButtonInteractable(bool interactable)

@@ -13,12 +13,15 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
 {
     [SerializeField] private GameObject combatCanvas; // Should already be active when this runs
     
-    // References to be set in inspector or found
+    // References to be set in inspector for better dependency management
+    [Header("Required Components")]
+    [SerializeField] private FightManager fightManager;
+    [SerializeField] private CombatManager combatManager;
+    [SerializeField] private CombatCanvasManager combatCanvasManager;
+    [SerializeField] private GameManager gameManager;
+    
+    // Optional reference that can be resolved at runtime
     private SteamNetworkIntegration steamNetworkIntegration;
-    private FightManager fightManager;
-    private CombatManager combatManager;
-    private CombatCanvasManager combatCanvasManager;
-    private GameManager gameManager;
 
     private bool setupDone = false;
 
@@ -30,13 +33,22 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
 
         Debug.Log("CombatSetup OnStartServer: Initializing references only, combat will be triggered later...");
 
-        // Just initialize references, but don't start combat setup yet
-        steamNetworkIntegration = SteamNetworkIntegration.Instance;
-        fightManager = FindFirstObjectByType<FightManager>();
-        combatManager = FindFirstObjectByType<CombatManager>();
-        combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
-        gameManager = FindFirstObjectByType<GameManager>();
+        // Initialize any missing references
+        ResolveReferences();
+    }
 
+    // Centralized method to resolve component references
+    private void ResolveReferences()
+    {
+        // Only try to find components that aren't already assigned in inspector
+        steamNetworkIntegration = SteamNetworkIntegration.Instance;
+        
+        if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
+        if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
+        if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
+        if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
+
+        // Log any missing components as errors
         if (steamNetworkIntegration == null) Debug.LogError("SteamNetworkIntegration not found by CombatSetup.");
         if (fightManager == null) Debug.LogError("FightManager not found by CombatSetup.");
         if (combatManager == null) Debug.LogError("CombatManager not found by CombatSetup.");
@@ -62,11 +74,7 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
         Debug.Log("CombatSetup: Server is initializing combat.");
 
         // Ensure we have all the required references
-        if (steamNetworkIntegration == null) steamNetworkIntegration = SteamNetworkIntegration.Instance;
-        if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
-        if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
-        if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
-        if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
+        ResolveReferences();
 
         // Verify all required components are available
         if (steamNetworkIntegration == null || fightManager == null || combatManager == null || 
@@ -155,7 +163,7 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
     [Server]
     private void AssignFights()
     {
-        if (fightManager == null) // steamNetworkIntegration no longer directly needed for player/pet lists here
+        if (fightManager == null)
         {
             Debug.LogError("Cannot assign fights: FightManager is missing.");
             return;
@@ -176,11 +184,6 @@ public class CombatSetup : NetworkBehaviour // Needs to be a NetworkBehaviour to
             .Select(nob => nob.GetComponent<NetworkPet>())
             .Where(p => p != null)
             .ToList();
-
-        // Basic assignment: try to pair each player with a unique pet.
-        // This needs more robust logic for different numbers of players/pets.
-        // For now, simple 1-to-1 if counts match or take available.
-        // Also needs to handle cases where pets are owned by players and shouldn't fight their own owner's pet (or should, depending on game rules)
 
         Debug.Log($"Assigning fights. Players: {players.Count}, Pets: {pets.Count}");
 

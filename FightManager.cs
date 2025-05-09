@@ -37,6 +37,9 @@ public class FightManager : NetworkBehaviour
     // Server-side dictionary for quick lookups. This is not synced directly.
     private readonly Dictionary<uint, uint> playerToPetMap = new Dictionary<uint, uint>(); // PlayerID -> PetID
     private readonly Dictionary<uint, uint> petToPlayerMap = new Dictionary<uint, uint>(); // PetID -> PlayerID
+    
+    // Connection-based lookup for better performance with many players
+    private readonly Dictionary<int, FightAssignmentData> connectionToFightMap = new Dictionary<int, FightAssignmentData>(); // ConnectionId -> Fight
 
     private void Awake()
     {
@@ -84,10 +87,7 @@ public class FightManager : NetworkBehaviour
         // When the list changes, server might update its dictionaries.
         // Clients might update their local view or caches if they use them.
         Debug.Log($"FightAssignments changed. Op: {op}, Index: {index}, NewPlayer: {newData.PlayerObjectId}, NewPet: {newData.PetObjectId}. Rebuilding lookups.");
-        if (asServer)
-        {
-            // Server already has the authoritative maps, this is mostly for client reaction or server debug.
-        }
+        
         // Both server and client can rebuild their fast-access maps if they use them.
         RebuildLocalLookups(fightAssignments.ToList());
     }
@@ -114,6 +114,12 @@ public class FightManager : NetworkBehaviour
         // Update server-side quick lookups
         playerToPetMap[(uint)player.ObjectId] = (uint)pet.ObjectId;
         petToPlayerMap[(uint)pet.ObjectId] = (uint)player.ObjectId;
+        
+        // Add to connection lookup if player has an owner connection
+        if (player.Owner != null)
+        {
+            connectionToFightMap[player.Owner.ClientId] = assignment;
+        }
 
         Debug.Log($"FightManager: Added assignment PlayerID {player.ObjectId} vs PetID {pet.ObjectId}");
     }
@@ -127,6 +133,13 @@ public class FightManager : NetworkBehaviour
             fightAssignments.RemoveAll(fa => fa.PlayerObjectId == (uint)player.ObjectId);
             playerToPetMap.Remove((uint)player.ObjectId);
             petToPlayerMap.Remove(petId);
+            
+            // Remove from connection lookup
+            if (player.Owner != null)
+            {
+                connectionToFightMap.Remove(player.Owner.ClientId);
+            }
+            
             Debug.Log($"FightManager: Removed assignment for PlayerID {player.ObjectId}");
         }
     }
@@ -137,6 +150,7 @@ public class FightManager : NetworkBehaviour
         fightAssignments.Clear();
         playerToPetMap.Clear();
         petToPlayerMap.Clear();
+        connectionToFightMap.Clear();
         Debug.Log("FightManager: All fight assignments cleared.");
     }
 
@@ -186,18 +200,83 @@ public class FightManager : NetworkBehaviour
         }
         return null;
     }
+    
+    // Get fight assignment for a specific connection - optimized for per-client access
+    public FightAssignmentData? GetFightForConnection(NetworkConnection connection)
+    {
+        if (connection == null) return null;
+        
+        // Try fast lookup first
+        if (connectionToFightMap.TryGetValue(connection.ClientId, out FightAssignmentData fight))
+        {
+            return fight;
+        }
+        
+        // Fallback to iterating through assignments if not in cache
+        foreach (var assignment in fightAssignments)
+        {
+            if (assignment.PlayerConnection == connection)
+            {
+                // Cache for future lookups
+                connectionToFightMap[connection.ClientId] = assignment;
+                return assignment;
+            }
+        }
+        
+        return null;
+    }
+    
+    // Get fight assignment for a specific player - optimized lookup
+    public FightAssignmentData? GetFightForPlayer(NetworkPlayer player)
+    {
+        if (player == null) return null;
+        
+        foreach (var assignment in fightAssignments)
+        {
+            if (assignment.PlayerObjectId == (uint)player.ObjectId)
+            {
+                return assignment;
+            }
+        }
+        
+        return null;
+    }
+    
+    // Get fight assignment for a specific pet - optimized lookup
+    public FightAssignmentData? GetFightForPet(NetworkPet pet)
+    {
+        if (pet == null) return null;
+        
+        foreach (var assignment in fightAssignments)
+        {
+            if (assignment.PetObjectId == (uint)pet.ObjectId)
+            {
+                return assignment;
+            }
+        }
+        
+        return null;
+    }
 
     // Helper to rebuild local dictionaries from the SyncList (can be called by client or server on change)
     private void RebuildLocalLookups(List<FightAssignmentData> assignments)
     {
         playerToPetMap.Clear();
         petToPlayerMap.Clear();
+        connectionToFightMap.Clear();
+        
         foreach (var assignment in assignments)
         {
             if (assignment.PlayerObjectId != 0 && assignment.PetObjectId != 0)
             {
                 playerToPetMap[assignment.PlayerObjectId] = assignment.PetObjectId;
                 petToPlayerMap[assignment.PetObjectId] = assignment.PlayerObjectId;
+                
+                // Rebuild connection mapping if PlayerConnection is available
+                if (assignment.PlayerConnection != null)
+                {
+                    connectionToFightMap[assignment.PlayerConnection.ClientId] = assignment;
+                }
             }
         }
     }

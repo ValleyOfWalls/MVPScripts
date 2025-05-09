@@ -12,7 +12,7 @@ using UnityEngine.UI;
 public class CardSpawner : NetworkBehaviour
 {
     [Header("References")]
-    public GameObject cardPrefab;
+    [SerializeField] public GameObject cardPrefab;
     
     // Internal references
     private CombatHand combatHand;
@@ -79,6 +79,12 @@ public class CardSpawner : NetworkBehaviour
         {
             Debug.LogError("CardSpawner: Card prefab is not assigned! Cards cannot be displayed.");
         }
+        
+        // Initial display update if we're running on the client
+        if (IsClientInitialized && handTransform != null)
+        {
+            UpdateCardDisplay();
+        }
     }
     
     private void OnEnable()
@@ -86,6 +92,12 @@ public class CardSpawner : NetworkBehaviour
         if (combatHand != null)
         {
             combatHand.OnHandChanged += HandleHandChanged;
+            
+            // Ensure we update on enable for any existing cards
+            if (IsClientInitialized && handTransform != null)
+            {
+                UpdateCardDisplay();
+            }
         }
     }
     
@@ -95,6 +107,9 @@ public class CardSpawner : NetworkBehaviour
         {
             combatHand.OnHandChanged -= HandleHandChanged;
         }
+        
+        // Clean up any spawned cards when disabled
+        ClearAllCards();
     }
     
     /// <summary>
@@ -186,6 +201,9 @@ public class CardSpawner : NetworkBehaviour
                 // Add click event
                 cardButton.onClick.AddListener(() => OnCardClicked(cardId, cardData));
             }
+            
+            // Log a message to verify card was added
+            Debug.Log($"Added card {cardData.CardName} (ID: {cardId}) to display for {(localPlayer != null ? localPlayer.PlayerName.Value : localPet.PetName.Value)}");
         }
         else
         {
@@ -208,6 +226,13 @@ public class CardSpawner : NetworkBehaviour
         if (localPlayer == null || !localPlayer.IsOwner)
         {
             Debug.LogWarning("CardSpawner: Cannot play card - Not the local player or not owner");
+            return;
+        }
+        
+        // Check if it's the player's turn before sending the command
+        if (!combatManager.IsPlayerTurn(localPlayer))
+        {
+            Debug.LogWarning($"Cannot play card: It's not {localPlayer.PlayerName.Value}'s turn");
             return;
         }
         
@@ -234,7 +259,25 @@ public class CardSpawner : NetworkBehaviour
             
             // Destroy the card object
             Destroy(cardObject);
+            
+            Debug.Log($"Removed card ID {cardId} from display");
         }
+    }
+    
+    /// <summary>
+    /// Removes all cards from the display
+    /// </summary>
+    private void ClearAllCards()
+    {
+        foreach (var cardObject in spawnedCards.Values)
+        {
+            if (cardObject != null)
+            {
+                Destroy(cardObject);
+            }
+        }
+        
+        spawnedCards.Clear();
     }
     
     /// <summary>
