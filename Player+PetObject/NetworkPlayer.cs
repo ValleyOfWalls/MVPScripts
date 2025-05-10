@@ -45,10 +45,53 @@ public class NetworkPlayer : NetworkBehaviour
 
     private GameManager gameManager;
     
+    // Reference to RelationshipManager for client ID tracking
+    private RelationshipManager relationshipManager;
+    
     // Extension properties for backward compatibility
     public Transform PlayerHandTransform => GetComponent<NetworkPlayerUI>()?.GetPlayerHandTransform();
     public Transform DeckTransform => GetComponent<NetworkPlayerUI>()?.GetDeckTransform();
     public Transform DiscardTransform => GetComponent<NetworkPlayerUI>()?.GetDiscardTransform();
+    
+    // Quick access to client ID
+    public int OwnerClientId 
+    { 
+        get 
+        {
+            if (relationshipManager != null)
+                return relationshipManager.OwnerClientId;
+                
+            if (Owner != null)
+                return Owner.ClientId;
+                
+            return -1;
+        }
+    }
+    
+    // Quick access to server ownership status
+    public bool IsOwnedByServer
+    {
+        get
+        {
+            if (relationshipManager != null)
+                return relationshipManager.IsOwnedByServer;
+                
+            if (Owner != null)
+                return Owner.IsHost || Owner.ClientId == 0;
+                
+            return false;
+        }
+    }
+    
+    private void Awake()
+    {
+        relationshipManager = GetComponent<RelationshipManager>();
+        if (relationshipManager == null)
+        {
+            relationshipManager = gameObject.AddComponent<RelationshipManager>();
+            Debug.Log($"Added RelationshipManager to player {gameObject.name}");
+        }
+    }
 
     public override void OnStartServer()
     {
@@ -81,6 +124,16 @@ public class NetworkPlayer : NetworkBehaviour
         _maxEnergy = MaxEnergy.Value;
         _currentHealth = CurrentHealth.Value;
         _currentEnergy = CurrentEnergy.Value;
+        
+        // Update player name with client ID
+        if (Owner != null)
+        {
+            PlayerName.Value = $"Player ({Owner.ClientId})";
+        }
+        else
+        {
+            PlayerName.Value = $"Player (No Owner)";
+        }
     }
 
     public override void OnStartClient()

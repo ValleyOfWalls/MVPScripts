@@ -71,27 +71,67 @@ public class HandManager : MonoBehaviour
             Debug.LogWarning($"HandManager: {entityName} can only draw {actualDrawAmount} of {drawAmount} cards due to hand size limit.");
         }
         
+        // Try to draw the cards, even if reshuffling is needed
+        int cardsDrawn = 0;
         for (int i = 0; i < actualDrawAmount; i++)
         {
-            DrawOneCard();
+            bool success = DrawOneCard();
+            if (success)
+            {
+                cardsDrawn++;
+            }
+            else
+            {
+                Debug.LogWarning($"HandManager: {entityName} failed to draw card {i+1} of {actualDrawAmount}. Only drew {cardsDrawn} cards.");
+                break;
+            }
+        }
+        
+        // Ensure synchronization between CombatHand and the entity's SyncList
+        NetworkPet pet = parentEntity as NetworkPet;
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        
+        // For debugging, check the current counts
+        if (pet != null)
+        {
+            Debug.Log($"After drawing, Pet {pet.PetName.Value} has {combatHand.GetCardCount()} cards in CombatHand and {pet.playerHandCardIds.Count} cards in SyncList");
+            
+            // Force synchronization if there's a mismatch
+            if (combatHand.GetCardCount() != pet.playerHandCardIds.Count)
+            {
+                Debug.LogWarning($"Mismatch detected between CombatHand ({combatHand.GetCardCount()} cards) and Pet's SyncList ({pet.playerHandCardIds.Count} cards). Synchronizing...");
+                combatHand.SyncWithEntityHand();
+            }
+        }
+        else if (player != null)
+        {
+            Debug.Log($"After drawing, Player {player.PlayerName.Value} has {combatHand.GetCardCount()} cards in CombatHand and {player.playerHandCardIds.Count} cards in SyncList");
+            
+            // Force synchronization if there's a mismatch
+            if (combatHand.GetCardCount() != player.playerHandCardIds.Count)
+            {
+                Debug.LogWarning($"Mismatch detected between CombatHand ({combatHand.GetCardCount()} cards) and Player's SyncList ({player.playerHandCardIds.Count} cards). Synchronizing...");
+                combatHand.SyncWithEntityHand();
+            }
         }
     }
 
     // Server-side logic for drawing one card
-    public void DrawOneCard()
+    // Returns true if a card was successfully drawn
+    public bool DrawOneCard()
     {
-        if (parentEntity == null || !parentEntity.IsServerStarted) return;
+        if (parentEntity == null || !parentEntity.IsServerStarted) return false;
         if (combatHand == null)
         {
             Debug.LogError("HandManager: Cannot draw card - CombatHand component not found.");
-            return;
+            return false;
         }
 
         // Check if hand is full before attempting to draw
         if (combatHand.IsFull())
         {
             Debug.Log($"{GetEntityName()} hand is full. Cannot draw more cards.");
-            return;
+            return false;
         }
 
         string entityName = GetEntityName();
@@ -102,16 +142,22 @@ public class HandManager : MonoBehaviour
             // Reshuffle discard into deck if deck is empty
             if (combatDiscard.GetCardCount() > 0)
             {
-                ReshuffleDiscardIntoDeck(); 
-                if (combatDeck.GetDeckSize() == 0) { // Still no cards (reshuffle failed)
-                     Debug.Log($"{entityName} deck is still empty after attempting reshuffle.");
-                     return;
+                Debug.Log($"{entityName} deck is empty. Reshuffling discard pile into deck.");
+                ReshuffleDiscardIntoDeck();
+                
+                // Check if reshuffle was successful
+                if (combatDeck.GetDeckSize() == 0)
+                {
+                    Debug.LogWarning($"{entityName} deck is still empty after reshuffling. Cannot draw a card.");
+                    return false;
                 }
+                
+                Debug.Log($"{entityName} successfully reshuffled discard. Continuing with draw.");
             }
             else
             {
                 Debug.Log($"{entityName} has no cards in deck or discard to draw.");
-                return; // No cards left anywhere
+                return false; // No cards left anywhere
             }
         }
 
@@ -119,8 +165,8 @@ public class HandManager : MonoBehaviour
         List<int> drawnCards = combatDeck.DrawCards(1);
         if (drawnCards.Count == 0)
         {
-            Debug.LogWarning($"{entityName} failed to draw a card from deck.");
-            return;
+            Debug.LogWarning($"{entityName} failed to draw a card from deck (size: {combatDeck.GetDeckSize()}).");
+            return false;
         }
         
         int cardIdToDraw = drawnCards[0];
@@ -132,10 +178,11 @@ public class HandManager : MonoBehaviour
             // If adding to hand failed, put card back in deck
             combatDeck.AddCard(cardIdToDraw);
             Debug.LogWarning($"{entityName} failed to add card ID: {cardIdToDraw} to hand. Card returned to deck.");
-            return;
+            return false;
         }
 
         Debug.Log($"{entityName} drew card ID: {cardIdToDraw}. Hand size: {combatHand.GetCardCount()}");
+        return true;
     }
 
     // Server-side logic for discarding entire hand
@@ -163,10 +210,20 @@ public class HandManager : MonoBehaviour
             combatDiscard.AddCard(cardId);
         }
         
-        // Clear the hand
+        // Clear the hand - this will trigger the SyncList.OnChange event
+        // which will notify subscribers (like CardSpawner) to update visuals
         combatHand.DiscardHand();
 
         Debug.Log($"{entityName} discarded {cardsToDiscard.Count} cards.");
+        
+        // Find and notify CardSpawner to clear visual cards
+        // This is a backup in case the SyncList event doesn't properly trigger updates
+        CardSpawner cardSpawner = parentEntity.GetComponent<CardSpawner>();
+        if (cardSpawner != null)
+        {
+            // We can safely invoke HandleHandChanged since it checks for client initialization internally
+            cardSpawner.HandleHandDiscarded();
+        }
     }
 
     // Server-side logic for moving a specific card from hand to discard

@@ -19,6 +19,9 @@ public class CombatHand : NetworkBehaviour
     // List of card IDs in the hand, synced across network
     private readonly SyncList<int> handCardIds = new();
     
+    // Reference to owner entity
+    private NetworkBehaviour parentEntity;
+    
     // Inspector-visible representation of the hand (read-only, for debugging)
     [Header("Current Hand (Read-Only)")]
     [SerializeField, Tooltip("Cards currently in this entity's hand. Read-only representation for debugging.")]
@@ -37,6 +40,13 @@ public class CombatHand : NetworkBehaviour
     {
         // Get reference to the HandManager component
         handManager = GetComponent<HandManager>();
+        
+        // Get reference to the parent entity
+        parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
+        if (parentEntity == null)
+        {
+            parentEntity = GetComponent<NetworkPet>() as NetworkBehaviour;
+        }
         
         if (handManager == null)
         {
@@ -78,6 +88,10 @@ public class CombatHand : NetworkBehaviour
         
         // Add card to hand
         handCardIds.Add(cardId);
+
+        // Also update the entity's SyncList if this is a NetworkPet
+        SyncWithEntityHand();
+        
         return true;
     }
 
@@ -96,6 +110,10 @@ public class CombatHand : NetworkBehaviour
             if (handCardIds[i] == cardId)
             {
                 handCardIds.RemoveAt(i);
+                
+                // Also update the entity's SyncList
+                SyncWithEntityHand();
+                
                 return true;
             }
         }
@@ -134,6 +152,10 @@ public class CombatHand : NetworkBehaviour
         
         List<int> discardedCards = new List<int>(handCardIds);
         handCardIds.Clear();
+        
+        // Also update the entity's SyncList
+        SyncWithEntityHand();
+        
         return discardedCards;
     }
 
@@ -222,5 +244,79 @@ public class CombatHand : NetworkBehaviour
     public void RefreshInspectorView()
     {
         UpdateInspectorLists();
+    }
+
+    /// <summary>
+    /// Synchronizes this CombatHand's cards with the parent entity's SyncList
+    /// </summary>
+    [Server]
+    public void SyncWithEntityHand()
+    {
+        if (!IsServerInitialized) return;
+        
+        // For NetworkPet, we need to update its playerHandCardIds SyncList
+        NetworkPet pet = parentEntity as NetworkPet;
+        if (pet != null)
+        {
+            // Clear the pet's SyncList and repopulate it
+            pet.playerHandCardIds.Clear();
+            foreach (int cardId in handCardIds)
+            {
+                pet.playerHandCardIds.Add(cardId);
+            }
+            
+            Debug.Log($"Synchronized {handCardIds.Count} cards from CombatHand to NetworkPet's playerHandCardIds");
+        }
+        
+        // For NetworkPlayer, update its playerHandCardIds SyncList
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        if (player != null)
+        {
+            // Clear the player's SyncList and repopulate it
+            player.playerHandCardIds.Clear();
+            foreach (int cardId in handCardIds)
+            {
+                player.playerHandCardIds.Add(cardId);
+            }
+            
+            Debug.Log($"Synchronized {handCardIds.Count} cards from CombatHand to NetworkPlayer's playerHandCardIds");
+        }
+    }
+    
+    /// <summary>
+    /// Updates the CombatHand with the entity's SyncList (reverse sync)
+    /// This is useful when initializing or when the entity's SyncList is modified externally
+    /// </summary>
+    [Server]
+    public void SyncFromEntityHand()
+    {
+        if (!IsServerInitialized) return;
+        
+        // If we're a NetworkPet
+        NetworkPet pet = parentEntity as NetworkPet;
+        if (pet != null && pet.playerHandCardIds.Count > 0)
+        {
+            handCardIds.Clear();
+            foreach (int cardId in pet.playerHandCardIds)
+            {
+                handCardIds.Add(cardId);
+            }
+            
+            Debug.Log($"Synchronized {pet.playerHandCardIds.Count} cards from NetworkPet's playerHandCardIds to CombatHand");
+            return;
+        }
+        
+        // If we're a NetworkPlayer
+        NetworkPlayer player = parentEntity as NetworkPlayer;
+        if (player != null && player.playerHandCardIds.Count > 0)
+        {
+            handCardIds.Clear();
+            foreach (int cardId in player.playerHandCardIds)
+            {
+                handCardIds.Add(cardId);
+            }
+            
+            Debug.Log($"Synchronized {player.playerHandCardIds.Count} cards from NetworkPlayer's playerHandCardIds to CombatHand");
+        }
     }
 } 

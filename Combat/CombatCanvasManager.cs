@@ -192,9 +192,25 @@ public class CombatCanvasManager : MonoBehaviour
 
     private void InitializeButtonListeners()
     {
+        SetupEndTurnButton();
+    }
+
+    /// <summary>
+    /// Sets up the end turn button to correctly end the local player's turn.
+    /// </summary>
+    private void SetupEndTurnButton()
+    {
         if (endTurnButton != null && combatManager != null && localPlayer != null)
         {
-            endTurnButton.onClick.AddListener(() => combatManager.CmdEndPlayerTurn());
+            endTurnButton.onClick.RemoveAllListeners();
+            endTurnButton.onClick.AddListener(() => {
+                Debug.Log($"End Turn button clicked for local player: {localPlayer.PlayerName.Value} with ObjectId: {localPlayer.ObjectId}");
+                
+                // Use the new method that explicitly sends the player's Object ID
+                combatManager.CmdEndTurnForPlayer((int)localPlayer.ObjectId);
+            });
+            
+            Debug.Log($"End turn button setup complete for player {localPlayer.PlayerName.Value} with ObjectId {localPlayer.ObjectId}");
         }
         else
         {
@@ -223,7 +239,7 @@ public class CombatCanvasManager : MonoBehaviour
         var players = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
         foreach (var player in players)
         {
-            if (player.IsOwner || player.IsHost)
+            if (player.IsOwner || player.IsHostInitialized)
             {
                 return player;
             }

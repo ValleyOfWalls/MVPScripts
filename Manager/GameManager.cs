@@ -10,15 +10,37 @@ public class GameManager : NetworkBehaviour
 {
     public static GameManager Instance { get; private set; }
 
-    // Game Rules - Synced so clients can see them if needed for UI or predictions (though server is authoritative)
-    public readonly SyncVar<int> PlayerDrawAmount = new SyncVar<int>(5);
-    public readonly SyncVar<int> PetDrawAmount = new SyncVar<int>(3);
-    public readonly SyncVar<int> PlayerMaxEnergy = new SyncVar<int>(3);
-    public readonly SyncVar<int> PetMaxEnergy = new SyncVar<int>(2);
-    public readonly SyncVar<int> PlayerMaxHealth = new SyncVar<int>(100);
-    public readonly SyncVar<int> PetMaxHealth = new SyncVar<int>(50);
+    [Header("Player Card Settings")]
+    [SerializeField, Tooltip("Number of cards a player draws on the first round")] 
+    private int playerInitialDraw = 5;
+    [SerializeField, Tooltip("Target number of cards in player's hand after drawing each round")]
+    private int playerHandTarget = 3;
+    [SerializeField, Tooltip("Maximum energy a player can have")]
+    private int playerMaxEnergyAmount = 3;
+    [SerializeField, Tooltip("Maximum health a player can have")]
+    private int playerMaxHealthAmount = 100;
 
-    // Add other game-wide settings here, e.g., round limits, special rules flags, etc.
+    [Header("Pet Card Settings")]
+    [SerializeField, Tooltip("Number of cards a pet draws on the first round")]
+    private int petInitialDraw = 3;
+    [SerializeField, Tooltip("Target number of cards in pet's hand after drawing each round")]
+    private int petHandTarget = 3;
+    [SerializeField, Tooltip("Maximum energy a pet can have")]
+    private int petMaxEnergyAmount = 2;
+    [SerializeField, Tooltip("Maximum health a pet can have")]
+    private int petMaxHealthAmount = 50;
+
+    // Game Rules - Synced so clients can see them if needed for UI or predictions (though server is authoritative)
+    public readonly SyncVar<int> PlayerDrawAmount = new SyncVar<int>();
+    public readonly SyncVar<int> PetDrawAmount = new SyncVar<int>();
+    public readonly SyncVar<int> PlayerMaxEnergy = new SyncVar<int>();
+    public readonly SyncVar<int> PetMaxEnergy = new SyncVar<int>();
+    public readonly SyncVar<int> PlayerMaxHealth = new SyncVar<int>();
+    public readonly SyncVar<int> PetMaxHealth = new SyncVar<int>();
+    
+    // Target hand sizes for each round - how many cards entities should have after drawing
+    public readonly SyncVar<int> PlayerTargetHandSize = new SyncVar<int>();
+    public readonly SyncVar<int> PetTargetHandSize = new SyncVar<int>();
 
     private void Awake()
     {
@@ -36,9 +58,20 @@ public class GameManager : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        // Values are initialized with defaults. Server can override them here if needed.
-        // e.g., PlayerMaxHealth.Value = 120;
+        
+        // Initialize SyncVars from serialized fields
+        PlayerDrawAmount.Value = playerInitialDraw;
+        PetDrawAmount.Value = petInitialDraw;
+        PlayerTargetHandSize.Value = playerHandTarget;
+        PetTargetHandSize.Value = petHandTarget;
+        PlayerMaxEnergy.Value = playerMaxEnergyAmount;
+        PetMaxEnergy.Value = petMaxEnergyAmount;
+        PlayerMaxHealth.Value = playerMaxHealthAmount;
+        PetMaxHealth.Value = petMaxHealthAmount;
+        
         Debug.Log("GameManager started on Server. Initializing game rules.");
+        Debug.Log($"Player settings - Initial Draw: {PlayerDrawAmount.Value}, Target Hand: {PlayerTargetHandSize.Value}, Max Energy: {PlayerMaxEnergy.Value}, Max Health: {PlayerMaxHealth.Value}");
+        Debug.Log($"Pet settings - Initial Draw: {PetDrawAmount.Value}, Target Hand: {PetTargetHandSize.Value}, Max Energy: {PetMaxEnergy.Value}, Max Health: {PetMaxHealth.Value}");
     }
 
     public override void OnStartClient()

@@ -4,6 +4,7 @@ using FishNet.Object.Synchronizing;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.UI;
+using System.Collections;
 
 /// <summary>
 /// Handles spawning and despawning of card GameObjects based on changes to CombatHand.
@@ -30,6 +31,18 @@ public class CardSpawner : NetworkBehaviour
     private CombatManager combatManager;
     private NetworkPlayer localPlayer;
     private NetworkPet localPet;
+    
+    // Add a queue to track played card instances waiting for confirmation
+    private HashSet<string> pendingCardRemovals = new HashSet<string>();
+    
+    // Reference to owning network entity
+    private NetworkBehaviour owningEntity;
+    
+    // Reference to RelationshipManager for client ID checking
+    private RelationshipManager relationshipManager;
+    
+    // Cache local client ID for quicker comparisons
+    private int localClientId = -1;
     
     private void Awake()
     {
@@ -70,6 +83,28 @@ public class CardSpawner : NetworkBehaviour
         if (handTransform == null)
         {
             Debug.LogError("CardSpawner: Hand transform reference is null");
+        }
+        
+        // Determine if we're attached to a player or pet
+        owningEntity = GetComponent<NetworkPlayer>() ?? (NetworkBehaviour)GetComponent<NetworkPet>();
+        if (owningEntity == null)
+        {
+            Debug.LogError("CardSpawner must be attached to either NetworkPlayer or NetworkPet");
+        }
+        
+        // Get relationship manager
+        relationshipManager = GetComponent<RelationshipManager>();
+        if (relationshipManager == null)
+        {
+            relationshipManager = gameObject.AddComponent<RelationshipManager>();
+            Debug.Log($"Added RelationshipManager to {gameObject.name} for CardSpawner");
+        }
+        
+        // Cache local client ID
+        if (IsClientInitialized && FishNet.InstanceFinder.ClientManager != null)
+        {
+            localClientId = FishNet.InstanceFinder.ClientManager.Connection.ClientId;
+            Debug.Log($"CardSpawner local client ID: {localClientId}");
         }
     }
     
@@ -131,6 +166,19 @@ public class CardSpawner : NetworkBehaviour
     }
     
     /// <summary>
+    /// Called specifically when a hand is discarded to ensure visual updates
+    /// </summary>
+    public void HandleHandDiscarded()
+    {
+        if (!IsClientInitialized) return; // Only clients handle visual representation
+        
+        Debug.Log($"HandleHandDiscarded called for {(localPlayer != null ? localPlayer.PlayerName.Value : localPet?.PetName.Value)}");
+        
+        // Force clear all visual cards
+        ClearAllCards();
+    }
+    
+    /// <summary>
     /// Updates the visual representation of cards in hand
     /// </summary>
     private void UpdateCardDisplay()
@@ -138,6 +186,14 @@ public class CardSpawner : NetworkBehaviour
         if (combatHand == null || handTransform == null) return;
 
         List<int> currentHandCards = combatHand.GetAllCards();
+        
+        // If hand is empty, clear all visual cards
+        if (currentHandCards.Count == 0)
+        {
+            Debug.Log($"Hand is now empty, clearing all visual cards for {(localPlayer != null ? localPlayer.PlayerName.Value : localPet?.PetName.Value)}");
+            ClearAllCards();
+            return;
+        }
         
         // Count how many of each card ID we *should* have based on the CombatHand
         Dictionary<int, int> desiredCardCounts = new Dictionary<int, int>();
@@ -185,9 +241,24 @@ public class CardSpawner : NetworkBehaviour
             }
         }
         
-        // NO REMOVAL LOGIC HERE. Removals are handled by OnServerConfirmCardPlayed via RPC.
-        // The old logic that iterated spawnedCardInstances and removed them if their
-        // count in a temporary 'cardCounts' dictionary went to zero is removed.
+        // Remove cards that shouldn't be in the hand anymore
+        foreach (var spawnedEntry in currentlySpawnedCounts)
+        {
+            int cardId = spawnedEntry.Key;
+            int numSpawned = spawnedEntry.Value;
+            int numDesired = 0;
+            desiredCardCounts.TryGetValue(cardId, out numDesired);
+            
+            if (numSpawned > numDesired)
+            {
+                // Remove excess cards
+                int numToRemove = numSpawned - numDesired;
+                for (int i = 0; i < numToRemove; i++)
+                {
+                    RemoveCardFromDisplay(cardId);
+                }
+            }
+        }
     }
     
     /// <summary>
@@ -369,63 +440,122 @@ public class CardSpawner : NetworkBehaviour
         
         Debug.Log($"Player clicked on card '{cardData.CardName}' (ID: {cardId}, Instance: {instanceId}). Requesting to play.");
         
-        // Store the instance ID for later removal after server confirmation
-        // We'll remove it when we get the NotifyCardPlayed callback from the server
+        // Add to pending removals set
+        pendingCardRemovals.Add(instanceId);
+        
+        // Temporarily disable the card's button to prevent double-clicks
+        if (spawnedCardInstances.TryGetValue(instanceId, out GameObject cardObject))
+        {
+            Button cardButton = cardObject.GetComponent<Button>();
+            if (cardButton != null)
+            {
+                cardButton.interactable = false;
+            }
+            
+            // Apply a visual effect to show it's being played
+            // Use a simple scale down effect
+            cardObject.transform.localScale = cardObject.transform.localScale * 0.9f;
+        }
+        
+        // Send request to server with the specific instance ID
         combatManager.CmdPlayerRequestsPlayCard(localPlayer.ObjectId, cardId, instanceId);
     }
     
     /// <summary>
-    /// Called when the server confirms a card has been played
-    /// This would be called from a notification method after server processing
+    /// Called when the server confirms a card has been played but doesn't provide an instance ID
     /// </summary>
     public void OnServerConfirmCardPlayed(int cardId)
     {
-        // Find and remove the first instance of this card type
-        // THIS IS THE PROBLEMATIC METHOD - it doesn't guarantee removing the right instance
-        // Instead, we should generate an instance ID and use it in this case too
-        string firstInstanceId = FindFirstInstanceOfCard(cardId);
+        Debug.Log($"Server confirmed card played (no instance ID): ID {cardId}");
         
-        if (!string.IsNullOrEmpty(firstInstanceId))
+        // Find and remove the first instance of this card type, but only if it belongs to local client
+        if (BelongsToLocalClient())
         {
-            Debug.Log($"OnServerConfirmCardPlayed: Using specific instance ID {firstInstanceId} instead of generic removal");
-            OnServerConfirmCardPlayed(cardId, firstInstanceId);
-        }
-        else
-        {
-            Debug.LogWarning($"OnServerConfirmCardPlayed: Could not find any instance of card ID {cardId} to remove");
-            RemoveCardFromDisplay(cardId); // Fallback to the old method
-        }
-    }
-    
-    /// <summary>
-    /// Called when the server confirms a card has been played
-    /// This would be called from a notification method after server processing
-    /// </summary>
-    public void OnServerConfirmCardPlayed(int cardId, string instanceId)
-    {
-        // If we have an instance ID, use that to remove the specific card
-        if (!string.IsNullOrEmpty(instanceId) && spawnedCardInstances.ContainsKey(instanceId))
-        {
-            RemoveCardInstance(instanceId);
-            spawnedCardInstances.Remove(instanceId);
-            Debug.Log($"Removed specific card instance {instanceId} from display");
-        }
-        else
-        {
-            // Fallback to removing by card ID if we don't have a valid instance ID
+            // Find any pending removal for this card ID first
+            string pendingInstanceId = pendingCardRemovals
+                .FirstOrDefault(id => ExtractCardIdFromInstanceId(id) == cardId);
+                
+            if (!string.IsNullOrEmpty(pendingInstanceId))
+            {
+                Debug.Log($"Found pending removal for card ID {cardId}: {pendingInstanceId}");
+                OnServerConfirmCardPlayed(cardId, pendingInstanceId);
+                return;
+            }
+            
+            // If no pending removal, try to find the first instance
             string firstInstanceId = FindFirstInstanceOfCard(cardId);
             
             if (!string.IsNullOrEmpty(firstInstanceId))
             {
-                Debug.Log($"OnServerConfirmCardPlayed: Fallback - using first found instance ID {firstInstanceId} instead of generic removal");
-                RemoveCardInstance(firstInstanceId);
-                spawnedCardInstances.Remove(firstInstanceId);
+                Debug.Log($"OnServerConfirmCardPlayed: Using specific instance ID {firstInstanceId} instead of generic removal");
+                OnServerConfirmCardPlayed(cardId, firstInstanceId);
             }
             else
             {
-                Debug.LogWarning($"OnServerConfirmCardPlayed: No valid instance found for card ID {cardId}, falling back to legacy method");
-                RemoveCardFromDisplay(cardId);
+                Debug.LogWarning($"OnServerConfirmCardPlayed: Could not find any instance of card ID {cardId} to remove");
             }
+        }
+        else
+        {
+            Debug.Log($"Ignoring card play notification for card ID {cardId} since it does not belong to local client");
+        }
+    }
+    
+    /// <summary>
+    /// Called when the server confirms a card has been played with a specific instance ID
+    /// </summary>
+    public void OnServerConfirmCardPlayed(int cardId, string instanceId)
+    {
+        Debug.Log($"Server confirmed card played: ID {cardId}, Instance {instanceId}");
+        
+        // First, check if we have the exact instance ID match
+        if (!string.IsNullOrEmpty(instanceId) && spawnedCardInstances.TryGetValue(instanceId, out GameObject specificCardObject))
+        {
+            // Remove the instance from the pending set if it was there
+            pendingCardRemovals.Remove(instanceId);
+            
+            // Remove the specific card instance
+            RemoveCardInstance(instanceId);
+            Debug.Log($"Removed specific card instance {instanceId} from display");
+            return; // Exit early - we found and removed the exact card instance
+        }
+        
+        // If we couldn't find the exact instance - e.g., if this is a notification from the server for another client's action
+        // Then we need to carefully handle this to avoid removing wrong cards
+        
+        // Check if we have any pending removals for this card ID that the local player initiated
+        string pendingInstanceId = pendingCardRemovals
+            .FirstOrDefault(id => ExtractCardIdFromInstanceId(id) == cardId);
+        
+        if (!string.IsNullOrEmpty(pendingInstanceId))
+        {
+            Debug.Log($"Found pending removal for card ID {cardId}: {pendingInstanceId}");
+            RemoveCardInstance(pendingInstanceId);
+            pendingCardRemovals.Remove(pendingInstanceId);
+        }
+        else if (BelongsToLocalClient())
+        {
+            // We only want to do this fallback for cards belonging to the local client
+            // This avoids accidentally removing other players' cards when the server notifies all clients
+            
+            Debug.Log($"OnServerConfirmCardPlayed: Local client needs to remove a card with ID {cardId}, but no instance ID match was found.");
+            
+            // Only remove the first instance of this card type - specifically checking if this is owned by local client
+            string firstInstanceId = FindFirstInstanceOfCard(cardId);
+            
+            if (!string.IsNullOrEmpty(firstInstanceId))
+            {
+                Debug.Log($"OnServerConfirmCardPlayed: Fallback - using first found instance ID {firstInstanceId} for card ID {cardId}");
+                RemoveCardInstance(firstInstanceId);
+            }
+            else
+            {
+                Debug.LogWarning($"OnServerConfirmCardPlayed: No valid instance found for card ID {cardId}, cannot remove card");
+            }
+        }
+        else
+        {
+            Debug.Log($"Ignoring card play notification for card ID {cardId} since it does not belong to local client");
         }
     }
     
@@ -521,24 +651,81 @@ public class CardSpawner : NetworkBehaviour
     }
     
     /// <summary>
-    /// Removes all cards from the display
+    /// Removes all cards from the display with visual fading
     /// </summary>
     private void ClearAllCards()
     {
-        foreach (var cardList in spawnedCardsByType.Values)
+        Debug.Log($"ClearAllCards called for {(localPlayer != null ? localPlayer.PlayerName.Value : localPet?.PetName.Value)}");
+        
+        // Make a copy of the cards to avoid collection modification issues
+        Dictionary<string, GameObject> cardsCopy = new Dictionary<string, GameObject>(spawnedCardInstances);
+        
+        foreach (var cardEntry in cardsCopy)
         {
-            foreach (var cardObject in cardList)
+            string instanceId = cardEntry.Key;
+            GameObject cardObject = cardEntry.Value;
+            
+            if (cardObject != null)
             {
-                if (cardObject != null)
-                {
-                    Destroy(cardObject);
-                }
+                // Add visual fade out animation
+                StartCoroutine(AnimateCardDiscard(cardObject, () => {
+                    if (cardObject != null) Destroy(cardObject);
+                }));
             }
         }
         
+        // Clear all tracking collections
         spawnedCardsByType.Clear();
         spawnedCardInstances.Clear();
         cardInstanceCounter.Clear();
+        pendingCardRemovals.Clear();
+    }
+    
+    /// <summary>
+    /// Animate a card being discarded with a fade out effect
+    /// </summary>
+    private System.Collections.IEnumerator AnimateCardDiscard(GameObject cardObject, System.Action onComplete)
+    {
+        if (cardObject == null) 
+        {
+            if (onComplete != null) onComplete();
+            yield break;
+        }
+        
+        // Try to get the card's canvas group for fading
+        CanvasGroup canvasGroup = cardObject.GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+        {
+            canvasGroup = cardObject.AddComponent<CanvasGroup>();
+        }
+        
+        // Initial values
+        float duration = 0.5f;
+        float elapsedTime = 0f;
+        float startAlpha = canvasGroup.alpha;
+        Vector3 startScale = cardObject.transform.localScale;
+        Vector3 targetScale = startScale * 0.8f;
+        
+        // Animate fade out and scale down
+        while (elapsedTime < duration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / duration;
+            
+            // Apply fading
+            canvasGroup.alpha = Mathf.Lerp(startAlpha, 0f, t);
+            
+            // Apply scaling
+            cardObject.transform.localScale = Vector3.Lerp(startScale, targetScale, t);
+            
+            yield return null;
+        }
+        
+        // Ensure final state
+        canvasGroup.alpha = 0f;
+        
+        // Complete the animation
+        if (onComplete != null) onComplete();
     }
     
     /// <summary>
@@ -547,5 +734,138 @@ public class CardSpawner : NetworkBehaviour
     public void OnCardPlayed(int cardId)
     {
         RemoveCardFromDisplay(cardId);
+    }
+
+    /// <summary>
+    /// Checks if this CardSpawner belongs to the local client
+    /// </summary>
+    public bool BelongsToLocalClient()
+    {
+        if (IsServerInitialized && !IsClientInitialized)
+        {
+            // On dedicated server, we need to handle everything
+            Debug.Log($"BelongsToLocalClient: Dedicated server handles all entities");
+            return true;
+        }
+        
+        // Host handles all entities
+        if (FishNet.InstanceFinder.IsHostStarted)
+        {
+            Debug.Log($"BelongsToLocalClient: Host handles all entities");
+            return true;
+        }
+        
+        // Check if entity is owned by this client directly
+        if (owningEntity != null && owningEntity.IsOwner)
+        {
+            Debug.Log($"BelongsToLocalClient: Entity is directly owned by this client");
+            return true;
+        }
+        
+        // Check RelationshipManager client ID - main fix
+        if (relationshipManager != null)
+        {
+            if (relationshipManager.OwnerClientId == localClientId)
+            {
+                Debug.Log($"BelongsToLocalClient: Entity belongs to this client via RelationshipManager (OwnerClientId: {relationshipManager.OwnerClientId}, LocalClientId: {localClientId})");
+                return true;
+            }
+            else
+            {
+                Debug.Log($"BelongsToLocalClient: Entity does NOT belong to this client (RM OwnerClientId: {relationshipManager.OwnerClientId}, LocalClientId: {localClientId})");
+            }
+        }
+        
+        // Fall back to the basic Owner check
+        if (owningEntity != null && owningEntity.Owner != null)
+        {
+            bool result = owningEntity.Owner.ClientId == localClientId;
+            Debug.Log($"BelongsToLocalClient: Basic owner check result: {result} (Owner ClientId: {owningEntity.Owner.ClientId}, LocalClientId: {localClientId})");
+            return result;
+        }
+        
+        // If we're on client-only mode, this might be a special case
+        if (IsClientInitialized && !IsServerInitialized)
+        {
+            // If localPlayer is set, this is the local player's CardSpawner
+            if (localPlayer != null && localPlayer.IsOwner)
+            {
+                Debug.Log($"BelongsToLocalClient: Special client-only case for local player: {localPlayer.PlayerName.Value}");
+                return true;
+            }
+        }
+        
+        Debug.Log($"BelongsToLocalClient: Entity ownership check failed - Entity does not belong to local client");
+        return false;
+    }
+
+    /// <summary>
+    /// Creates a card game object at the specified position
+    /// </summary>
+    public GameObject SpawnCard(int cardId, Transform parentTransform, bool addToHand = true)
+    {
+        // Check if we should handle this card
+        if (!BelongsToLocalClient() && !FishNet.InstanceFinder.IsHostStarted)
+        {
+            Debug.Log($"SpawnCard: Ignored card {cardId} because it doesn't belong to local client (Owner ClientID: {(relationshipManager != null ? relationshipManager.OwnerClientId : -1)}, Local ClientID: {localClientId})");
+            return null;
+        }
+        
+        if (cardPrefab == null)
+        {
+            Debug.LogError("Card prefab not assigned to CardSpawner");
+            return null;
+        }
+
+        // Make sure parent transform exists
+        Transform parent = parentTransform ? parentTransform : cardPrefabParent;
+        if (parent == null)
+        {
+            Debug.LogWarning("No parent transform specified for card. Using default parent.");
+            parent = transform;
+        }
+
+        // Get card data
+        CardData cardData = CardDatabase.Instance.GetCardById(cardId);
+        if (cardData == null)
+        {
+            Debug.LogError($"Card with ID {cardId} not found in database");
+            return null;
+        }
+
+        // Create an instance ID for this card
+        string instanceId = System.Guid.NewGuid().ToString().Substring(0, 8);
+        string fullInstanceId = $"{cardId}_{instanceId}";
+
+        // Instantiate the card prefab
+        GameObject cardObj = Instantiate(cardPrefab, parent);
+        
+        // Position the card in the UI using a layout group or manual positioning
+        // This will depend on your UI setup
+
+        // Set up the card's visuals and data
+        Card cardComponent = cardObj.GetComponent<Card>();
+        if (cardComponent != null)
+        {
+            // Initialize the card with its data
+            cardComponent.Initialize(cardData);
+            
+            // Store the instance ID
+            cardObj.name = $"Card_{cardData.CardName}_{fullInstanceId}";
+            
+            // Add click handler if appropriate
+            if (owningEntity != null && owningEntity.IsOwner)
+            {
+                // Add any needed click handlers or drag handlers
+                // These would use your existing components
+            }
+        }
+
+        // Store card in dictionary for later access
+        spawnedCardInstances[fullInstanceId] = cardObj;
+        
+        Debug.Log($"Spawned card {cardData.CardName} (ID: {cardId}, Instance: {fullInstanceId}) for {(owningEntity is NetworkPlayer ? "player" : "pet")}");
+
+        return cardObj;
     }
 } 

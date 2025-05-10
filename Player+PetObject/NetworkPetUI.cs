@@ -272,6 +272,20 @@ public class NetworkPetUI : MonoBehaviour
     }
     
     /// <summary>
+    /// Updates the pet's name display in the UI
+    /// </summary>
+    public void UpdateNameDisplay()
+    {
+        if (pet == null || petNameText == null) return;
+        
+        // Update the pet name text
+        petNameText.text = pet.PetName.Value;
+        
+        // Log the name update
+        Debug.Log($"UI updated for pet name: {pet.PetName.Value}");
+    }
+    
+    /// <summary>
     /// Gets the pet hand transform for external access
     /// </summary>
     public Transform GetPetHandTransform()

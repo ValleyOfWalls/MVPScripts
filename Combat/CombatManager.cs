@@ -152,6 +152,8 @@ public class CombatManager : NetworkBehaviour
     {
         currentRound.Value++;
 
+        Debug.Log($"Starting round {currentRound.Value}");
+        
         // Create a local copy of the fight states to avoid collection modification issues
         List<FightTurnState> fightStatesCopy = new List<FightTurnState>(fightTurnStates);
 
@@ -173,11 +175,44 @@ public class CombatManager : NetworkBehaviour
                     // Draw cards using their HandManager components
                     HandManager playerHandManager = player.GetComponent<HandManager>();
                     HandManager petHandManager = pet.GetComponent<HandManager>();
-
+                    
                     if (playerHandManager != null)
                     {
-                        int playerDrawAmount = currentRound.Value == 1 ? gameManager.PlayerDrawAmount.Value : 1;
-                        playerHandManager.DrawInitialCardsForEntity(playerDrawAmount);
+                        // Get the player's current hand size
+                        CombatHand playerHand = player.GetComponent<CombatHand>();
+                        int currentPlayerHandSize = playerHand != null ? playerHand.GetCardCount() : 0;
+                        
+                        // For the first round, we use PlayerDrawAmount as the initial draw
+                        // For subsequent rounds, we draw enough to reach PlayerTargetHandSize
+                        int playerDrawAmount;
+                        
+                        if (currentRound.Value == 1)
+                        {
+                            // First round: Draw the initial hand size
+                            playerDrawAmount = gameManager != null ? gameManager.PlayerDrawAmount.Value : 5;
+                            Debug.Log($"First round: Player {player.PlayerName.Value} drawing initial hand of {playerDrawAmount} cards");
+                        }
+                        else
+                        {
+                            // Subsequent rounds: Draw to reach target hand size
+                            int targetHandSize = gameManager != null ? gameManager.PlayerTargetHandSize.Value : 3;
+                            playerDrawAmount = Mathf.Max(0, targetHandSize - currentPlayerHandSize);
+                            
+                            if (playerDrawAmount > 0)
+                            {
+                                Debug.Log($"Round {currentRound.Value}: Player {player.PlayerName.Value} drawing {playerDrawAmount} cards to reach target hand size of {targetHandSize}");
+                            }
+                            else
+                            {
+                                Debug.Log($"Round {currentRound.Value}: Player {player.PlayerName.Value} already has {currentPlayerHandSize} cards, target is {targetHandSize}, no cards drawn");
+                            }
+                        }
+                        
+                        // Draw the calculated number of cards
+                        if (playerDrawAmount > 0)
+                        {
+                            playerHandManager.DrawInitialCardsForEntity(playerDrawAmount);
+                        }
                     }
                     else
                     {
@@ -186,8 +221,41 @@ public class CombatManager : NetworkBehaviour
 
                     if (petHandManager != null)
                     {
-                        int petDrawAmount = currentRound.Value == 1 ? gameManager.PetDrawAmount.Value : 1;
-                        petHandManager.DrawInitialCardsForEntity(petDrawAmount);
+                        // Get the pet's current hand size
+                        CombatHand petHand = pet.GetComponent<CombatHand>();
+                        int currentPetHandSize = petHand != null ? petHand.GetCardCount() : 0;
+                        
+                        // For the first round, we use PetDrawAmount as the initial draw
+                        // For subsequent rounds, we draw enough to reach PetTargetHandSize
+                        int petDrawAmount;
+                        
+                        if (currentRound.Value == 1)
+                        {
+                            // First round: Draw the initial hand size
+                            petDrawAmount = gameManager != null ? gameManager.PetDrawAmount.Value : 3;
+                            Debug.Log($"First round: Pet {pet.PetName.Value} drawing initial hand of {petDrawAmount} cards");
+                        }
+                        else
+                        {
+                            // Subsequent rounds: Draw to reach target hand size
+                            int targetHandSize = gameManager != null ? gameManager.PetTargetHandSize.Value : 3; 
+                            petDrawAmount = Mathf.Max(0, targetHandSize - currentPetHandSize);
+                            
+                            if (petDrawAmount > 0)
+                            {
+                                Debug.Log($"Round {currentRound.Value}: Pet {pet.PetName.Value} drawing {petDrawAmount} cards to reach target hand size of {targetHandSize}");
+                            }
+                            else
+                            {
+                                Debug.Log($"Round {currentRound.Value}: Pet {pet.PetName.Value} already has {currentPetHandSize} cards, target is {targetHandSize}, no cards drawn");
+                            }
+                        }
+                        
+                        // Draw the calculated number of cards
+                        if (petDrawAmount > 0)
+                        {
+                            petHandManager.DrawInitialCardsForEntity(petDrawAmount);
+                        }
                     }
                     else
                     {
@@ -229,107 +297,47 @@ public class CombatManager : NetworkBehaviour
         }
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void CmdEndPlayerTurn()
-    {
-        NetworkConnection conn = Owner;
-
-        // Find the fight state for this connection
-        FightTurnState? fightStateNullable = fightTurnStates.Find(state => 
-            state.playerConnection != null && state.playerConnection.ClientId == conn.ClientId);
-            
-        if (!fightStateNullable.HasValue)
-        {
-            Debug.LogError($"No fight state found for connection {conn.ClientId}");
-            
-            // Special handling for host - try looking by player object instead
-            if (NetworkManager.IsHostStarted)
-            {
-                Debug.Log("Host detected. Trying to find fight state by looking at all players...");
-                
-                // For host, try to find the fight by looking at all players
-                foreach (var state in fightTurnStates)
-                {
-                    NetworkPlayer playerInState = GetNetworkObjectComponent<NetworkPlayer>(state.playerObjId);
-                    if (playerInState != null && playerInState.Owner != null && playerInState.Owner.ClientId == conn.ClientId)
-                    {
-                        Debug.Log($"Found host fight state for player {playerInState.PlayerName.Value} with ObjectID {state.playerObjId}");
-                        fightStateNullable = state;
-                        break;
-                    }
-                }
-                
-                // If still not found, try a more brutal approach - try to match any player
-                if (!fightStateNullable.HasValue && fightTurnStates.Count > 0)
-                {
-                    Debug.LogWarning("Host fight not found by ClientId. Using first available fight as fallback.");
-                    fightStateNullable = fightTurnStates[0];
-                }
-            }
-            
-            // If still no fight state, give up
-            if (!fightStateNullable.HasValue)
-            {
-                RpcNotifyMessage("Error: No active fight found for you.", conn);
-                return;
-            }
-        }
-
-        FightTurnState fightState = fightStateNullable.Value;
-        if (fightState.currentTurn != CombatTurn.PlayerTurn)
-        {
-            Debug.LogWarning($"Player tried to end turn, but it's not their turn (state: {fightState.currentTurn})");
-            return;
-        }
-
-        NetworkPlayer player = GetNetworkObjectComponent<NetworkPlayer>(fightState.playerObjId);
-        if (player == null)
-        {
-            Debug.LogError($"Player not found for ObjectId: {fightState.playerObjId}");
-            return;
-        }
-
-        // Discard player's hand using their HandManager component
-        HandManager playerHandManager = player.GetComponent<HandManager>();
-        if (playerHandManager != null)
-        {
-            playerHandManager.DiscardHand();
-        }
-        else
-        {
-            Debug.LogError($"HandManager component not found on player {player.PlayerName.Value}");
-        }
-
-        // Update turn state
-        var updatedFightState = fightState;
-        updatedFightState.currentTurn = CombatTurn.PetTurn;
-        int index = fightTurnStates.IndexOf(fightState);
-        fightTurnStates[index] = updatedFightState;
-
-        // Notify only the clients involved in this fight
-        RpcUpdateTurnState(fightState.playerObjId, fightState.petObjId, CombatTurn.PetTurn, conn);
-        RpcEnableEndTurnButton(false, conn);
-
-        // Start pet turn process
-        NetworkPet pet = GetNetworkObjectComponent<NetworkPet>(fightState.petObjId);
-        if (pet != null)
-        {
-            StartCoroutine(ProcessPetTurn(pet, player, updatedFightState));
-        }
-        else
-        {
-            Debug.LogError($"Pet not found for ObjectId: {fightState.petObjId}");
-        }
-    }
-
     [Server]
     private IEnumerator ProcessPetTurn(NetworkPet pet, NetworkPlayer player, FightTurnState fightState)
     {
         Debug.Log($"Pet {pet.PetName.Value}'s turn against {player.PlayerName.Value}.");
         
-        // Simple AI: Play all cards in hand one by one if energy allows
-        // Make a copy because playing a card modifies the hand
-        List<int> cardsToPlay = new List<int>(pet.playerHandCardIds);
+        // Wait a moment before starting pet actions for better player experience
+        yield return new WaitForSeconds(1.5f);
+        
+        // Get the pet's cards in hand - use a try/catch for better error handling
+        List<int> cardsToPlay = new List<int>();
+        try 
+        {
+            // Get a CombatHand reference first to see actual hand state
+            CombatHand petHand = pet.GetComponent<CombatHand>();
+            if (petHand != null)
+            {
+                cardsToPlay = petHand.GetAllCards();
+                Debug.Log($"Pet {pet.PetName.Value} has {cardsToPlay.Count} cards in hand (via CombatHand)");
+            }
+            else
+            {
+                // Fall back to SyncList if CombatHand not available
+                cardsToPlay = new List<int>(pet.playerHandCardIds);
+                Debug.Log($"Pet {pet.PetName.Value} has {cardsToPlay.Count} cards in hand (via SyncList)");
+            }
+            
+            // Log each card ID for debugging
+            if (cardsToPlay.Count > 0)
+            {
+                Debug.Log($"Pet {pet.PetName.Value}'s cards in hand: {string.Join(", ", cardsToPlay)}");
+            }
+            else 
+            {
+                Debug.LogWarning($"Pet {pet.PetName.Value} has no cards in hand at the start of its turn!");
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Error getting pet's cards: {e.Message}\n{e.StackTrace}");
+            cardsToPlay = new List<int>();
+        }
         
         // Get the HandManager to handle moving cards to discard pile
         HandManager petHandManager = pet.GetComponent<HandManager>();
@@ -339,45 +347,151 @@ public class CombatManager : NetworkBehaviour
             yield break;
         }
         
-        // Get the player's effect manager for applying card effects
-        EffectManager playerEffectManager = player.GetComponent<EffectManager>();
-        if (playerEffectManager == null)
+        // Track if any cards were played
+        bool playedAtLeastOneCard = false;
+        int cardsPlayed = 0;
+        
+        // Log actual card count in SyncList for debugging
+        Debug.Log($"Pet {pet.PetName.Value}'s playerHandCardIds.Count is {pet.playerHandCardIds.Count}");
+
+        // If no cards to play, check if we need to reset state
+        if (cardsToPlay.Count == 0 && pet.playerHandCardIds.Count > 0)
         {
-            Debug.LogError($"EffectManager component not found on player {player.PlayerName.Value}");
-            yield break;
+            // There's a synchronization issue - the sync list has cards but our local copy doesn't
+            Debug.LogWarning($"Synchronization issue detected: SyncList has {pet.playerHandCardIds.Count} cards but local copy has 0. Attempting to fix.");
+            cardsToPlay = new List<int>(pet.playerHandCardIds);
+        }
+        // If the sync list is empty but CombatHand has cards, use those instead
+        else if (pet.playerHandCardIds.Count == 0 && cardsToPlay.Count > 0)
+        {
+            Debug.LogWarning($"Detected mismatch: CombatHand has {cardsToPlay.Count} cards but SyncList is empty. Using CombatHand as source of truth.");
+            
+            // Manually update the pet's SyncList with the CombatHand's contents
+            // This ensures cards can be played even if synchronization failed earlier
+            pet.playerHandCardIds.Clear();
+            foreach (int cardId in cardsToPlay)
+            {
+                pet.playerHandCardIds.Add(cardId);
+            }
+            
+            Debug.Log($"Updated pet's playerHandCardIds with {cardsToPlay.Count} cards from CombatHand");
         }
 
-        foreach (int cardId in cardsToPlay)
+        // Make a copy of the cards to play to avoid collection modification issues during iteration
+        List<int> cardsCopy = new List<int>(cardsToPlay);
+        
+        // Attempt to play each card
+        foreach (int cardId in cardsCopy)
         {
-            if (pet.playerHandCardIds.Contains(cardId)) // Card might have been removed by another effect
+            // Double check that card is still in the pet's hand
+            bool cardInHand = pet.playerHandCardIds.Contains(cardId);
+            Debug.Log($"Checking if pet still has card {cardId} in hand: {cardInHand}");
+            
+            // Fall back to CombatHand if SyncList doesn't have the card
+            if (!cardInHand)
+            {
+                CombatHand petHand = pet.GetComponent<CombatHand>();
+                cardInHand = petHand != null && petHand.HasCard(cardId);
+                
+                if (cardInHand)
+                {
+                    Debug.LogWarning($"Card {cardId} not found in pet's SyncList but found in CombatHand. Using it anyway.");
+                    
+                    // Add to SyncList to allow play
+                    pet.playerHandCardIds.Add(cardId);
+                }
+            }
+            
+            if (cardInHand)
             {
                 CardData cardData = GetCardDataFromId(cardId); // This needs a Card Database
+                if (cardData == null)
+                {
+                    Debug.LogError($"Failed to get card data for ID {cardId}");
+                    continue;
+                }
+                
+                Debug.Log($"Pet {pet.PetName.Value} considering card {cardData.CardName} (ID: {cardId}, Cost: {cardData.EnergyCost}, Pet Energy: {pet.CurrentEnergy.Value})");
+                
                 if (cardData != null && pet.CurrentEnergy.Value >= cardData.EnergyCost)
                 {
-                    Debug.Log($"Pet {pet.PetName.Value} playing card ID: {cardId} (Cost: {cardData.EnergyCost}) on Player {player.PlayerName.Value}");
-                    
-                    // Deduct energy cost
-                    pet.ChangeEnergy(-cardData.EnergyCost);
-                    
-                    // Apply the effect to the target
-                    playerEffectManager.ApplyEffect(pet, cardData);
-                    
-                    // Move the card from hand to discard
-                    petHandManager.MoveCardToDiscard(cardId);
-                    
-                    // Only notify the player involved in this fight
-                    RpcNotifyCardPlayed((uint)pet.ObjectId, (uint)player.ObjectId, cardId, player.Owner);
-                    yield return new WaitForSeconds(1f); // Simulate thinking/action time
+                    // Use the pet's PlayCard method to properly handle card targeting based on target type
+                    if (pet.TryPlayCard(cardId, out string cardInstanceId, out NetworkBehaviour target))
+                    {
+                        // Card was successfully played
+                        Debug.Log($"Pet {pet.PetName.Value} played card ID: {cardId} on target: {target.name} (Instance ID: {cardInstanceId})");
+                        
+                        playedAtLeastOneCard = true;
+                        cardsPlayed++;
+                        
+                        // Longer pause between card plays for better visualization
+                        yield return new WaitForSeconds(2.5f);
+                        
+                        // Check game over condition after each card play
+                        if (player.CurrentHealth.Value <= 0 || pet.CurrentHealth.Value <= 0)
+                        {
+                            HandleFightEnd(player, pet, fightState);
+                            yield break;
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"Pet {pet.PetName.Value} failed to play card ID: {cardId}");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"Pet {pet.PetName.Value} doesn't have enough energy ({pet.CurrentEnergy.Value}) to play card ID: {cardId} (Cost: {cardData.EnergyCost})");
                 }
             }
         }
 
+        // Log final play status
+        if (!playedAtLeastOneCard)
+        {
+            // Get current cards in hand for final validation
+            List<int> currentCards = pet.GetComponent<CombatHand>()?.GetAllCards() ?? new List<int>();
+            
+            Debug.Log($"Pet {pet.PetName.Value} didn't play any cards this turn (played: {cardsPlayed}, " +
+                      $"cards at start: {cardsToPlay.Count}, current cards: {currentCards.Count}, " +
+                      $"cards in SyncList: {pet.playerHandCardIds.Count})");
+            
+            // Wait a moment to show the pet's "thinking" even if no cards played
+            yield return new WaitForSeconds(1.0f);
+        }
+
         Debug.Log($"Pet {pet.PetName.Value} ends its turn.");
+        
+        // Get final card count before discard for debugging
+        int finalCardCount = pet.playerHandCardIds.Count;
+        Debug.Log($"Pet {pet.PetName.Value} has {finalCardCount} cards in hand before discarding");
         
         // Discard pet's hand using its HandManager
         if (petHandManager != null)
         {
             petHandManager.DiscardHand();
+            
+            // Get the client connection that owns this player
+            NetworkConnection petTurnOwnerConn = player.Owner;
+            
+            // Log connection details to help with debugging
+            Debug.Log($"CONNECTIONS (Pet Turn): Player {player.PlayerName.Value} owner ClientId: " +
+                     $"{(petTurnOwnerConn != null ? petTurnOwnerConn.ClientId.ToString() : "null")}");
+            
+            // Notify clients to clear pet's hand display - send specifically to the player's owner
+            if (petTurnOwnerConn != null)
+            {
+                Debug.Log($"Sending pet hand discard notification specifically to player owner connection {petTurnOwnerConn.ClientId}");
+                RpcNotifyHandDiscarded((uint)pet.ObjectId, petTurnOwnerConn);
+            }
+            else
+            {
+                Debug.LogWarning($"Player owner connection is null, sending broadcast notification for pet hand discard");
+                RpcNotifyHandDiscarded((uint)pet.ObjectId, null);
+            }
+            
+            // Wait for discard animation to complete
+            yield return new WaitForSeconds(1.5f);
         }
         else
         {
@@ -391,17 +505,40 @@ public class CombatManager : NetworkBehaviour
         }
         else
         {
-            // Update turn state - back to player's turn
-            var updatedFightState = fightState;
-            updatedFightState.currentTurn = CombatTurn.PlayerTurn;
-            int index = fightTurnStates.IndexOf(fightState);
-            fightTurnStates[index] = updatedFightState;
+            // Check if we should start a new round
+            if (currentRound.Value > 0) // Make sure we've started combat
+            {
+                // Update turn state - back to player's turn
+                var updatedFightState = fightState;
+                updatedFightState.currentTurn = CombatTurn.PlayerTurn;
+                int index = fightTurnStates.IndexOf(fightState);
+                fightTurnStates[index] = updatedFightState;
 
-            // Notify clients
-            RpcUpdateTurnState(fightState.playerObjId, fightState.petObjId, CombatTurn.PlayerTurn, player.Owner);
-            RpcEnableEndTurnButton(true, player.Owner);
+                // Start a new round - this will replenish energy and draw cards
+                StartNewRound();
+                
+                // Get the client connection that owns this player
+                NetworkConnection turnEndOwnerConn = player.Owner;
+                
+                // Log connection details to help with debugging
+                Debug.Log($"CONNECTIONS (Pet Turn End): Player {player.PlayerName.Value} owner ClientId: " +
+                         $"{(turnEndOwnerConn != null ? turnEndOwnerConn.ClientId.ToString() : "null")}");
+                
+                // Ensure we have a valid connection to send to
+                NetworkConnection targetConn = turnEndOwnerConn ?? player.Owner;
+                
+                Debug.Log($"Sending RPC notifications specifically to connection with ClientId: {targetConn.ClientId}");
 
-            Debug.Log($"Player {player.PlayerName.Value}'s turn has started again.");
+                // Notify clients about the turn change
+                RpcUpdateTurnState(fightState.playerObjId, fightState.petObjId, CombatTurn.PlayerTurn, targetConn);
+                RpcEnableEndTurnButton(true, targetConn);
+
+                Debug.Log($"Player {player.PlayerName.Value}'s turn has started again in a new round.");
+            }
+            else
+            {
+                Debug.LogError("Combat not properly initialized - round counter is 0 or negative");
+            }
         }
     }
 
@@ -415,8 +552,16 @@ public class CombatManager : NetworkBehaviour
         fightTurnStates.Remove(fightState);
         activeFightCount--;
 
+        // Get the client connection that owns the player
+        NetworkConnection fightEndOwnerConn = player.Owner;
+        
+        // Log connection details to help with debugging
+        Debug.Log($"CONNECTIONS (Fight End): Player {player.PlayerName.Value} owner ClientId: " +
+                 $"{(fightEndOwnerConn != null ? fightEndOwnerConn.ClientId.ToString() : "null")}");
+        
         // Notify only the clients involved in this fight
-        RpcNotifyFightEnded(fightState.playerObjId, fightState.petObjId, player.CurrentHealth.Value <= 0, player.Owner);
+        Debug.Log($"Sending fight end notification to connection {(fightEndOwnerConn != null ? fightEndOwnerConn.ClientId.ToString() : "null")}");
+        RpcNotifyFightEnded(fightState.playerObjId, fightState.petObjId, player.CurrentHealth.Value <= 0, fightEndOwnerConn);
 
         // If all fights are done, transition to draft phase
         if (activeFightCount <= 0)
@@ -708,49 +853,75 @@ public class CombatManager : NetworkBehaviour
     private void RpcUpdateTurnState(uint playerObjId, uint petObjId, CombatTurn newTurnState, NetworkConnection playerConnection)
     {
         Debug.Log($"RpcUpdateTurnState received - PlayerID: {playerObjId}, PetID: {petObjId}, " +
-                 $"Turn: {newTurnState}, TargetClientId: {playerConnection.ClientId}, " +
+                 $"Turn: {newTurnState}, TargetClientId: {(playerConnection != null ? playerConnection.ClientId.ToString() : "null")}, " +
                  $"LocalClientId: {NetworkManager.ClientManager.Connection.ClientId}");
                  
-        // Special handling for host - host needs to accept all turn updates
+        // Find the local player that belongs to this client
+        NetworkPlayer localPlayer = null;
+        foreach (var player in FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None))
+        {
+            if (player.IsOwner)
+            {
+                localPlayer = player;
+                Debug.Log($"RpcUpdateTurnState found local owned player: {player.PlayerName.Value} (ID: {player.ObjectId})");
+                break;
+            }
+        }
+        
+        // Get local player's pet (opponent)
+        NetworkPet localPlayerPet = null;
+        if (localPlayer != null && FightManager.Instance != null)
+        {
+            localPlayerPet = FightManager.Instance.GetOpponentForPlayer(localPlayer);
+            if (localPlayerPet != null)
+            {
+                Debug.Log($"RpcUpdateTurnState found local player's pet: {localPlayerPet.PetName.Value} (ID: {localPlayerPet.ObjectId})");
+            }
+        }
+
+        // Determine if this update is for the local player's fight
         bool shouldProcess = false;
         
+        // Host processes all updates
         if (NetworkManager.IsHostStarted)
         {
-            // Host should process all turn updates
             Debug.Log($"Host detected in RpcUpdateTurnState. Processing all turn updates.");
             shouldProcess = true;
         }
-        else
+        // Client only needs updates for their own fight
+        else if (localPlayer != null)
         {
-            // For non-host clients, check if they're involved in this fight
-            // Get the local player and check if it's involved in this fight
-            NetworkPlayer localPlayer = null;
-            foreach (var player in FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None))
+            // Check if this update is specifically for the local player's fight
+            if (localPlayer.ObjectId == playerObjId)
             {
-                if (player.IsOwner)
-                {
-                    localPlayer = player;
-                    break;
-                }
+                Debug.Log($"This turn update is for local player's fight. Processing.");
+                shouldProcess = true;
             }
-            
-            // Process if this is the player's connection or if the local player is involved in this fight
-            shouldProcess = (NetworkManager.ClientManager.Connection.ClientId == playerConnection.ClientId) ||
-                           (localPlayer != null && localPlayer.ObjectId == playerObjId);
-            
-            if (shouldProcess)
+            // Check if this update is for the local player's pet opponent
+            else if (localPlayerPet != null && localPlayerPet.ObjectId == petObjId)
             {
-                Debug.Log($"Client will process turn update - local player involved");
+                Debug.Log($"This turn update involves local player's pet opponent. Processing.");
+                shouldProcess = true;
+            }
+            // Also process if it's coming from the client's connection
+            else if (NetworkManager.ClientManager.Connection.ClientId == playerConnection.ClientId)
+            {
+                Debug.Log($"This turn update is from local client's connection. Processing.");
+                shouldProcess = true;
+            }
+            else
+            {
+                Debug.Log($"Turn update not for local fight: PlayerID {playerObjId}, PetID {petObjId}, Local Player ID: {localPlayer.ObjectId}, Local Pet ID: {(localPlayerPet != null ? localPlayerPet.ObjectId : -1)}");
             }
         }
         
         if (!shouldProcess)
         {
-            Debug.Log($"RpcUpdateTurnState skipped - not for this client ({NetworkManager.ClientManager.Connection.ClientId})");
+            Debug.Log($"RpcUpdateTurnState skipped - not relevant for this client ({NetworkManager.ClientManager.Connection.ClientId})");
             return;
         }
         
-        // Rename to avoid conflicts
+        // Find the player and pet objects by their IDs
         NetworkPlayer foundPlayer = null;
         NetworkPet foundPet = null;
         
@@ -808,45 +979,53 @@ public class CombatManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcEnableEndTurnButton(bool enabled, NetworkConnection playerConnection)
     {
-        Debug.Log($"RpcEnableEndTurnButton received - Enabled: {enabled}, TargetClientId: {playerConnection.ClientId}");
+        Debug.Log($"RpcEnableEndTurnButton received - Enabled: {enabled}, TargetClientId: {(playerConnection != null ? playerConnection.ClientId.ToString() : "null")}, LocalClientId: {NetworkManager.ClientManager.Connection.ClientId}");
         
-        // Special handling for host - host needs to process all updates
+        // Find the local player that belongs to this client
+        NetworkPlayer localPlayer = null;
+        foreach (var player in FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None))
+        {
+            if (player.IsOwner)
+            {
+                localPlayer = player;
+                Debug.Log($"RpcEnableEndTurnButton found local owned player: {player.PlayerName.Value} (ID: {player.ObjectId})");
+                break;
+            }
+        }
+        
+        // Determine if this update is for the local player's UI
         bool shouldProcess = false;
         
+        // Host processes all updates
         if (NetworkManager.IsHostStarted)
         {
-            // Host should process all updates
             Debug.Log($"Host detected in RpcEnableEndTurnButton. Processing update.");
             shouldProcess = true;
         }
-        else
+        // Client only needs updates for their own player
+        else if (localPlayer != null)
         {
-            // For non-host clients, check if they're involved in this update
-            // Get the local player
-            NetworkPlayer clientPlayer = null;
-            foreach (var player in FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None))
+            // Check if the client connection matches
+            if (NetworkManager.ClientManager.Connection.ClientId == playerConnection.ClientId)
             {
-                if (player.IsOwner)
-                {
-                    clientPlayer = player;
-                    break;
-                }
+                Debug.Log($"This button update is for local client's connection. Processing.");
+                shouldProcess = true;
             }
-            
-            // Process if this is the player's connection or if the local player is involved
-            shouldProcess = (NetworkManager.ClientManager.Connection.ClientId == playerConnection.ClientId) ||
-                           (clientPlayer != null && clientPlayer.Owner != null && 
-                            clientPlayer.Owner.ClientId == playerConnection.ClientId);
-            
-            if (shouldProcess)
+            // Check if the connection ID matches the local player's owner
+            else if (localPlayer.Owner != null && playerConnection != null && localPlayer.Owner.ClientId == playerConnection.ClientId)
             {
-                Debug.Log($"Client will process button update - local player involved");
+                Debug.Log($"This button update is for local player's owner. Processing.");
+                shouldProcess = true;
+            }
+            else
+            {
+                Debug.Log($"Button update not for local player - Local Player ClientId: {(localPlayer.Owner != null ? localPlayer.Owner.ClientId.ToString() : "null")}, Update for ClientId: {(playerConnection != null ? playerConnection.ClientId.ToString() : "null")}");
             }
         }
         
         if (!shouldProcess)
         {
-            Debug.Log($"RpcEnableEndTurnButton skipped - not for this client");
+            Debug.Log($"RpcEnableEndTurnButton skipped - not relevant for this client ({NetworkManager.ClientManager.Connection.ClientId})");
             return;
         }
         
@@ -1278,6 +1457,111 @@ public class CombatManager : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// Notifies clients to clear the visual hand display for an entity
+    /// </summary>
+    [ObserversRpc]
+    private void RpcNotifyHandDiscarded(uint entityObjId, NetworkConnection targetConnection = null)
+    {
+        Debug.Log($"RpcNotifyHandDiscarded received for entity ID: {entityObjId}, TargetConnection: {(targetConnection != null ? targetConnection.ClientId.ToString() : "broadcast")}");
+        
+        // Find the local player that belongs to this client
+        NetworkPlayer localPlayer = null;
+        foreach (var player in FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None))
+        {
+            if (player.IsOwner)
+            {
+                localPlayer = player;
+                Debug.Log($"RpcNotifyHandDiscarded found local owned player: {player.PlayerName.Value} (ID: {player.ObjectId})");
+                break;
+            }
+        }
+        
+        // Get local player's pet (opponent)
+        NetworkPet localPlayerPet = null;
+        if (localPlayer != null && FightManager.Instance != null)
+        {
+            localPlayerPet = FightManager.Instance.GetOpponentForPlayer(localPlayer);
+            if (localPlayerPet != null)
+            {
+                Debug.Log($"RpcNotifyHandDiscarded found local player's pet: {localPlayerPet.PetName.Value} (ID: {localPlayerPet.ObjectId})");
+            }
+        }
+        
+        // Default to not processing
+        bool shouldProcess = false;
+        
+        // Check if we're the target connection (if specified)
+        if (targetConnection != null && NetworkManager.ClientManager.Connection.ClientId == targetConnection.ClientId)
+        {
+            Debug.Log($"This client is the specific target of this notification. Will process.");
+            shouldProcess = true;
+        }
+        // Check if host (host processes all hand discards)
+        else if (NetworkManager.IsHostStarted)
+        {
+            Debug.Log($"Host detected - will process hand discard for entity {entityObjId}");
+            shouldProcess = true;
+        }
+        // Non-host client strictly checks if this entity is part of their own fight
+        else if (localPlayer != null)
+        {
+            // Only process if this is the local player
+            if (localPlayer.ObjectId == entityObjId)
+            {
+                Debug.Log($"Will process hand discard - it's for the local player (ID: {localPlayer.ObjectId})");
+                shouldProcess = true;
+            }
+            // Or if it's the local player's pet opponent
+            else if (localPlayerPet != null && localPlayerPet.ObjectId == entityObjId)
+            {
+                Debug.Log($"Will process hand discard - it's for the local player's pet opponent (ID: {localPlayerPet.ObjectId})");
+                shouldProcess = true;
+            }
+            else
+            {
+                Debug.Log($"SKIPPING hand discard - Entity ID {entityObjId} does NOT match local player (ID: {localPlayer.ObjectId}) or their pet (ID: {(localPlayerPet != null ? localPlayerPet.ObjectId : -1)})");
+                shouldProcess = false;
+            }
+        }
+        
+        if (!shouldProcess)
+        {
+            Debug.Log($"FINAL DECISION: Skipping hand discard processing for entity {entityObjId} - not relevant to this client");
+            return;
+        }
+        
+        Debug.Log($"FINAL DECISION: Processing hand discard processing for entity {entityObjId} - it belongs to this client's fight");
+        
+        // Find the entity (player or pet)
+        NetworkBehaviour entity = null;
+        if (NetworkManager.ClientManager.Objects.Spawned.TryGetValue((int)entityObjId, out NetworkObject netObj))
+        {
+            entity = netObj.GetComponent<NetworkBehaviour>();
+        }
+        
+        if (entity != null)
+        {
+            Debug.Log($"Processing hand discard for entity {entityObjId}");
+            
+            // Get the CardSpawner component and clear all cards
+            CardSpawner cardSpawner = entity.GetComponent<CardSpawner>();
+            if (cardSpawner != null)
+            {
+                Debug.Log($"Notifying CardSpawner to clear all cards for entity {entityObjId}");
+                cardSpawner.HandleHandDiscarded();
+            }
+            else
+            {
+                Debug.LogWarning($"CardSpawner component not found on entity {entityObjId}");
+            }
+        }
+        else
+        {
+            Debug.LogError($"Entity with ID {entityObjId} not found in client objects");
+        }
+    }
+
     #endregion
 
     // Helper method to check if it's a player's turn
@@ -1330,6 +1614,200 @@ public class CombatManager : NetworkBehaviour
                 Debug.Log("Client combat not yet initialized. Waiting for server to send turn state updates.");
             }
             return clientCombatInitialized;
+        }
+    }
+
+    /// <summary>
+    /// Finds a player by client ID using RelationshipManager
+    /// </summary>
+    private NetworkPlayer FindPlayerByClientId(int clientId)
+    {
+        // Get all players in the scene
+        var allPlayers = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        
+        // First try to find by direct owner connection
+        foreach (var player in allPlayers)
+        {
+            if (player.Owner != null && player.Owner.ClientId == clientId)
+            {
+                Debug.Log($"Found player by connection ClientId match: {player.PlayerName.Value} with ClientId {clientId}");
+                return player;
+            }
+        }
+        
+        // Then try to find by RelationshipManager ClientId
+        foreach (var player in allPlayers)
+        {
+            var relationshipManager = player.GetComponent<RelationshipManager>();
+            if (relationshipManager != null && relationshipManager.OwnerClientId == clientId)
+            {
+                Debug.Log($"Found player by RelationshipManager ClientId: {player.PlayerName.Value} with ClientId {clientId}");
+                return player;
+            }
+        }
+        
+        // If client ID is 0 or -1 and we're the host, find the host player as fallback
+        if ((clientId == 0 || clientId == -1) && NetworkManager.IsHostStarted)
+        {
+            foreach (var player in allPlayers)
+            {
+                var relationshipManager = player.GetComponent<RelationshipManager>();
+                if (relationshipManager != null && relationshipManager.IsOwnedByServer)
+                {
+                    Debug.Log($"Found host player as fallback: {player.PlayerName.Value}");
+                    return player;
+                }
+            }
+        }
+        
+        // If we couldn't find a player, return null
+        Debug.LogWarning($"No player found with ClientId {clientId}");
+        return null;
+    }
+
+    /// <summary>
+    /// Finds the local player for the client calling the method
+    /// </summary>
+    private NetworkPlayer FindLocalPlayer()
+    {
+        var allPlayers = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        foreach (var player in allPlayers)
+        {
+            // Check for ownership
+            if (player.IsOwner)
+            {
+                Debug.Log($"Found local player {player.PlayerName.Value} based on IsOwner");
+                return player;
+            }
+            
+            // Also check RelationshipManager
+            var rm = player.GetComponent<RelationshipManager>();
+            if (rm != null && rm.IsOwnedByLocalPlayer)
+            {
+                Debug.Log($"Found local player {player.PlayerName.Value} based on RelationshipManager.IsOwnedByLocalPlayer");
+                return player;
+            }
+        }
+        
+        // As a fallback, for host check for server ownership
+        if (NetworkManager.IsHostStarted)
+        {
+            foreach (var player in allPlayers)
+            {
+                var rm = player.GetComponent<RelationshipManager>();
+                if (rm != null && rm.IsOwnedByServer)
+                {
+                    Debug.Log($"Found host's player {player.PlayerName.Value} based on IsOwnedByServer");
+                    return player;
+                }
+            }
+        }
+        
+        Debug.LogWarning("Could not find local player");
+        return null;
+    }
+
+    /// <summary>
+    /// Called by the client to end their turn. This RPC sends the player's ObjectId to avoid
+    /// connection ID issues on the server.
+    /// </summary>
+    [ServerRpc(RequireOwnership = false)]
+    public void CmdEndTurnForPlayer(int playerObjectId)
+    {
+        Debug.Log($"CmdEndTurnForPlayer received for PlayerObjectId: {playerObjectId}");
+        
+        // Find the player object directly by ID
+        NetworkPlayer targetPlayer = null;
+        if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out NetworkObject playerObj))
+        {
+            targetPlayer = playerObj.GetComponent<NetworkPlayer>();
+            Debug.Log($"Found target player by ObjectId: {targetPlayer.PlayerName.Value} (ID: {playerObjectId})");
+        }
+        
+        if (targetPlayer == null)
+        {
+            Debug.LogError($"Could not find player with ObjectId {playerObjectId}");
+            return;
+        }
+        
+        // Once we have the player, find the fight state
+        FightTurnState? fightStateNullable = fightTurnStates.Find(state => state.playerObjId == targetPlayer.ObjectId);
+        
+        if (!fightStateNullable.HasValue)
+        {
+            Debug.LogError($"No fight state found for player {targetPlayer.PlayerName.Value} (ID: {targetPlayer.ObjectId})");
+            return;
+        }
+        
+        FightTurnState fightState = fightStateNullable.Value;
+        
+        // Double-check that we're using the right player
+        NetworkPlayer fightPlayer = GetNetworkObjectComponent<NetworkPlayer>(fightState.playerObjId);
+        if (fightPlayer == null)
+        {
+            Debug.LogError($"Player not found for ObjectId: {fightState.playerObjId}");
+            return;
+        }
+        
+        // Log details about which player's turn we're ending to help with debugging
+        Debug.Log($"Ending turn for player {fightPlayer.PlayerName.Value} (ID: {fightPlayer.ObjectId}, Owner ClientId: {(fightPlayer.Owner != null ? fightPlayer.Owner.ClientId.ToString() : "null")})");
+        
+        if (fightState.currentTurn != CombatTurn.PlayerTurn)
+        {
+            Debug.LogWarning($"Player tried to end turn, but it's not their turn (state: {fightState.currentTurn})");
+            return;
+        }
+
+        // Discard player's hand using their HandManager component
+        HandManager playerHandManager = fightPlayer.GetComponent<HandManager>();
+        if (playerHandManager != null)
+        {
+            playerHandManager.DiscardHand();
+            
+            // Get player's owner connection (should be the same as targetConnection calculated earlier)
+            NetworkConnection petTurnOwnerConn = fightPlayer.Owner;
+            
+            // Notify clients to clear player's hand display
+            Debug.Log($"Sending player hand discard notification to connection {(petTurnOwnerConn != null ? petTurnOwnerConn.ClientId.ToString() : "null")}");
+            RpcNotifyHandDiscarded((uint)fightPlayer.ObjectId, petTurnOwnerConn);
+        }
+        else
+        {
+            Debug.LogError($"HandManager component not found on player {fightPlayer.PlayerName.Value}");
+        }
+
+        // Update turn state
+        var updatedFightState = fightState;
+        updatedFightState.currentTurn = CombatTurn.PetTurn;
+        int index = fightTurnStates.IndexOf(fightState);
+        fightTurnStates[index] = updatedFightState;
+
+        // Get the client connection that owns this player
+        NetworkConnection turnEndOwnerConn = fightPlayer.Owner;
+        
+        // Log connection details to help with debugging
+        Debug.Log($"CONNECTIONS: Player owner ClientId: {(turnEndOwnerConn != null ? turnEndOwnerConn.ClientId.ToString() : "null")}");
+        
+        // Ensure we have a valid connection to send to (fallback to the command sender if needed)
+        NetworkConnection targetConn = turnEndOwnerConn ?? Owner;
+        
+        Debug.Log($"Sending RPC notifications specifically to connection with ClientId: {targetConn.ClientId}");
+
+        // Notify clients about the turn state change
+        RpcUpdateTurnState(fightState.playerObjId, fightState.petObjId, CombatTurn.PetTurn, targetConn);
+        
+        // Notify clients to disable end turn button
+        RpcEnableEndTurnButton(false, targetConn);
+        
+        // Start pet turn process
+        NetworkPet pet = GetNetworkObjectComponent<NetworkPet>(fightState.petObjId);
+        if (pet != null)
+        {
+            StartCoroutine(ProcessPetTurn(pet, fightPlayer, updatedFightState));
+        }
+        else
+        {
+            Debug.LogError($"Pet not found for ObjectId: {fightState.petObjId}");
         }
     }
 } 

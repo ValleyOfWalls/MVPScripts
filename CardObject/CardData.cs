@@ -15,6 +15,15 @@ public enum CardEffectType
 }
 */
 
+// Define card target types
+public enum CardTargetType
+{
+    Self,       // Target the caster (player or pet)
+    Opponent,   // Target the opponent (enemy player or pet)
+    Ally,       // Target your ally (player targets pet, pet targets player)
+    Random      // Target is chosen randomly
+}
+
 [CreateAssetMenu(fileName = "New CardData", menuName = "Card Game/Card Data")]
 public class CardData : ScriptableObject
 {
@@ -29,6 +38,7 @@ public class CardData : ScriptableObject
 
     [Header("Gameplay")]
     [SerializeField] private CardEffectType _effectType = CardEffectType.Damage; // Make sure CardEffectType is defined
+    [SerializeField] private CardTargetType _targetType = CardTargetType.Opponent; // Default to targeting opponent
     [SerializeField] private int _amount = 1; // Potency of the effect (e.g., damage amount, cards to draw)
     [SerializeField] private int _energyCost = 1;
 
@@ -38,6 +48,7 @@ public class CardData : ScriptableObject
     public string Description => _description;
     public Sprite CardArtwork => _cardArtwork;
     public CardEffectType EffectType => _effectType;
+    public CardTargetType TargetType => _targetType;
     public int Amount => _amount;
     public int EnergyCost => _energyCost;
 } 

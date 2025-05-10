@@ -68,9 +68,9 @@ public class HandleCardPlay : MonoBehaviour
     }
 
     /// <summary>
-    /// Internal method to determine the target for this card
+    /// Internal method to determine the target for this card based on the card's target type
     /// </summary>
-    private bool TryGetTarget(out NetworkBehaviour target)
+    private bool TryGetTarget(CardData cardData, out NetworkBehaviour target)
     {
         target = null;
         
@@ -86,26 +86,100 @@ public class HandleCardPlay : MonoBehaviour
             return false;
         }
         
-        if (parentEntity is NetworkPlayer player)
+        if (cardData == null)
         {
-            NetworkPet targetPet = fightManager.GetOpponentForPlayer(player);
-            if (targetPet != null)
-            {
-                target = targetPet;
-                return true;
-            }
-        }
-        else if (parentEntity is NetworkPet pet)
-        {
-            NetworkPlayer targetPlayer = fightManager.GetOpponentForPet(pet);
-            if (targetPlayer != null)
-            {
-                target = targetPlayer;
-                return true;
-            }
+            Debug.LogError("HandleCardPlay: Cannot get target - card data is null.");
+            return false;
         }
         
-        Debug.LogError($"No target found for {parentEntity.name} in FightManager.");
+        // Determine target based on the card's target type
+        switch (cardData.TargetType)
+        {
+            case CardTargetType.Self:
+                // Target self
+                target = parentEntity;
+                return true;
+                
+            case CardTargetType.Opponent:
+                // Target opponent
+                if (parentEntity is NetworkPlayer player)
+                {
+                    NetworkPet targetPet = fightManager.GetOpponentForPlayer(player);
+                    if (targetPet != null)
+                    {
+                        target = targetPet;
+                        return true;
+                    }
+                }
+                else if (parentEntity is NetworkPet pet)
+                {
+                    NetworkPlayer targetPlayer = fightManager.GetOpponentForPet(pet);
+                    if (targetPlayer != null)
+                    {
+                        target = targetPlayer;
+                        return true;
+                    }
+                }
+                break;
+                
+            case CardTargetType.Ally:
+                // Target ally
+                if (parentEntity is NetworkPlayer allyPlayer)
+                {
+                    // Player targets their pet
+                    RelationshipManager relationshipManager = allyPlayer.GetComponent<RelationshipManager>();
+                    if (relationshipManager != null && relationshipManager.Ally != null)
+                    {
+                        target = relationshipManager.Ally as NetworkBehaviour;
+                        return true;
+                    }
+                }
+                else if (parentEntity is NetworkPet allyPet)
+                {
+                    // Pet targets its owner player
+                    NetworkPlayer owner = allyPet.GetOwnerPlayer();
+                    if (owner != null)
+                    {
+                        target = owner;
+                        return true;
+                    }
+                }
+                break;
+                
+            case CardTargetType.Random:
+                // Randomly choose between opponent and self
+                if (Random.value < 0.5f)
+                {
+                    // Target self
+                    target = parentEntity;
+                    return true;
+                }
+                else
+                {
+                    // Target opponent (same as Opponent case)
+                    if (parentEntity is NetworkPlayer randomPlayer)
+                    {
+                        NetworkPet targetPet = fightManager.GetOpponentForPlayer(randomPlayer);
+                        if (targetPet != null)
+                        {
+                            target = targetPet;
+                            return true;
+                        }
+                    }
+                    else if (parentEntity is NetworkPet randomPet)
+                    {
+                        NetworkPlayer targetPlayer = fightManager.GetOpponentForPet(randomPet);
+                        if (targetPlayer != null)
+                        {
+                            target = targetPlayer;
+                            return true;
+                        }
+                    }
+                }
+                break;
+        }
+        
+        Debug.LogError($"No target found for {parentEntity.name} using target type {cardData.TargetType}");
         return false;
     }
 
@@ -153,10 +227,10 @@ public class HandleCardPlay : MonoBehaviour
             return (false, "Card not found in your hand.");
         }
         
-        // Try to get the target
-        if (!TryGetTarget(out NetworkBehaviour target))
+        // Try to get the target for this card
+        if (!TryGetTarget(cardData, out NetworkBehaviour target))
         {
-            return (false, "Target not found.");
+            return (false, "Target not found for card effect.");
         }
         
         // Validate that target has an EffectManager
@@ -208,8 +282,8 @@ public class HandleCardPlay : MonoBehaviour
             return false;
         }
         
-        // Get the target
-        if (!TryGetTarget(out NetworkBehaviour target))
+        // Get the target based on card's targeting type
+        if (!TryGetTarget(cardData, out NetworkBehaviour target))
         {
             return false;
         }
@@ -260,8 +334,8 @@ public class HandleCardPlay : MonoBehaviour
             return false;
         }
         
-        // Find the target
-        if (!TryGetTarget(out NetworkBehaviour target))
+        // Find the target based on the card's target type
+        if (!TryGetTarget(cardData, out NetworkBehaviour target))
         {
             return false;
         }
