@@ -24,8 +24,6 @@ public class StartScreenManager : MonoBehaviour
         // Register the start screen canvas with the GamePhaseManager
         if (gamePhaseManager != null && startScreenCanvas != null)
         {
-            // We only register our own canvas, other managers should register theirs
-            // Let the GamePhaseManager retrieve other canvases from respective managers
             gamePhaseManager.SetStartScreenCanvas(startScreenCanvas);
         }
     }
@@ -35,8 +33,6 @@ public class StartScreenManager : MonoBehaviour
     /// </summary>
     public void InitializeGame()
     {
-        Debug.Log("StartScreenManager: Initializing game...");
-        
         // Check if we have required references
         if (startScreenUIManager == null)
         {
@@ -46,20 +42,15 @@ public class StartScreenManager : MonoBehaviour
         
         if (gamePhaseManager == null)
         {
-            Debug.LogWarning("StartScreenManager: GamePhaseManager reference is null. Finding it in the scene...");
             gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
             
             if (gamePhaseManager == null)
             {
                 Debug.LogError("StartScreenManager: GamePhaseManager not found in the scene!");
             }
-            else
+            else if (startScreenCanvas != null)
             {
-                // Register only our canvas with the GamePhaseManager
-                if (startScreenCanvas != null)
-                {
-                    gamePhaseManager.SetStartScreenCanvas(startScreenCanvas);
-                }
+                gamePhaseManager.SetStartScreenCanvas(startScreenCanvas);
             }
         }
         
@@ -69,8 +60,6 @@ public class StartScreenManager : MonoBehaviour
         // Show start screen
         if (gamePhaseManager != null)
         {
-            // Tell the GamePhaseManager to set the Start phase
-            Debug.Log("StartScreenManager: Transitioning to Start phase via GamePhaseManager");
             gamePhaseManager.SetStartPhase();
         }
         else
@@ -81,7 +70,7 @@ public class StartScreenManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Check if Steam is available (placeholder for actual SteamNetworkIntegration call)
+    /// Check if Steam is available
     /// </summary>
     private void CheckSteamAvailability()
     {
@@ -98,8 +87,6 @@ public class StartScreenManager : MonoBehaviour
     /// </summary>
     public void OnStartGameRequested()
     {
-        Debug.Log("StartScreenManager: Start game requested");
-        
         if (isSteamAvailable || allowOfflinePlay)
         {
             // Begin transition to lobby
@@ -116,8 +103,6 @@ public class StartScreenManager : MonoBehaviour
     /// </summary>
     private void TransitionToLobby()
     {
-        Debug.Log("StartScreenManager: Transitioning to lobby");
-        
         if (gamePhaseManager != null)
         {
             // Tell the GamePhaseManager to set the Lobby phase

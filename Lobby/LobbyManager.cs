@@ -21,23 +21,12 @@ public class LobbyManager : NetworkBehaviour
 
     private void Awake()
     {
-        fishNetManager = Object.FindFirstObjectByType<NetworkManager>();
-        if (fishNetManager == null)
-        {
-            Debug.LogError("LobbyManager: FishNet NetworkManager not found in scene.");
-            return;
-        }
-
-        if (uiManager == null)
-        {
-            Debug.LogError("LobbyManager: LobbyUIManager reference not assigned in the Inspector.");
-        }
-        
+        fishNetManager = FindFirstObjectByType<NetworkManager>();
         gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-        if (gamePhaseManager == null)
-        {
-            Debug.LogError("LobbyManager: GamePhaseManager not found in scene.");
-        }
+        
+        if (fishNetManager == null) Debug.LogError("LobbyManager: FishNet NetworkManager not found in scene.");
+        if (uiManager == null) Debug.LogError("LobbyManager: LobbyUIManager reference not assigned in the Inspector.");
+        if (gamePhaseManager == null) Debug.LogError("LobbyManager: GamePhaseManager not found in scene.");
     }
 
     public override void OnStartClient()
@@ -69,7 +58,6 @@ public class LobbyManager : NetworkBehaviour
             connectedPlayers.Add(conn);
             playerReadyStates[conn] = false; // Default to not ready
             playerDisplayNames[conn] = playerName; // Store base name
-            Debug.Log($"Player {playerName} (ConnId: {conn.ClientId}) added to lobby on server.");
             BroadcastFullPlayerList();
             CheckAllPlayersReady(); // Server checks ready state
         }
@@ -84,13 +72,8 @@ public class LobbyManager : NetworkBehaviour
         if (playerReadyStates.TryGetValue(conn, out bool currentState))
         {
             playerReadyStates[conn] = !currentState;
-            Debug.Log($"Player {playerDisplayNames[conn]} (ConnId: {conn.ClientId}) toggled ready state to: {!currentState} on server.");
             BroadcastFullPlayerList();
             CheckAllPlayersReady(); // Server re-checks
-        }
-        else
-        {
-            Debug.LogWarning($"CmdTogglePlayerReadyState: Could not find player for connection {conn.ClientId}");
         }
     }
 
@@ -134,10 +117,6 @@ public class LobbyManager : NetworkBehaviour
         }
         
         bool allReady = (totalPlayers > 0 && currentReadyCount == totalPlayers);
-
-        Debug.Log($"CheckAllPlayersReady (Server): Total={totalPlayers}, Ready={currentReadyCount}, AllReadyLogicResult={allReady}");
-
-        // Update all clients (including host) with the start button state
         RpcUpdateStartButtonState(allReady);
     }
 
@@ -145,7 +124,6 @@ public class LobbyManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcUpdateStartButtonState(bool interactable)
     {
-        Debug.Log($"RpcUpdateStartButtonState called on {(IsServerStarted ? "Host/Server" : "Client")}. Setting startButton.interactable to: {interactable}");
         uiManager.SetStartButtonInteractable(interactable);
     }
 
@@ -165,17 +143,8 @@ public class LobbyManager : NetworkBehaviour
 
             if (canStart)
             {
-                Debug.Log("All players ready. Server is starting game...");
                 RpcStartGame();
             }
-            else
-            {
-                Debug.LogWarning($"Not all players are ready or not enough players to start. Players: {totalPlayers}, Ready: {currentReadyCount}");
-            }
-        }
-        else
-        {
-            Debug.LogWarning("Client tried to request game start. This action is server-authoritative.");
         }
     }
 
@@ -183,36 +152,20 @@ public class LobbyManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcStartGame()
     {
-        Debug.Log("RpcStartGame received. Transitioning to combat phase.");
-        
         // Tell UI manager to hide lobby UI
         uiManager.HideLobbyUI();
         
         // Use GamePhaseManager to transition to Combat phase
         if (gamePhaseManager != null)
         {
-            // Update the game phase locally
             gamePhaseManager.SetCombatPhase();
-        }
-        else
-        {
-            Debug.LogError("GamePhaseManager is null in LobbyManager.RpcStartGame");
         }
         
         // Find and initialize the combat setup
         CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
-        if (combatSetup != null)
+        if (combatSetup != null && IsServerStarted)
         {
-            // If we're the server, initialize combat setup
-            if (IsServerStarted)
-            {
-                Debug.Log("Server is initializing combat setup");
-                combatSetup.InitializeCombat();
-            }
-        }
-        else
-        {
-            Debug.LogError("CombatSetup not found in scene");
+            combatSetup.InitializeCombat();
         }
     }
 
@@ -224,12 +177,8 @@ public class LobbyManager : NetworkBehaviour
         {
             connectedPlayers.Remove(conn);
             playerReadyStates.Remove(conn);
-            string disconnectedPlayerName = playerDisplayNames.ContainsKey(conn) ? playerDisplayNames[conn] : "Unknown";
             playerDisplayNames.Remove(conn);
             
-            Debug.Log($"Player {disconnectedPlayerName} (ConnId: {conn.ClientId}) disconnected from lobby.");
-            
-            // Update the UI for remaining players
             BroadcastFullPlayerList();
             CheckAllPlayersReady();
         }

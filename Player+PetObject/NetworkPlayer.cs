@@ -271,6 +271,13 @@ public class NetworkPlayer : NetworkBehaviour
         
         Debug.Log($"NotifyCardPlayed received on client for card ID {cardId}, IsOwner: {IsOwner}, IsLocalPlayer: {IsClientInitialized && IsOwner}");
         
+        // Check if this object is still valid before proceeding (to prevent "server not active" warnings)
+        if (!IsSpawned) 
+        {
+            Debug.LogWarning($"NotifyCardPlayed: NetworkPlayer object is no longer spawned. Ignoring card removal for card {cardId}");
+            return;
+        }
+        
         // On client side, get the CardSpawner and tell it to remove the card
         CardSpawner cardSpawner = GetComponent<CardSpawner>();
         if (cardSpawner != null)
@@ -279,9 +286,17 @@ public class NetworkPlayer : NetworkBehaviour
             // This ensures cards are only removed from the player who actually played them
             if (IsOwner || IsClientOnlyInitialized || (FishNet.InstanceFinder.IsHostStarted && ObjectId == GetComponent<NetworkObject>().ObjectId))
             {
-                // Use the new method for server-confirmed card removal
-                cardSpawner.OnServerConfirmCardPlayed(cardId);
-                Debug.Log($"Server confirmed card {cardId} played - removing from display");
+                try
+                {
+                    // Use the new method for server-confirmed card removal 
+                    // This method has been updated to use instance IDs even with just a card ID input
+                    cardSpawner.OnServerConfirmCardPlayed(cardId);
+                    Debug.Log($"Server confirmed card {cardId} played - removing from display");
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"Exception when removing card {cardId}: {ex.Message}");
+                }
             }
             else
             {
@@ -304,6 +319,13 @@ public class NetworkPlayer : NetworkBehaviour
         
         Debug.Log($"NotifyCardPlayed received on client for card ID {cardId}, Instance ID {cardInstanceId}, IsOwner: {IsOwner}, IsLocalPlayer: {IsClientInitialized && IsOwner}");
         
+        // Check if this object is still valid before proceeding (to prevent "server not active" warnings)
+        if (!IsSpawned) 
+        {
+            Debug.LogWarning($"NotifyCardPlayed: NetworkPlayer object is no longer spawned. Ignoring card removal for card {cardId}, instance {cardInstanceId}");
+            return;
+        }
+        
         // On client side, get the CardSpawner and tell it to remove the card
         CardSpawner cardSpawner = GetComponent<CardSpawner>();
         if (cardSpawner != null)
@@ -312,9 +334,17 @@ public class NetworkPlayer : NetworkBehaviour
             // This ensures cards are only removed from the player who actually played them
             if (IsOwner || IsClientOnlyInitialized || (FishNet.InstanceFinder.IsHostStarted && ObjectId == GetComponent<NetworkObject>().ObjectId))
             {
-                // Use the new method for server-confirmed card removal with instance ID
-                cardSpawner.OnServerConfirmCardPlayed(cardId, cardInstanceId);
-                Debug.Log($"Server confirmed card {cardId} (Instance: {cardInstanceId}) played - removing from display");
+                // Catch any exceptions that might occur due to timing issues with despawning
+                try
+                {
+                    // Use the new method for server-confirmed card removal with instance ID
+                    cardSpawner.OnServerConfirmCardPlayed(cardId, cardInstanceId);
+                    Debug.Log($"Server confirmed card {cardId} (Instance: {cardInstanceId}) played - removing from display");
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"Exception when removing card {cardId} (Instance: {cardInstanceId}): {ex.Message}");
+                }
             }
             else
             {

@@ -40,20 +40,9 @@ public class LobbyUIManager : MonoBehaviour
             startButton.interactable = false; // Disabled until conditions are met
         }
 
-        if (lobbyCanvas == null)
-        {
-            Debug.LogError("LobbyUIManager: Lobby Canvas is not assigned in the Inspector.");
-        }
-
-        if (playerListText == null)
-        {
-            Debug.LogError("LobbyUIManager: Player List Text is not assigned in the Inspector.");
-        }
-
-        if (lobbyManager == null)
-        {
-            Debug.LogError("LobbyUIManager: LobbyManager reference is not assigned in the Inspector.");
-        }
+        if (lobbyCanvas == null) Debug.LogError("LobbyUIManager: Lobby Canvas is not assigned in the Inspector.");
+        if (playerListText == null) Debug.LogError("LobbyUIManager: Player List Text is not assigned in the Inspector.");
+        if (lobbyManager == null) Debug.LogError("LobbyUIManager: LobbyManager reference is not assigned in the Inspector.");
         
         // Find the GamePhaseManager if not set in inspector
         if (gamePhaseManager == null)
@@ -79,7 +68,6 @@ public class LobbyUIManager : MonoBehaviour
     private void Start()
     {
         // Ensure lobby canvas is not initially visible
-        // This might be overridden by StartScreenUIManager.TransitionToLobbyScreen()
         if (lobbyCanvas != null)
         {
             lobbyCanvas.SetActive(false);
@@ -91,8 +79,6 @@ public class LobbyUIManager : MonoBehaviour
     /// </summary>
     private void OnReadyButtonClicked()
     {
-        Debug.Log("LobbyUIManager: Ready button clicked");
-        
         if (lobbyManager != null)
         {
             lobbyManager.CmdTogglePlayerReadyState();
@@ -104,16 +90,9 @@ public class LobbyUIManager : MonoBehaviour
     /// </summary>
     private void OnStartButtonClicked()
     {
-        Debug.Log("LobbyUIManager: Start button clicked");
-        
         if (lobbyManager != null)
         {
-            // Let LobbyManager handle everything including phase change
-            Debug.Log("LobbyUIManager: Notifying LobbyManager to start combat phase");
             lobbyManager.RequestStartGame();
-            
-            // REMOVED: Direct calls to GamePhaseManager and CombatSetup
-            // LobbyManager will handle these via its RpcStartGame method
         }
         else
         {
@@ -124,7 +103,6 @@ public class LobbyUIManager : MonoBehaviour
     /// <summary>
     /// Updates the player list displayed in the UI
     /// </summary>
-    /// <param name="displayNamesToShow">The list of player names to display</param>
     public void UpdatePlayerListUI(List<string> displayNamesToShow)
     {
         if (playerListText != null)
@@ -136,16 +114,11 @@ public class LobbyUIManager : MonoBehaviour
     /// <summary>
     /// Sets the interactable state of the start button
     /// </summary>
-    /// <param name="interactable">Whether the button should be interactable</param>
     public void SetStartButtonInteractable(bool interactable)
     {
         if (startButton != null)
         {
             startButton.interactable = interactable;
-        }
-        else
-        {
-            Debug.LogWarning("LobbyUIManager: SetStartButtonInteractable called but startButton is null.");
         }
     }
 

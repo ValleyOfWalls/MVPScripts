@@ -96,7 +96,7 @@ public class GamePhaseManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Server method to set the game phase and notify clients
+    /// Sets the game phase and executes phase-specific logic
     /// </summary>
     private void SetPhase(GamePhase newPhase)
     {
@@ -104,7 +104,6 @@ public class GamePhaseManager : MonoBehaviour
         
         GamePhase oldPhase = currentPhase;
         currentPhase = newPhase;
-        Debug.Log($"Game phase changed from {oldPhase} to {newPhase}");
         
         // Update local UI for this client
         UpdatePhaseLocally(newPhase);
@@ -124,7 +123,6 @@ public class GamePhaseManager : MonoBehaviour
                 // Handle transition to Lobby phase - connect to Steam Network
                 if (SteamNetworkIntegration.Instance != null)
                 {
-                    Debug.Log("GamePhaseManager: Requesting Steam lobby creation/join via SteamNetworkIntegration");
                     SteamNetworkIntegration.Instance.RequestLobbiesList();
                 }
                 else
@@ -134,28 +132,11 @@ public class GamePhaseManager : MonoBehaviour
                 break;
                 
             case GamePhase.Draft:
-                // Handle transition to Draft phase
-                break;
-                
             case GamePhase.Combat:
-                // Handle transition to Combat phase
-                break;
-                
             case GamePhase.Start:
-                // Handle transition to Start phase
+                // Phase-specific initialization logic if needed
                 break;
         }
-    }
-    
-    /// <summary>
-    /// Network the phase change to other clients if this is the server
-    /// This method is no longer needed and should not be used
-    /// Phase changes should be handled by NetworkBehaviours like LobbyManager
-    /// </summary>
-    private void NetworkPhaseChange(GamePhase newPhase)
-    {
-        // This method is now deprecated
-        Debug.LogWarning("NetworkPhaseChange is deprecated. Phase changes should be handled by NetworkBehaviours directly.");
     }
     
     /// <summary>
@@ -166,7 +147,6 @@ public class GamePhaseManager : MonoBehaviour
         GamePhase receivedPhase = (GamePhase)phaseInt;
         if (currentPhase != receivedPhase)
         {
-            Debug.Log($"Received networked phase change: {receivedPhase}");
             UpdatePhaseLocally(receivedPhase);
         }
     }
@@ -197,8 +177,6 @@ public class GamePhaseManager : MonoBehaviour
         if (lobbyCanvas != null) lobbyCanvas.SetActive(currentPhase == GamePhase.Lobby);
         if (draftCanvas != null) draftCanvas.SetActive(currentPhase == GamePhase.Draft);
         if (combatCanvas != null) combatCanvas.SetActive(currentPhase == GamePhase.Combat);
-        
-        Debug.Log($"Updated UI canvases for {currentPhase} phase");
     }
     
     /// <summary>
@@ -235,101 +213,71 @@ public class GamePhaseManager : MonoBehaviour
         return currentPhase;
     }
     
-    /// <summary>
-    /// Set UI canvas references during runtime - this method is kept for backward compatibility
-    /// but each manager should preferably set only its own canvas reference
-    /// </summary>
-    public void SetCanvasReferences(GameObject start, GameObject lobby, GameObject combat, GameObject draft)
-    {
-        // Only update canvases that are provided (non-null)
-        if (start != null) startScreenCanvas = start;
-        if (lobby != null) lobbyCanvas = lobby;
-        if (combat != null) combatCanvas = combat;
-        if (draft != null) draftCanvas = draft;
-        
-        // Update UI based on current phase
-        UpdateUIForCurrentPhase();
-    }
+    #region Canvas Setting Methods
     
-    /// <summary>
-    /// Set the start screen canvas reference
-    /// </summary>
     public void SetStartScreenCanvas(GameObject canvas)
     {
-        if (canvas != null)
+        if (canvas != null) 
         {
             startScreenCanvas = canvas;
             UpdateUIForCurrentPhase();
         }
     }
     
-    /// <summary>
-    /// Set the lobby canvas reference
-    /// </summary>
     public void SetLobbyCanvas(GameObject canvas)
     {
-        if (canvas != null)
+        if (canvas != null) 
         {
             lobbyCanvas = canvas;
             UpdateUIForCurrentPhase();
         }
     }
     
-    /// <summary>
-    /// Set the draft canvas reference
-    /// </summary>
     public void SetDraftCanvas(GameObject canvas)
     {
-        if (canvas != null)
+        if (canvas != null) 
         {
             draftCanvas = canvas;
             UpdateUIForCurrentPhase();
         }
     }
     
-    /// <summary>
-    /// Set the combat canvas reference
-    /// </summary>
     public void SetCombatCanvas(GameObject canvas)
     {
-        if (canvas != null)
+        if (canvas != null) 
         {
             combatCanvas = canvas;
             UpdateUIForCurrentPhase();
         }
     }
+    
+    #endregion
 }
 
 /// <summary>
-/// Helper class to network phase changes from server to clients
-/// This component is DEPRECATED and should not be used
-/// Phase changes should be handled by proper NetworkBehaviours like LobbyManager
+/// Helper class for networking phase changes via FishNet
 /// </summary>
 public class PhaseNetworker : NetworkBehaviour
 {
-    /// <summary>
-    /// Send a phase change from server to all clients
-    /// </summary>
+    private GamePhaseManager phaseManager;
+    
+    private void Awake()
+    {
+        phaseManager = FindFirstObjectByType<GamePhaseManager>();
+    }
+    
     [Server]
     public void SendPhaseChangeToClients(int phaseInt)
     {
-        Debug.LogWarning("PhaseNetworker is deprecated. Phases should be changed through NetworkBehaviours directly.");
-        // RPC is still called to avoid null reference errors
         RpcPhaseChanged(phaseInt);
     }
     
-    /// <summary>
-    /// RPC to notify clients of phase change
-    /// </summary>
     [ObserversRpc]
     private void RpcPhaseChanged(int phaseInt)
     {
-        if (!IsServerInitialized) // Only process on clients, not the server that sent it
+        if (phaseManager != null)
         {
-            if (GamePhaseManager.Instance != null)
-            {
-                GamePhaseManager.Instance.OnNetworkedPhaseChangeReceived(phaseInt);
-            }
+            phaseManager.OnNetworkedPhaseChangeReceived(phaseInt);
         }
     }
 } 

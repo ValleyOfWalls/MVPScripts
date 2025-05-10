@@ -1,6 +1,7 @@
 using UnityEngine;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using FishNet.Connection;
 using System.Collections.Generic;
 
 /// <summary>
@@ -12,6 +13,7 @@ public class HandleCardPlay : MonoBehaviour
     private NetworkBehaviour parentEntity; // Reference to the NetworkPlayer or NetworkPet this card belongs to
     private NetworkBehaviour targetEntity; // Reference to the target entity for the card effect
     private FightManager fightManager;     // Reference to the scene's FightManager
+    private CombatManager combatManager;   // Reference to the scene's CombatManager
     
     private bool isEntitySet = false;      // Flag to track if the parent entity has been set
     
@@ -51,13 +53,18 @@ public class HandleCardPlay : MonoBehaviour
             fightManager = FightManager.Instance;
         }
         
-        Debug.Log($"HandleCardPlay: Successfully set owner entity to {ownerObject.name}");
+        // Find the CombatManager in the scene if not already set
+        if (combatManager == null)
+        {
+            combatManager = CombatManager.Instance;
+        }
     }
     
     private void Awake()
     {
-        // Find the FightManager in the scene
+        // Find the FightManager and CombatManager in the scene
         fightManager = FightManager.Instance;
+        combatManager = CombatManager.Instance;
     }
 
     /// <summary>
@@ -103,6 +110,143 @@ public class HandleCardPlay : MonoBehaviour
     }
 
     /// <summary>
+    /// Validates whether a card can be played by the parent entity
+    /// </summary>
+    /// <param name="cardId">The ID of the card to validate</param>
+    /// <returns>A tuple with (canPlay, errorMessage)</returns>
+    public (bool canPlay, string errorMessage) ValidateCardPlay(int cardId)
+    {
+        if (!isEntitySet || parentEntity == null)
+        {
+            return (false, "Owner entity not set.");
+        }
+        
+        // Make sure the parent entity is a NetworkPlayer (pets use different logic)
+        if (!(parentEntity is NetworkPlayer player))
+        {
+            return (false, "Only players can manually play cards.");
+        }
+        
+        // Check if it's the player's turn
+        if (combatManager != null && !combatManager.IsPlayerTurn(player))
+        {
+            return (false, "Not your turn!");
+        }
+        
+        // Get card data
+        CardData cardData = GetCardData(cardId);
+        if (cardData == null)
+        {
+            return (false, "Card not found in database.");
+        }
+        
+        // Check if player has enough energy for the card
+        if (player.CurrentEnergy.Value < cardData.EnergyCost)
+        {
+            return (false, $"Not enough energy! Need {cardData.EnergyCost} energy.");
+        }
+        
+        // Check if the card is in the player's hand
+        CombatHand playerHand = player.GetComponent<CombatHand>();
+        if (playerHand == null || !playerHand.HasCard(cardId))
+        {
+            return (false, "Card not found in your hand.");
+        }
+        
+        // Try to get the target
+        if (!TryGetTarget(out NetworkBehaviour target))
+        {
+            return (false, "Target not found.");
+        }
+        
+        // Validate that target has an EffectManager
+        if (target.GetComponent<EffectManager>() == null)
+        {
+            return (false, "Target cannot receive card effects.");
+        }
+        
+        return (true, string.Empty);
+    }
+    
+    /// <summary>
+    /// Handles the full card playing process, including validation, energy cost, and effect application
+    /// </summary>
+    /// <param name="player">The player playing the card</param>
+    /// <param name="cardId">The ID of the card being played</param>
+    /// <param name="cardInstanceId">The instance ID of the card</param>
+    /// <returns>True if the card was successfully played</returns>
+    public bool HandleCardPlayRequest(NetworkPlayer player, int cardId, string cardInstanceId)
+    {
+        if (player == null)
+        {
+            Debug.LogError("HandleCardPlay: Player cannot be null");
+            return false;
+        }
+        
+        // Set the owner entity to the player if not already set
+        if (!isEntitySet || parentEntity != player)
+        {
+            SetOwnerEntity(player.gameObject);
+        }
+        
+        // Validate that the card can be played
+        var (canPlay, errorMessage) = ValidateCardPlay(cardId);
+        if (!canPlay)
+        {
+            if (player.Owner != null && combatManager != null)
+            {
+                // Send notification to the player
+                combatManager.SendNotificationToPlayer(errorMessage, player.Owner);
+            }
+            return false;
+        }
+        
+        // Get the card data
+        CardData cardData = GetCardData(cardId);
+        if (cardData == null)
+        {
+            return false;
+        }
+        
+        // Get the target
+        if (!TryGetTarget(out NetworkBehaviour target))
+        {
+            return false;
+        }
+        
+        // Get the HandManager
+        HandManager handManager = player.GetComponent<HandManager>();
+        if (handManager == null)
+        {
+            return false;
+        }
+        
+        // Get the effect manager
+        EffectManager targetEffectManager = target.GetComponent<EffectManager>();
+        if (targetEffectManager == null)
+        {
+            return false;
+        }
+        
+        // Deduct energy cost
+        player.ChangeEnergy(-cardData.EnergyCost);
+        
+        // Apply the effect from the player to the target
+        targetEffectManager.ApplyEffect(target, cardData);
+        
+        // Move the card from hand to discard
+        handManager.MoveCardToDiscard(cardId);
+        
+        // Notify clients that the card was played
+        if (combatManager != null)
+        {
+            combatManager.NotifyCardPlayed((uint)player.ObjectId, (uint)target.ObjectId, cardId, cardInstanceId, player.Owner);
+        }
+        
+        return true;
+    }
+
+    /// <summary>
     /// Play this card on the appropriate target.
     /// Note: Card management (moving to discard, visual updates) should be handled elsewhere.
     /// </summary>
@@ -127,12 +271,7 @@ public class HandleCardPlay : MonoBehaviour
         if (targetEffectManager != null)
         {
             // Apply the effect to the target
-            targetEffectManager.ApplyEffect(parentEntity, cardData);
-            
-            string entityName = parentEntity is NetworkPlayer player ? player.PlayerName.Value : 
-                               (parentEntity as NetworkPet).PetName.Value;
-            
-            Debug.Log($"{entityName} applied card effect {cardData.CardName} on {target.name}");
+            targetEffectManager.ApplyEffect(target, cardData);
             return true;
         }
         else
@@ -140,5 +279,17 @@ public class HandleCardPlay : MonoBehaviour
             Debug.LogError($"EffectManager component not found on target {target.name}");
             return false;
         }
+    }
+    
+    /// <summary>
+    /// Gets the card data from the card database
+    /// </summary>
+    private CardData GetCardData(int cardId)
+    {
+        if (CardDatabase.Instance != null)
+        {
+            return CardDatabase.Instance.GetCardById(cardId);
+        }
+        return null;
     }
 } 

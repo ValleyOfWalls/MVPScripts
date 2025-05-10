@@ -13,7 +13,7 @@ public class StartScreenUIManager : MonoBehaviour
     [SerializeField] private LobbyUIManager lobbyUIManager;
     [SerializeField] private StartScreenManager startScreenManager;
     
-    // New UI elements
+    // UI elements
     [SerializeField] private GameObject errorPanel;
     [SerializeField] private TextMeshProUGUI errorMessageText;
     [SerializeField] private Button errorCloseButton;
@@ -21,30 +21,7 @@ public class StartScreenUIManager : MonoBehaviour
 
     void Awake()
     {
-        // Validate required references
-        if (startButton == null)
-        {
-            Debug.LogError("StartScreenUIManager: Start Button is not assigned in the Inspector.");
-        }
-        else
-        {
-            startButton.onClick.AddListener(OnStartButtonClicked);
-        }
-
-        if (startScreenCanvas == null)
-        {
-            Debug.LogError("StartScreenUIManager: Start Screen Canvas is not assigned in the Inspector.");
-        }
-
-        if (lobbyUIManager == null)
-        {
-            Debug.LogError("StartScreenUIManager: LobbyUIManager reference is not assigned in the Inspector.");
-        }
-
-        if (startScreenManager == null)
-        {
-            Debug.LogError("StartScreenUIManager: StartScreenManager reference is not assigned in the Inspector.");
-        }
+        ValidateReferences();
         
         // Initialize error panel
         if (errorPanel != null)
@@ -64,6 +41,22 @@ public class StartScreenUIManager : MonoBehaviour
         }
     }
 
+    private void ValidateReferences()
+    {
+        if (startButton == null)
+        {
+            Debug.LogError("StartScreenUIManager: Start Button is not assigned in the Inspector.");
+        }
+        else
+        {
+            startButton.onClick.AddListener(OnStartButtonClicked);
+        }
+
+        if (startScreenCanvas == null) Debug.LogError("StartScreenUIManager: Start Screen Canvas is not assigned in the Inspector.");
+        if (lobbyUIManager == null) Debug.LogError("StartScreenUIManager: LobbyUIManager reference is not assigned in the Inspector.");
+        if (startScreenManager == null) Debug.LogError("StartScreenUIManager: StartScreenManager reference is not assigned in the Inspector.");
+    }
+
     /// <summary>
     /// Shows the start screen UI
     /// </summary>
@@ -72,7 +65,6 @@ public class StartScreenUIManager : MonoBehaviour
         if (startScreenCanvas != null)
         {
             startScreenCanvas.SetActive(true);
-            Debug.Log("StartScreenUIManager: Start screen displayed");
         }
     }
     
@@ -115,8 +107,7 @@ public class StartScreenUIManager : MonoBehaviour
         }
         else
         {
-            Debug.LogError("StartScreenUIManager: Cannot show error message - UI elements missing");
-            Debug.LogError("Error: " + message);
+            Debug.LogError($"StartScreenUIManager: Cannot show error message - UI elements missing. Error: {message}");
         }
     }
 
@@ -133,7 +124,6 @@ public class StartScreenUIManager : MonoBehaviour
         if (lobbyUIManager != null)
         {
             lobbyUIManager.PrepareUIForLobbyJoin();
-            Debug.Log("StartScreenUIManager: Transitioned to lobby screen");
         }
     }
 
@@ -142,8 +132,6 @@ public class StartScreenUIManager : MonoBehaviour
     /// </summary>
     private void OnStartButtonClicked()
     {
-        Debug.Log("StartScreenUIManager: Start button clicked");
-        
         if (startScreenManager != null)
         {
             startScreenManager.OnStartGameRequested();

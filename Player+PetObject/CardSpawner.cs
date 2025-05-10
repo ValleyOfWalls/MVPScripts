@@ -136,66 +136,58 @@ public class CardSpawner : NetworkBehaviour
     private void UpdateCardDisplay()
     {
         if (combatHand == null || handTransform == null) return;
-        
+
         List<int> currentHandCards = combatHand.GetAllCards();
         
-        // Create a dictionary to track which cards we've already counted in this update
-        Dictionary<int, int> cardCounts = new Dictionary<int, int>();
-        
-        // Count how many of each card ID we have in the hand
+        // Count how many of each card ID we *should* have based on the CombatHand
+        Dictionary<int, int> desiredCardCounts = new Dictionary<int, int>();
         foreach (int cardId in currentHandCards)
         {
-            if (cardCounts.ContainsKey(cardId))
+            if (desiredCardCounts.ContainsKey(cardId))
             {
-                cardCounts[cardId]++;
+                desiredCardCounts[cardId]++;
             }
             else
             {
-                cardCounts[cardId] = 1;
+                desiredCardCounts[cardId] = 1;
             }
         }
         
-        // Remove cards that are no longer in hand
-        List<string> instancesToRemove = new List<string>();
+        // Count how many of each card ID are *currently spawned*
+        Dictionary<int, int> currentlySpawnedCounts = new Dictionary<int, int>();
         foreach (var instanceEntry in spawnedCardInstances)
         {
-            string instanceId = instanceEntry.Key;
-            int cardId = ExtractCardIdFromInstanceId(instanceId);
-            
-            // Check if this card ID is still in the hand in sufficient quantities
-            if (!cardCounts.TryGetValue(cardId, out int count) || count <= 0)
+            int cardId = ExtractCardIdFromInstanceId(instanceEntry.Key);
+            if (currentlySpawnedCounts.ContainsKey(cardId))
             {
-                // This card or this instance of the card is no longer needed
-                RemoveCardInstance(instanceId);
-                instancesToRemove.Add(instanceId);
+                currentlySpawnedCounts[cardId]++;
             }
             else
             {
-                // Decrease the count for this card ID since we've accounted for one instance
-                cardCounts[cardId]--;
+                currentlySpawnedCounts[cardId] = 1;
             }
         }
-        
-        // Actually remove the instances from our tracking dictionary
-        foreach (string instanceId in instancesToRemove)
+
+        // Add new cards if the desired count is greater than currently spawned count
+        foreach (var desiredEntry in desiredCardCounts)
         {
-            spawnedCardInstances.Remove(instanceId);
-        }
-        
-        // Add new cards for any remaining counts
-        foreach (var cardCount in cardCounts)
-        {
-            int cardId = cardCount.Key;
-            int count = cardCount.Value;
-            
-            // We need to spawn 'count' more instances of this card ID
-            for (int i = 0; i < count; i++)
+            int cardId = desiredEntry.Key;
+            int numDesired = desiredEntry.Value;
+            int numCurrentlySpawned = 0;
+            currentlySpawnedCounts.TryGetValue(cardId, out numCurrentlySpawned);
+
+            if (numDesired > numCurrentlySpawned)
             {
-                AddCardToDisplay(cardId);
+                for (int i = 0; i < (numDesired - numCurrentlySpawned); i++)
+                {
+                    AddCardToDisplay(cardId);
+                }
             }
         }
         
-        // No need to arrange cards - we're using a horizontal layout group instead
+        // NO REMOVAL LOGIC HERE. Removals are handled by OnServerConfirmCardPlayed via RPC.
+        // The old logic that iterated spawnedCardInstances and removed them if their
+        // count in a temporary 'cardCounts' dictionary went to zero is removed.
     }
     
     /// <summary>
@@ -389,7 +381,20 @@ public class CardSpawner : NetworkBehaviour
     public void OnServerConfirmCardPlayed(int cardId)
     {
         // Find and remove the first instance of this card type
-        RemoveCardFromDisplay(cardId);
+        // THIS IS THE PROBLEMATIC METHOD - it doesn't guarantee removing the right instance
+        // Instead, we should generate an instance ID and use it in this case too
+        string firstInstanceId = FindFirstInstanceOfCard(cardId);
+        
+        if (!string.IsNullOrEmpty(firstInstanceId))
+        {
+            Debug.Log($"OnServerConfirmCardPlayed: Using specific instance ID {firstInstanceId} instead of generic removal");
+            OnServerConfirmCardPlayed(cardId, firstInstanceId);
+        }
+        else
+        {
+            Debug.LogWarning($"OnServerConfirmCardPlayed: Could not find any instance of card ID {cardId} to remove");
+            RemoveCardFromDisplay(cardId); // Fallback to the old method
+        }
     }
     
     /// <summary>
@@ -408,8 +413,35 @@ public class CardSpawner : NetworkBehaviour
         else
         {
             // Fallback to removing by card ID if we don't have a valid instance ID
-            RemoveCardFromDisplay(cardId);
+            string firstInstanceId = FindFirstInstanceOfCard(cardId);
+            
+            if (!string.IsNullOrEmpty(firstInstanceId))
+            {
+                Debug.Log($"OnServerConfirmCardPlayed: Fallback - using first found instance ID {firstInstanceId} instead of generic removal");
+                RemoveCardInstance(firstInstanceId);
+                spawnedCardInstances.Remove(firstInstanceId);
+            }
+            else
+            {
+                Debug.LogWarning($"OnServerConfirmCardPlayed: No valid instance found for card ID {cardId}, falling back to legacy method");
+                RemoveCardFromDisplay(cardId);
+            }
         }
+    }
+    
+    /// <summary>
+    /// Helper method to find the first instance ID of a card with the given card ID
+    /// </summary>
+    private string FindFirstInstanceOfCard(int cardId)
+    {
+        foreach (var entry in spawnedCardInstances)
+        {
+            if (ExtractCardIdFromInstanceId(entry.Key) == cardId)
+            {
+                return entry.Key;
+            }
+        }
+        return null;
     }
     
     /// <summary>
@@ -428,13 +460,23 @@ public class CardSpawner : NetworkBehaviour
                 cardButton.onClick.RemoveAllListeners();
             }
             
-            // Remove from type-based dictionary
+            // Remove from type-based dictionary - make sure we're removing only this specific card object
             if (spawnedCardsByType.TryGetValue(cardId, out List<GameObject> cardObjectList))
             {
-                cardObjectList.Remove(cardObject);
-                if (cardObjectList.Count == 0)
+                // Make sure we're only removing the exact card instance, not any card with the same ID
+                if (cardObjectList.Contains(cardObject))
                 {
-                    spawnedCardsByType.Remove(cardId);
+                    cardObjectList.Remove(cardObject);
+                    
+                    // Clean up the list if it's now empty
+                    if (cardObjectList.Count == 0)
+                    {
+                        spawnedCardsByType.Remove(cardId);
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"RemoveCardInstance: Card object for instance {instanceId} was not found in spawnedCardsByType list for card ID {cardId}");
                 }
             }
             
@@ -442,6 +484,10 @@ public class CardSpawner : NetworkBehaviour
             Destroy(cardObject);
             
             Debug.Log($"Removed card instance {instanceId} from display");
+        }
+        else
+        {
+            Debug.LogWarning($"RemoveCardInstance: Card instance {instanceId} not found in spawnedCardInstances dictionary");
         }
     }
     
@@ -467,6 +513,9 @@ public class CardSpawner : NetworkBehaviour
             {
                 RemoveCardInstance(instanceIdToRemove);
                 spawnedCardInstances.Remove(instanceIdToRemove);
+                
+                // Important: Log which specific card was removed to help with debugging
+                Debug.Log($"RemoveCardFromDisplay: Removed specific card instance {instanceIdToRemove} from display");
             }
         }
     }
