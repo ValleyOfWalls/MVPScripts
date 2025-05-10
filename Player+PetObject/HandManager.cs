@@ -100,7 +100,15 @@ public class HandManager : MonoBehaviour
             if (combatHand.GetCardCount() != pet.playerHandCardIds.Count)
             {
                 Debug.LogWarning($"Mismatch detected between CombatHand ({combatHand.GetCardCount()} cards) and Pet's SyncList ({pet.playerHandCardIds.Count} cards). Synchronizing...");
-                combatHand.SyncWithEntityHand();
+                
+                // Clear and repopulate the SyncList from the CombatHand to ensure consistency
+                pet.playerHandCardIds.Clear();
+                foreach (int cardId in combatHand.GetAllCards())
+                {
+                    pet.playerHandCardIds.Add(cardId);
+                }
+                
+                Debug.Log($"Synchronized Pet's SyncList, now has {pet.playerHandCardIds.Count} cards");
             }
         }
         else if (player != null)
@@ -111,7 +119,15 @@ public class HandManager : MonoBehaviour
             if (combatHand.GetCardCount() != player.playerHandCardIds.Count)
             {
                 Debug.LogWarning($"Mismatch detected between CombatHand ({combatHand.GetCardCount()} cards) and Player's SyncList ({player.playerHandCardIds.Count} cards). Synchronizing...");
-                combatHand.SyncWithEntityHand();
+                
+                // Clear and repopulate the SyncList from the CombatHand to ensure consistency
+                player.playerHandCardIds.Clear();
+                foreach (int cardId in combatHand.GetAllCards())
+                {
+                    player.playerHandCardIds.Add(cardId);
+                }
+                
+                Debug.Log($"Synchronized Player's SyncList, now has {player.playerHandCardIds.Count} cards");
             }
         }
     }

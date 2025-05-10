@@ -200,23 +200,22 @@ public class CombatCanvasManager : MonoBehaviour
     /// </summary>
     private void SetupEndTurnButton()
     {
-        if (endTurnButton != null && combatManager != null && localPlayer != null)
+        if (endTurnButton != null && combatManager != null)
         {
             endTurnButton.onClick.RemoveAllListeners();
             endTurnButton.onClick.AddListener(() => {
-                Debug.Log($"End Turn button clicked for local player: {localPlayer.PlayerName.Value} with ObjectId: {localPlayer.ObjectId}");
+                Debug.Log("End Turn button clicked, using RelationshipManager to find local player");
                 
-                // Use the new method that explicitly sends the player's Object ID
-                combatManager.CmdEndTurnForPlayer((int)localPlayer.ObjectId);
+                // Use the improved method that finds the local player using RelationshipManager
+                combatManager.EndTurnForLocalPlayer();
             });
             
-            Debug.Log($"End turn button setup complete for player {localPlayer.PlayerName.Value} with ObjectId {localPlayer.ObjectId}");
+            Debug.Log("End turn button setup complete with improved local player detection");
         }
         else
         {
             if(endTurnButton == null) Debug.LogError("End Turn Button not assigned in CombatCanvasManager.");
             if(combatManager == null) Debug.LogError("CombatManager not assigned in CombatCanvasManager (for end turn).");
-            if(localPlayer == null) Debug.LogError("LocalPlayer not found, cannot assign end turn button action properly.");
         }
     }
 
