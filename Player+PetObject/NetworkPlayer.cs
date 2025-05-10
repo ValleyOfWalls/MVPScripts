@@ -315,55 +315,7 @@ public class NetworkPlayer : NetworkBehaviour
     }
     
     /// <summary>
-    /// Notifies clients that a card has been played by this player
-    /// </summary>
-    [ObserversRpc]
-    public void NotifyCardPlayed(int cardId)
-    {
-        if (!IsClientInitialized) return;
-        
-        Debug.Log($"NotifyCardPlayed received on client for card ID {cardId}, IsOwner: {IsOwner}, IsLocalPlayer: {IsClientInitialized && IsOwner}");
-        
-        // Check if this object is still valid before proceeding (to prevent "server not active" warnings)
-        if (!IsSpawned) 
-        {
-            Debug.LogWarning($"NotifyCardPlayed: NetworkPlayer object is no longer spawned. Ignoring card removal for card {cardId}");
-            return;
-        }
-        
-        // On client side, get the CardSpawner and tell it to remove the card
-        CardSpawner cardSpawner = GetComponent<CardSpawner>();
-        if (cardSpawner != null)
-        {
-            // Only remove cards from the local player's hand if this is the owner's player object
-            // This ensures cards are only removed from the player who actually played them
-            if (IsOwner || IsClientOnlyInitialized || (FishNet.InstanceFinder.IsHostStarted && ObjectId == GetComponent<NetworkObject>().ObjectId))
-            {
-                try
-                {
-                    // Use the new method for server-confirmed card removal 
-                    // This method has been updated to use instance IDs even with just a card ID input
-                    cardSpawner.OnServerConfirmCardPlayed(cardId);
-                    Debug.Log($"Server confirmed card {cardId} played - removing from display");
-                }
-                catch (System.Exception ex)
-                {
-                    Debug.LogWarning($"Exception when removing card {cardId}: {ex.Message}");
-                }
-            }
-            else
-            {
-                Debug.Log($"Ignoring card removal for non-owner player. Card: {cardId}, Player: {PlayerName.Value}, ObjectId: {ObjectId}");
-            }
-        }
-        else
-        {
-            Debug.LogError("NetworkPlayer.NotifyCardPlayed: CardSpawner component not found.");
-        }
-    }
-
-    /// <summary>
-    /// Notifies clients that a card has been played by this player
+    /// Notifies clients that a card has been played by this player (with specific instance ID)
     /// </summary>
     [ObserversRpc]
     public void NotifyCardPlayed(int cardId, string cardInstanceId)
@@ -385,14 +337,35 @@ public class NetworkPlayer : NetworkBehaviour
         {
             // Only remove cards from the local player's hand if this is the owner's player object
             // This ensures cards are only removed from the player who actually played them
-            if (IsOwner || IsClientOnlyInitialized || (FishNet.InstanceFinder.IsHostStarted && ObjectId == GetComponent<NetworkObject>().ObjectId))
+            bool shouldProcessOnThisClient = IsOwner || IsClientOnlyInitialized || 
+                                            (FishNet.InstanceFinder.IsHostStarted && ObjectId == GetComponent<NetworkObject>().ObjectId);
+            
+            if (shouldProcessOnThisClient)
             {
                 // Catch any exceptions that might occur due to timing issues with despawning
                 try
                 {
-                    // Use the new method for server-confirmed card removal with instance ID
-                    cardSpawner.OnServerConfirmCardPlayed(cardId, cardInstanceId);
-                    Debug.Log($"Server confirmed card {cardId} (Instance: {cardInstanceId}) played - removing from display");
+                    // Use a more controlled approach to handle player card removal
+                    if (!string.IsNullOrEmpty(cardInstanceId))
+                    {
+                        // Get all cards of this type for logging purposes
+                        int sameIdCardCount = cardSpawner.GetCardCountForId(cardId);
+                        Debug.Log($"Player {PlayerName.Value} has {sameIdCardCount} cards with ID {cardId} before removal");
+                        
+                        // Use the new method for server-confirmed card removal with instance ID
+                        cardSpawner.OnServerConfirmCardPlayed(cardId, cardInstanceId);
+                        Debug.Log($"Server confirmed card {cardId} (Instance: {cardInstanceId}) played - precisely removed from display");
+                    }
+                    else
+                    {
+                        // Generate a temporary instance ID for this notification to make it unique
+                        string tempInstanceId = $"player_played_{cardId}_{System.Guid.NewGuid().ToString().Substring(0, 8)}";
+                        Debug.Log($"No instance ID provided, using temp ID {tempInstanceId} to ensure only one card is removed");
+                        
+                        // Make sure to remove exactly one card
+                        cardSpawner.RemoveOneCardOfType(cardId, tempInstanceId);
+                        Debug.Log($"Server confirmed card {cardId} played - removing exactly one card instance");
+                    }
                 }
                 catch (System.Exception ex)
                 {
@@ -408,6 +381,23 @@ public class NetworkPlayer : NetworkBehaviour
         {
             Debug.LogError("NetworkPlayer.NotifyCardPlayed: CardSpawner component not found.");
         }
+    }
+
+    /// <summary>
+    /// Legacy version of NotifyCardPlayed - forwards to the instance-aware version with a generated instance ID
+    /// </summary>
+    [ObserversRpc]
+    public void NotifyCardPlayed(int cardId)
+    {
+        if (!IsClientInitialized) return;
+        
+        Debug.Log($"NotifyCardPlayed (legacy) received on client for card ID {cardId}, forwarding to instance-aware version");
+        
+        // Generate a unique instance ID for backward compatibility
+        string generatedInstanceId = $"player_{cardId}_{System.Guid.NewGuid().ToString().Substring(0, 8)}";
+        
+        // Call the instance-aware version
+        NotifyCardPlayed(cardId, generatedInstanceId);
     }
 
     // Further methods for drawing cards, playing cards, etc., will be managed by CombatManager/HandManager

@@ -1714,14 +1714,32 @@ public class CombatManager : NetworkBehaviour
     [ServerRpc(RequireOwnership = false)]
     public void CmdEndTurnForPlayer(int playerObjectId)
     {
-        Debug.Log($"CmdEndTurnForPlayer received for PlayerObjectId: {playerObjectId}");
+        // Log detailed information about the source connection and request
+        NetworkConnection requestConnection = Owner;
+        int sourceClientId = requestConnection != null ? requestConnection.ClientId : -1;
+        
+        Debug.Log($"CmdEndTurnForPlayer received for PlayerObjectId: {playerObjectId}, Source ClientId: {sourceClientId}, IsHost: {NetworkManager.IsHostStarted}");
         
         // Find the player object directly by ID
         NetworkPlayer targetPlayer = null;
         if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out NetworkObject playerObj))
         {
             targetPlayer = playerObj.GetComponent<NetworkPlayer>();
-            Debug.Log($"Found target player by ObjectId: {targetPlayer.PlayerName.Value} (ID: {playerObjectId})");
+            
+            // Check if the target player's client ID matches the requesting connection's client ID
+            // This prevents cross-player end turn triggering
+            RelationshipManager relationshipManager = targetPlayer.GetComponent<RelationshipManager>();
+            int targetClientId = (relationshipManager != null) ? relationshipManager.OwnerClientId : 
+                                (targetPlayer.Owner != null ? targetPlayer.Owner.ClientId : -1);
+            
+            Debug.Log($"Found target player: {targetPlayer.PlayerName.Value} (ID: {playerObjectId}, ClientId: {targetClientId})");
+            
+            // CRITICAL VALIDATION: Make sure the client ending turn owns the player or is the host
+            if (sourceClientId != targetClientId && sourceClientId != 0 && !NetworkManager.IsHostStarted)
+            {
+                Debug.LogError($"SECURITY CHECK FAILED: Client {sourceClientId} attempted to end turn for player owned by client {targetClientId}");
+                return;
+            }
         }
         
         if (targetPlayer == null)

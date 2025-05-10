@@ -623,13 +623,11 @@ public class SteamNetworkIntegration : MonoBehaviour
     {
         if (args.ConnectionState == RemoteConnectionState.Started)
         {
-            // If the connecting client has ClientId 0, it's the host's own server-side representation of its client component.
-            // The actual player object for the host (who is also a client with ClientId -1) is spawned 
-            // via ClientManager_OnClientConnectionState when its local client fully connects.
-            // So, we skip spawning here for ClientId 0 to avoid duplicates for the host.
-            if (conn.ClientId == 0) 
+            // If the connecting client has ClientId -1, it's the host's server-side connection.
+            // We want to skip spawning for this connection to avoid duplicates.
+            if (conn.ClientId == -1) 
             {
-                Debug.Log($"ServerManager_OnRemoteConnectionState: ClientId {conn.ClientId} connected. This is the host's own server-side client component. Player spawn handled by ClientManager event.");
+                Debug.Log($"ServerManager_OnRemoteConnectionState: ClientId {conn.ClientId} connected. This is the server-side connection. Skipping player spawn.");
                 return;
             }
 
@@ -645,15 +643,15 @@ public class SteamNetworkIntegration : MonoBehaviour
         }
         else if (args.ConnectionState == RemoteConnectionState.Stopped)
         {   
-            // Ensure we don't try to despawn for ClientId 0 if it was never fully processed as a separate player
-            if (conn.ClientId != 0)
+            // Ensure we don't try to despawn for server connection if it was never fully processed as a separate player
+            if (conn.ClientId != -1)
             {
                 Debug.Log($"Remote client {conn.ClientId} disconnected.");
                 // if (playerSpawner != null) playerSpawner.DespawnEntitiesForConnection(conn);
             }
             else
             {
-                Debug.Log($"Host's server-side client component (ClientId {conn.ClientId}) disconnected/stopped.");
+                Debug.Log($"Host's server-side connection (ClientId {conn.ClientId}) disconnected/stopped.");
             }
         }
     }
@@ -664,16 +662,17 @@ public class SteamNetworkIntegration : MonoBehaviour
         {
             Debug.Log($"Local client (ClientId: {fishNetManager.ClientManager.Connection.ClientId}) connected to server.");
             // This instance is the host if ServerManager is started and it's the Steam Host.
-            if (fishNetManager.ServerManager.Started && IsUserSteamHost) 
+            // We want to spawn for ClientId 0 (client connection) but not for server connection
+            if (fishNetManager.ServerManager.Started && IsUserSteamHost && fishNetManager.ClientManager.Connection.ClientId == 0) 
             {
-                Debug.Log("Host's local client connected. Spawning player for host.");
+                Debug.Log("Host's client connection (ClientId 0) connected. Spawning player for client component.");
                 if (playerSpawner != null)
                 {
-                    playerSpawner.SpawnPlayerForConnection(fishNetManager.ClientManager.Connection); // This connection has ClientId -1 for host
+                    playerSpawner.SpawnPlayerForConnection(fishNetManager.ClientManager.Connection);
                 }
                 else
                 {
-                    Debug.LogError("PlayerSpawner component is null when host's local client connected.");
+                    Debug.LogError("PlayerSpawner component is null when host's client connected.");
                 }
             }
             // Non-host clients that connect will be handled by ServerManager_OnRemoteConnectionState on the server.

@@ -579,6 +579,8 @@ public class CardSpawner : NetworkBehaviour
     /// </summary>
     private void RemoveCardInstance(string instanceId)
     {
+        Debug.Log($"RemoveCardInstance: Removing instance {instanceId}");
+        
         if (spawnedCardInstances.TryGetValue(instanceId, out GameObject cardObject))
         {
             int cardId = ExtractCardIdFromInstanceId(instanceId);
@@ -597,11 +599,13 @@ public class CardSpawner : NetworkBehaviour
                 if (cardObjectList.Contains(cardObject))
                 {
                     cardObjectList.Remove(cardObject);
+                    Debug.Log($"Removed card from spawnedCardsByType for ID {cardId}");
                     
                     // Clean up the list if it's now empty
                     if (cardObjectList.Count == 0)
                     {
                         spawnedCardsByType.Remove(cardId);
+                        Debug.Log($"Removed empty list entry for card ID {cardId} from spawnedCardsByType");
                     }
                 }
                 else
@@ -610,10 +614,16 @@ public class CardSpawner : NetworkBehaviour
                 }
             }
             
+            // Also remove from the instance dictionary to prevent double removal
+            spawnedCardInstances.Remove(instanceId);
+            
+            // Remove from pending removals if it's there
+            pendingCardRemovals.Remove(instanceId);
+            
             // Destroy the card object
             Destroy(cardObject);
             
-            Debug.Log($"Removed card instance {instanceId} from display");
+            Debug.Log($"Removed card instance {instanceId} from display (Card ID: {cardId})");
         }
         else
         {
@@ -867,5 +877,49 @@ public class CardSpawner : NetworkBehaviour
         Debug.Log($"Spawned card {cardData.CardName} (ID: {cardId}, Instance: {fullInstanceId}) for {(owningEntity is NetworkPlayer ? "player" : "pet")}");
 
         return cardObj;
+    }
+
+    /// <summary>
+    /// Gets the count of cards with a specific ID currently spawned
+    /// </summary>
+    public int GetCardCountForId(int cardId)
+    {
+        int count = 0;
+        
+        // Count from spawnedCardInstances by checking the card ID part of each instance ID
+        foreach (var entry in spawnedCardInstances)
+        {
+            if (ExtractCardIdFromInstanceId(entry.Key) == cardId)
+            {
+                count++;
+            }
+        }
+        
+        Debug.Log($"GetCardCountForId: Found {count} cards with ID {cardId}");
+        return count;
+    }
+    
+    /// <summary>
+    /// Explicitly removes exactly one card of the specified type
+    /// This avoids the issue where multiple cards with the same ID get removed
+    /// </summary>
+    public void RemoveOneCardOfType(int cardId, string operationId)
+    {
+        Debug.Log($"RemoveOneCardOfType: Removing one card with ID {cardId}, operation: {operationId}");
+        
+        // Find the first instance of the card
+        string instanceId = FindFirstInstanceOfCard(cardId);
+        
+        if (!string.IsNullOrEmpty(instanceId))
+        {
+            // Just remove this one instance
+            Debug.Log($"RemoveOneCardOfType: Found instance {instanceId} for card ID {cardId}, removing exactly this one instance");
+            RemoveCardInstance(instanceId);
+            spawnedCardInstances.Remove(instanceId);
+        }
+        else
+        {
+            Debug.LogWarning($"RemoveOneCardOfType: No card with ID {cardId} found to remove");
+        }
     }
 } 

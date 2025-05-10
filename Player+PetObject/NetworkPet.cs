@@ -298,52 +298,6 @@ public class NetworkPet : NetworkBehaviour
     }
     
     /// <summary>
-    /// Notifies clients that a card has been played by this pet (legacy version without instance ID)
-    /// </summary>
-    [ObserversRpc]
-    public void NotifyCardPlayed(int cardId)
-    {
-        if (!IsClientInitialized) return;
-        
-        Debug.Log($"Pet NotifyCardPlayed (legacy) received on client for card ID {cardId}, IsOwner: {IsOwner}, IsLocalPet: {IsClientInitialized && IsOwner}");
-        
-        // Check if this object is still valid before proceeding
-        if (!IsSpawned) 
-        {
-            Debug.LogWarning($"NotifyCardPlayed: NetworkPet object is no longer spawned. Ignoring card removal for card {cardId}");
-            return;
-        }
-        
-        // On client side, get the CardSpawner and tell it to remove the card
-        CardSpawner cardSpawner = GetComponent<CardSpawner>();
-        if (cardSpawner != null)
-        {
-            // Only remove cards from pets that belong to this client or in situations where this client needs to visualize a pet's move
-            if (IsOwner || IsClientOnlyInitialized || FishNet.InstanceFinder.IsHostStarted)
-            {
-                try
-                {
-                    // Use the instance-aware method to find and remove the correct card
-                    cardSpawner.OnServerConfirmCardPlayed(cardId);
-                    Debug.Log($"Server confirmed card {cardId} played by pet - removing from display");
-                }
-                catch (System.Exception ex)
-                {
-                    Debug.LogWarning($"Exception when removing pet card {cardId}: {ex.Message}");
-                }
-            }
-            else
-            {
-                Debug.Log($"Ignoring pet card removal for non-owner client. Card: {cardId}, Pet: {PetName.Value}, ObjectId: {ObjectId}");
-            }
-        }
-        else
-        {
-            Debug.LogError("NetworkPet.NotifyCardPlayed: CardSpawner component not found.");
-        }
-    }
-
-    /// <summary>
     /// Notifies clients that a card has been played by this pet (with instance ID for precise card tracking)
     /// </summary>
     [ObserversRpc]
@@ -365,13 +319,34 @@ public class NetworkPet : NetworkBehaviour
         if (cardSpawner != null)
         {
             // Only remove cards from pets that belong to this client or in situations where this client needs to visualize a pet's move
-            if (IsOwner || IsClientOnlyInitialized || FishNet.InstanceFinder.IsHostStarted)
+            bool shouldProcessOnThisClient = IsOwner || IsClientOnlyInitialized || FishNet.InstanceFinder.IsHostStarted;
+            
+            // If we're on host or a client that handles this pet's cards
+            if (shouldProcessOnThisClient)
             {
                 try
                 {
-                    // Use the instance-specific method for server-confirmed card removal
-                    cardSpawner.OnServerConfirmCardPlayed(cardId, cardInstanceId);
-                    Debug.Log($"Server confirmed card {cardId} (Instance: {cardInstanceId}) played by pet - removing from display");
+                    // Use a more controlled approach to handle pet card removal
+                    if (!string.IsNullOrEmpty(cardInstanceId))
+                    {
+                        // Get all cards of this type for logging purposes
+                        int sameIdCardCount = cardSpawner.GetCardCountForId(cardId);
+                        Debug.Log($"Pet {PetName.Value} has {sameIdCardCount} cards with ID {cardId} before removal");
+                        
+                        // Use the instance-specific method for server-confirmed card removal
+                        cardSpawner.OnServerConfirmCardPlayed(cardId, cardInstanceId);
+                        Debug.Log($"Server confirmed card {cardId} (Instance: {cardInstanceId}) played by pet - precisely removed from display");
+                    }
+                    else
+                    {
+                        // Generate a temporary instance ID for this notification to make it unique
+                        string tempInstanceId = $"pet_played_{cardId}_{System.Guid.NewGuid().ToString().Substring(0, 8)}";
+                        Debug.Log($"No instance ID provided, using temp ID {tempInstanceId} to ensure only one card is removed");
+                        
+                        // Make sure to remove exactly one card
+                        cardSpawner.RemoveOneCardOfType(cardId, tempInstanceId);
+                        Debug.Log($"Server confirmed card {cardId} played by pet - removing exactly one card instance");
+                    }
                 }
                 catch (System.Exception ex)
                 {
@@ -387,6 +362,23 @@ public class NetworkPet : NetworkBehaviour
         {
             Debug.LogError("NetworkPet.NotifyCardPlayed: CardSpawner component not found.");
         }
+    }
+    
+    /// <summary>
+    /// Legacy version of NotifyCardPlayed - forwards to the instance-aware version with a generated instance ID
+    /// </summary>
+    [ObserversRpc]
+    public void NotifyCardPlayed(int cardId)
+    {
+        if (!IsClientInitialized) return;
+        
+        Debug.Log($"Pet NotifyCardPlayed (legacy) received on client for card ID {cardId}, forwarding to instance-aware version");
+        
+        // Generate a unique instance ID for backward compatibility
+        string generatedInstanceId = $"pet_{cardId}_{System.Guid.NewGuid().ToString().Substring(0, 8)}";
+        
+        // Call the instance-aware version
+        NotifyCardPlayed(cardId, generatedInstanceId);
     }
 
     /// <summary>

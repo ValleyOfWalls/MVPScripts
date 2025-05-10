@@ -27,48 +27,17 @@ public class PlayerSpawner : MonoBehaviour
             networkPlayerPrefab = steamNetworkIntegration.NetworkPlayerPrefab?.GetComponent<NetworkObject>();
             networkPetPrefab = steamNetworkIntegration.NetworkPetPrefab?.GetComponent<NetworkObject>();
         }
-        else
-        {
-            Debug.LogError("PlayerSpawner: SteamNetworkIntegration component not found on the same GameObject.");
-        }
-
-        if (networkPlayerPrefab == null)
-        {
-            Debug.LogWarning("PlayerSpawner: NetworkPlayer prefab is not assigned on SteamNetworkIntegration or does not have a NetworkObject component.");
-        }
-        if (networkPetPrefab == null)
-        {
-            Debug.LogWarning("PlayerSpawner: NetworkPet prefab is not assigned on SteamNetworkIntegration or does not have a NetworkObject component.");
-        }
-        if (fishNetManager == null)
-        {
-            Debug.LogError("PlayerSpawner: FishNet NetworkManager instance not found. Spawning will fail.");
-        }
+ 
     }
 
     public void SpawnPlayerForConnection(NetworkConnection conn)
     {
-        if (fishNetManager == null || !fishNetManager.ServerManager.Started)
-        {
-            Debug.LogError("PlayerSpawner: Cannot spawn player. FishNet ServerManager is not started or NetworkManager is null.");
-            return;
-        }
-
-        if (networkPlayerPrefab == null) 
-        {
-            Debug.LogError("NetworkPlayer prefab is not assigned in PlayerSpawner.");
-            return; 
-        }
-        if (networkPetPrefab == null) 
-        {
-            Debug.LogError("NetworkPet prefab is not assigned in PlayerSpawner.");
-            return; 
-        }
-
+        
         // Log connection info for debugging
         bool isHostConnection = fishNetManager.IsHostStarted && conn.ClientId == 0;
         Debug.Log($"PlayerSpawner: Attempting to spawn NetworkPlayer for client {conn.ClientId}. IsHost: {isHostConnection}");
         
+       
         // Create player instance
         GameObject playerGameObjectInstance = Object.Instantiate(networkPlayerPrefab.gameObject);
         
@@ -78,7 +47,7 @@ public class PlayerSpawner : MonoBehaviour
 
         if (playerInstance != null)
         {
-            // Verify ownership assignment, especially for host
+            // Verify ownership assignment
             Debug.Log($"Spawned NetworkPlayer (ID: {playerInstance.ObjectId}, OwnerId: {playerInstance.OwnerId}, HasOwner: {playerInstance.Owner != null}) for client {conn.ClientId}");
             NetworkPlayer netPlayer = playerInstance.GetComponent<NetworkPlayer>();
             
@@ -87,31 +56,19 @@ public class PlayerSpawner : MonoBehaviour
                 if (steamNetworkIntegration != null && steamNetworkIntegration.IsSteamInitialized)
                 {
                     // This requires a way to map NetworkConnection to CSteamID if you want specific Steam names for remote players.
-                    // For the host, conn.FirstObjectId (if reliable after spawn) or a direct call to GetPlayerName() can be used.
                     // For now, using a generic name.
                     string steamName = "Player";
-                    if (conn == fishNetManager.ClientManager.Connection) // Is this the host's own connection?
+                    // Since we're no longer spawning for host, this check is less relevant but kept for safety
+                    if (conn == fishNetManager.ClientManager.Connection)
                     {
                          steamName = steamNetworkIntegration.GetPlayerName();
                     }
-                    else
-                    {
-                        // For remote clients, you'd need a system to get their Steam name via their CSteamID
-                        // which might involve sending it over the network or using Steam P2P auth data.
-                        // CSteamID remoteUserSteamId = GetSteamIDForConnection(conn); // Placeholder for this logic
-                        // steamName = steamNetworkIntegration.GetFriendName(remoteUserSteamId);
-                    }
+                   
                     netPlayer.PlayerName.Value = $"{steamName} ({conn.ClientId})";
                 }
                 else
                 {
                     netPlayer.PlayerName.Value = "Player " + conn.ClientId;
-                }
-
-                // Verify Player IsOwner status directly after spawn
-                if (isHostConnection)
-                {
-                    Debug.Log($"Host player: IsOwner={netPlayer.IsOwner}, HasOwner={netPlayer.Owner != null}, OwnerId={netPlayer.OwnerId}");
                 }
             }
 
@@ -135,15 +92,9 @@ public class PlayerSpawner : MonoBehaviour
                     Debug.Log($"Connected pet (ID: {petInstance.ObjectId}) to player (ID: {playerInstance.ObjectId}). Pet.OwnerPlayerObjectId={netPet.OwnerPlayerObjectId.Value}");
                 }
             }
-            else
-            {
-                Debug.LogError("Failed to spawn NetworkPet.");
-            }
+
         }
-        else
-        {
-            Debug.LogError("Failed to spawn NetworkPlayer.");
-        }
+
     }
 
     public void DespawnEntitiesForConnection(NetworkConnection conn)
