@@ -44,6 +44,9 @@ public class CardSpawner : NetworkBehaviour
     // Cache local client ID for quicker comparisons
     private int localClientId = -1;
     
+    // Add this new set to track recently removed card instances
+    private HashSet<string> recentlyRemovedCards = new HashSet<string>();
+    
     private void Awake()
     {
         // Get the CombatHand component
@@ -462,6 +465,86 @@ public class CardSpawner : NetworkBehaviour
     }
     
     /// <summary>
+    /// Called when the server confirms a card has been played with a specific instance ID
+    /// </summary>
+    public void OnServerConfirmCardPlayed(int cardId, string instanceId)
+    {
+        Debug.Log($"Server confirmed card played: ID {cardId}, Instance {instanceId}");
+        
+        // Check if this card instance was recently removed to prevent double removal
+        if (!string.IsNullOrEmpty(instanceId) && recentlyRemovedCards.Contains(instanceId))
+        {
+            Debug.Log($"Card instance {instanceId} was already removed, skipping removal");
+            
+            // Remove from the pending set if it was there
+            pendingCardRemovals.Remove(instanceId);
+            return;
+        }
+        
+        // First, check if we have the exact instance ID match
+        if (!string.IsNullOrEmpty(instanceId) && spawnedCardInstances.TryGetValue(instanceId, out GameObject specificCardObject))
+        {
+            // Remove the instance from the pending set if it was there
+            pendingCardRemovals.Remove(instanceId);
+            
+            // Track that we're removing this instance
+            recentlyRemovedCards.Add(instanceId);
+            
+            // Remove the specific card instance
+            RemoveCardInstance(instanceId);
+            Debug.Log($"Removed specific card instance {instanceId} from display");
+            return; // Exit early - we found and removed the exact card instance
+        }
+        
+        // If we couldn't find the exact instance - e.g., if this is a notification from the server for another client's action
+        // Then we need to carefully handle this to avoid removing wrong cards
+        
+        // Check if we have any pending removals for this card ID that the local player initiated
+        string pendingInstanceId = pendingCardRemovals
+            .FirstOrDefault(id => ExtractCardIdFromInstanceId(id) == cardId);
+        
+        if (!string.IsNullOrEmpty(pendingInstanceId))
+        {
+            Debug.Log($"Found pending removal for card ID {cardId}: {pendingInstanceId}");
+            recentlyRemovedCards.Add(pendingInstanceId);
+            RemoveCardInstance(pendingInstanceId);
+            pendingCardRemovals.Remove(pendingInstanceId);
+        }
+        else if (BelongsToLocalClient())
+        {
+            // Check if this exact instance ID was recently removed
+            if (!string.IsNullOrEmpty(instanceId) && recentlyRemovedCards.Contains(instanceId))
+            {
+                Debug.Log($"Card instance {instanceId} was already removed by local update, skipping");
+                return;
+            }
+            
+            // We only want to do this fallback for cards belonging to the local client
+            // This avoids accidentally removing other players' cards when the server notifies all clients
+            
+            Debug.Log($"OnServerConfirmCardPlayed: Local client needs to remove a card with ID {cardId}, but no instance ID match was found.");
+            
+            // Only remove the first instance of this card type - specifically checking if this is owned by local client
+            string firstInstanceId = FindFirstInstanceOfCard(cardId);
+            
+            if (!string.IsNullOrEmpty(firstInstanceId))
+            {
+                Debug.Log($"OnServerConfirmCardPlayed: Fallback - using first found instance ID {firstInstanceId} for card ID {cardId}");
+                recentlyRemovedCards.Add(firstInstanceId);
+                RemoveCardInstance(firstInstanceId);
+            }
+            else
+            {
+                Debug.LogWarning($"OnServerConfirmCardPlayed: No valid instance found for card ID {cardId}, cannot remove card");
+            }
+        }
+        else
+        {
+            Debug.Log($"Ignoring card play notification for card ID {cardId} since it does not belong to local client");
+        }
+    }
+    
+    /// <summary>
     /// Called when the server confirms a card has been played but doesn't provide an instance ID
     /// </summary>
     public void OnServerConfirmCardPlayed(int cardId)
@@ -502,64 +585,6 @@ public class CardSpawner : NetworkBehaviour
     }
     
     /// <summary>
-    /// Called when the server confirms a card has been played with a specific instance ID
-    /// </summary>
-    public void OnServerConfirmCardPlayed(int cardId, string instanceId)
-    {
-        Debug.Log($"Server confirmed card played: ID {cardId}, Instance {instanceId}");
-        
-        // First, check if we have the exact instance ID match
-        if (!string.IsNullOrEmpty(instanceId) && spawnedCardInstances.TryGetValue(instanceId, out GameObject specificCardObject))
-        {
-            // Remove the instance from the pending set if it was there
-            pendingCardRemovals.Remove(instanceId);
-            
-            // Remove the specific card instance
-            RemoveCardInstance(instanceId);
-            Debug.Log($"Removed specific card instance {instanceId} from display");
-            return; // Exit early - we found and removed the exact card instance
-        }
-        
-        // If we couldn't find the exact instance - e.g., if this is a notification from the server for another client's action
-        // Then we need to carefully handle this to avoid removing wrong cards
-        
-        // Check if we have any pending removals for this card ID that the local player initiated
-        string pendingInstanceId = pendingCardRemovals
-            .FirstOrDefault(id => ExtractCardIdFromInstanceId(id) == cardId);
-        
-        if (!string.IsNullOrEmpty(pendingInstanceId))
-        {
-            Debug.Log($"Found pending removal for card ID {cardId}: {pendingInstanceId}");
-            RemoveCardInstance(pendingInstanceId);
-            pendingCardRemovals.Remove(pendingInstanceId);
-        }
-        else if (BelongsToLocalClient())
-        {
-            // We only want to do this fallback for cards belonging to the local client
-            // This avoids accidentally removing other players' cards when the server notifies all clients
-            
-            Debug.Log($"OnServerConfirmCardPlayed: Local client needs to remove a card with ID {cardId}, but no instance ID match was found.");
-            
-            // Only remove the first instance of this card type - specifically checking if this is owned by local client
-            string firstInstanceId = FindFirstInstanceOfCard(cardId);
-            
-            if (!string.IsNullOrEmpty(firstInstanceId))
-            {
-                Debug.Log($"OnServerConfirmCardPlayed: Fallback - using first found instance ID {firstInstanceId} for card ID {cardId}");
-                RemoveCardInstance(firstInstanceId);
-            }
-            else
-            {
-                Debug.LogWarning($"OnServerConfirmCardPlayed: No valid instance found for card ID {cardId}, cannot remove card");
-            }
-        }
-        else
-        {
-            Debug.Log($"Ignoring card play notification for card ID {cardId} since it does not belong to local client");
-        }
-    }
-    
-    /// <summary>
     /// Helper method to find the first instance ID of a card with the given card ID
     /// </summary>
     private string FindFirstInstanceOfCard(int cardId)
@@ -580,6 +605,9 @@ public class CardSpawner : NetworkBehaviour
     private void RemoveCardInstance(string instanceId)
     {
         Debug.Log($"RemoveCardInstance: Removing instance {instanceId}");
+        
+        // Add to recently removed set to prevent double removal
+        recentlyRemovedCards.Add(instanceId);
         
         if (spawnedCardInstances.TryGetValue(instanceId, out GameObject cardObject))
         {
@@ -689,6 +717,7 @@ public class CardSpawner : NetworkBehaviour
         spawnedCardInstances.Clear();
         cardInstanceCounter.Clear();
         pendingCardRemovals.Clear();
+        recentlyRemovedCards.Clear();
     }
     
     /// <summary>
