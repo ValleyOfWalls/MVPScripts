@@ -37,6 +37,9 @@ public class Card : MonoBehaviour // Changed from NetworkBehaviour
     [SerializeField] private bool isDraftable = true;    // Can be picked in draft packs
     [SerializeField] private int purchaseCost = 50;      // Cost to purchase if isPurchasable is true
     
+    [Header("Card State")]
+    [SerializeField] private CardLocation currentContainer = CardLocation.Deck;
+    
     [Header("UI References (Assign in Prefab)")]
     [SerializeField] private TextMeshProUGUI nameText;
     [SerializeField] private TextMeshProUGUI descriptionText;
@@ -56,6 +59,13 @@ public class Card : MonoBehaviour // Changed from NetworkBehaviour
     public bool IsPurchasable => isPurchasable;
     public bool IsDraftable => isDraftable;
     public int PurchaseCost => purchaseCost;
+    
+    // Container tracking
+    public CardLocation CurrentContainer => currentContainer;
+    
+    // Event for container changes
+    public delegate void ContainerChanged(CardLocation oldContainer, CardLocation newContainer);
+    public event ContainerChanged OnContainerChanged;
 
     public void Initialize(CardData data)
     {
@@ -148,6 +158,49 @@ public class Card : MonoBehaviour // Changed from NetworkBehaviour
     public void SetDraftable(bool canDraft)
     {
         isDraftable = canDraft;
+    }
+    
+    /// <summary>
+    /// Set the current container of this card
+    /// </summary>
+    /// <param name="container">Destination container (Deck, Hand, Discard)</param>
+    public void SetCurrentContainer(CardLocation container)
+    {
+        if (container == currentContainer) return;
+        
+        CardLocation oldContainer = currentContainer;
+        currentContainer = container;
+        
+        // Invoke container change event
+        OnContainerChanged?.Invoke(oldContainer, container);
+        
+        // Update card visual state based on container
+        UpdateCardStateForContainer();
+    }
+    
+    /// <summary>
+    /// Updates the card's visual state based on its current container
+    /// </summary>
+    private void UpdateCardStateForContainer()
+    {
+        // Basic state management - will be expanded in CardSpawner for actual visual updates
+        switch (currentContainer)
+        {
+            case CardLocation.Deck:
+                // Cards in deck are disabled (not visible)
+                gameObject.SetActive(false);
+                break;
+                
+            case CardLocation.Hand:
+                // Cards in hand are enabled (visible)
+                gameObject.SetActive(true);
+                break;
+                
+            case CardLocation.Discard:
+                // Cards in discard are disabled (not visible)
+                gameObject.SetActive(false);
+                break;
+        }
     }
 
     // For in-game spawned cards, you might have a different script or NetworkObject representation.

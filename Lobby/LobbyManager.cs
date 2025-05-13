@@ -21,6 +21,11 @@ public class LobbyManager : NetworkBehaviour
 
     private void Awake()
     {
+        FindRequiredComponents();
+    }
+    
+    private void FindRequiredComponents()
+    {
         fishNetManager = FindFirstObjectByType<NetworkManager>();
         gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         
@@ -33,15 +38,21 @@ public class LobbyManager : NetworkBehaviour
     {
         base.OnStartClient();
         
-        // Get player name from Steam if available, otherwise use a placeholder
-        string initialPlayerName = (SteamNetworkIntegration.Instance != null && SteamNetworkIntegration.Instance.IsSteamInitialized) 
+        string initialPlayerName = GetInitialPlayerName();
+        CmdServerAddPlayer(LocalConnection, initialPlayerName);
+    }
+    
+    private string GetInitialPlayerName()
+    {
+        string name = (SteamNetworkIntegration.Instance != null && SteamNetworkIntegration.Instance.IsSteamInitialized) 
             ? SteamNetworkIntegration.Instance.GetPlayerName() 
             : "Player";
         
-        initialPlayerName += " (" + LocalConnection.ClientId + ")";
-        CmdServerAddPlayer(LocalConnection, initialPlayerName);
+        return name + " (" + LocalConnection.ClientId + ")";
     }
 
+    #region Server Methods
+    
     // Server RPC to add a player to the lobby
     [ServerRpc(RequireOwnership = false)]
     private void CmdServerAddPlayer(NetworkConnection conn, string playerName)
@@ -56,16 +67,16 @@ public class LobbyManager : NetworkBehaviour
         if (!connectedPlayers.Contains(conn))
         {
             connectedPlayers.Add(conn);
-            playerReadyStates[conn] = false; // Default to not ready
-            playerDisplayNames[conn] = playerName; // Store base name
+            playerReadyStates[conn] = false;
+            playerDisplayNames[conn] = playerName;
             BroadcastFullPlayerList();
-            CheckAllPlayersReady(); // Server checks ready state
+            CheckAllPlayersReady();
         }
     }
 
-    // Toggles a player's ready state (called from UI)
+    // Toggles a player's ready state
     [ServerRpc(RequireOwnership = false)]
-    public void CmdTogglePlayerReadyState(NetworkConnection conn = null) // conn is auto-filled by FishNet
+    public void CmdTogglePlayerReadyState(NetworkConnection conn = null)
     {
         if (conn == null) return;
 
@@ -73,7 +84,7 @@ public class LobbyManager : NetworkBehaviour
         {
             playerReadyStates[conn] = !currentState;
             BroadcastFullPlayerList();
-            CheckAllPlayersReady(); // Server re-checks
+            CheckAllPlayersReady();
         }
     }
 
@@ -81,18 +92,30 @@ public class LobbyManager : NetworkBehaviour
     [Server]
     private void BroadcastFullPlayerList()
     {
+        List<string> currentDisplayNames = GetFormattedPlayerNames();
+        BroadcastPlayerListToAllClients(currentDisplayNames);
+    }
+    
+    [Server]
+    private List<string> GetFormattedPlayerNames()
+    {
         List<string> currentDisplayNames = new List<string>();
-        foreach (NetworkConnection pc in connectedPlayers) // Iterate in connection order
+        foreach (NetworkConnection pc in connectedPlayers)
         {
             if (playerDisplayNames.TryGetValue(pc, out string baseName) && playerReadyStates.TryGetValue(pc, out bool isReady))
             {
                 currentDisplayNames.Add($"{baseName} {(isReady ? "(Ready)" : "(Not Ready)")}");
             }
         }
-
+        return currentDisplayNames;
+    }
+    
+    [Server]
+    private void BroadcastPlayerListToAllClients(List<string> playerList)
+    {
         foreach (NetworkConnection clientConn in ServerManager.Clients.Values)
         {
-            TargetRpcUpdatePlayerListUI(clientConn, currentDisplayNames);
+            TargetRpcUpdatePlayerListUI(clientConn, playerList);
         }
     }
 
@@ -100,7 +123,10 @@ public class LobbyManager : NetworkBehaviour
     [TargetRpc]
     private void TargetRpcUpdatePlayerListUI(NetworkConnection conn, List<string> displayNamesToShow)
     {
-        uiManager.UpdatePlayerListUI(displayNamesToShow);
+        if (uiManager != null)
+        {
+            uiManager.UpdatePlayerListUI(displayNamesToShow);
+        }
     }
 
     // Checks if all players are ready and updates the start button state
@@ -109,42 +135,46 @@ public class LobbyManager : NetworkBehaviour
     {
         if (!IsServerStarted) return;
 
+        bool allReady = AreAllPlayersReady();
+        RpcUpdateStartButtonState(allReady);
+    }
+    
+    [Server]
+    private bool AreAllPlayersReady()
+    {
         int totalPlayers = connectedPlayers.Count;
-        int currentReadyCount = 0;
+        if (totalPlayers == 0) return false;
+        
+        int readyCount = 0;
         foreach (bool ready in playerReadyStates.Values)
         {
-            if (ready) currentReadyCount++;
+            if (ready) readyCount++;
         }
         
-        bool allReady = (totalPlayers > 0 && currentReadyCount == totalPlayers);
-        RpcUpdateStartButtonState(allReady);
+        return readyCount == totalPlayers;
     }
 
     // Observer RPC to update the start button state on all clients
     [ObserversRpc]
     private void RpcUpdateStartButtonState(bool interactable)
     {
-        uiManager.SetStartButtonInteractable(interactable);
+        if (uiManager != null)
+        {
+            uiManager.SetStartButtonInteractable(interactable);
+        }
     }
+    
+    #endregion
 
     // Initiates the game start process when conditions are met
     public void RequestStartGame()
     {
-        if (IsServerStarted) // Only server can start the game
-        {
-            // Re-check conditions directly here as a final safeguard
-            int totalPlayers = connectedPlayers.Count;
-            int currentReadyCount = 0;
-            foreach (bool ready in playerReadyStates.Values)
-            {
-                if (ready) currentReadyCount++;
-            }
-            bool canStart = (totalPlayers >= 2 && currentReadyCount == totalPlayers);
+        if (!IsServerStarted) return;
 
-            if (canStart)
-            {
-                RpcStartGame();
-            }
+        bool canStart = AreAllPlayersReady() && connectedPlayers.Count >= 2;
+        if (canStart)
+        {
+            RpcStartGame();
         }
     }
 
@@ -153,7 +183,10 @@ public class LobbyManager : NetworkBehaviour
     private void RpcStartGame()
     {
         // Tell UI manager to hide lobby UI
-        uiManager.HideLobbyUI();
+        if (uiManager != null)
+        {
+            uiManager.HideLobbyUI();
+        }
         
         // Use GamePhaseManager to transition to Combat phase
         if (gamePhaseManager != null)
@@ -162,8 +195,15 @@ public class LobbyManager : NetworkBehaviour
         }
         
         // Find and initialize the combat setup
+        InitializeCombat();
+    }
+    
+    private void InitializeCombat()
+    {
+        if (!IsServerStarted) return;
+        
         CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
-        if (combatSetup != null && IsServerStarted)
+        if (combatSetup != null)
         {
             combatSetup.InitializeCombat();
         }

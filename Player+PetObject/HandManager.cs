@@ -16,45 +16,233 @@ public class HandManager : MonoBehaviour
     private CombatHand combatHand; // Reference to the CombatHand component
     private CombatDeck combatDeck; // Reference to the CombatDeck component
     private CombatDiscard combatDiscard; // Reference to the CombatDiscard component
+    private CardSpawner cardSpawner; // Reference to the CardSpawner component
 
     private void Awake()
     {
-        // Get the parent NetworkBehaviour (either NetworkPlayer or NetworkPet)
+        // Get reference to the parent entity
         parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
         if (parentEntity == null)
         {
             parentEntity = GetComponent<NetworkPet>() as NetworkBehaviour;
         }
-
-        if (parentEntity == null)
-        {
-            Debug.LogError("HandManager: Not attached to a NetworkPlayer or NetworkPet. This component must be attached to one of these.");
-        }
         
-        // Get the required components
+        // Get references to required components
         combatHand = GetComponent<CombatHand>();
-        if (combatHand == null)
-        {
-            Debug.LogError("HandManager: CombatHand component not found. This component must be attached to the same GameObject.");
-        }
-        
         combatDeck = GetComponent<CombatDeck>();
-        if (combatDeck == null)
+        combatDiscard = GetComponent<CombatDiscard>();
+        cardSpawner = GetComponent<CardSpawner>();
+        
+        // Validate required components
+        if (combatHand == null) Debug.LogError("HandManager requires a CombatHand component");
+        if (combatDeck == null) Debug.LogError("HandManager requires a CombatDeck component");
+        if (combatDiscard == null) Debug.LogError("HandManager requires a CombatDiscard component");
+        if (cardSpawner == null) Debug.LogError("HandManager requires a CardSpawner component");
+    }
+
+    /// <summary>
+    /// Draws a single card from the deck to the hand
+    /// </summary>
+    /// <returns>True if a card was drawn, false if deck is empty or hand is full</returns>
+    public bool DrawCard()
+    {
+        // Check if we're on the server
+        if (!FishNet.InstanceFinder.IsServerStarted)
         {
-            Debug.LogError("HandManager: CombatDeck component not found. This component must be attached to the same GameObject.");
+            Debug.LogWarning("DrawCard can only be called on the server");
+            return false;
         }
         
-        combatDiscard = GetComponent<CombatDiscard>();
-        if (combatDiscard == null)
+        // Check if hand is full
+        if (combatHand.IsFull())
         {
-            Debug.LogError("HandManager: CombatDiscard component not found. This component must be attached to the same GameObject.");
+            Debug.Log($"Cannot draw card: Hand is full ({combatHand.GetCardCount()}/{combatHand.GetAvailableSpace()})");
+            return false;
         }
+        
+        // Draw a card from the deck
+        List<GameObject> drawnCards = combatDeck.DrawCards(1);
+        
+        // If we got a card, add it to the hand
+        if (drawnCards.Count > 0)
+        {
+            GameObject drawnCard = drawnCards[0];
+            return combatHand.AddCard(drawnCard);
+        }
+        else
+        {
+            Debug.Log("Cannot draw card: Deck is empty");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Draws multiple cards from the deck to the hand
+    /// </summary>
+    /// <param name="count">Number of cards to draw</param>
+    /// <returns>Number of cards actually drawn</returns>
+    public int DrawCards(int count)
+    {
+        // Check if we're on the server
+        if (!FishNet.InstanceFinder.IsServerStarted)
+        {
+            Debug.LogWarning("DrawCards can only be called on the server");
+            return 0;
+        }
+        
+        int cardsDrawn = 0;
+        
+        // Draw cards while we have space and cards available
+        for (int i = 0; i < count; i++)
+        {
+            if (DrawCard())
+            {
+                cardsDrawn++;
+            }
+            else
+            {
+                // If we couldn't draw a card, stop trying
+                break;
+            }
+        }
+        
+        return cardsDrawn;
+    }
+
+    /// <summary>
+    /// Moves a card from hand to discard pile
+    /// </summary>
+    /// <param name="cardId">ID of the card to move</param>
+    /// <returns>True if the card was moved</returns>
+    public bool MoveCardToDiscard(int cardId)
+    {
+        // Check if we're on the server
+        if (!FishNet.InstanceFinder.IsServerStarted)
+        {
+            Debug.LogWarning("MoveCardToDiscard can only be called on the server");
+            return false;
+        }
+        
+        // Find and remove the card from hand
+        GameObject cardObj = combatHand.RemoveCardById(cardId);
+        
+        if (cardObj != null)
+        {
+            // Add the card to the discard pile
+            combatDiscard.AddCard(cardObj);
+            return true;
+        }
+        
+        return false;
+    }
+
+    /// <summary>
+    /// Moves a specific card object from hand to discard pile
+    /// </summary>
+    /// <param name="cardObj">Card GameObject to move</param>
+    /// <returns>True if the card was moved</returns>
+    public bool MoveCardToDiscard(GameObject cardObj)
+    {
+        // Check if we're on the server
+        if (!FishNet.InstanceFinder.IsServerStarted)
+        {
+            Debug.LogWarning("MoveCardToDiscard can only be called on the server");
+            return false;
+        }
+        
+        // Remove the card from hand
+        if (combatHand.RemoveCard(cardObj))
+        {
+            // Add the card to the discard pile
+            combatDiscard.AddCard(cardObj);
+            return true;
+        }
+        
+        return false;
+    }
+
+    /// <summary>
+    /// Discards the entire hand
+    /// </summary>
+    public void DiscardHand()
+    {
+        // Check if we're on the server
+        if (!FishNet.InstanceFinder.IsServerStarted)
+        {
+            Debug.LogWarning("DiscardHand can only be called on the server");
+            return;
+        }
+        
+        // Get all cards from hand
+        List<GameObject> discardedCards = combatHand.DiscardHand();
+        
+        // Move all cards to discard pile
+        foreach (GameObject cardObj in discardedCards)
+        {
+            combatDiscard.AddCard(cardObj);
+        }
+        
+        Debug.Log($"Discarded {discardedCards.Count} cards from {parentEntity.name}'s hand");
+    }
+
+    /// <summary>
+    /// Shuffles all cards from discard pile back into deck
+    /// </summary>
+    public void ShuffleDiscardIntoDeck()
+    {
+        // Check if we're on the server
+        if (!FishNet.InstanceFinder.IsServerStarted)
+        {
+            Debug.LogWarning("ShuffleDiscardIntoDeck can only be called on the server");
+            return;
+        }
+        
+        // Get all cards from discard
+        List<GameObject> cardsToShuffle = combatDiscard.GetAllCards();
+        int cardCount = cardsToShuffle.Count;
+        
+        // Clear discard pile
+        combatDiscard.ClearDiscard();
+        
+        // Add cards to deck and shuffle
+        combatDeck.AddCardsToDeck(cardsToShuffle);
+        
+        Debug.Log($"Shuffled {cardCount} cards from discard into {parentEntity.name}'s deck");
+    }
+    
+    /// <summary>
+    /// Reshuffles discard pile into deck
+    /// </summary>
+    private void ReshuffleDiscardIntoDeck()
+    {
+        if (parentEntity == null || !parentEntity.IsServerStarted || combatDiscard == null || combatDeck == null) return;
+        
+        // Get all cards from discard
+        List<GameObject> cardsToShuffle = combatDiscard.GetAllCards();
+        
+        // If there are no cards in discard, return
+        if (cardsToShuffle.Count == 0)
+        {
+            Debug.Log($"{GetEntityName()} has no cards in discard pile to reshuffle.");
+            return;
+        }
+        
+        // Clear discard pile
+        combatDiscard.ClearDiscard();
+        
+        // Add cards to deck
+        combatDeck.AddCardsToDeck(cardsToShuffle);
+        
+        // Shuffle the deck
+        combatDeck.ShuffleDeck();
+        
+        Debug.Log($"Reshuffled {cardsToShuffle.Count} cards from discard into {GetEntityName()}'s deck");
     }
 
     // Server-side logic for drawing initial cards
     public void DrawInitialCardsForEntity(int drawAmount)
     {
-        if (parentEntity == null || !parentEntity.IsServerStarted) return;
+        if (parentEntity == null || !FishNet.InstanceFinder.IsServerStarted) return;
 
         string entityName = GetEntityName();
         
@@ -71,7 +259,8 @@ public class HandManager : MonoBehaviour
             Debug.LogWarning($"HandManager: {entityName} can only draw {actualDrawAmount} of {drawAmount} cards due to hand size limit.");
         }
         
-        // Try to draw the cards, even if reshuffling is needed
+        // Draw cards directly from deck - this uses the existing card GameObjects already created in the deck
+        // and moves them to the hand rather than creating new ones
         int cardsDrawn = 0;
         for (int i = 0; i < actualDrawAmount; i++)
         {
@@ -87,56 +276,15 @@ public class HandManager : MonoBehaviour
             }
         }
         
-        // Ensure synchronization between CombatHand and the entity's SyncList
-        NetworkPet pet = parentEntity as NetworkPet;
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        
-        // For debugging, check the current counts
-        if (pet != null)
-        {
-            Debug.Log($"After drawing, Pet {pet.PetName.Value} has {combatHand.GetCardCount()} cards in CombatHand and {pet.playerHandCardIds.Count} cards in SyncList");
-            
-            // Force synchronization if there's a mismatch
-            if (combatHand.GetCardCount() != pet.playerHandCardIds.Count)
-            {
-                Debug.LogWarning($"Mismatch detected between CombatHand ({combatHand.GetCardCount()} cards) and Pet's SyncList ({pet.playerHandCardIds.Count} cards). Synchronizing...");
-                
-                // Clear and repopulate the SyncList from the CombatHand to ensure consistency
-                pet.playerHandCardIds.Clear();
-                foreach (int cardId in combatHand.GetAllCards())
-                {
-                    pet.playerHandCardIds.Add(cardId);
-                }
-                
-                Debug.Log($"Synchronized Pet's SyncList, now has {pet.playerHandCardIds.Count} cards");
-            }
-        }
-        else if (player != null)
-        {
-            Debug.Log($"After drawing, Player {player.PlayerName.Value} has {combatHand.GetCardCount()} cards in CombatHand and {player.playerHandCardIds.Count} cards in SyncList");
-            
-            // Force synchronization if there's a mismatch
-            if (combatHand.GetCardCount() != player.playerHandCardIds.Count)
-            {
-                Debug.LogWarning($"Mismatch detected between CombatHand ({combatHand.GetCardCount()} cards) and Player's SyncList ({player.playerHandCardIds.Count} cards). Synchronizing...");
-                
-                // Clear and repopulate the SyncList from the CombatHand to ensure consistency
-                player.playerHandCardIds.Clear();
-                foreach (int cardId in combatHand.GetAllCards())
-                {
-                    player.playerHandCardIds.Add(cardId);
-                }
-                
-                Debug.Log($"Synchronized Player's SyncList, now has {player.playerHandCardIds.Count} cards");
-            }
-        }
+        // Log the cards in hand after drawing
+        Debug.Log($"After drawing, {entityName} has {combatHand.GetCardCount()} cards in hand");
     }
 
     // Server-side logic for drawing one card
     // Returns true if a card was successfully drawn
     public bool DrawOneCard()
     {
-        if (parentEntity == null || !parentEntity.IsServerStarted) return false;
+        if (parentEntity == null || !FishNet.InstanceFinder.IsServerStarted) return false;
         if (combatHand == null)
         {
             Debug.LogError("HandManager: Cannot draw card - CombatHand component not found.");
@@ -177,97 +325,35 @@ public class HandManager : MonoBehaviour
             }
         }
 
-        // Draw one card from deck
-        List<int> drawnCards = combatDeck.DrawCards(1);
+        // Get existing card GameObject from deck - these were created during combat setup
+        // and are stored in the deck's deckCards list
+        List<GameObject> drawnCards = combatDeck.DrawCards(1);
         if (drawnCards.Count == 0)
         {
             Debug.LogWarning($"{entityName} failed to draw a card from deck (size: {combatDeck.GetDeckSize()}).");
             return false;
         }
         
-        int cardIdToDraw = drawnCards[0];
+        // Get the first card object from the list
+        GameObject cardObj = drawnCards[0];
         
-        // Add to CombatHand
-        bool added = combatHand.AddCard(cardIdToDraw);
+        // Add the existing GameObject to CombatHand - no new card is created here
+        bool added = combatHand.AddCard(cardObj);
         if (!added)
         {
-            // If adding to hand failed, put card back in deck
-            combatDeck.AddCard(cardIdToDraw);
-            Debug.LogWarning($"{entityName} failed to add card ID: {cardIdToDraw} to hand. Card returned to deck.");
+            // If adding to hand failed, put card back in deck 
+            // Using AddCardToDeck to maintain the same card object
+            combatDeck.AddCardToDeck(cardObj);
+            Debug.LogWarning($"{entityName} failed to add card to hand. Card returned to deck.");
             return false;
         }
+        
+        // Get card ID for logging
+        Card cardComponent = cardObj.GetComponent<Card>();
+        int cardId = cardComponent != null ? cardComponent.CardId : -1;
 
-        Debug.Log($"{entityName} drew card ID: {cardIdToDraw}. Hand size: {combatHand.GetCardCount()}");
+        Debug.Log($"{entityName} drew card ID: {cardId}. Hand size: {combatHand.GetCardCount()}");
         return true;
-    }
-
-    // Server-side logic for discarding entire hand
-    public void DiscardHand()
-    {
-        if (parentEntity == null || !parentEntity.IsServerStarted) return;
-        if (combatHand == null || combatDiscard == null)
-        {
-            Debug.LogError("HandManager: Cannot discard hand - CombatHand or CombatDiscard component not found.");
-            return;
-        }
-
-        string entityName = GetEntityName();
-
-        if (combatHand.IsEmpty())
-        {
-            Debug.Log($"{entityName} has no cards in hand to discard.");
-            return;
-        }
-
-        // Get all cards from hand and discard them
-        List<int> cardsToDiscard = combatHand.GetAllCards();
-        foreach (int cardId in cardsToDiscard)
-        {
-            combatDiscard.AddCard(cardId);
-        }
-        
-        // Clear the hand - this will trigger the SyncList.OnChange event
-        // which will notify subscribers (like CardSpawner) to update visuals
-        combatHand.DiscardHand();
-
-        Debug.Log($"{entityName} discarded {cardsToDiscard.Count} cards.");
-        
-        // Find and notify CardSpawner to clear visual cards
-        // This is a backup in case the SyncList event doesn't properly trigger updates
-        CardSpawner cardSpawner = parentEntity.GetComponent<CardSpawner>();
-        if (cardSpawner != null)
-        {
-            // We can safely invoke HandleHandChanged since it checks for client initialization internally
-            cardSpawner.HandleHandDiscarded();
-        }
-    }
-
-    // Server-side logic for moving a specific card from hand to discard
-    public void MoveCardToDiscard(int cardId)
-    {
-        if (parentEntity == null || !parentEntity.IsServerStarted) return;
-        if (combatHand == null || combatDiscard == null)
-        {
-            Debug.LogError("HandManager: Cannot move card to discard - CombatHand or CombatDiscard component not found.");
-            return;
-        }
-
-        string entityName = GetEntityName();
-
-        if (combatHand.HasCard(cardId))
-        {
-            // Remove from hand
-            combatHand.RemoveCard(cardId);
-            
-            // Add to discard pile
-            combatDiscard.AddCard(cardId);
-            
-            Debug.Log($"{entityName} moved card ID {cardId} from hand to discard.");
-        }
-        else
-        {
-            Debug.LogWarning($"{entityName} tried to move card ID {cardId} to discard, but it was not in hand.");
-        }
     }
 
     // Server-side logic to shuffle the deck
@@ -278,41 +364,6 @@ public class HandManager : MonoBehaviour
         combatDeck.ShuffleDeck();
     }
 
-    // Server-side logic to move cards from discard to deck and shuffle
-    private void ReshuffleDiscardIntoDeck()
-    {
-        if (parentEntity == null || !parentEntity.IsServerStarted) return;
-        if (combatDeck == null || combatDiscard == null)
-        {
-            Debug.LogError($"HandManager: Cannot reshuffle discard for {GetEntityName()} - CombatDeck or CombatDiscard component not found.");
-            return;
-        }
-
-        string entityName = GetEntityName();
-
-        if (combatDiscard.GetCardCount() == 0)
-        {
-            Debug.Log($"{entityName} has no cards in discard to reshuffle.");
-            return;
-        }
-
-        // Get all cards from discard
-        List<int> discardCards = combatDiscard.GetAllCards();
-        if (discardCards.Count == 0)
-        {
-            Debug.LogWarning($"Failed to get discard cards for {entityName}.");
-            return;
-        }
-        
-        // Add to deck and shuffle
-        combatDeck.AddCardsToDeck(discardCards);
-        
-        // Clear the discard pile
-        combatDiscard.ClearDiscard();
-
-        Debug.Log($"{entityName}'s discard reshuffled into deck. New deck size: {combatDeck.GetDeckSize()}");
-    }
-    
     // Get entity name for logging
     private string GetEntityName()
     {

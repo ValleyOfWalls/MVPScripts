@@ -12,8 +12,15 @@ using System.Linq;
 [System.Serializable]
 public class CombatDeck : NetworkBehaviour
 {
-    // List of card IDs in the deck, synced across network
-    private readonly SyncList<int> deckCardIds = new();
+    // List of physical card GameObjects in the deck
+    [Header("Card Objects")]
+    private List<GameObject> deckCards = new List<GameObject>();
+
+    // Parent transform for holding deck cards
+    [SerializeField] private Transform deckParent;
+    
+    // Card prefab reference (should match CardSpawner's prefab)
+    [SerializeField] private GameObject cardPrefab;
     
     // Inspector-visible representation of the deck (read-only, for debugging)
     [Header("Current Deck (Read-Only)")]
@@ -32,28 +39,49 @@ public class CombatDeck : NetworkBehaviour
     // Event for deck changes
     public delegate void DeckChanged();
     public event DeckChanged OnDeckChanged;
+    
+    // Reference to CardSpawner for creating cards
+    private CardSpawner cardSpawner;
+
+    private void Awake()
+    {
+        cardSpawner = GetComponent<CardSpawner>();
+        if (cardSpawner == null)
+        {
+            Debug.LogError("CombatDeck: CardSpawner component is required but not found");
+        }
+        
+        // If deckParent is not assigned, default to a child of this object
+        if (deckParent == null)
+        {
+            // Check if one already exists
+            Transform existingDeckTransform = transform.Find("DeckPosition");
+            if (existingDeckTransform != null)
+            {
+                deckParent = existingDeckTransform;
+            }
+            else
+            {
+                // Create a new transform for deck positioning
+                GameObject deckPositionObj = new GameObject("DeckPosition");
+                deckPositionObj.transform.SetParent(transform);
+                deckPositionObj.transform.localPosition = Vector3.zero;
+                deckParent = deckPositionObj.transform;
+            }
+        }
+    }
 
     public override void OnStartClient()
     {
         base.OnStartClient();
         
-        // Register for changes to the card lists
-        deckCardIds.OnChange += HandleDeckChanged;
-        
-        // Update inspector lists on client start
+        // Update inspector lists for client visualization
         UpdateInspectorLists();
     }
 
-    public override void OnStopClient()
-    {
-        base.OnStopClient();
-        
-        // Unregister from changes
-        deckCardIds.OnChange -= HandleDeckChanged;
-    }
-    
     /// <summary>
-    /// Sets up this combat deck with cards from the entity's persistent deck
+    /// Sets up this combat deck by creating the initial physical card GameObjects
+    /// that will be used throughout the combat phase
     /// </summary>
     /// <param name="cardIds">List of card IDs to add to this combat deck</param>
     [Server]
@@ -69,17 +97,71 @@ public class CombatDeck : NetworkBehaviour
         
         ClearDeck();
         
-        // Add each card to the deck
+        // Create actual card GameObjects for each card ID - these same objects
+        // will be moved between deck, hand, and discard throughout combat
         foreach (int cardId in cardIds)
         {
-            deckCardIds.Add(cardId);
+            // Spawn a card GameObject in the deck (disabled state)
+            GameObject cardObj = SpawnCardInDeck(cardId);
+            if (cardObj != null)
+            {
+                // Store the card object in our deck list
+                deckCards.Add(cardObj);
+            }
         }
         
         // Shuffle the deck
         ShuffleDeck();
         
         setupDone = true;
-        Debug.Log($"Combat deck for {gameObject.name} set up with {deckCardIds.Count} cards.");
+        Debug.Log($"Combat deck for {gameObject.name} set up with {deckCards.Count} physical card objects.");
+        
+        // Update inspector lists for debugging
+        UpdateInspectorLists();
+        
+        // Notify of deck change
+        OnDeckChanged?.Invoke();
+    }
+    
+    /// <summary>
+    /// Spawns a physical card GameObject in the deck position during initial deck setup
+    /// </summary>
+    private GameObject SpawnCardInDeck(int cardId)
+    {
+        if (cardSpawner == null)
+        {
+            Debug.LogError("Cannot spawn card: CardSpawner component not found");
+            return null;
+        }
+        
+        // Use the CardSpawner to create the initial card GameObject
+        // The addToHand=false parameter ensures it's created for the deck
+        GameObject cardObj = cardSpawner.SpawnCard(cardId, deckParent, false);
+        
+        if (cardObj != null)
+        {
+            // Set the card to be inactive while in the deck
+            cardObj.SetActive(false);
+            
+            // Position the card at the deck transform
+            cardObj.transform.position = deckParent.position;
+            cardObj.transform.rotation = deckParent.rotation;
+            
+            // Add a reference to its deck
+            Card cardComponent = cardObj.GetComponent<Card>();
+            if (cardComponent != null)
+            {
+                cardComponent.SetCurrentContainer(CardLocation.Deck);
+            }
+            
+            Debug.Log($"Card ID {cardId} spawned in deck for {gameObject.name}");
+        }
+        else
+        {
+            Debug.LogError($"Failed to spawn card ID {cardId} in deck");
+        }
+        
+        return cardObj;
     }
     
     /// <summary>
@@ -94,118 +176,261 @@ public class CombatDeck : NetworkBehaviour
     }
     
     /// <summary>
-    /// Adds a card to the combat deck
+    /// CAUTION: Adds a card to the combat deck by spawning a NEW card object
+    /// Consider using AddCardToDeck(GameObject) when moving existing cards
     /// </summary>
-    /// <param name="cardId">The ID of the card to add</param>
+    /// <param name="cardId">The ID of the card to spawn and add</param>
     [Server]
-    public void AddCard(int cardId)
+    private void AddCard(int cardId)
     {
         if (!IsServerInitialized) return;
-        deckCardIds.Add(cardId);
+        
+        // Spawn a new card GameObject in the deck
+        GameObject cardObj = SpawnCardInDeck(cardId);
+        if (cardObj != null)
+        {
+            deckCards.Add(cardObj);
+            
+            // Update inspector lists
+            UpdateInspectorLists();
+            
+            // Notify of deck change
+            OnDeckChanged?.Invoke();
+        }
     }
     
     /// <summary>
-    /// Draws a specific number of cards from the deck
+    /// Creates and adds a new card to the deck by ID - use this when you need
+    /// to create a brand new card, not when moving existing card objects
+    /// </summary>
+    /// <param name="cardId">The ID of the card to create and add</param>
+    [Server]
+    public void AddCardById(int cardId)
+    {
+        AddCard(cardId);
+    }
+    
+    /// <summary>
+    /// Adds a single card GameObject to the deck
+    /// This should be used when moving an existing card object from hand or discard
+    /// </summary>
+    /// <param name="cardObj">The card GameObject to add</param>
+    [Server]
+    public void AddCardToDeck(GameObject cardObj)
+    {
+        if (!IsServerInitialized || cardObj == null) return;
+        
+        // Set the card's parent to the deck transform
+        cardObj.transform.SetParent(deckParent);
+                
+        // Set the card to be inactive while in the deck
+        cardObj.SetActive(false);
+                
+        // Position the card at the deck transform
+        cardObj.transform.position = deckParent.position;
+        cardObj.transform.rotation = deckParent.rotation;
+                
+        // Update the card's container status
+        Card cardComponent = cardObj.GetComponent<Card>();
+        if (cardComponent != null)
+        {
+            cardComponent.SetCurrentContainer(CardLocation.Deck);
+        }
+        
+        // Add to our deck list
+        deckCards.Add(cardObj);
+        
+        // Update inspector lists
+        UpdateInspectorLists();
+        
+        // Notify of deck change
+        OnDeckChanged?.Invoke();
+    }
+    
+    /// <summary>
+    /// Draws a specific number of cards from the deck and moves them out of the deck
     /// </summary>
     /// <param name="count">Number of cards to draw</param>
-    /// <returns>List of drawn card IDs</returns>
+    /// <returns>List of existing card GameObjects removed from the deck</returns>
     [Server]
-    public List<int> DrawCards(int count)
+    public List<GameObject> DrawCards(int count)
     {
-        if (!IsServerInitialized) return new List<int>();
+        if (!IsServerInitialized) return new List<GameObject>();
         
-        List<int> drawnCards = new List<int>();
+        List<GameObject> drawnCards = new List<GameObject>();
         
         for (int i = 0; i < count; i++)
         {
             // Check if deck is empty
-            if (deckCardIds.Count == 0)
+            if (deckCards.Count == 0)
             {
                 // No more cards to draw
                 break;
             }
             
-            // Draw the top card
-            int cardId = deckCardIds[0];
-            deckCardIds.RemoveAt(0);
-            drawnCards.Add(cardId);
+            // Draw the top card - this removes the existing GameObject from the deck
+            GameObject cardObj = deckCards[0];
+            deckCards.RemoveAt(0);
+            
+            // Update the card's container status
+            Card cardComponent = cardObj.GetComponent<Card>();
+            if (cardComponent != null)
+            {
+                cardComponent.SetCurrentContainer(CardLocation.Hand);
+            }
+            
+            drawnCards.Add(cardObj);
         }
+        
+        // Update inspector lists
+        UpdateInspectorLists();
+        
+        // Notify of deck change
+        OnDeckChanged?.Invoke();
         
         return drawnCards;
     }
     
     /// <summary>
-    /// Shuffles the deck
+    /// Shuffles the deck - rearranges the actual card GameObjects in the list
     /// </summary>
     [Server]
     public void ShuffleDeck()
     {
         if (!IsServerInitialized) return;
         
-        if (deckCardIds.Count <= 1) return; // No need to shuffle 0 or 1 card
+        if (deckCards.Count <= 1) return; // No need to shuffle 0 or 1 card
         
         // Copy to list for shuffling
-        List<int> shuffledList = deckCardIds.ToList();
+        List<GameObject> shuffledList = new List<GameObject>(deckCards);
         
         // Fisher-Yates shuffle
         for (int i = shuffledList.Count - 1; i > 0; i--)
         {
             int j = rng.Next(0, i + 1);
-            int temp = shuffledList[i];
+            GameObject temp = shuffledList[i];
             shuffledList[i] = shuffledList[j];
             shuffledList[j] = temp;
         }
         
         // Replace the original deck with the shuffled deck
-        deckCardIds.Clear();
-        foreach (int cardId in shuffledList)
+        deckCards = shuffledList;
+        
+        // Reorder the cards in the transform hierarchy
+        for (int i = 0; i < deckCards.Count; i++)
         {
-            deckCardIds.Add(cardId);
+            deckCards[i].transform.SetSiblingIndex(i);
         }
         
         Debug.Log($"Combat deck for {gameObject.name} was shuffled.");
+        
+        // Update inspector lists
+        UpdateInspectorLists();
+        
+        // Notify of deck change
+        OnDeckChanged?.Invoke();
     }
     
     /// <summary>
     /// Adds cards to the deck and shuffles them in
     /// </summary>
     [Server]
-    public void AddCardsToDeck(List<int> cardIds)
+    public void AddCardsToDeck(List<GameObject> cardObjs)
     {
         if (!IsServerInitialized) return;
         
-        // Add all cards to the deck
-        foreach (int cardId in cardIds)
+        // Add all cards to the deck and set them inactive
+        foreach (GameObject cardObj in cardObjs)
         {
-            deckCardIds.Add(cardId);
+            if (cardObj != null)
+            {
+                // Set the card's parent to the deck transform
+                cardObj.transform.SetParent(deckParent);
+                
+                // Set the card to be inactive while in the deck
+                cardObj.SetActive(false);
+                
+                // Position the card at the deck transform
+                cardObj.transform.position = deckParent.position;
+                cardObj.transform.rotation = deckParent.rotation;
+                
+                // Update the card's container status
+                Card cardComponent = cardObj.GetComponent<Card>();
+                if (cardComponent != null)
+                {
+                    cardComponent.SetCurrentContainer(CardLocation.Deck);
+                }
+                
+                // Add to our deck list
+                deckCards.Add(cardObj);
+            }
         }
         
         // Shuffle the deck
         ShuffleDeck();
         
-        Debug.Log($"Added {cardIds.Count} cards to deck for {gameObject.name}.");
+        Debug.Log($"Added {cardObjs.Count} cards to deck for {gameObject.name}.");
     }
     
     /// <summary>
-    /// Clears the deck
+    /// Clears the deck by destroying all card GameObjects
     /// </summary>
     [Server]
     public void ClearDeck()
     {
         if (!IsServerInitialized) return;
         
-        deckCardIds.Clear();
+        // Destroy all card GameObjects
+        foreach (GameObject cardObj in deckCards)
+        {
+            if (cardObj != null)
+            {
+                Destroy(cardObj);
+            }
+        }
+        
+        // Clear the list
+        deckCards.Clear();
         
         Debug.Log($"Combat deck cleared for {gameObject.name}.");
+        
+        // Update inspector lists
+        UpdateInspectorLists();
+        
+        // Notify of deck change
+        OnDeckChanged?.Invoke();
     }
     
     /// <summary>
-    /// Gets all card IDs in the deck
+    /// Gets all card GameObjects in the deck
+    /// </summary>
+    /// <returns>List of card GameObjects</returns>
+    public List<GameObject> GetDeckCards()
+    {
+        return new List<GameObject>(deckCards);
+    }
+    
+    /// <summary>
+    /// Gets the card IDs currently in the deck
     /// </summary>
     /// <returns>List of card IDs</returns>
     public List<int> GetDeckCardIds()
     {
-        return new List<int>(deckCardIds);
+        List<int> cardIds = new List<int>();
+        
+        foreach (GameObject cardObj in deckCards)
+        {
+            if (cardObj != null)
+            {
+                Card cardComponent = cardObj.GetComponent<Card>();
+                if (cardComponent != null)
+                {
+                    cardIds.Add(cardComponent.CardId);
+                }
+            }
+        }
+        
+        return cardIds;
     }
     
     /// <summary>
@@ -214,18 +439,7 @@ public class CombatDeck : NetworkBehaviour
     /// <returns>Card count</returns>
     public int GetDeckSize()
     {
-        return deckCardIds.Count;
-    }
-    
-    /// <summary>
-    /// Handler for deck changes
-    /// </summary>
-    private void HandleDeckChanged(SyncListOperation op, int index, int oldItem, int newItem, bool asServer)
-    {
-        UpdateInspectorLists();
-        
-        // Notify subscribers of deck changes
-        OnDeckChanged?.Invoke();
+        return deckCards.Count;
     }
     
     /// <summary>
@@ -237,13 +451,21 @@ public class CombatDeck : NetworkBehaviour
         inspectorDeckList.Clear();
         inspectorDeckNames.Clear();
         
-        foreach (int cardId in deckCardIds)
+        foreach (GameObject cardObj in deckCards)
         {
-            inspectorDeckList.Add(cardId);
-            
-            // Try to get card name if available
-            string cardName = GetCardName(cardId);
-            inspectorDeckNames.Add(cardName);
+            if (cardObj != null)
+            {
+                Card cardComponent = cardObj.GetComponent<Card>();
+                if (cardComponent != null)
+                {
+                    int cardId = cardComponent.CardId;
+                    inspectorDeckList.Add(cardId);
+                    
+                    // Try to get card name
+                    string cardName = GetCardName(cardId);
+                    inspectorDeckNames.Add(cardName);
+                }
+            }
         }
     }
     
@@ -266,4 +488,12 @@ public class CombatDeck : NetworkBehaviour
     {
         UpdateInspectorLists();
     }
+}
+
+// Add this enum to define card locations
+public enum CardLocation
+{
+    Deck,
+    Hand,
+    Discard
 } 

@@ -20,48 +20,34 @@ public class LobbyUIManager : MonoBehaviour
 
     private void Awake()
     {
-        // Validate required references
-        if (readyButton == null)
-        {
-            Debug.LogError("LobbyUIManager: Ready Button is not assigned in the Inspector.");
-        }
-        else
+        InitializeButtons();
+        FindRequiredComponents();
+    }
+    
+    private void InitializeButtons()
+    {
+        if (readyButton != null)
         {
             readyButton.onClick.AddListener(OnReadyButtonClicked);
         }
-
-        if (startButton == null)
-        {
-            Debug.LogError("LobbyUIManager: Start Button is not assigned in the Inspector.");
-        }
-        else
+        
+        if (startButton != null)
         {
             startButton.onClick.AddListener(OnStartButtonClicked);
-            startButton.interactable = false; // Disabled until conditions are met
+            startButton.interactable = false;
         }
-
-        if (lobbyCanvas == null) Debug.LogError("LobbyUIManager: Lobby Canvas is not assigned in the Inspector.");
-        if (playerListText == null) Debug.LogError("LobbyUIManager: Player List Text is not assigned in the Inspector.");
-        if (lobbyManager == null) Debug.LogError("LobbyUIManager: LobbyManager reference is not assigned in the Inspector.");
-        
-        // Find the GamePhaseManager if not set in inspector
+    }
+    
+    private void FindRequiredComponents()
+    {
         if (gamePhaseManager == null)
         {
             gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-            if (gamePhaseManager == null)
-            {
-                Debug.LogWarning("LobbyUIManager: GamePhaseManager not found. Phase transitions may not work correctly.");
-            }
         }
         
-        // Find the CombatSetup if not set in inspector
         if (combatSetup == null)
         {
             combatSetup = FindFirstObjectByType<CombatSetup>();
-            if (combatSetup == null)
-            {
-                Debug.LogWarning("LobbyUIManager: CombatSetup not found. Combat initialization may not work correctly.");
-            }
         }
     }
 
@@ -93,10 +79,6 @@ public class LobbyUIManager : MonoBehaviour
         if (lobbyManager != null)
         {
             lobbyManager.RequestStartGame();
-        }
-        else
-        {
-            Debug.LogError("LobbyUIManager: LobbyManager reference is null. Cannot start game.");
         }
     }
 
@@ -150,13 +132,18 @@ public class LobbyUIManager : MonoBehaviour
     public void PrepareUIForLobbyJoin()
     {
         ShowLobbyUI();
-        
-        // Reset any UI elements as needed
+        ResetLobbyUIState();
+    }
+    
+    private void ResetLobbyUIState()
+    {
+        // Reset player list text
         if (playerListText != null)
         {
             playerListText.text = "Players in Lobby:\n(Waiting for server data...)";
         }
         
+        // Reset button states
         if (readyButton != null)
         {
             readyButton.interactable = true;

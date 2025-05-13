@@ -1,5 +1,6 @@
 using UnityEngine;
 using FishNet.Object;
+using System.Collections.Generic;
 
 /// <summary>
 /// Prepares a combat deck from entity's collection
@@ -31,30 +32,45 @@ public class CombatDeckSetup : NetworkBehaviour
     }
 
     /// <summary>
-    /// Called by CombatSetup to prepare the combat deck
+    /// Sets up the combat deck for this entity
     /// </summary>
     [Server]
-    public void SetupCombatDeck()
+    public void SetupCombatDeck(List<int> cardIds)
     {
-        if (!IsServerInitialized || setupDone || entityDeck == null || combatDeck == null) return;
+        if (!IsServerInitialized) return;
         
-        // Clear combat deck
-        combatDeck.ClearDeck();
-        
-        // Get all cards from entity deck
-        var allCards = entityDeck.GetAllCardIds();
-        
-        // Add each card to combat deck
-        foreach (int cardId in allCards)
+        // First, reset the deck to prepare for setup
+        CombatDeck combatDeck = GetComponent<CombatDeck>();
+        if (combatDeck == null)
         {
-            combatDeck.AddCard(cardId);
+            Debug.LogError("CombatDeckSetup: CombatDeck component not found");
+            return;
         }
         
-        // Shuffle the combat deck
-        combatDeck.ShuffleDeck();
+        combatDeck.ResetSetupFlag();
         
-        setupDone = true;
-        Debug.Log($"Setup combat deck for {gameObject.name} with {allCards.Count} cards");
+        Debug.Log($"Setting up combat deck for {gameObject.name} with {cardIds.Count} cards");
+        
+        // Add the cards to the combat deck all at once
+        combatDeck.SetupDeck(cardIds);
+    }
+    
+    /// <summary>
+    /// Adds cards to the combat deck for this entity
+    /// </summary>
+    [Server]
+    public void AddCardToDeck(int cardId)
+    {
+        if (!IsServerInitialized) return;
+        
+        CombatDeck combatDeck = GetComponent<CombatDeck>();
+        if (combatDeck == null)
+        {
+            Debug.LogError("CombatDeckSetup: CombatDeck component not found");
+            return;
+        }
+        
+        combatDeck.AddCardById(cardId);
     }
     
     /// <summary>

@@ -16,8 +16,11 @@ public class CombatHand : NetworkBehaviour
     [Header("Hand Configuration")]
     [SerializeField] private int maxHandSize = 10;
     
-    // List of card IDs in the hand, synced across network
-    private readonly SyncList<int> handCardIds = new();
+    // List of card GameObjects in the hand
+    private List<GameObject> handCards = new List<GameObject>();
+    
+    // Parent transform for holding hand cards
+    [SerializeField] private Transform handParent;
     
     // Reference to owner entity
     private NetworkBehaviour parentEntity;
@@ -33,6 +36,9 @@ public class CombatHand : NetworkBehaviour
     // Reference to HandManager component
     private HandManager handManager;
     
+    // Reference to CardSpawner component for card visualization
+    private CardSpawner cardSpawner;
+    
     // Event for hand changes
     public event Action OnHandChanged;
 
@@ -40,6 +46,9 @@ public class CombatHand : NetworkBehaviour
     {
         // Get reference to the HandManager component
         handManager = GetComponent<HandManager>();
+        
+        // Get reference to the CardSpawner component
+        cardSpawner = GetComponent<CardSpawner>();
         
         // Get reference to the parent entity
         parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
@@ -52,111 +61,273 @@ public class CombatHand : NetworkBehaviour
         {
             Debug.LogError("CombatHand requires a HandManager component on the same GameObject");
         }
+        
+        if (cardSpawner == null)
+        {
+            Debug.LogError("CombatHand requires a CardSpawner component on the same GameObject");
+        }
+        
+        // If handParent is not assigned, default to a child of this object
+        if (handParent == null)
+        {
+            // Try to get from UI component first
+            if (parentEntity is NetworkPlayer)
+            {
+                NetworkPlayerUI playerUI = GetComponent<NetworkPlayerUI>();
+                if (playerUI != null)
+                {
+                    handParent = playerUI.GetPlayerHandTransform();
+                }
+            }
+            else if (parentEntity is NetworkPet)
+            {
+                NetworkPetUI petUI = GetComponent<NetworkPetUI>();
+                if (petUI != null)
+                {
+                    handParent = petUI.GetPetHandTransform();
+                }
+            }
+            
+            // If still null, create a new transform
+            if (handParent == null)
+            {
+                // Check if one already exists
+                Transform existingHandTransform = transform.Find("HandPosition");
+                if (existingHandTransform != null)
+                {
+                    handParent = existingHandTransform;
+                }
+                else
+                {
+                    // Create a new transform for hand positioning
+                    GameObject handPositionObj = new GameObject("HandPosition");
+                    handPositionObj.transform.SetParent(transform);
+                    handPositionObj.transform.localPosition = Vector3.zero;
+                    handParent = handPositionObj.transform;
+                }
+            }
+        }
     }
 
     public override void OnStartClient()
     {
         base.OnStartClient();
-        handCardIds.OnChange += HandleHandChanged;
         
-        // Update inspector lists on client start
+        // Initialize inspector lists
         UpdateInspectorLists();
-    }
-
-    public override void OnStopClient()
-    {
-        base.OnStopClient();
-        handCardIds.OnChange -= HandleHandChanged;
     }
 
     /// <summary>
     /// Adds a card to the hand
     /// </summary>
-    /// <param name="cardId">ID of the card to add</param>
-    /// <returns>True if successfully added, false if hand is full</returns>
+    /// <param name="cardObj">The card GameObject to add</param>
+    /// <returns>True if card was added, false if hand is full</returns>
     [Server]
-    public bool AddCard(int cardId)
+    public bool AddCard(GameObject cardObj)
     {
-        if (!IsServerInitialized) return false;
+        if (!IsServerInitialized || cardObj == null) return false;
         
-        // Check if hand is full
-        if (handCardIds.Count >= maxHandSize)
+        // Check hand limit
+        if (handCards.Count >= maxHandSize)
         {
-            Debug.LogWarning($"Cannot add card {cardId} to {gameObject.name}'s hand: Hand is full ({handCardIds.Count}/{maxHandSize})");
+            Debug.LogWarning($"Cannot add card to hand: Hand is full ({handCards.Count}/{maxHandSize})");
             return false;
         }
         
-        // Add card to hand
-        handCardIds.Add(cardId);
-
-        // Also update the entity's SyncList if this is a NetworkPet
-        SyncWithEntityHand();
+        // Set the card's parent to the hand parent transform
+        cardObj.transform.SetParent(handParent);
+        
+        // Enable the card so it's visible
+        cardObj.SetActive(true);
+        
+        // Update the card's container status
+        Card cardComponent = cardObj.GetComponent<Card>();
+        if (cardComponent != null)
+        {
+            cardComponent.SetCurrentContainer(CardLocation.Hand);
+        }
+        
+        // Add to our hand list
+        handCards.Add(cardObj);
+        
+        // Update inspector lists
+        UpdateInspectorLists();
+        
+        // Notify of hand change
+        OnHandChanged?.Invoke();
         
         return true;
     }
+    
+    /// <summary>
+    /// Positions a card in the hand layout
+    /// </summary>
+    private void PositionCardInHand(GameObject cardObj)
+    {
+        if (handParent == null || cardObj == null) return;
+        
+        // Get the index of this card in the hand
+        int index = handCards.IndexOf(cardObj);
+        if (index == -1) index = handCards.Count; // Not found, assuming it's new
+        
+        // Simple linear positioning for now - this can be enhanced with a curved layout
+        float spacing = 150f; // Card spacing in pixels
+        float startX = -((handCards.Count - 1) * spacing) / 2f;
+        
+        // Set the local position
+        cardObj.transform.localPosition = new Vector3(startX + (index * spacing), 0f, 0f);
+        
+        // Set rotation to face up
+        cardObj.transform.localRotation = Quaternion.identity;
+    }
+    
+    /// <summary>
+    /// Refreshes the positions of all cards in hand
+    /// </summary>
+    private void RefreshHandPositions()
+    {
+        for (int i = 0; i < handCards.Count; i++)
+        {
+            PositionCardInHand(handCards[i]);
+        }
+    }
 
     /// <summary>
-    /// Removes a card from the hand
+    /// Checks if a card with the given ID is in the hand
     /// </summary>
-    /// <param name="cardId">ID of the card to remove</param>
-    /// <returns>True if successfully removed</returns>
-    [Server]
-    public bool RemoveCard(int cardId)
+    public bool HasCard(int cardId)
     {
-        if (!IsServerInitialized) return false;
-        
-        for (int i = 0; i < handCardIds.Count; i++)
+        foreach (GameObject cardObj in handCards)
         {
-            if (handCardIds[i] == cardId)
+            if (cardObj != null)
             {
-                handCardIds.RemoveAt(i);
-                
-                // Also update the entity's SyncList
-                SyncWithEntityHand();
-                
-                return true;
+                Card cardComponent = cardObj.GetComponent<Card>();
+                if (cardComponent != null && cardComponent.CardId == cardId)
+                {
+                    return true;
+                }
             }
         }
         
         return false;
     }
-
+    
     /// <summary>
-    /// Checks if the hand contains a specific card
+    /// Removes a card with the given ID from the hand
     /// </summary>
-    /// <param name="cardId">ID of the card to check</param>
-    /// <returns>True if the card is in the hand</returns>
-    public bool HasCard(int cardId)
+    /// <param name="cardId">ID of the card to remove</param>
+    /// <returns>The removed card GameObject, or null if not found</returns>
+    [Server]
+    public GameObject RemoveCardById(int cardId)
     {
-        return handCardIds.Contains(cardId);
+        if (!IsServerInitialized) return null;
+        
+        // Find the card with the given ID
+        for (int i = 0; i < handCards.Count; i++)
+        {
+            GameObject cardObj = handCards[i];
+            if (cardObj != null)
+            {
+                Card cardComponent = cardObj.GetComponent<Card>();
+                if (cardComponent != null && cardComponent.CardId == cardId)
+                {
+                    // Remove the card from our list
+                    handCards.RemoveAt(i);
+                    
+                    // Update inspector lists
+                    UpdateInspectorLists();
+                    
+                    // Notify of hand change
+                    OnHandChanged?.Invoke();
+                    
+                    // Return the card GameObject
+                    return cardObj;
+                }
+            }
+        }
+        
+        Debug.LogWarning($"Card with ID {cardId} not found in hand");
+        return null;
+    }
+    
+    /// <summary>
+    /// Removes a specific card GameObject from the hand
+    /// </summary>
+    /// <param name="cardObj">The card GameObject to remove</param>
+    /// <returns>True if the card was removed, false if not found</returns>
+    [Server]
+    public bool RemoveCard(GameObject cardObj)
+    {
+        if (!IsServerInitialized || cardObj == null) return false;
+        
+        // Remove the card from our list
+        bool removed = handCards.Remove(cardObj);
+        
+        if (removed)
+        {
+            // Update inspector lists
+            UpdateInspectorLists();
+            
+            // Notify of hand change
+            OnHandChanged?.Invoke();
+            
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Discards all cards from the hand
+    /// </summary>
+    /// <returns>List of discarded card GameObjects</returns>
+    [Server]
+    public List<GameObject> DiscardHand()
+    {
+        if (!IsServerInitialized) return new List<GameObject>();
+        
+        // Get a copy of the cards
+        List<GameObject> discardedCards = new List<GameObject>(handCards);
+        
+        // Clear the hand
+        handCards.Clear();
+        
+        // Update inspector lists
+        UpdateInspectorLists();
+        
+        // Notify of hand change
+        OnHandChanged?.Invoke();
+        
+        return discardedCards;
     }
 
     /// <summary>
-    /// Gets all card IDs in the hand
+    /// Gets all card IDs in the hand (for compatibility)
     /// </summary>
     /// <returns>List of card IDs</returns>
     public List<int> GetAllCards()
     {
-        return new List<int>(handCardIds);
+        List<int> cardIds = new List<int>();
+        
+        foreach (GameObject cardObj in handCards)
+        {
+            Card cardComponent = cardObj.GetComponent<Card>();
+            if (cardComponent != null)
+            {
+                cardIds.Add(cardComponent.CardId);
+            }
+        }
+        
+        return cardIds;
     }
-
+    
     /// <summary>
-    /// Discards all cards from the hand
+    /// Gets all card GameObjects in the hand
     /// </summary>
-    /// <returns>List of discarded card IDs</returns>
-    [Server]
-    public List<int> DiscardHand()
+    /// <returns>List of card GameObjects</returns>
+    public List<GameObject> GetAllCardObjects()
     {
-        if (!IsServerInitialized) 
-            return new List<int>();
-        
-        List<int> discardedCards = new List<int>(handCardIds);
-        handCardIds.Clear();
-        
-        // Also update the entity's SyncList
-        SyncWithEntityHand();
-        
-        return discardedCards;
+        return new List<GameObject>(handCards);
     }
 
     /// <summary>
@@ -165,7 +336,7 @@ public class CombatHand : NetworkBehaviour
     /// <returns>Card count</returns>
     public int GetCardCount()
     {
-        return handCardIds.Count;
+        return handCards.Count;
     }
 
     /// <summary>
@@ -174,7 +345,7 @@ public class CombatHand : NetworkBehaviour
     /// <returns>Number of available slots</returns>
     public int GetAvailableSpace()
     {
-        return maxHandSize - handCardIds.Count;
+        return maxHandSize - handCards.Count;
     }
 
     /// <summary>
@@ -194,18 +365,6 @@ public class CombatHand : NetworkBehaviour
     {
         return GetCardCount() == 0;
     }
-
-    /// <summary>
-    /// Handles changes to the hand
-    /// </summary>
-    private void HandleHandChanged(SyncListOperation op, int index, int oldItem, int newItem, bool asServer)
-    {
-        // Update inspector lists
-        UpdateInspectorLists();
-        
-        // Notify subscribers
-        OnHandChanged?.Invoke();
-    }
     
     /// <summary>
     /// Updates the inspector lists with current card data
@@ -216,13 +375,21 @@ public class CombatHand : NetworkBehaviour
         inspectorHandList.Clear();
         inspectorHandNames.Clear();
         
-        foreach (int cardId in handCardIds)
+        foreach (GameObject cardObj in handCards)
         {
-            inspectorHandList.Add(cardId);
-            
-            // Try to get card name if available
-            string cardName = GetCardName(cardId);
-            inspectorHandNames.Add(cardName);
+            if (cardObj != null)
+            {
+                Card cardComponent = cardObj.GetComponent<Card>();
+                if (cardComponent != null)
+                {
+                    int cardId = cardComponent.CardId;
+                    inspectorHandList.Add(cardId);
+                    
+                    // Try to get card name if available
+                    string cardName = GetCardName(cardId);
+                    inspectorHandNames.Add(cardName);
+                }
+            }
         }
     }
     
@@ -244,79 +411,5 @@ public class CombatHand : NetworkBehaviour
     public void RefreshInspectorView()
     {
         UpdateInspectorLists();
-    }
-
-    /// <summary>
-    /// Synchronizes this CombatHand's cards with the parent entity's SyncList
-    /// </summary>
-    [Server]
-    public void SyncWithEntityHand()
-    {
-        if (!IsServerInitialized) return;
-        
-        // For NetworkPet, we need to update its playerHandCardIds SyncList
-        NetworkPet pet = parentEntity as NetworkPet;
-        if (pet != null)
-        {
-            // Clear the pet's SyncList and repopulate it
-            pet.playerHandCardIds.Clear();
-            foreach (int cardId in handCardIds)
-            {
-                pet.playerHandCardIds.Add(cardId);
-            }
-            
-            Debug.Log($"Synchronized {handCardIds.Count} cards from CombatHand to NetworkPet's playerHandCardIds");
-        }
-        
-        // For NetworkPlayer, update its playerHandCardIds SyncList
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        if (player != null)
-        {
-            // Clear the player's SyncList and repopulate it
-            player.playerHandCardIds.Clear();
-            foreach (int cardId in handCardIds)
-            {
-                player.playerHandCardIds.Add(cardId);
-            }
-            
-            Debug.Log($"Synchronized {handCardIds.Count} cards from CombatHand to NetworkPlayer's playerHandCardIds");
-        }
-    }
-    
-    /// <summary>
-    /// Updates the CombatHand with the entity's SyncList (reverse sync)
-    /// This is useful when initializing or when the entity's SyncList is modified externally
-    /// </summary>
-    [Server]
-    public void SyncFromEntityHand()
-    {
-        if (!IsServerInitialized) return;
-        
-        // If we're a NetworkPet
-        NetworkPet pet = parentEntity as NetworkPet;
-        if (pet != null && pet.playerHandCardIds.Count > 0)
-        {
-            handCardIds.Clear();
-            foreach (int cardId in pet.playerHandCardIds)
-            {
-                handCardIds.Add(cardId);
-            }
-            
-            Debug.Log($"Synchronized {pet.playerHandCardIds.Count} cards from NetworkPet's playerHandCardIds to CombatHand");
-            return;
-        }
-        
-        // If we're a NetworkPlayer
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        if (player != null && player.playerHandCardIds.Count > 0)
-        {
-            handCardIds.Clear();
-            foreach (int cardId in player.playerHandCardIds)
-            {
-                handCardIds.Add(cardId);
-            }
-            
-            Debug.Log($"Synchronized {player.playerHandCardIds.Count} cards from NetworkPlayer's playerHandCardIds to CombatHand");
-        }
     }
 } 

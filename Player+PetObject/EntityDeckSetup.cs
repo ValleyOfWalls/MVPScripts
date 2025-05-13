@@ -60,27 +60,24 @@ public class EntityDeckSetup : NetworkBehaviour
     {
         if (!IsServerInitialized || initialized || entityDeck == null) return;
         
-        // Prepare SyncLists based on entity type
+        // Log entity type for debugging
         string entityType = "unknown";
-        
-        if (parentEntity is NetworkPlayer player)
+        if (parentEntity is NetworkPlayer)
         {
-            player.currentDeckCardIds.Clear();
-            player.playerHandCardIds.Clear();
-            player.discardPileCardIds.Clear();
             entityType = "player";
         }
-        else if (parentEntity is NetworkPet pet)
+        else if (parentEntity is NetworkPet)
         {
-            pet.currentDeckCardIds.Clear();
-            pet.playerHandCardIds.Clear();
-            pet.discardPileCardIds.Clear();
             entityType = "pet";
         }
         
         // Use StarterDeckDefinition to initialize deck
         if (starterDeckDefinition != null && starterDeckDefinition.CardsInDeck != null)
         {
+            // Clear the entity deck first
+            entityDeck.ClearDeck();
+            
+            // Add each card from the starter deck definition
             foreach (CardData cardDataSO in starterDeckDefinition.CardsInDeck)
             {
                 if (cardDataSO != null)

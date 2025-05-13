@@ -39,10 +39,9 @@ public class NetworkPlayer : NetworkBehaviour
     public event System.Action<int> OnCurrencyChanged;
 
     // CurrentDeck and PlayerHand will manage instantiated Card objects.
-    public readonly SyncList<int> currentDeckCardIds = new SyncList<int>(); 
-    public readonly SyncList<int> playerHandCardIds = new SyncList<int>();
-    public readonly SyncList<int> discardPileCardIds = new SyncList<int>();
-
+    [Header("Card Management")]
+    [Tooltip("Card management is now handled by CombatDeck, CombatHand, and CombatDiscard components")]
+    
     private GameManager gameManager;
     
     // Reference to RelationshipManager for client ID tracking

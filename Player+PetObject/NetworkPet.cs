@@ -4,6 +4,7 @@ using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using System.Collections.Generic;
 using FishNet.Managing;
+using System.Linq;
 
 /// <summary>
 /// Represents a pet entity in the networked game with health, energy, cards, and other game-related stats.
@@ -31,10 +32,9 @@ public class NetworkPet : NetworkBehaviour
 
     public readonly SyncVar<string> CurrentStatuses = new SyncVar<string>();
 
-    public readonly SyncList<int> currentDeckCardIds = new SyncList<int>();
-    public readonly SyncList<int> playerHandCardIds = new SyncList<int>(); // "PlayerHand" for pet refers to its own hand
-    public readonly SyncList<int> discardPileCardIds = new SyncList<int>();
-
+    [Header("Card Management")]
+    [Tooltip("Card management is now handled by CombatDeck, CombatHand, and CombatDiscard components")]
+    
     private GameManager gameManager;
     
     // Reference to RelationshipManager for client ID tracking
@@ -588,6 +588,18 @@ public class NetworkPet : NetworkBehaviour
             return false;
         }
         
+        // Get the card GameObject from hand
+        GameObject cardObj = petHand.GetAllCardObjects().FirstOrDefault(c => {
+            Card card = c.GetComponent<Card>();
+            return card != null && card.CardId == cardId;
+        });
+        
+        if (cardObj == null)
+        {
+            Debug.LogWarning($"Pet {PetName.Value} has card ID {cardId} in hand but couldn't find the GameObject");
+            return false;
+        }
+        
         // Get the card data
         CardData cardData = CardDatabase.Instance.GetCardById(cardId);
         if (cardData == null)
@@ -692,7 +704,7 @@ public class NetworkPet : NetworkBehaviour
         HandManager handManager = GetComponent<HandManager>();
         if (handManager != null)
         {
-            handManager.MoveCardToDiscard(cardId);
+            handManager.MoveCardToDiscard(cardObj);
         }
         
         // Notify clients that a card was played

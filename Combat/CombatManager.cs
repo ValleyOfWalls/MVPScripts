@@ -323,28 +323,31 @@ public class CombatManager : NetworkBehaviour
         // Wait a moment before starting pet actions for better player experience
         yield return new WaitForSeconds(1.5f);
         
-        // Get the pet's cards in hand - use a try/catch for better error handling
-        List<int> cardsToPlay = new List<int>();
+        // Get the pet's cards in hand
+        List<GameObject> cardsToPlay = new List<GameObject>();
         try 
         {
-            // Get a CombatHand reference first to see actual hand state
+            // Get cards from CombatHand
             CombatHand petHand = pet.GetComponent<CombatHand>();
             if (petHand != null)
             {
-                cardsToPlay = petHand.GetAllCards();
+                cardsToPlay = petHand.GetAllCardObjects();
                 Debug.Log($"Pet {pet.PetName.Value} has {cardsToPlay.Count} cards in hand (via CombatHand)");
             }
             else
             {
-                // Fall back to SyncList if CombatHand not available
-                cardsToPlay = new List<int>(pet.playerHandCardIds);
-                Debug.Log($"Pet {pet.PetName.Value} has {cardsToPlay.Count} cards in hand (via SyncList)");
+                Debug.LogError($"CombatHand component not found on pet {pet.PetName.Value}");
+                yield break;
             }
             
-            // Log each card ID for debugging
+            // Log cards for debugging
             if (cardsToPlay.Count > 0)
             {
-                Debug.Log($"Pet {pet.PetName.Value}'s cards in hand: {string.Join(", ", cardsToPlay)}");
+                string cardNames = string.Join(", ", cardsToPlay.Select(c => {
+                    Card cardComponent = c.GetComponent<Card>();
+                    return cardComponent != null ? cardComponent.CardName : "Unknown";
+                }));
+                Debug.Log($"Pet {pet.PetName.Value}'s cards in hand: {cardNames}");
             }
             else 
             {
@@ -354,7 +357,7 @@ public class CombatManager : NetworkBehaviour
         catch (System.Exception e)
         {
             Debug.LogError($"Error getting pet's cards: {e.Message}\n{e.StackTrace}");
-            cardsToPlay = new List<int>();
+            cardsToPlay = new List<GameObject>();
         }
         
         // Get the HandManager to handle moving cards to discard pile
@@ -369,98 +372,59 @@ public class CombatManager : NetworkBehaviour
         bool playedAtLeastOneCard = false;
         int cardsPlayed = 0;
         
-        // Log actual card count in SyncList for debugging
-        Debug.Log($"Pet {pet.PetName.Value}'s playerHandCardIds.Count is {pet.playerHandCardIds.Count}");
-
-        // If no cards to play, check if we need to reset state
-        if (cardsToPlay.Count == 0 && pet.playerHandCardIds.Count > 0)
-        {
-            // There's a synchronization issue - the sync list has cards but our local copy doesn't
-            Debug.LogWarning($"Synchronization issue detected: SyncList has {pet.playerHandCardIds.Count} cards but local copy has 0. Attempting to fix.");
-            cardsToPlay = new List<int>(pet.playerHandCardIds);
-        }
-        // If the sync list is empty but CombatHand has cards, use those instead
-        else if (pet.playerHandCardIds.Count == 0 && cardsToPlay.Count > 0)
-        {
-            Debug.LogWarning($"Detected mismatch: CombatHand has {cardsToPlay.Count} cards but SyncList is empty. Using CombatHand as source of truth.");
-            
-            // Manually update the pet's SyncList with the CombatHand's contents
-            // This ensures cards can be played even if synchronization failed earlier
-            pet.playerHandCardIds.Clear();
-            foreach (int cardId in cardsToPlay)
-            {
-                pet.playerHandCardIds.Add(cardId);
-            }
-            
-            Debug.Log($"Updated pet's playerHandCardIds with {cardsToPlay.Count} cards from CombatHand");
-        }
-
         // Make a copy of the cards to play to avoid collection modification issues during iteration
-        List<int> cardsCopy = new List<int>(cardsToPlay);
+        List<GameObject> cardsCopy = new List<GameObject>(cardsToPlay);
         
         // Attempt to play each card
-        foreach (int cardId in cardsCopy)
+        foreach (GameObject cardObj in cardsCopy)
         {
-            // Double check that card is still in the pet's hand
-            bool cardInHand = pet.playerHandCardIds.Contains(cardId);
-            Debug.Log($"Checking if pet still has card {cardId} in hand: {cardInHand}");
+            if (cardObj == null) continue;
             
-            // Fall back to CombatHand if SyncList doesn't have the card
-            if (!cardInHand)
+            Card cardComponent = cardObj.GetComponent<Card>();
+            if (cardComponent == null) continue;
+            
+            int cardId = cardComponent.CardId;
+            
+            CardData cardData = GetCardDataFromId(cardId);
+            if (cardData == null)
             {
-                CombatHand petHand = pet.GetComponent<CombatHand>();
-                cardInHand = petHand != null && petHand.HasCard(cardId);
-                
-                if (cardInHand)
-                {
-                    Debug.LogWarning($"Card {cardId} not found in pet's SyncList but found in CombatHand. Using it anyway.");
-                    
-                    // Add to SyncList to allow play
-                    pet.playerHandCardIds.Add(cardId);
-                }
+                Debug.LogError($"Failed to get card data for ID {cardId}");
+                continue;
             }
             
-            if (cardInHand)
+            Debug.Log($"Pet {pet.PetName.Value} considering card {cardData.CardName} (ID: {cardId}, Cost: {cardData.EnergyCost}, Pet Energy: {pet.CurrentEnergy.Value})");
+            
+            if (cardData != null && pet.CurrentEnergy.Value >= cardData.EnergyCost)
             {
-                CardData cardData = GetCardDataFromId(cardId); // This needs a Card Database
-                if (cardData == null)
+                // Use the pet's TryPlayCard method to properly handle card targeting based on target type
+                if (pet.TryPlayCard(cardId, out string cardInstanceId, out NetworkBehaviour target))
                 {
-                    Debug.LogError($"Failed to get card data for ID {cardId}");
-                    continue;
-                }
-                
-                Debug.Log($"Pet {pet.PetName.Value} considering card {cardData.CardName} (ID: {cardId}, Cost: {cardData.EnergyCost}, Pet Energy: {pet.CurrentEnergy.Value})");
-                
-                if (cardData != null && pet.CurrentEnergy.Value >= cardData.EnergyCost)
-                {
-                    // Use the pet's PlayCard method to properly handle card targeting based on target type
-                    if (pet.TryPlayCard(cardId, out string cardInstanceId, out NetworkBehaviour target))
+                    // Card was successfully played
+                    Debug.Log($"Pet {pet.PetName.Value} played card ID: {cardId} on target: {target.name} (Instance ID: {cardInstanceId})");
+                    
+                    playedAtLeastOneCard = true;
+                    cardsPlayed++;
+                    
+                    // Note: We don't move the card to discard here, the pet.TryPlayCard method already does this
+                    
+                    // Longer pause between card plays for better visualization
+                    yield return new WaitForSeconds(2.5f);
+                    
+                    // Check game over condition after each card play
+                    if (player.CurrentHealth.Value <= 0 || pet.CurrentHealth.Value <= 0)
                     {
-                        // Card was successfully played
-                        Debug.Log($"Pet {pet.PetName.Value} played card ID: {cardId} on target: {target.name} (Instance ID: {cardInstanceId})");
-                        
-                        playedAtLeastOneCard = true;
-                        cardsPlayed++;
-                        
-                        // Longer pause between card plays for better visualization
-                        yield return new WaitForSeconds(2.5f);
-                        
-                        // Check game over condition after each card play
-                        if (player.CurrentHealth.Value <= 0 || pet.CurrentHealth.Value <= 0)
-                        {
-                            HandleFightEnd(player, pet, fightState);
-                            yield break;
-                        }
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"Pet {pet.PetName.Value} failed to play card ID: {cardId}");
+                        HandleFightEnd(player, pet, fightState);
+                        yield break;
                     }
                 }
                 else
                 {
-                    Debug.Log($"Pet {pet.PetName.Value} doesn't have enough energy ({pet.CurrentEnergy.Value}) to play card ID: {cardId} (Cost: {cardData.EnergyCost})");
+                    Debug.LogWarning($"Pet {pet.PetName.Value} failed to play card ID: {cardId}");
                 }
+            }
+            else
+            {
+                Debug.Log($"Pet {pet.PetName.Value} doesn't have enough energy ({pet.CurrentEnergy.Value}) to play card ID: {cardId} (Cost: {cardData.EnergyCost})");
             }
         }
 
@@ -468,21 +432,16 @@ public class CombatManager : NetworkBehaviour
         if (!playedAtLeastOneCard)
         {
             // Get current cards in hand for final validation
-            List<int> currentCards = pet.GetComponent<CombatHand>()?.GetAllCards() ?? new List<int>();
+            List<GameObject> currentCards = pet.GetComponent<CombatHand>()?.GetAllCardObjects() ?? new List<GameObject>();
             
             Debug.Log($"Pet {pet.PetName.Value} didn't play any cards this turn (played: {cardsPlayed}, " +
-                      $"cards at start: {cardsToPlay.Count}, current cards: {currentCards.Count}, " +
-                      $"cards in SyncList: {pet.playerHandCardIds.Count})");
+                      $"cards at start: {cardsToPlay.Count}, current cards: {currentCards.Count})");
             
             // Wait a moment to show the pet's "thinking" even if no cards played
             yield return new WaitForSeconds(1.0f);
         }
 
         Debug.Log($"Pet {pet.PetName.Value} ends its turn.");
-        
-        // Get final card count before discard for debugging
-        int finalCardCount = pet.playerHandCardIds.Count;
-        Debug.Log($"Pet {pet.PetName.Value} has {finalCardCount} cards in hand before discarding");
         
         // Discard pet's hand using its HandManager
         if (petHandManager != null)

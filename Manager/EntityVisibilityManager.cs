@@ -9,7 +9,7 @@ using System.Collections.Generic;
 public class EntityVisibilityManager : MonoBehaviour
 {
     [Header("Debug Options")]
-    [SerializeField] private bool debugLogEnabled = true;
+    [SerializeField] private bool debugLogEnabled = false;
     
     // Cache all players and pets for easier management
     private List<NetworkPlayer> allPlayers = new List<NetworkPlayer>();
@@ -35,10 +35,14 @@ public class EntityVisibilityManager : MonoBehaviour
     
     private void Awake()
     {
-        fightManager = FindFirstObjectByType<FightManager>();
+        TryFindFightManager();
+    }
+    
+    private void TryFindFightManager()
+    {
         if (fightManager == null)
         {
-            Debug.LogWarning("EntityVisibilityManager: FightManager not found at startup. Will try again when needed.");
+            fightManager = FindFirstObjectByType<FightManager>();
         }
     }
     
@@ -52,6 +56,8 @@ public class EntityVisibilityManager : MonoBehaviour
             UpdateVisibilityForLobby();
         }
     }
+    
+    #region Registration Methods
     
     /// <summary>
     /// Register a NetworkPlayer to be managed by this component
@@ -92,13 +98,10 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void UnregisterPlayer(NetworkPlayer player)
     {
-        if (player == null) return;
+        if (player == null || !allPlayers.Contains(player)) return;
         
-        if (allPlayers.Contains(player))
-        {
-            allPlayers.Remove(player);
-            LogDebug($"Unregistered player (ID: {player.ObjectId})");
-        }
+        allPlayers.Remove(player);
+        LogDebug($"Unregistered player (ID: {player.ObjectId})");
     }
     
     /// <summary>
@@ -106,14 +109,15 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void UnregisterPet(NetworkPet pet)
     {
-        if (pet == null) return;
+        if (pet == null || !allPets.Contains(pet)) return;
         
-        if (allPets.Contains(pet))
-        {
-            allPets.Remove(pet);
-            LogDebug($"Unregistered pet (ID: {pet.ObjectId})");
-        }
+        allPets.Remove(pet);
+        LogDebug($"Unregistered pet (ID: {pet.ObjectId})");
     }
+    
+    #endregion
+    
+    #region Game State Methods
     
     /// <summary>
     /// Set the game state to Lobby and update visibility accordingly
@@ -135,10 +139,22 @@ public class EntityVisibilityManager : MonoBehaviour
         UpdateVisibilityForCombat();
     }
     
+    #endregion
+    
+    #region Visibility Update Methods
+    
     /// <summary>
     /// Hide all entities in Lobby state
     /// </summary>
     private void UpdateVisibilityForLobby()
+    {
+        SetAllPlayersVisibility(entitiesVisibleInLobby);
+        SetAllPetsVisibility(entitiesVisibleInLobby);
+        
+        LogDebug($"Updated visibility for Lobby - All entities {(entitiesVisibleInLobby ? "visible" : "hidden")}");
+    }
+    
+    private void SetAllPlayersVisibility(bool isVisible)
     {
         foreach (var player in allPlayers)
         {
@@ -147,10 +163,13 @@ public class EntityVisibilityManager : MonoBehaviour
             var playerUI = player.GetComponent<NetworkPlayerUI>();
             if (playerUI != null)
             {
-                playerUI.SetVisible(entitiesVisibleInLobby);
+                playerUI.SetVisible(isVisible);
             }
         }
-        
+    }
+    
+    private void SetAllPetsVisibility(bool isVisible)
+    {
         foreach (var pet in allPets)
         {
             if (pet == null) continue;
@@ -158,11 +177,9 @@ public class EntityVisibilityManager : MonoBehaviour
             var petUI = pet.GetComponent<NetworkPetUI>();
             if (petUI != null)
             {
-                petUI.SetVisible(entitiesVisibleInLobby);
+                petUI.SetVisible(isVisible);
             }
         }
-        
-        LogDebug($"Updated visibility for Lobby - All entities {(entitiesVisibleInLobby ? "visible" : "hidden")}");
     }
     
     /// <summary>
@@ -170,15 +187,11 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     private void UpdateVisibilityForCombat()
     {
-        // Ensure we have a reference to the FightManager
+        TryFindFightManager();
         if (fightManager == null)
         {
-            fightManager = FindFirstObjectByType<FightManager>();
-            if (fightManager == null)
-            {
-                LogDebug("FightManager instance not found! Cannot update visibility for combat.");
-                return;
-            }
+            LogDebug("FightManager instance not found! Cannot update visibility for combat.");
+            return;
         }
         
         // Get the local client's connection - use the local player's connection
@@ -207,12 +220,17 @@ public class EntityVisibilityManager : MonoBehaviour
             LogDebug("No fight assignment found for this client");
         }
         
-        // Update visibility for all players
+        UpdatePlayersVisibilityForCombat(playerInFightId);
+        UpdatePetsVisibilityForCombat(petInFightId);
+    }
+    
+    private void UpdatePlayersVisibilityForCombat(uint visiblePlayerId)
+    {
         foreach (var player in allPlayers)
         {
             if (player == null) continue;
             
-            bool shouldBeVisible = (uint)player.ObjectId == playerInFightId;
+            bool shouldBeVisible = (uint)player.ObjectId == visiblePlayerId;
             var playerUI = player.GetComponent<NetworkPlayerUI>();
             if (playerUI != null)
             {
@@ -220,13 +238,15 @@ public class EntityVisibilityManager : MonoBehaviour
                 LogDebug($"Player {player.PlayerName.Value} (ID: {player.ObjectId}): {(shouldBeVisible ? "Visible" : "Hidden")}");
             }
         }
-        
-        // Update visibility for all pets
+    }
+    
+    private void UpdatePetsVisibilityForCombat(uint visiblePetId)
+    {
         foreach (var pet in allPets)
         {
             if (pet == null) continue;
             
-            bool shouldBeVisible = (uint)pet.ObjectId == petInFightId;
+            bool shouldBeVisible = (uint)pet.ObjectId == visiblePetId;
             var petUI = pet.GetComponent<NetworkPetUI>();
             if (petUI != null)
             {
@@ -252,33 +272,24 @@ public class EntityVisibilityManager : MonoBehaviour
         }
         else if (currentGameState == GameState.Combat)
         {
-            // Ensure we have a reference to the FightManager
-            if (fightManager == null)
-            {
-                fightManager = FindFirstObjectByType<FightManager>();
-                if (fightManager == null)
-                {
-                    LogDebug("FightManager instance not found! Cannot update player visibility for combat.");
-                    return;
-                }
-            }
-            
-            // Get the local client's connection
+            // We need to determine if this player is involved in the local client's fight
             NetworkConnection localConnection = GetLocalPlayerConnection();
-            if (localConnection == null)
-            {
-                LogDebug("No local player connection found. Cannot determine player visibility.");
-                return;
-            }
+            if (localConnection == null) return;
             
-            // Get the fight assignment for the local client
+            TryFindFightManager();
+            if (fightManager == null) return;
+            
             var fightAssignment = fightManager.GetFightForConnection(localConnection);
             
-            // Check if this player is in the local client's fight
-            bool shouldBeVisible = fightAssignment.HasValue && fightAssignment.Value.PlayerObjectId == (uint)player.ObjectId;
-            playerUI.SetVisible(shouldBeVisible);
-            
-            LogDebug($"Combat visibility - Player {player.PlayerName.Value}: {(shouldBeVisible ? "Visible" : "Hidden")}");
+            if (fightAssignment.HasValue)
+            {
+                bool shouldBeVisible = (uint)player.ObjectId == fightAssignment.Value.PlayerObjectId;
+                playerUI.SetVisible(shouldBeVisible);
+            }
+            else
+            {
+                playerUI.SetVisible(false);
+            }
         }
     }
     
@@ -298,139 +309,80 @@ public class EntityVisibilityManager : MonoBehaviour
         }
         else if (currentGameState == GameState.Combat)
         {
-            // Ensure we have a reference to the FightManager
-            if (fightManager == null)
-            {
-                fightManager = FindFirstObjectByType<FightManager>();
-                if (fightManager == null)
-                {
-                    LogDebug("FightManager instance not found! Cannot update pet visibility for combat.");
-                    return;
-                }
-            }
-            
-            // Get the local client's connection
+            // We need to determine if this pet is involved in the local client's fight
             NetworkConnection localConnection = GetLocalPlayerConnection();
-            if (localConnection == null)
-            {
-                LogDebug("No local player connection found. Cannot determine pet visibility.");
-                return;
-            }
+            if (localConnection == null) return;
             
-            // Get the fight assignment for the local client
+            TryFindFightManager();
+            if (fightManager == null) return;
+            
             var fightAssignment = fightManager.GetFightForConnection(localConnection);
             
-            // Check if this pet is in the local client's fight
-            bool shouldBeVisible = fightAssignment.HasValue && fightAssignment.Value.PetObjectId == (uint)pet.ObjectId;
-            petUI.SetVisible(shouldBeVisible);
-            
-            LogDebug($"Combat visibility - Pet {pet.PetName.Value}: {(shouldBeVisible ? "Visible" : "Hidden")}");
+            if (fightAssignment.HasValue)
+            {
+                bool shouldBeVisible = (uint)pet.ObjectId == fightAssignment.Value.PetObjectId;
+                petUI.SetVisible(shouldBeVisible);
+            }
+            else
+            {
+                petUI.SetVisible(false);
+            }
         }
     }
     
     /// <summary>
-    /// Update visibility for all entities
+    /// Update visibility for all registered entities
     /// </summary>
     public void UpdateAllEntitiesVisibility()
     {
-        if (currentGameState == GameState.Lobby)
+        foreach (var player in allPlayers)
         {
-            UpdateVisibilityForLobby();
+            if (player != null)
+            {
+                UpdateEntityVisibility(player);
+            }
         }
-        else if (currentGameState == GameState.Combat)
+        
+        foreach (var pet in allPets)
         {
-            UpdateVisibilityForCombat();
+            if (pet != null)
+            {
+                UpdateEntityVisibility(pet);
+            }
         }
     }
     
+    #endregion
+    
+    #region Helper Methods
+    
     /// <summary>
-    /// Helper method to get the local player's connection
+    /// Get the local player's connection
     /// </summary>
     private NetworkConnection GetLocalPlayerConnection()
     {
-        // Find the local player (the one owned by this client)
-        NetworkPlayer localPlayer = null;
+        // This implementation depends on your specific NetworkPlayer setup
         
-        // Try different approaches to find the local player
-        // 1. First check for IsOwner flag
+        // Use FishNet's ClientManager to get the local connection directly
+        if (FishNet.InstanceFinder.ClientManager != null && FishNet.InstanceFinder.ClientManager.Connection != null)
+        {
+            return FishNet.InstanceFinder.ClientManager.Connection;
+        }
+        
+        // Alternative approach: try to find a player owned by the local client
         foreach (var player in allPlayers)
         {
             if (player != null && player.IsOwner)
             {
-                localPlayer = player;
-                LogDebug($"Found local player by IsOwner: {player.PlayerName.Value}");
-                break;
+                return player.Owner;
             }
         }
         
-        // 2. If that fails, try FishNet connection matching
-        if (localPlayer == null && FishNet.InstanceFinder.ClientManager != null)
-        {
-            var localConnection = FishNet.InstanceFinder.ClientManager.Connection;
-            foreach (var player in allPlayers)
-            {
-                if (player != null && player.Owner == localConnection)
-                {
-                    localPlayer = player;
-                    LogDebug($"Found local player by Connection match: {player.PlayerName.Value}");
-                    break;
-                }
-            }
-        }
-        
-        // 3. Special handling for host
-        if (localPlayer == null && FishNet.InstanceFinder.IsHostStarted)
-        {
-            // For host, if we can't find a match by ownership, try to find a player with the host's connection (ClientId 0)
-            var localConnection = FishNet.InstanceFinder.ClientManager.Connection;
-            if (localConnection != null)
-            {
-                foreach (var player in allPlayers)
-                {
-                    if (player != null && player.Owner != null && player.Owner.ClientId == localConnection.ClientId)
-                    {
-                        localPlayer = player;
-                        LogDebug($"Found local player by host ClientId match: {player.PlayerName.Value}");
-                        break;
-                    }
-                }
-                
-                // If still no match, host may own server objects (OwnerId = -1)
-                if (localPlayer == null)
-                {
-                    foreach (var player in allPlayers)
-                    {
-                        if (player != null && player.Owner != null && player.Owner.ClientId == -1)
-                        {
-                            localPlayer = player;
-                            LogDebug($"Found local player as server-owned object for host: {player.PlayerName.Value}");
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // If we found a local player, return its connection
-        if (localPlayer != null && localPlayer.Owner != null)
-        {
-            LogDebug($"Using connection from player {localPlayer.PlayerName.Value} (ClientId: {localPlayer.Owner.ClientId})");
-            return localPlayer.Owner;
-        }
-        
-        // Fallback: Try to get the client connection directly from FishNet
-        if (FishNet.InstanceFinder.ClientManager != null && FishNet.InstanceFinder.ClientManager.Connection != null)
-        {
-            LogDebug($"Using direct ClientManager connection (ClientId: {FishNet.InstanceFinder.ClientManager.Connection.ClientId})");
-            return FishNet.InstanceFinder.ClientManager.Connection;
-        }
-        
-        LogDebug("Failed to find any valid connection for visibility management");
         return null;
     }
     
     /// <summary>
-    /// Log debug messages if debug is enabled
+    /// Logs a debug message if debug logging is enabled
     /// </summary>
     private void LogDebug(string message)
     {
@@ -439,4 +391,6 @@ public class EntityVisibilityManager : MonoBehaviour
             Debug.Log($"[EntityVisibilityManager] {message}");
         }
     }
+    
+    #endregion
 } 

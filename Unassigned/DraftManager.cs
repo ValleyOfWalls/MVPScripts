@@ -15,21 +15,27 @@ public class DraftManager : NetworkBehaviour
     [Header("References")]
     [SerializeField] private CombatSetup combatSetup;
 
-    // Dictionary mapping player ObjectIds to their draft packs queue
+    // Player draft data
     private Dictionary<int, Queue<int>> playerDraftPackQueues = new Dictionary<int, Queue<int>>();
-    
-    // Dictionary mapping draft pack ObjectIds to their owners
     private Dictionary<int, int> draftPackOwners = new Dictionary<int, int>();
     
-    // SyncVar to track number of players who have completed drafting
+    // Draft completion tracking
     private readonly SyncVar<int> playersCompletedDraft = new SyncVar<int>();
-    
-    // Total number of players in the draft
     private int totalPlayers = 0;
+    
+    // Client-side references
+    private NetworkPlayer localPlayer;
+    private DraftCanvasManager draftCanvas;
 
+    #region Lifecycle Methods
+    
     private void Awake()
     {
-        // Singleton setup
+        InitializeSingleton();
+    }
+    
+    private void InitializeSingleton()
+    {
         if (Instance == null)
         {
             Instance = this;
@@ -45,120 +51,186 @@ public class DraftManager : NetworkBehaviour
         base.OnStartServer();
         if (IsServerInitialized)
         {
-            // Find all draft packs using new API
-            DraftPack[] packs = Object.FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
-            foreach (DraftPack pack in packs)
-            {
-                // Initialize pack
-            }
+            InitializeDraftPacks();
         }
     }
+    
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        
+        FindLocalObjects();
+    }
+    
+    private void FindLocalObjects()
+    {
+        if (localPlayer == null)
+        {
+            localPlayer = FindLocalPlayer();
+        }
+        
+        if (draftCanvas == null)
+        {
+            draftCanvas = FindFirstObjectByType<DraftCanvasManager>();
+        }
+    }
+    
+    private NetworkPlayer FindLocalPlayer()
+    {
+        NetworkPlayer[] players = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        foreach (NetworkPlayer player in players)
+        {
+            if (player.IsOwner)
+            {
+                return player;
+            }
+        }
+        return null;
+    }
+    
+    private void InitializeDraftPacks()
+    {
+        DraftPack[] packs = Object.FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
+        foreach (DraftPack pack in packs)
+        {
+            // Initialize pack logic
+        }
+    }
+    
+    #endregion
 
+    #region Server Methods
+    
     /// <summary>
     /// Assigns an initial draft pack to a player
     /// Called by DraftPackSetup when packs are created
     /// </summary>
-    /// <param name="playerObjectId">The player's object ID</param>
-    /// <param name="draftPackObjectId">The draft pack's object ID</param>
     [Server]
     public void AssignDraftPack(int playerObjectId, int draftPackObjectId)
     {
         if (!IsServerInitialized) return;
         
         // Add pack to player's queue
-        if (playerDraftPackQueues.TryGetValue(playerObjectId, out Queue<int> packsQueue))
+        if (!playerDraftPackQueues.TryGetValue(playerObjectId, out Queue<int> packsQueue))
         {
-            packsQueue.Enqueue(draftPackObjectId);
+            packsQueue = new Queue<int>();
+            playerDraftPackQueues[playerObjectId] = packsQueue;
         }
+        
+        packsQueue.Enqueue(draftPackObjectId);
         
         // Register the pack's owner
         draftPackOwners[draftPackObjectId] = playerObjectId;
         
         // Notify the player about their new pack
-        NetworkObject playerObj = null;
-        if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out playerObj))
+        NotifyPlayerOfNewPack(playerObjectId, draftPackObjectId);
+    }
+    
+    private void NotifyPlayerOfNewPack(int playerObjectId, int draftPackObjectId)
+    {
+        if (!NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out NetworkObject playerObj))
+            return;
+            
+        NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
+        if (player != null)
         {
-            NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
-            if (player != null)
-            {
-                TargetReceiveNewDraftPack(player.Owner, draftPackObjectId);
-            }
+            TargetReceiveNewDraftPack(player.Owner, draftPackObjectId);
         }
     }
 
     /// <summary>
     /// Handles a player selecting a card from a draft pack
     /// </summary>
-    /// <param name="playerObjectId">The player's object ID</param>
-    /// <param name="draftPackObjectId">The draft pack's object ID</param>
-    /// <param name="cardId">The selected card's ID</param>
     [ServerRpc(RequireOwnership = false)]
     public void CmdSelectCardFromPack(int playerObjectId, int draftPackObjectId, int cardId)
     {
         if (!IsServerInitialized) return;
         
-        // Get the player
-        NetworkObject playerObj = null;
-        if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out playerObj))
-        {
-            NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
-            if (player == null) return;
+        // Validate player and pack
+        if (!ValidateSelectionRequest(playerObjectId, draftPackObjectId))
+            return;
             
-            // Get the draft pack
-            NetworkObject packObj = null;
-            if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(draftPackObjectId, out packObj))
+        // Process card selection
+        ProcessCardSelection(playerObjectId, draftPackObjectId, cardId);
+    }
+    
+    private bool ValidateSelectionRequest(int playerObjectId, int draftPackObjectId)
+    {
+        if (!NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out NetworkObject _))
+            return false;
+            
+        if (!NetworkManager.ServerManager.Objects.Spawned.TryGetValue(draftPackObjectId, out NetworkObject _))
+            return false;
+            
+        // Verify the player owns this pack
+        if (!draftPackOwners.TryGetValue(draftPackObjectId, out int ownerId) || ownerId != playerObjectId)
+        {
+            Debug.LogWarning($"Player {playerObjectId} tried to select a card from pack {draftPackObjectId} they don't own.");
+            return false;
+        }
+        
+        return true;
+    }
+    
+    private void ProcessCardSelection(int playerObjectId, int draftPackObjectId, int cardId)
+    {
+        // Get the player
+        NetworkObject playerObj = NetworkManager.ServerManager.Objects.Spawned[playerObjectId];
+        NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
+        
+        // Get the draft pack
+        NetworkObject packObj = NetworkManager.ServerManager.Objects.Spawned[draftPackObjectId];
+        DraftPack draftPack = packObj.GetComponent<DraftPack>();
+        
+        // Add the card to the player's deck
+        DeckManager deckManager = player.GetComponent<DeckManager>();
+        if (deckManager != null)
+        {
+            deckManager.AddCardToDeck(cardId);
+        }
+        
+        // Remove the card from the pack
+        draftPack.RemoveCard(cardId);
+        
+        // Handle pack after card selection
+        HandlePackAfterSelection(playerObjectId, draftPackObjectId, draftPack);
+    }
+    
+    private void HandlePackAfterSelection(int playerObjectId, int draftPackObjectId, DraftPack draftPack)
+    {
+        // Check if the pack is now empty
+        if (draftPack.IsEmpty())
+        {
+            HandleEmptyPack(playerObjectId, draftPackObjectId);
+        }
+        else
+        {
+            // Pass the pack to the next player
+            PassPackToNextPlayer(draftPackObjectId);
+        }
+    }
+    
+    private void HandleEmptyPack(int playerObjectId, int draftPackObjectId)
+    {
+        // Remove the pack from the player's queue
+        if (playerDraftPackQueues.TryGetValue(playerObjectId, out Queue<int> packsQueue))
+        {
+            if (packsQueue.Count > 0 && packsQueue.Peek() == draftPackObjectId)
             {
-                DraftPack draftPack = packObj.GetComponent<DraftPack>();
-                if (draftPack == null) return;
-                
-                // Verify the player owns this pack
-                if (!draftPackOwners.TryGetValue(draftPackObjectId, out int ownerId) || ownerId != playerObjectId)
-                {
-                    Debug.LogWarning($"Player {playerObjectId} tried to select a card from pack {draftPackObjectId} they don't own.");
-                    return;
-                }
-                
-                // Add the card to the player's deck
-                DeckManager deckManager = player.GetComponent<DeckManager>();
-                if (deckManager != null)
-                {
-                    deckManager.AddCardToDeck(cardId);
-                }
-                
-                // Remove the card from the pack
-                draftPack.RemoveCard(cardId);
-                
-                // Check if the pack is now empty
-                if (draftPack.IsEmpty())
-                {
-                    // Remove the pack from the player's queue
-                    if (playerDraftPackQueues.TryGetValue(playerObjectId, out Queue<int> packsQueue))
-                    {
-                        if (packsQueue.Count > 0 && packsQueue.Peek() == draftPackObjectId)
-                        {
-                            packsQueue.Dequeue();
-                        }
-                    }
-                    
-                    // Clean up pack tracking
-                    draftPackOwners.Remove(draftPackObjectId);
-                    
-                    // Give the player their next pack, if any
-                    GivePlayerNextPack(playerObjectId);
-                }
-                else
-                {
-                    // Pass the pack to the next player
-                    PassPackToNextPlayer(draftPackObjectId);
-                }
+                packsQueue.Dequeue();
             }
         }
+        
+        // Clean up pack tracking
+        draftPackOwners.Remove(draftPackObjectId);
+        
+        // Give the player their next pack, if any
+        GivePlayerNextPack(playerObjectId);
     }
 
     /// <summary>
     /// Passes a draft pack to the next player
     /// </summary>
-    /// <param name="draftPackObjectId">The draft pack's object ID</param>
     [Server]
     private void PassPackToNextPlayer(int draftPackObjectId)
     {
@@ -169,20 +241,10 @@ public class DraftManager : NetworkBehaviour
         }
         
         // Get all players in a predictable order
-        List<NetworkPlayer> orderedPlayers = new List<NetworkPlayer>(Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None));
-        orderedPlayers.Sort((a, b) => a.ObjectId.CompareTo(b.ObjectId));
+        List<NetworkPlayer> orderedPlayers = GetOrderedPlayers();
         
         // Find the current owner's index
-        int currentOwnerIndex = -1;
-        for (int i = 0; i < orderedPlayers.Count; i++)
-        {
-            if (orderedPlayers[i].ObjectId == currentOwnerId)
-            {
-                currentOwnerIndex = i;
-                break;
-            }
-        }
-        
+        int currentOwnerIndex = FindPlayerIndexById(orderedPlayers, currentOwnerId);
         if (currentOwnerIndex == -1)
         {
             Debug.LogWarning($"Cannot find player with ID {currentOwnerId} to pass pack {draftPackObjectId}.");
@@ -197,19 +259,43 @@ public class DraftManager : NetworkBehaviour
         draftPackOwners[draftPackObjectId] = nextPlayer.ObjectId;
         
         // Add the pack to the next player's queue
-        if (playerDraftPackQueues.TryGetValue(nextPlayer.ObjectId, out Queue<int> packsQueue))
-        {
-            packsQueue.Enqueue(draftPackObjectId);
-        }
+        EnsurePlayerHasQueue(nextPlayer.ObjectId);
+        playerDraftPackQueues[nextPlayer.ObjectId].Enqueue(draftPackObjectId);
         
         // Notify the next player about their new pack
         TargetReceiveNewDraftPack(nextPlayer.Owner, draftPackObjectId);
+    }
+    
+    private List<NetworkPlayer> GetOrderedPlayers()
+    {
+        List<NetworkPlayer> players = new List<NetworkPlayer>(Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None));
+        players.Sort((a, b) => a.ObjectId.CompareTo(b.ObjectId));
+        return players;
+    }
+    
+    private int FindPlayerIndexById(List<NetworkPlayer> players, int playerId)
+    {
+        for (int i = 0; i < players.Count; i++)
+        {
+            if (players[i].ObjectId == playerId)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+    
+    private void EnsurePlayerHasQueue(int playerObjectId)
+    {
+        if (!playerDraftPackQueues.ContainsKey(playerObjectId))
+        {
+            playerDraftPackQueues[playerObjectId] = new Queue<int>();
+        }
     }
 
     /// <summary>
     /// Gives a player their next queued draft pack
     /// </summary>
-    /// <param name="playerObjectId">The player's object ID</param>
     [Server]
     private void GivePlayerNextPack(int playerObjectId)
     {
@@ -223,8 +309,7 @@ public class DraftManager : NetworkBehaviour
         int nextPackId = packsQueue.Peek();
         
         // Notify the player about their next pack
-        NetworkObject playerObj = NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out NetworkObject obj) ? obj : null;
-        if (playerObj != null)
+        if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out NetworkObject playerObj))
         {
             NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
             if (player != null)
@@ -237,7 +322,6 @@ public class DraftManager : NetworkBehaviour
     /// <summary>
     /// Marks a player as having completed the draft
     /// </summary>
-    /// <param name="playerObjectId">The player's object ID</param>
     [Server]
     private void MarkPlayerCompletedDraft(int playerObjectId)
     {
@@ -248,77 +332,52 @@ public class DraftManager : NetworkBehaviour
         {
             // All players completed - proceed to combat
             RpcDraftCompleted();
-            
-            // Start the next combat phase
-            if (combatSetup != null)
-            {
-                combatSetup.InitializeCombat();
-            }
         }
     }
-
-    /// <summary>
-    /// Target RPC to tell a player they've received a new draft pack
-    /// </summary>
-    /// <param name="conn">The player's connection</param>
-    /// <param name="draftPackObjectId">The draft pack's object ID</param>
+    
     [TargetRpc]
     private void TargetReceiveNewDraftPack(FishNet.Connection.NetworkConnection conn, int draftPackObjectId)
     {
-        // Get the draft pack
-        NetworkObject packObj = NetworkManager.ClientManager.Objects.Spawned.TryGetValue(draftPackObjectId, out NetworkObject obj) ? obj : null;
-        if (packObj == null) return;
+        // Find the local player and DraftCanvasManager
+        FindLocalObjects();
         
-        DraftPack draftPack = packObj.GetComponent<DraftPack>();
-        if (draftPack == null) return;
-        
-        // Update pack UI
-        draftPack.ShowPackForPlayer();
+        // Update the UI with the new pack
+        if (draftCanvas != null)
+        {
+            // Get the draft pack from the network
+            if (NetworkManager.ClientManager.Objects.Spawned.TryGetValue(draftPackObjectId, out NetworkObject packObj))
+            {
+                DraftPack draftPack = packObj.GetComponent<DraftPack>();
+                if (draftPack != null && draftPack.IsSpawned)
+                {
+                    // Assuming DraftPack has a method to show itself
+                    draftPack.ShowPackForPlayer();
+                }
+            }
+        }
     }
-
-    /// <summary>
-    /// Notifies all clients that the draft phase has completed
-    /// </summary>
+    
     [ObserversRpc]
     private void RpcDraftCompleted()
     {
-        // Find the draft canvas manager
-        DraftCanvasManager draftCanvasManager = Object.FindFirstObjectByType<DraftCanvasManager>();
-        if (draftCanvasManager != null)
+        // Find the GamePhaseManager to transition to Combat phase
+        GamePhaseManager phaseManager = FindFirstObjectByType<GamePhaseManager>();
+        if (phaseManager != null)
         {
-            // Enable the proceed button on the draft canvas
-            draftCanvasManager.EnableProceedButton();
+            phaseManager.SetCombatPhase();
+        }
+        
+        // Trigger combat setup
+        if (combatSetup == null)
+        {
+            combatSetup = FindFirstObjectByType<CombatSetup>();
+        }
+        
+        if (combatSetup != null && IsServerStarted)
+        {
+            combatSetup.InitializeCombat();
         }
     }
-
-    private NetworkPlayer localPlayer;
-    private DraftCanvasManager draftCanvas;
-
-    private void FindLocalObjects()
-    {
-        // Update object finding methods
-        NetworkPlayer[] players = Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
-        foreach (NetworkPlayer player in players)
-        {
-            if (player.IsOwner)
-            {
-                localPlayer = player;
-                break;
-            }
-        }
-
-        if (localPlayer == null)
-        {
-            Debug.LogError("DraftManager: Could not find local player!");
-            return;
-        }
-
-        // Update other FindObjectOfType calls similarly
-        draftCanvas = Object.FindFirstObjectByType<DraftCanvasManager>();
-        if (draftCanvas == null)
-        {
-            Debug.LogError("DraftManager: Could not find DraftCanvasManager!");
-            return;
-        }
-    }
+    
+    #endregion
 } 

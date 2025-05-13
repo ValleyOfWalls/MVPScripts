@@ -165,6 +165,14 @@ public class CardSpawner : NetworkBehaviour
     {
         if (!IsClientInitialized) return; // Only clients handle visual representation
         
+        // If we have pending card removals, this change might be due to our own card play request
+        // Skip the visual update to prevent double removal
+        if (pendingCardRemovals.Count > 0)
+        {
+            Debug.Log($"HandleHandChanged: Skipping visual update due to pending card removals: {pendingCardRemovals.Count}");
+            return;
+        }
+        
         UpdateCardDisplay();
     }
     
@@ -244,6 +252,17 @@ public class CardSpawner : NetworkBehaviour
             }
         }
         
+        // Check for pending card removals
+        List<int> cardsWithPendingRemovals = new List<int>();
+        foreach (string instanceId in pendingCardRemovals)
+        {
+            int cardId = ExtractCardIdFromInstanceId(instanceId);
+            if (!cardsWithPendingRemovals.Contains(cardId))
+            {
+                cardsWithPendingRemovals.Add(cardId);
+            }
+        }
+        
         // Remove cards that shouldn't be in the hand anymore
         foreach (var spawnedEntry in currentlySpawnedCounts)
         {
@@ -251,6 +270,14 @@ public class CardSpawner : NetworkBehaviour
             int numSpawned = spawnedEntry.Value;
             int numDesired = 0;
             desiredCardCounts.TryGetValue(cardId, out numDesired);
+            
+            // Skip removal if this card ID has pending removals
+            // This prevents UpdateCardDisplay from removing cards that will be removed by OnServerConfirmCardPlayed
+            if (cardsWithPendingRemovals.Contains(cardId))
+            {
+                Debug.Log($"UpdateCardDisplay: Skipping removal of card ID {cardId} because it has pending removals");
+                continue;
+            }
             
             if (numSpawned > numDesired)
             {
@@ -872,15 +899,16 @@ public class CardSpawner : NetworkBehaviour
             return null;
         }
 
-        // Create an instance ID for this card
+        // Create a unique instance ID for this card
         string instanceId = System.Guid.NewGuid().ToString().Substring(0, 8);
         string fullInstanceId = $"{cardId}_{instanceId}";
 
         // Instantiate the card prefab
         GameObject cardObj = Instantiate(cardPrefab, parent);
         
-        // Position the card in the UI using a layout group or manual positioning
-        // This will depend on your UI setup
+        // Set initial active state based on where it's being added
+        // Cards in hand are active, others are inactive by default
+        cardObj.SetActive(addToHand);
 
         // Set up the card's visuals and data
         Card cardComponent = cardObj.GetComponent<Card>();
@@ -892,16 +920,34 @@ public class CardSpawner : NetworkBehaviour
             // Store the instance ID
             cardObj.name = $"Card_{cardData.CardName}_{fullInstanceId}";
             
-            // Add click handler if appropriate
-            if (owningEntity != null && owningEntity.IsOwner)
+            // Set the container location
+            cardComponent.SetCurrentContainer(addToHand ? CardLocation.Hand : CardLocation.Deck);
+            
+            // Add click handler if appropriate and being added to hand
+            if (addToHand && owningEntity != null && owningEntity.IsOwner)
             {
-                // Add any needed click handlers or drag handlers
-                // These would use your existing components
+                // Add or get Button component for click handling
+                Button cardButton = cardObj.GetComponent<Button>();
+                if (cardButton == null) cardButton = cardObj.AddComponent<Button>();
+                
+                // Add click event - pass the instance ID to identify exactly which card was clicked
+                cardButton.onClick.AddListener(() => OnCardClicked(cardId, fullInstanceId, cardData));
             }
         }
 
-        // Store card in dictionary for later access
-        spawnedCardInstances[fullInstanceId] = cardObj;
+        // Store card in dictionary for later access if it's going to be displayed visually
+        // This is used for managing the visual representations but not the actual card data anymore
+        if (addToHand)
+        {
+            spawnedCardInstances[fullInstanceId] = cardObj;
+            
+            // Track by type too for easier lookups
+            if (!spawnedCardsByType.ContainsKey(cardId))
+            {
+                spawnedCardsByType[cardId] = new List<GameObject>();
+            }
+            spawnedCardsByType[cardId].Add(cardObj);
+        }
         
         Debug.Log($"Spawned card {cardData.CardName} (ID: {cardId}, Instance: {fullInstanceId}) for {(owningEntity is NetworkPlayer ? "player" : "pet")}");
 

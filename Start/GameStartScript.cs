@@ -11,32 +11,32 @@ public class GameStartScript : MonoBehaviour
 
     void Start()
     {
-        // Initialize GamePhaseManager first - this is our primary flow controller
+        InitializeGamePhaseManager();
+        InitializeStartScreenManager();
+    }
+    
+    private void InitializeGamePhaseManager()
+    {
+        if (gamePhaseManager != null) return;
+        
+        gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         if (gamePhaseManager == null)
         {
-            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-            if (gamePhaseManager == null)
-            {
-                Debug.LogError("GameStartScript: GamePhaseManager not found in the scene. Phase transitions won't work correctly.");
-            }
+            Debug.LogError("GamePhaseManager not found in the scene. Phase transitions won't work correctly.");
         }
-        
-        // Initialize StartScreenManager if available - kept for backwards compatibility
+    }
+    
+    private void InitializeStartScreenManager()
+    {
         if (startScreenManager != null)
         {
-            // Set GamePhaseManager reference and initialize
             startScreenManager.SetGamePhaseManager(gamePhaseManager);
             startScreenManager.InitializeGame();
         }
         else if (gamePhaseManager != null)
         {
             // If no StartScreenManager but we have GamePhaseManager, directly set start phase
-            Debug.LogWarning("GameStartScript: No StartScreenManager found, directly setting Start phase via GamePhaseManager");
             gamePhaseManager.SetStartPhase();
-        }
-        else
-        {
-            Debug.LogError("GameStartScript: Neither StartScreenManager nor GamePhaseManager available. Game initialization failed.");
         }
     }
 } 

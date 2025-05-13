@@ -20,12 +20,7 @@ public class StartScreenManager : MonoBehaviour
     public void SetGamePhaseManager(GamePhaseManager phaseManager)
     {
         gamePhaseManager = phaseManager;
-        
-        // Register the start screen canvas with the GamePhaseManager
-        if (gamePhaseManager != null && startScreenCanvas != null)
-        {
-            gamePhaseManager.SetStartScreenCanvas(startScreenCanvas);
-        }
+        RegisterStartScreenCanvas();
     }
     
     /// <summary>
@@ -33,7 +28,13 @@ public class StartScreenManager : MonoBehaviour
     /// </summary>
     public void InitializeGame()
     {
-        // Check if we have required references
+        ValidateReferences();
+        CheckSteamAvailability();
+        ShowStartScreen();
+    }
+    
+    private void ValidateReferences()
+    {
         if (startScreenUIManager == null)
         {
             Debug.LogError("StartScreenManager: StartScreenUIManager reference is null.");
@@ -43,28 +44,26 @@ public class StartScreenManager : MonoBehaviour
         if (gamePhaseManager == null)
         {
             gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-            
-            if (gamePhaseManager == null)
-            {
-                Debug.LogError("StartScreenManager: GamePhaseManager not found in the scene!");
-            }
-            else if (startScreenCanvas != null)
-            {
-                gamePhaseManager.SetStartScreenCanvas(startScreenCanvas);
-            }
+            RegisterStartScreenCanvas();
         }
-        
-        // Check for Steam availability
-        CheckSteamAvailability();
-        
-        // Show start screen
+    }
+    
+    private void RegisterStartScreenCanvas()
+    {
+        if (gamePhaseManager != null && startScreenCanvas != null)
+        {
+            gamePhaseManager.SetStartScreenCanvas(startScreenCanvas);
+        }
+    }
+    
+    private void ShowStartScreen()
+    {
         if (gamePhaseManager != null)
         {
             gamePhaseManager.SetStartPhase();
         }
         else
         {
-            // Fall back to direct canvas activation if GamePhaseManager isn't available
             startScreenUIManager.ShowStartScreen();
         }
     }
@@ -89,7 +88,6 @@ public class StartScreenManager : MonoBehaviour
     {
         if (isSteamAvailable || allowOfflinePlay)
         {
-            // Begin transition to lobby
             TransitionToLobby();
         }
         else
@@ -105,12 +103,10 @@ public class StartScreenManager : MonoBehaviour
     {
         if (gamePhaseManager != null)
         {
-            // Tell the GamePhaseManager to set the Lobby phase
             gamePhaseManager.SetLobbyPhase();
         }
         else
         {
-            // Fall back to direct UI transition if GamePhaseManager isn't available
             startScreenUIManager.TransitionToLobbyScreen();
         }
     }

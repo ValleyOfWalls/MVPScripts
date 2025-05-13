@@ -38,6 +38,12 @@ public class GamePhaseManager : MonoBehaviour
     
     private void Awake()
     {
+        InitializeSingleton();
+        entityVisibilityManager = GetComponent<EntityVisibilityManager>() ?? gameObject.AddComponent<EntityVisibilityManager>();
+    }
+    
+    private void InitializeSingleton()
+    {
         if (Instance == null)
         {
             Instance = this;
@@ -45,55 +51,25 @@ public class GamePhaseManager : MonoBehaviour
         else if (Instance != this)
         {
             Destroy(gameObject);
-            return;
-        }
-        
-        // Get reference to the EntityVisibilityManager
-        entityVisibilityManager = GetComponent<EntityVisibilityManager>();
-        if (entityVisibilityManager == null)
-        {
-            Debug.LogError("EntityVisibilityManager not found on GamePhaseManager GameObject. Adding one.");
-            entityVisibilityManager = gameObject.AddComponent<EntityVisibilityManager>();
         }
     }
     
     private void Start()
     {
-        // Initialize UI based on starting phase
         UpdateUIForCurrentPhase();
     }
     
-    /// <summary>
-    /// Set the game phase to Start
-    /// </summary>
-    public void SetStartPhase()
-    {
-        SetPhase(GamePhase.Start);
-    }
+    #region Public Phase Setters
     
-    /// <summary>
-    /// Set the game phase to Lobby
-    /// </summary>
-    public void SetLobbyPhase()
-    {
-        SetPhase(GamePhase.Lobby);
-    }
+    public void SetStartPhase() => SetPhase(GamePhase.Start);
     
-    /// <summary>
-    /// Set the game phase to Draft
-    /// </summary>
-    public void SetDraftPhase()
-    {
-        SetPhase(GamePhase.Draft);
-    }
+    public void SetLobbyPhase() => SetPhase(GamePhase.Lobby);
     
-    /// <summary>
-    /// Set the game phase to Combat
-    /// </summary>
-    public void SetCombatPhase()
-    {
-        SetPhase(GamePhase.Combat);
-    }
+    public void SetDraftPhase() => SetPhase(GamePhase.Draft);
+    
+    public void SetCombatPhase() => SetPhase(GamePhase.Combat);
+    
+    #endregion
     
     /// <summary>
     /// Sets the game phase and executes phase-specific logic
@@ -102,7 +78,6 @@ public class GamePhaseManager : MonoBehaviour
     {
         if (currentPhase == newPhase) return;
         
-        GamePhase oldPhase = currentPhase;
         currentPhase = newPhase;
         
         // Update local UI for this client
@@ -117,25 +92,9 @@ public class GamePhaseManager : MonoBehaviour
     /// </summary>
     private void ExecutePhaseSpecificLogic(GamePhase newPhase)
     {
-        switch (newPhase)
+        if (newPhase == GamePhase.Lobby && SteamNetworkIntegration.Instance != null)
         {
-            case GamePhase.Lobby:
-                // Handle transition to Lobby phase - connect to Steam Network
-                if (SteamNetworkIntegration.Instance != null)
-                {
-                    SteamNetworkIntegration.Instance.RequestLobbiesList();
-                }
-                else
-                {
-                    Debug.LogError("GamePhaseManager: Cannot find SteamNetworkIntegration instance to initialize lobby");
-                }
-                break;
-                
-            case GamePhase.Draft:
-            case GamePhase.Combat:
-            case GamePhase.Start:
-                // Phase-specific initialization logic if needed
-                break;
+            SteamNetworkIntegration.Instance.RequestLobbiesList();
         }
     }
     
@@ -158,10 +117,7 @@ public class GamePhaseManager : MonoBehaviour
     {
         currentPhase = newPhase;
         
-        // Update UI visibility
         UpdateUIForCurrentPhase();
-        
-        // Update player/pet visibility
         UpdateEntityVisibility();
         
         // Invoke event for other systems to react
@@ -184,22 +140,14 @@ public class GamePhaseManager : MonoBehaviour
     /// </summary>
     private void UpdateEntityVisibility()
     {
-        if (entityVisibilityManager == null) 
-        {
-            Debug.LogError("EntityVisibilityManager reference is null in GamePhaseManager");
-            return;
-        }
+        if (entityVisibilityManager == null) return;
         
         switch (currentPhase)
         {
-            case GamePhase.Lobby:
-                entityVisibilityManager.SetLobbyState();
-                break;
             case GamePhase.Combat:
                 entityVisibilityManager.SetCombatState();
                 break;
             default:
-                // For other phases, use lobby visibility rules (entities hidden)
                 entityVisibilityManager.SetLobbyState();
                 break;
         }
@@ -208,10 +156,7 @@ public class GamePhaseManager : MonoBehaviour
     /// <summary>
     /// Get the current game phase
     /// </summary>
-    public GamePhase GetCurrentPhase()
-    {
-        return currentPhase;
-    }
+    public GamePhase GetCurrentPhase() => currentPhase;
     
     #region Canvas Setting Methods
     
@@ -255,7 +200,7 @@ public class GamePhaseManager : MonoBehaviour
 }
 
 /// <summary>
-/// Helper class for networking phase changes via FishNet
+/// Handles the networking of phase changes across clients
 /// </summary>
 public class PhaseNetworker : NetworkBehaviour
 {
@@ -263,7 +208,7 @@ public class PhaseNetworker : NetworkBehaviour
     
     private void Awake()
     {
-        phaseManager = FindFirstObjectByType<GamePhaseManager>();
+        phaseManager = GetComponentInParent<GamePhaseManager>();
     }
     
     [Server]
@@ -275,9 +220,6 @@ public class PhaseNetworker : NetworkBehaviour
     [ObserversRpc]
     private void RpcPhaseChanged(int phaseInt)
     {
-        if (phaseManager != null)
-        {
-            phaseManager.OnNetworkedPhaseChangeReceived(phaseInt);
-        }
+        phaseManager?.OnNetworkedPhaseChangeReceived(phaseInt);
     }
 } 

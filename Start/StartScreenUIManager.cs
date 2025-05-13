@@ -21,40 +21,27 @@ public class StartScreenUIManager : MonoBehaviour
 
     void Awake()
     {
-        ValidateReferences();
-        
-        // Initialize error panel
-        if (errorPanel != null)
-        {
-            errorPanel.SetActive(false);
-            
-            if (errorCloseButton != null)
-            {
-                errorCloseButton.onClick.AddListener(() => errorPanel.SetActive(false));
-            }
-        }
-
-        // Ensure start screen is not visible by default
-        if (startScreenCanvas != null)
-        {
-            startScreenCanvas.SetActive(false);
-        }
+        InitializeUIComponents();
+        SetInitialUIState();
     }
 
-    private void ValidateReferences()
+    private void InitializeUIComponents()
     {
-        if (startButton == null)
+        if (errorPanel != null && errorCloseButton != null)
         {
-            Debug.LogError("StartScreenUIManager: Start Button is not assigned in the Inspector.");
+            errorCloseButton.onClick.AddListener(() => errorPanel.SetActive(false));
         }
-        else
+        
+        if (startButton != null)
         {
             startButton.onClick.AddListener(OnStartButtonClicked);
         }
-
-        if (startScreenCanvas == null) Debug.LogError("StartScreenUIManager: Start Screen Canvas is not assigned in the Inspector.");
-        if (lobbyUIManager == null) Debug.LogError("StartScreenUIManager: LobbyUIManager reference is not assigned in the Inspector.");
-        if (startScreenManager == null) Debug.LogError("StartScreenUIManager: StartScreenManager reference is not assigned in the Inspector.");
+    }
+    
+    private void SetInitialUIState()
+    {
+        if (errorPanel != null) errorPanel.SetActive(false);
+        if (startScreenCanvas != null) startScreenCanvas.SetActive(false);
     }
 
     /// <summary>
@@ -73,22 +60,28 @@ public class StartScreenUIManager : MonoBehaviour
     /// </summary>
     public void UpdateSteamAvailabilityStatus(bool isSteamAvailable, bool allowOfflinePlay)
     {
-        // Update Steam status text if available
-        if (steamStatusText != null)
-        {
-            if (isSteamAvailable)
-            {
-                steamStatusText.text = "Steam: Connected";
-                steamStatusText.color = Color.green;
-            }
-            else
-            {
-                steamStatusText.text = "Steam: Offline" + (allowOfflinePlay ? " (Offline Play Enabled)" : "");
-                steamStatusText.color = allowOfflinePlay ? Color.yellow : Color.red;
-            }
-        }
+        UpdateSteamStatusText(isSteamAvailable, allowOfflinePlay);
+        UpdateStartButtonState(isSteamAvailable, allowOfflinePlay);
+    }
+    
+    private void UpdateSteamStatusText(bool isSteamAvailable, bool allowOfflinePlay)
+    {
+        if (steamStatusText == null) return;
         
-        // Update start button interactability if needed
+        if (isSteamAvailable)
+        {
+            steamStatusText.text = "Steam: Connected";
+            steamStatusText.color = Color.green;
+        }
+        else
+        {
+            steamStatusText.text = "Steam: Offline" + (allowOfflinePlay ? " (Offline Play Enabled)" : "");
+            steamStatusText.color = allowOfflinePlay ? Color.yellow : Color.red;
+        }
+    }
+    
+    private void UpdateStartButtonState(bool isSteamAvailable, bool allowOfflinePlay)
+    {
         if (startButton != null)
         {
             startButton.interactable = isSteamAvailable || allowOfflinePlay;
@@ -104,10 +97,6 @@ public class StartScreenUIManager : MonoBehaviour
         {
             errorMessageText.text = message;
             errorPanel.SetActive(true);
-        }
-        else
-        {
-            Debug.LogError($"StartScreenUIManager: Cannot show error message - UI elements missing. Error: {message}");
         }
     }
 
