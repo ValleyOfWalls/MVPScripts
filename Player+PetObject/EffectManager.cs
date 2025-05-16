@@ -3,24 +3,20 @@ using FishNet.Object; // For NetworkBehaviour type checking
 
 /// <summary>
 /// Applies card effects to entity targets during combat, such as damage, healing, and status effects.
-/// Attach to: Both NetworkPlayer and NetworkPet prefabs to handle receiving effects from played cards.
+/// Attach to: NetworkEntity prefabs to handle receiving effects from played cards.
 /// </summary>
 public class EffectManager : MonoBehaviour
 {
-    private NetworkBehaviour parentEntity; // Reference to the NetworkPlayer or NetworkPet this is attached to
+    private NetworkBehaviour parentEntity; // Reference to the NetworkEntity this is attached to
 
     private void Awake()
     {
-        // Get the parent NetworkBehaviour (either NetworkPlayer or NetworkPet)
-        parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
-        if (parentEntity == null)
-        {
-            parentEntity = GetComponent<NetworkPet>() as NetworkBehaviour;
-        }
+        // Get the parent NetworkBehaviour (NetworkEntity)
+        parentEntity = GetComponent<NetworkEntity>() as NetworkBehaviour;
 
         if (parentEntity == null)
         {
-            Debug.LogError("EffectManager: Not attached to a NetworkPlayer or NetworkPet. This component must be attached to one of these.");
+            Debug.LogError("EffectManager: Not attached to a NetworkEntity. This component must be attached to one.");
         }
     }
 
@@ -42,41 +38,22 @@ public class EffectManager : MonoBehaviour
 
         Debug.Log($"EffectManager: Applying '{cardData.CardName}' (Effect: {cardData.EffectType}, Amount: {cardData.Amount}) from {parentEntity.name} to {target.name}");
 
-        NetworkPlayer targetPlayer = target as NetworkPlayer;
-        NetworkPet targetPet = target as NetworkPet;
+        NetworkEntity targetEntity = target as NetworkEntity;
 
         switch (cardData.EffectType)
         {
             case CardEffectType.Damage:
-                if (targetPlayer != null) targetPlayer.TakeDamage(cardData.Amount);
-                else if (targetPet != null) targetPet.TakeDamage(cardData.Amount);
+                if (targetEntity != null) targetEntity.TakeDamage(cardData.Amount);
                 break;
 
             case CardEffectType.Heal:
-                if (targetPlayer != null) targetPlayer.Heal(cardData.Amount);
-                else if (targetPet != null) targetPet.Heal(cardData.Amount);
-                break;
-
-            case CardEffectType.DrawCard:
-                // Find the target's HandManager component
-                HandManager targetHandManager = target.GetComponent<HandManager>();
-                if (targetHandManager != null) 
-                {
-                    for(int i = 0; i < cardData.Amount; i++) 
-                    {
-                        targetHandManager.DrawOneCard();
-                    }
-                } 
-                else 
-                {
-                    Debug.LogError("HandManager component not found on target for DrawCard effect.");
-                }
+                if (targetEntity != null) targetEntity.Heal(cardData.Amount);
                 break;
 
             case CardEffectType.BuffStats:
                 // Example: Increase MaxHealth or temporarily buff attack/defense
-                // This would require adding relevant fields and methods to NetworkPlayer/Pet
-                // e.g., targetPlayer.ApplyBuff(StatType.MaxHealth, cardData.Amount, duration);
+                // This would require adding relevant fields and methods to NetworkEntity
+                // e.g., targetEntity.ApplyBuff(StatType.MaxHealth, cardData.Amount, duration);
                 Debug.Log($"BuffStats effect for {cardData.Amount} not fully implemented.");
                 break;
 
@@ -85,18 +62,13 @@ public class EffectManager : MonoBehaviour
                 break;
 
             case CardEffectType.ApplyStatus:
-                // Example: targetPlayer.ApplyStatusEffect(StatusType.Poison, cardData.Amount); // Amount could be duration or strength
-                // CurrentStatuses on NetworkPlayer/Pet is a simple string, would need parsing and management.
+                // Example: targetEntity.ApplyStatusEffect(StatusType.Poison, cardData.Amount); // Amount could be duration or strength
+                // CurrentStatuses on NetworkEntity is a simple string, would need parsing and management.
                 string statusToApply = cardData.CardName; // Or a specific status property on the card
-                if (targetPlayer != null) 
+                if (targetEntity != null) 
                 {
-                    if (string.IsNullOrEmpty(targetPlayer.CurrentStatuses.Value)) targetPlayer.CurrentStatuses.Value = statusToApply;
-                    else targetPlayer.CurrentStatuses.Value += "," + statusToApply;
-                }
-                else if (targetPet != null) 
-                {
-                    if (string.IsNullOrEmpty(targetPet.CurrentStatuses.Value)) targetPet.CurrentStatuses.Value = statusToApply;
-                    else targetPet.CurrentStatuses.Value += "," + statusToApply;
+                    if (string.IsNullOrEmpty(targetEntity.CurrentStatuses.Value)) targetEntity.CurrentStatuses.Value = statusToApply;
+                    else targetEntity.CurrentStatuses.Value += "," + statusToApply;
                 }
                 Debug.Log($"Applied status '{statusToApply}' effect. (Simplified)");
                 break;
@@ -106,7 +78,7 @@ public class EffectManager : MonoBehaviour
                 break;
         }
 
-        // Changes to SyncVars on NetworkPlayer/Pet (like CurrentHealth) will automatically sync to clients.
+        // Changes to SyncVars on NetworkEntity (like CurrentHealth) will automatically sync to clients.
         // CombatManager might send an RPC to notify clients that an effect was visually applied (e.g., for animations).
     }
 } 

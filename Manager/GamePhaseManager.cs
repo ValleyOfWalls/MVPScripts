@@ -145,10 +145,16 @@ public class GamePhaseManager : MonoBehaviour
         switch (currentPhase)
         {
             case GamePhase.Combat:
-                entityVisibilityManager.SetCombatState();
+                entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Combat);
+                break;
+            case GamePhase.Lobby:
+                entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Lobby);
+                break;
+            case GamePhase.Draft:
+                entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Draft);
                 break;
             default:
-                entityVisibilityManager.SetLobbyState();
+                entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Start);
                 break;
         }
     }

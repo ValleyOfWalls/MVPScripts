@@ -2,41 +2,31 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
+using FishNet.Object;
 
 /// <summary>
-/// Handles the UI visualization for NetworkPlayer
-/// Attach to: The same GameObject as NetworkPlayer
+/// Handles the UI visualization for player entities
+/// Attach to: The same GameObject as NetworkEntity (Player type)
 /// </summary>
 public class NetworkPlayerUI : MonoBehaviour
 {
-    // Static instance for easy access
+    // Singleton pattern for easy access
     public static NetworkPlayerUI Instance { get; private set; }
-    
-    [Header("References")]
-    [SerializeField] private NetworkPlayer player;
-    [SerializeField] private NetworkEntityDeck entityDeck;
-    [SerializeField] private CombatDiscard combatDiscard;
-    [SerializeField] private CanvasGroup canvasGroup;
-    
-    [Header("UI Elements")]
+
+    [SerializeField] private NetworkEntity entity;
+
+    [Header("UI References")]
     [SerializeField] private Transform playerHandTransform;
     [SerializeField] private Transform deckTransform;
     [SerializeField] private Transform discardTransform;
-    
-    [Header("Player Stats UI")]
-    [SerializeField] private TextMeshProUGUI playerNameText;
-    [SerializeField] private TextMeshProUGUI healthText;
-    [SerializeField] private TextMeshProUGUI energyText;
-    [SerializeField] private TextMeshProUGUI currencyText;
-    [SerializeField] private Image healthBar;
-    
-    [Header("Card System UI")]
-    [SerializeField] private TextMeshProUGUI deckCountText;
-    [SerializeField] private TextMeshProUGUI discardCountText;
-    
+
+    private NetworkEntityDeck entityDeck;
+    private HandManager handManager;
+    private NetworkObject networkObject;
+
     private void Awake()
     {
-        // Set static instance
+        // Singleton setup
         if (Instance == null)
         {
             Instance = this;
@@ -44,269 +34,109 @@ public class NetworkPlayerUI : MonoBehaviour
         else if (Instance != this)
         {
             Debug.LogWarning("More than one NetworkPlayerUI instance exists. This may cause issues.");
+            Destroy(gameObject);
+            return;
         }
-        
-        if (player == null) player = GetComponent<NetworkPlayer>();
-        if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
-        if (combatDiscard == null) combatDiscard = GetComponent<CombatDiscard>();
-        if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
-        
-        // Add CanvasGroup if not already present
-        if (canvasGroup == null)
-        {
-            canvasGroup = gameObject.AddComponent<CanvasGroup>();
-        }
-        
-        if (player == null)
-        {
-            Debug.LogError("NetworkPlayerUI: Cannot find NetworkPlayer component.");
-        }
-        
-        if (entityDeck == null)
-        {
-            Debug.LogError("NetworkPlayerUI: Cannot find NetworkEntityDeck component.");
-        }
-        
-        if (combatDiscard == null)
-        {
-            Debug.LogError("NetworkPlayerUI: Cannot find CombatDiscard component.");
-        }
-        
-        // Default to hidden until the game state determines visibility
-        SetVisible(false);
-    }
-    
-    private void OnEnable()
-    {
-        if (entityDeck != null)
-        {
-            entityDeck.OnDeckChanged += UpdateDeckDisplay;
-        }
-        
-        if (combatDiscard != null)
-        {
-            combatDiscard.OnDiscardChanged += UpdateDiscardDisplay;
-        }
-        
-        if (player != null)
-        {
-            // Subscribe to player stat changes
-            player.OnCurrencyChanged += UpdateCurrencyDisplay;
-            player.PlayerName.OnChange += OnPlayerNameChanged;
-            player.CurrentHealth.OnChange += OnCurrentHealthChanged;
-            player.MaxHealth.OnChange += OnMaxHealthChanged;
-            player.CurrentEnergy.OnChange += OnCurrentEnergyChanged;
-            player.MaxEnergy.OnChange += OnMaxEnergyChanged;
-        }
-    }
-    
-    private void OnDisable()
-    {
-        if (entityDeck != null)
-        {
-            entityDeck.OnDeckChanged -= UpdateDeckDisplay;
-        }
-        
-        if (combatDiscard != null)
-        {
-            combatDiscard.OnDiscardChanged -= UpdateDiscardDisplay;
-        }
-        
-        if (player != null)
-        {
-            // Unsubscribe from player stat changes
-            player.OnCurrencyChanged -= UpdateCurrencyDisplay;
-            player.PlayerName.OnChange -= OnPlayerNameChanged;
-            player.CurrentHealth.OnChange -= OnCurrentHealthChanged;
-            player.MaxHealth.OnChange -= OnMaxHealthChanged;
-            player.CurrentEnergy.OnChange -= OnCurrentEnergyChanged;
-            player.MaxEnergy.OnChange -= OnMaxEnergyChanged;
-        }
+
+        // Get required components
+        if (entity == null) entity = GetComponent<NetworkEntity>();
+        entityDeck = GetComponent<NetworkEntityDeck>();
+        handManager = GetComponent<HandManager>();
+        networkObject = GetComponent<NetworkObject>();
+
+        ValidateComponents();
     }
     
     private void Start()
     {
-        if (player != null)
-        {
-            // Initial UI setup
-            UpdatePlayerUI();
-        }
-        
-        // Initialize card system UI
-        UpdateDeckDisplay();
-        UpdateDiscardDisplay();
+        // Log transform paths for debugging
+        LogTransformPaths();
     }
-    
-    /// <summary>
-    /// Set the visibility of this UI
-    /// </summary>
-    public void SetVisible(bool visible)
+
+    private void LogTransformPaths()
     {
-        if (canvasGroup != null)
+        string objId = networkObject != null ? networkObject.ObjectId.ToString() : "no NetworkObject";
+        
+        if (deckTransform != null)
         {
-            canvasGroup.alpha = visible ? 1.0f : 0.0f;
-            canvasGroup.interactable = visible;
-            canvasGroup.blocksRaycasts = visible;
+            string path = GetTransformPath(deckTransform);
+            Debug.Log($"NetworkPlayerUI (ID: {objId}) - deckTransform path: {path}");
         }
         else
         {
-            gameObject.SetActive(visible);
+            Debug.LogError($"NetworkPlayerUI (ID: {objId}) - deckTransform is null");
+        }
+
+        if (playerHandTransform != null)
+        {
+            string path = GetTransformPath(playerHandTransform);
+            Debug.Log($"NetworkPlayerUI (ID: {objId}) - playerHandTransform path: {path}");
+        }
+
+        if (discardTransform != null)
+        {
+            string path = GetTransformPath(discardTransform);
+            Debug.Log($"NetworkPlayerUI (ID: {objId}) - discardTransform path: {path}");
         }
     }
-    
-    /// <summary>
-    /// Updates the player's stats UI
-    /// </summary>
-    public void UpdatePlayerUI()
+
+    private string GetTransformPath(Transform transform)
     {
-        if (player == null) return;
+        if (transform == null) return "null";
         
-        if (playerNameText != null) playerNameText.text = player.PlayerName.Value;
-        UpdateHealthUI();
-        UpdateEnergyUI();
-        if (currencyText != null) currencyText.text = $"{player.Currency.Value}";
-    }
-    
-    /// <summary>
-    /// Handles player name changes
-    /// </summary>
-    private void OnPlayerNameChanged(string prev, string next, bool asServer)
-    {
-        if (playerNameText != null)
+        string path = transform.name;
+        Transform parent = transform.parent;
+        
+        while (parent != null)
         {
-            playerNameText.text = next;
-        }
-    }
-    
-    /// <summary>
-    /// Handles current health changes
-    /// </summary>
-    private void OnCurrentHealthChanged(int prev, int next, bool asServer)
-    {
-        UpdateHealthUI();
-    }
-    
-    /// <summary>
-    /// Handles max health changes
-    /// </summary>
-    private void OnMaxHealthChanged(int prev, int next, bool asServer)
-    {
-        UpdateHealthUI();
-    }
-    
-    /// <summary>
-    /// Updates the health UI elements
-    /// </summary>
-    private void UpdateHealthUI()
-    {
-        if (player == null) return;
-        
-        int current = player.CurrentHealth.Value;
-        int max = player.MaxHealth.Value;
-        
-        if (healthText != null)
-        {
-            healthText.text = $"{current}/{max}";
+            path = parent.name + "/" + path;
+            parent = parent.parent;
         }
         
-        if (healthBar != null)
+        return path;
+    }
+
+    private void ValidateComponents()
+    {
+        if (entity == null || entity.EntityType != EntityType.Player)
         {
-            healthBar.fillAmount = max > 0 ? (float)current / max : 0;
+            Debug.LogError("NetworkPlayerUI: Cannot find NetworkEntity component or entity is not a player.");
+            return;
         }
-    }
-    
-    /// <summary>
-    /// Handles current energy changes
-    /// </summary>
-    private void OnCurrentEnergyChanged(int prev, int next, bool asServer)
-    {
-        UpdateEnergyUI();
-    }
-    
-    /// <summary>
-    /// Handles max energy changes
-    /// </summary>
-    private void OnMaxEnergyChanged(int prev, int next, bool asServer)
-    {
-        UpdateEnergyUI();
-    }
-    
-    /// <summary>
-    /// Updates the energy UI elements
-    /// </summary>
-    private void UpdateEnergyUI()
-    {
-        if (player == null) return;
+
+        if (entityDeck == null)
+        {
+            Debug.LogError("NetworkPlayerUI: Cannot find NetworkEntityDeck component.");
+            return;
+        }
+
+        if (handManager == null)
+        {
+            Debug.LogError("NetworkPlayerUI: Cannot find HandManager component.");
+            return;
+        }
         
-        int current = player.CurrentEnergy.Value;
-        int max = player.MaxEnergy.Value;
-        
-        if (energyText != null)
+        if (networkObject == null)
         {
-            energyText.text = $"{current}/{max}";
+            Debug.LogError("NetworkPlayerUI: Cannot find NetworkObject component.");
         }
     }
-    
-    /// <summary>
-    /// Updates the deck display with the current cards
-    /// </summary>
-    private void UpdateDeckDisplay()
+
+    // Public getters for transforms
+    public Transform GetPlayerHandTransform() => playerHandTransform;
+    public Transform GetDeckTransform() 
     {
-        if (deckCountText != null && player != null)
+        if (deckTransform == null)
         {
-            int deckCount = 0;
-            CombatDeck combatDeck = GetComponent<CombatDeck>();
-            if (combatDeck != null)
-            {
-                deckCount = combatDeck.GetDeckSize();
-            }
-            deckCountText.text = $"Deck: {deckCount}";
+            Debug.LogError($"NetworkPlayerUI on {gameObject.name}: deckTransform is null");
+            // Create a fallback transform if needed
+            GameObject fallbackObj = new GameObject("FallbackDeckTransform");
+            fallbackObj.transform.SetParent(transform);
+            fallbackObj.transform.localPosition = Vector3.zero;
+            deckTransform = fallbackObj.transform;
+            Debug.Log($"Created fallback deckTransform for {gameObject.name}");
         }
-    }
-    
-    /// <summary>
-    /// Updates the discard pile display
-    /// </summary>
-    private void UpdateDiscardDisplay()
-    {
-        if (discardCountText != null && combatDiscard != null)
-        {
-            discardCountText.text = $"Discard: {combatDiscard.GetCardCount()}";
-        }
-    }
-    
-    /// <summary>
-    /// Updates the currency display
-    /// </summary>
-    private void UpdateCurrencyDisplay(int newCurrency)
-    {
-        if (currencyText != null)
-        {
-            currencyText.text = newCurrency.ToString();
-        }
-    }
-    
-    /// <summary>
-    /// Gets the player hand transform for external access
-    /// </summary>
-    public Transform GetPlayerHandTransform()
-    {
-        return playerHandTransform;
-    }
-    
-    /// <summary>
-    /// Gets the deck transform for external access
-    /// </summary>
-    public Transform GetDeckTransform()
-    {
         return deckTransform;
     }
-    
-    /// <summary>
-    /// Gets the discard transform for external access
-    /// </summary>
-    public Transform GetDiscardTransform()
-    {
-        return discardTransform;
-    }
+    public Transform GetDiscardTransform() => discardTransform;
 } 

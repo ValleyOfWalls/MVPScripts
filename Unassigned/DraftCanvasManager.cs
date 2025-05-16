@@ -20,7 +20,7 @@ public class DraftCanvasManager : MonoBehaviour
     [SerializeField] private Button proceedToCombatButton;
 
     [Header("Player References")]
-    private NetworkPlayer localPlayer;
+    private NetworkEntity localPlayer;
 
     private void Awake()
     {
@@ -34,8 +34,8 @@ public class DraftCanvasManager : MonoBehaviour
     public void SetupDraftUI()
     {
         // Find the local player
-        NetworkPlayer[] players = Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
-        foreach (NetworkPlayer player in players)
+        NetworkEntity[] players = Object.FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        foreach (NetworkEntity player in players)
         {
             if (player.IsOwner)
             {

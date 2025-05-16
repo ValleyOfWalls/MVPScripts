@@ -24,7 +24,7 @@ public class DraftManager : NetworkBehaviour
     private int totalPlayers = 0;
     
     // Client-side references
-    private NetworkPlayer localPlayer;
+    private NetworkEntity localPlayer;
     private DraftCanvasManager draftCanvas;
 
     #region Lifecycle Methods
@@ -75,10 +75,10 @@ public class DraftManager : NetworkBehaviour
         }
     }
     
-    private NetworkPlayer FindLocalPlayer()
+    private NetworkEntity FindLocalPlayer()
     {
-        NetworkPlayer[] players = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
-        foreach (NetworkPlayer player in players)
+        NetworkEntity[] players = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        foreach (NetworkEntity player in players)
         {
             if (player.IsOwner)
             {
@@ -131,7 +131,7 @@ public class DraftManager : NetworkBehaviour
         if (!NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out NetworkObject playerObj))
             return;
             
-        NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
+        NetworkEntity player = playerObj.GetComponent<NetworkEntity>();
         if (player != null)
         {
             TargetReceiveNewDraftPack(player.Owner, draftPackObjectId);
@@ -176,7 +176,7 @@ public class DraftManager : NetworkBehaviour
     {
         // Get the player
         NetworkObject playerObj = NetworkManager.ServerManager.Objects.Spawned[playerObjectId];
-        NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
+        NetworkEntity player = playerObj.GetComponent<NetworkEntity>();
         
         // Get the draft pack
         NetworkObject packObj = NetworkManager.ServerManager.Objects.Spawned[draftPackObjectId];
@@ -241,7 +241,7 @@ public class DraftManager : NetworkBehaviour
         }
         
         // Get all players in a predictable order
-        List<NetworkPlayer> orderedPlayers = GetOrderedPlayers();
+        List<NetworkEntity> orderedPlayers = GetOrderedPlayers();
         
         // Find the current owner's index
         int currentOwnerIndex = FindPlayerIndexById(orderedPlayers, currentOwnerId);
@@ -253,7 +253,7 @@ public class DraftManager : NetworkBehaviour
         
         // Calculate the next player's index (circular)
         int nextPlayerIndex = (currentOwnerIndex + 1) % orderedPlayers.Count;
-        NetworkPlayer nextPlayer = orderedPlayers[nextPlayerIndex];
+        NetworkEntity nextPlayer = orderedPlayers[nextPlayerIndex];
         
         // Update the draft pack owner
         draftPackOwners[draftPackObjectId] = nextPlayer.ObjectId;
@@ -266,22 +266,16 @@ public class DraftManager : NetworkBehaviour
         TargetReceiveNewDraftPack(nextPlayer.Owner, draftPackObjectId);
     }
     
-    private List<NetworkPlayer> GetOrderedPlayers()
+    private List<NetworkEntity> GetOrderedPlayers()
     {
-        List<NetworkPlayer> players = new List<NetworkPlayer>(Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None));
-        players.Sort((a, b) => a.ObjectId.CompareTo(b.ObjectId));
+        List<NetworkEntity> players = new List<NetworkEntity>();
+        // Implementation here
         return players;
     }
     
-    private int FindPlayerIndexById(List<NetworkPlayer> players, int playerId)
+    private int FindPlayerIndexById(List<NetworkEntity> players, int playerId)
     {
-        for (int i = 0; i < players.Count; i++)
-        {
-            if (players[i].ObjectId == playerId)
-            {
-                return i;
-            }
-        }
+        // Implementation here
         return -1;
     }
     
@@ -311,7 +305,7 @@ public class DraftManager : NetworkBehaviour
         // Notify the player about their next pack
         if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out NetworkObject playerObj))
         {
-            NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
+            NetworkEntity player = playerObj.GetComponent<NetworkEntity>();
             if (player != null)
             {
                 TargetReceiveNewDraftPack(player.Owner, nextPackId);

@@ -1,391 +1,495 @@
 using UnityEngine;
 using FishNet.Object;
-using FishNet.Object.Synchronizing;
 using System.Collections.Generic;
 using System.Linq;
+using System;
 
 /// <summary>
-/// Manages card movement between deck, hand, and discard pile during gameplay.
-/// Attach to: Both NetworkPlayer and NetworkPet prefabs to handle their card operations.
+/// Manages all card movement between deck, hand, and discard pile during gameplay.
+/// Attach to: NetworkEntity prefabs to handle their card operations.
 /// </summary>
-// Convert to MonoBehaviour to be attached to NetworkPlayer and NetworkPet prefabs
-public class HandManager : MonoBehaviour
+public class HandManager : NetworkBehaviour
 {
-    private System.Random rng = new System.Random();
-    private NetworkBehaviour parentEntity; // Reference to the NetworkPlayer or NetworkPet this is attached to
-    private CombatHand combatHand; // Reference to the CombatHand component
-    private CombatDeck combatDeck; // Reference to the CombatDeck component
-    private CombatDiscard combatDiscard; // Reference to the CombatDiscard component
-    private CardSpawner cardSpawner; // Reference to the CardSpawner component
+    [Header("References")]
+    [SerializeField] private NetworkEntityUI entityUI;
+    [SerializeField] private NetworkEntityDeck entityDeck;
+
+    private Transform handTransform;
+    private Transform deckTransform;
+    private Transform discardTransform;
 
     private void Awake()
     {
-        // Get reference to the parent entity
-        parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
-        if (parentEntity == null)
+        // Get required components
+        if (entityUI == null) entityUI = GetComponent<NetworkEntityUI>();
+        if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
+
+        // Get transforms from UI
+        if (entityUI != null)
         {
-            parentEntity = GetComponent<NetworkPet>() as NetworkBehaviour;
+            handTransform = entityUI.GetHandTransform();
+            deckTransform = entityUI.GetDeckTransform();
+            discardTransform = entityUI.GetDiscardTransform();
         }
-        
-        // Get references to required components
-        combatHand = GetComponent<CombatHand>();
-        combatDeck = GetComponent<CombatDeck>();
-        combatDiscard = GetComponent<CombatDiscard>();
-        cardSpawner = GetComponent<CardSpawner>();
-        
-        // Validate required components
-        if (combatHand == null) Debug.LogError("HandManager requires a CombatHand component");
-        if (combatDeck == null) Debug.LogError("HandManager requires a CombatDeck component");
-        if (combatDiscard == null) Debug.LogError("HandManager requires a CombatDiscard component");
-        if (cardSpawner == null) Debug.LogError("HandManager requires a CardSpawner component");
+
+        ValidateComponents();
+    }
+
+    private void ValidateComponents()
+    {
+        if (entityUI == null)
+            Debug.LogError($"HandManager on {gameObject.name}: Missing NetworkEntityUI component");
+        if (entityDeck == null)
+            Debug.LogError($"HandManager on {gameObject.name}: Missing NetworkEntityDeck component");
+        if (handTransform == null)
+            Debug.LogError($"HandManager on {gameObject.name}: Missing hand transform reference");
+        if (deckTransform == null)
+            Debug.LogError($"HandManager on {gameObject.name}: Missing deck transform reference");
+        if (discardTransform == null)
+            Debug.LogError($"HandManager on {gameObject.name}: Missing discard transform reference");
     }
 
     /// <summary>
-    /// Draws a single card from the deck to the hand
+    /// Draws cards from deck to hand at the start of a round
     /// </summary>
-    /// <returns>True if a card was drawn, false if deck is empty or hand is full</returns>
-    public bool DrawCard()
+    [Server]
+    public void DrawCards()
     {
-        // Check if we're on the server
-        if (!FishNet.InstanceFinder.IsServerStarted)
+        if (!IsServerInitialized) return;
+        Debug.Log($"HandManager: Drawing cards for {gameObject.name}");
+
+        // Check if transforms are available
+        if (deckTransform == null || handTransform == null)
         {
-            Debug.LogWarning("DrawCard can only be called on the server");
-            return false;
+            Debug.LogError($"HandManager: Missing deck or hand transform for {gameObject.name}");
+            return;
+        }
+
+        // Get the entity type to determine draw amount
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        if (entity == null)
+        {
+            Debug.LogError($"HandManager: Missing NetworkEntity component on {gameObject.name}");
+            return;
+        }
+
+        // Get target hand size from GameManager
+        int targetHandSize;
+        if (entity.EntityType == EntityType.Player)
+        {
+            targetHandSize = GameManager.Instance.PlayerTargetHandSize.Value;
+            Debug.Log($"HandManager: Player target hand size is {targetHandSize}");
+        }
+        else // Pet
+        {
+            targetHandSize = GameManager.Instance.PetTargetHandSize.Value;
+            Debug.Log($"HandManager: Pet target hand size is {targetHandSize}");
+        }
+
+        // Get current hand size
+        List<GameObject> currentHand = GetCardsInTransform(handTransform);
+        int currentHandSize = currentHand.Count;
+        Debug.Log($"HandManager: Current hand size for {gameObject.name} is {currentHandSize}");
+
+        // Calculate how many cards to draw
+        int remainingCardsToDraw = targetHandSize - currentHandSize;
+        if (remainingCardsToDraw <= 0)
+        {
+            Debug.Log($"HandManager: No cards need to be drawn for {gameObject.name}, hand is already at or above target size");
+            return;
+        }
+
+        Debug.Log($"HandManager: Need to draw {remainingCardsToDraw} cards total");
+
+        // First, check if we need to recycle before starting to draw
+        List<GameObject> deckCards = GetCardsInTransform(deckTransform);
+        List<GameObject> discardCards = GetCardsInTransform(discardTransform);
+        
+        if (deckCards.Count < remainingCardsToDraw && discardCards.Count > 0)
+        {
+            Debug.Log($"HandManager: Deck has insufficient cards ({deckCards.Count}) for remaining draw ({remainingCardsToDraw}). Recycling and shuffling {discardCards.Count} cards from discard pile.");
+            RecycleAndShuffleDiscardPile();
+            // Get updated deck cards after recycling
+            deckCards = GetCardsInTransform(deckTransform);
+            Debug.Log($"HandManager: After recycling, deck now has {deckCards.Count} cards.");
+        }
+
+        // Now draw as many cards as we can
+        int cardsToDrawThisTime = Mathf.Min(remainingCardsToDraw, deckCards.Count);
+        Debug.Log($"HandManager: Drawing {cardsToDrawThisTime} cards");
+        
+        for (int i = 0; i < cardsToDrawThisTime; i++)
+        {
+            GameObject card = deckCards[i];
+            if (card == null)
+            {
+                Debug.LogError($"HandManager: Null card found in deck for {gameObject.name}");
+                continue;
+            }
+            
+            Debug.Log($"HandManager: Moving card {card.name} to hand for {gameObject.name}");
+            MoveCardToHand(card);
         }
         
-        // Check if hand is full
-        if (combatHand.IsFull())
+        Debug.Log($"HandManager: Finished drawing {cardsToDrawThisTime} cards for {gameObject.name}");
+    }
+
+    /// <summary>
+    /// Discards all cards from hand
+    /// </summary>
+    [Server]
+    public void DiscardHand()
+    {
+        if (!IsServerInitialized) return;
+        Debug.Log($"HandManager: Discarding hand for {gameObject.name}");
+
+        // Check if transforms are available
+        if (handTransform == null || discardTransform == null)
         {
-            Debug.Log($"Cannot draw card: Hand is full ({combatHand.GetCardCount()}/{combatHand.GetAvailableSpace()})");
-            return false;
+            Debug.LogError($"HandManager: Missing hand or discard transform for {gameObject.name}");
+            return;
+        }
+
+        // Get all card objects in hand transform
+        List<GameObject> handCards = GetCardsInTransform(handTransform);
+        Debug.Log($"HandManager: Found {handCards.Count} cards in hand for {gameObject.name}");
+        
+        if (handCards.Count == 0)
+        {
+            Debug.LogWarning($"HandManager: No cards found in hand to discard for {gameObject.name}");
+            return;
         }
         
-        // Draw a card from the deck
-        List<GameObject> drawnCards = combatDeck.DrawCards(1);
-        
-        // If we got a card, add it to the hand
-        if (drawnCards.Count > 0)
+        // Move each card to discard and disable it
+        foreach (GameObject card in handCards)
         {
-            GameObject drawnCard = drawnCards[0];
-            return combatHand.AddCard(drawnCard);
+            if (card == null)
+            {
+                Debug.LogError($"HandManager: Null card found in hand for {gameObject.name}");
+                continue;
+            }
+            
+            Debug.Log($"HandManager: Moving card {card.name} to discard for {gameObject.name}");
+            MoveCardToDiscard(card);
+        }
+        
+        Debug.Log($"HandManager: Finished discarding {handCards.Count} cards for {gameObject.name}");
+    }
+
+    [Server]
+    private void MoveCardToHand(GameObject card)
+    {
+        if (!IsServerInitialized || card == null)
+        {
+            if (card == null) Debug.LogError($"HandManager: Attempted to move null card to hand for {gameObject.name}");
+            return;
+        }
+
+        NetworkObject cardNetObj = card.GetComponent<NetworkObject>();
+        if (cardNetObj == null)
+        {
+            Debug.LogError($"HandManager: Card {card.name} is missing NetworkObject component for {gameObject.name}");
+            return;
+        }
+
+        NetworkObject parentEntityNetObj = handTransform.GetComponentInParent<NetworkObject>();
+        if (parentEntityNetObj == null)
+        {
+            Debug.LogError($"HandManager: Hand transform has no parent with NetworkObject component for {gameObject.name}");
+            return;
+        }
+
+        // Direct server-side manipulation
+        Debug.Log($"HandManager (ServerDirect): Enabling card {card.name} and moving to hand for {gameObject.name}");
+        card.SetActive(true);
+        card.transform.SetParent(handTransform);
+        card.transform.localPosition = Vector3.zero;
+        
+        // RPCs for clients only
+        RpcSetCardEnabled(cardNetObj.ObjectId, true); 
+        RpcSetCardParent(cardNetObj.ObjectId, parentEntityNetObj.ObjectId, "Hand");
+    }
+
+    [Server]
+    private void MoveCardToDiscard(GameObject card)
+    {
+        if (!IsServerInitialized || card == null)
+        {
+            if (card == null) Debug.LogError($"HandManager: Attempted to move null card to discard for {gameObject.name}");
+            return;
+        }
+
+        NetworkObject cardNetObj = card.GetComponent<NetworkObject>();
+        if (cardNetObj == null)
+        {
+            Debug.LogError($"HandManager: Card {card.name} is missing NetworkObject component for {gameObject.name}");
+            return;
+        }
+
+        NetworkObject parentEntityNetObj = discardTransform.GetComponentInParent<NetworkObject>();
+        if (parentEntityNetObj == null)
+        {
+            Debug.LogError($"HandManager: Discard transform has no parent with NetworkObject component for {gameObject.name}");
+            return;
+        }
+
+        // Direct server-side manipulation
+        Debug.Log($"HandManager (ServerDirect): Disabling card {card.name} and moving to discard for {gameObject.name}");
+        card.SetActive(false);
+        card.transform.SetParent(discardTransform);
+        card.transform.localPosition = Vector3.zero;
+        
+        // RPCs for clients only
+        RpcSetCardEnabled(cardNetObj.ObjectId, false); 
+        RpcSetCardParent(cardNetObj.ObjectId, parentEntityNetObj.ObjectId, "Discard");
+    }
+
+    [Server]
+    private void MoveCardToDeck(GameObject card)
+    {
+        if (!IsServerInitialized || card == null)
+        {
+            if (card == null) Debug.LogError($"HandManager: Attempted to move null card to deck for {gameObject.name}");
+            return;
+        }
+
+        NetworkObject cardNetObj = card.GetComponent<NetworkObject>();
+        if (cardNetObj == null)
+        {
+            Debug.LogError($"HandManager: Card {card.name} is missing NetworkObject component for {gameObject.name}");
+            return;
+        }
+        
+        // Get the NetworkObject ID for the parent transform's owner (the entity)
+        NetworkObject parentEntityNetObj = deckTransform.GetComponentInParent<NetworkObject>();
+        if (parentEntityNetObj == null)
+        {
+            Debug.LogError($"HandManager: Deck transform has no parent with NetworkObject component for {gameObject.name}");
+            return;
+        }
+
+        // Direct server-side manipulation
+        Debug.Log($"HandManager (ServerDirect): Moving card {card.name} to deck (disabled) for {gameObject.name}");
+        card.transform.SetParent(deckTransform);
+        card.transform.localPosition = Vector3.zero;
+        card.SetActive(false); 
+        
+        // RPCs for clients only
+        RpcSetCardEnabled(cardNetObj.ObjectId, false); // Send ObjectId instead of GameObject
+        RpcSetCardParent(cardNetObj.ObjectId, parentEntityNetObj.ObjectId, "Deck");
+    }
+
+    [Server]
+    private void RecycleAndShuffleDiscardPile()
+    {
+        if (!IsServerInitialized) return;
+
+        List<GameObject> discardCards = GetCardsInTransform(discardTransform);
+        if (discardCards.Count == 0)
+        {
+            Debug.Log($"HandManager: No cards in discard pile to recycle for {gameObject.name}");
+            return;
+        }
+        Debug.Log($"HandManager: Starting recycle of {discardCards.Count} cards from discard to deck for {gameObject.name}");
+
+        List<GameObject> initialExistingDeckCards = GetCardsInTransform(deckTransform); // Get initial state
+        Debug.Log($"HandManager: Found {initialExistingDeckCards.Count} existing cards in deck that will remain on top for {gameObject.name}");
+
+        System.Random rng = new System.Random();
+        int n = discardCards.Count;
+        Debug.Log($"HandManager: Shuffling {n} discard cards for {gameObject.name}");
+        while (n > 1)
+        {
+            n--;
+            int k = rng.Next(n + 1);
+            GameObject temp = discardCards[k];
+            discardCards[k] = discardCards[n];
+            discardCards[n] = temp;
+        }
+        Debug.Log($"HandManager: Finished shuffling discard cards. About to move {discardCards.Count} cards to deck for {gameObject.name}");
+
+        int movedCardThisRecycle = 0;
+        for(int i=0; i < discardCards.Count; i++)
+        {
+            GameObject card = discardCards[i];
+            if (card != null)
+            {
+                Debug.Log($"HandManager (RecycleLoop {i+1}/{discardCards.Count}): Processing card {card.name} for {gameObject.name}");
+                MoveCardToDeck(card); // This now does direct server parenting
+                movedCardThisRecycle++;
+            }
+            else
+            {
+                Debug.LogError($"HandManager (RecycleLoop {i+1}/{discardCards.Count}): Found a NULL card in the discardCards list for {gameObject.name}");
+            }
+        }
+        Debug.Log($"HandManager: Loop for moving cards from discard to deck completed. Moved {movedCardThisRecycle} cards this cycle for {gameObject.name}.");
+
+        // Sibling index management
+        // initialExistingDeckCards contains the references to the cards that were originally in the deck.
+        // discardCards list contains the references to the cards that were in discard and just moved to deck.
+        // All these GameObjects should now be children of deckTransform due to direct server-side parenting.
+
+        int siblingIndex = 0;
+        Debug.Log($"HandManager: Setting sibling indices for {initialExistingDeckCards.Count} original deck cards.");
+        foreach (GameObject card in initialExistingDeckCards)
+        {
+            if (card == null) { Debug.LogError("Null card found in initialExistingDeckCards during sibling sort!"); continue; }
+            if (card.transform.parent != deckTransform) Debug.LogError($"Card {card.name} was expected to be child of deckTransform for original sort but is not! Parent is {card.transform.parent?.name}");
+            card.transform.SetSiblingIndex(siblingIndex++);
+        }
+        
+        Debug.Log($"HandManager: Setting sibling indices for {discardCards.Count} recycled cards.");
+        foreach (GameObject card in discardCards) 
+        {
+            if (card == null) { Debug.LogError("Null card found in discardCards during sibling sort!"); continue; }
+            if (card.transform.parent != deckTransform) Debug.LogError($"Card {card.name} was expected to be child of deckTransform for recycled sort but is not! Parent is {card.transform.parent?.name}");
+            card.transform.SetSiblingIndex(siblingIndex++);
+        }
+        
+        List<GameObject> finalDeckContents = GetCardsInTransform(deckTransform);
+        Debug.Log($"HandManager: Completed recycle and shuffle. Final deck count: {finalDeckContents.Count}. Expected {initialExistingDeckCards.Count + discardCards.Count} for {gameObject.name}");
+    }
+
+    [ObserversRpc(ExcludeServer = true)]
+    private void RpcSetCardEnabled(int cardNetObjId, bool enabled) // Changed to int cardNetObjId
+    {
+        NetworkObject cardNetObj = null;
+        bool foundCard = false;
+        if (NetworkManager.IsClientStarted) // Should only execute on clients now
+        {
+            foundCard = NetworkManager.ClientManager.Objects.Spawned.TryGetValue(cardNetObjId, out cardNetObj);
+        }
+        
+        if (foundCard && cardNetObj != null)
+        {
+            GameObject card = cardNetObj.gameObject;
+            Debug.Log($"HandManager (Client RPC): Setting card {card.name} enabled={enabled} for {gameObject.name}");
+            card.SetActive(enabled);
         }
         else
         {
-            Debug.Log("Cannot draw card: Deck is empty");
-            return false;
+            Debug.LogError($"HandManager (Client RPC): RpcSetCardEnabled - Failed to find card NetworkObject with ID {cardNetObjId} for {gameObject.name}");
         }
     }
 
-    /// <summary>
-    /// Draws multiple cards from the deck to the hand
-    /// </summary>
-    /// <param name="count">Number of cards to draw</param>
-    /// <returns>Number of cards actually drawn</returns>
-    public int DrawCards(int count)
+    [ObserversRpc(ExcludeServer = true)]
+    private void RpcSetCardParent(int cardNetObjId, int parentEntityNetObjId, string targetTransformName)
     {
-        // Check if we're on the server
-        if (!FishNet.InstanceFinder.IsServerStarted)
+        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Setting card with ID {cardNetObjId} parent to {targetTransformName} on entity with ID {parentEntityNetObjId}");
+        
+        // Find the card by NetworkObject ID
+        NetworkObject cardNetObj = null;
+        bool foundCard = false;
+        
+        if (NetworkManager.IsClientStarted) // Should only execute on clients now
         {
-            Debug.LogWarning("DrawCards can only be called on the server");
-            return 0;
+            foundCard = NetworkManager.ClientManager.Objects.Spawned.TryGetValue(cardNetObjId, out cardNetObj);
         }
-        
-        int cardsDrawn = 0;
-        
-        // Draw cards while we have space and cards available
-        for (int i = 0; i < count; i++)
-        {
-            if (DrawCard())
-            {
-                cardsDrawn++;
-            }
-            else
-            {
-                // If we couldn't draw a card, stop trying
-                break;
-            }
-        }
-        
-        return cardsDrawn;
-    }
-
-    /// <summary>
-    /// Moves a card from hand to discard pile
-    /// </summary>
-    /// <param name="cardId">ID of the card to move</param>
-    /// <returns>True if the card was moved</returns>
-    public bool MoveCardToDiscard(int cardId)
-    {
-        // Check if we're on the server
-        if (!FishNet.InstanceFinder.IsServerStarted)
-        {
-            Debug.LogWarning("MoveCardToDiscard can only be called on the server");
-            return false;
-        }
-        
-        // Find and remove the card from hand
-        GameObject cardObj = combatHand.RemoveCardById(cardId);
-        
-        if (cardObj != null)
-        {
-            // Add the card to the discard pile
-            combatDiscard.AddCard(cardObj);
-            return true;
-        }
-        
-        return false;
-    }
-
-    /// <summary>
-    /// Moves a specific card object from hand to discard pile
-    /// </summary>
-    /// <param name="cardObj">Card GameObject to move</param>
-    /// <returns>True if the card was moved</returns>
-    public bool MoveCardToDiscard(GameObject cardObj)
-    {
-        // Check if we're on the server
-        if (!FishNet.InstanceFinder.IsServerStarted)
-        {
-            Debug.LogWarning("MoveCardToDiscard can only be called on the server");
-            return false;
-        }
-        
-        // Remove the card from hand
-        if (combatHand.RemoveCard(cardObj))
-        {
-            // Add the card to the discard pile
-            combatDiscard.AddCard(cardObj);
-            return true;
-        }
-        
-        return false;
-    }
-
-    /// <summary>
-    /// Discards the entire hand
-    /// </summary>
-    public void DiscardHand()
-    {
-        // Check if we're on the server
-        if (!FishNet.InstanceFinder.IsServerStarted)
-        {
-            Debug.LogWarning("DiscardHand can only be called on the server");
-            return;
-        }
-        
-        // Get all cards from hand
-        List<GameObject> discardedCards = combatHand.DiscardHand();
-        
-        // Move all cards to discard pile
-        foreach (GameObject cardObj in discardedCards)
-        {
-            combatDiscard.AddCard(cardObj);
-        }
-        
-        Debug.Log($"Discarded {discardedCards.Count} cards from {parentEntity.name}'s hand");
-    }
-
-    /// <summary>
-    /// Shuffles all cards from discard pile back into deck
-    /// </summary>
-    public void ShuffleDiscardIntoDeck()
-    {
-        // Check if we're on the server
-        if (!FishNet.InstanceFinder.IsServerStarted)
-        {
-            Debug.LogWarning("ShuffleDiscardIntoDeck can only be called on the server");
-            return;
-        }
-        
-        // Get all cards from discard
-        List<GameObject> cardsToShuffle = combatDiscard.GetAllCards();
-        int cardCount = cardsToShuffle.Count;
-        
-        // Clear discard pile
-        combatDiscard.ClearDiscard();
-        
-        // Add cards to deck and shuffle
-        combatDeck.AddCardsToDeck(cardsToShuffle);
-        
-        Debug.Log($"Shuffled {cardCount} cards from discard into {parentEntity.name}'s deck");
-    }
-    
-    /// <summary>
-    /// Reshuffles discard pile into deck
-    /// </summary>
-    private void ReshuffleDiscardIntoDeck()
-    {
-        if (parentEntity == null || !parentEntity.IsServerStarted || combatDiscard == null || combatDeck == null) return;
-        
-        // Get all cards from discard
-        List<GameObject> cardsToShuffle = combatDiscard.GetAllCards();
-        
-        // If there are no cards in discard, return
-        if (cardsToShuffle.Count == 0)
-        {
-            Debug.Log($"{GetEntityName()} has no cards in discard pile to reshuffle.");
-            return;
-        }
-        
-        // Clear discard pile
-        combatDiscard.ClearDiscard();
-        
-        // Add cards to deck
-        combatDeck.AddCardsToDeck(cardsToShuffle);
-        
-        // Shuffle the deck
-        combatDeck.ShuffleDeck();
-        
-        Debug.Log($"Reshuffled {cardsToShuffle.Count} cards from discard into {GetEntityName()}'s deck");
-    }
-
-    // Server-side logic for drawing initial cards
-    public void DrawInitialCardsForEntity(int drawAmount)
-    {
-        if (parentEntity == null || !FishNet.InstanceFinder.IsServerStarted) return;
-
-        string entityName = GetEntityName();
-        
-        ShuffleDeck(); // Shuffle before drawing
-        
-        Debug.Log($"HandManager: Drawing {drawAmount} cards for {entityName}.");
-
-        // Check hand capacity before drawing
-        int availableSpace = combatHand != null ? combatHand.GetAvailableSpace() : 0;
-        int actualDrawAmount = Mathf.Min(drawAmount, availableSpace);
-        
-        if (actualDrawAmount < drawAmount)
-        {
-            Debug.LogWarning($"HandManager: {entityName} can only draw {actualDrawAmount} of {drawAmount} cards due to hand size limit.");
-        }
-        
-        // Draw cards directly from deck - this uses the existing card GameObjects already created in the deck
-        // and moves them to the hand rather than creating new ones
-        int cardsDrawn = 0;
-        for (int i = 0; i < actualDrawAmount; i++)
-        {
-            bool success = DrawOneCard();
-            if (success)
-            {
-                cardsDrawn++;
-            }
-            else
-            {
-                Debug.LogWarning($"HandManager: {entityName} failed to draw card {i+1} of {actualDrawAmount}. Only drew {cardsDrawn} cards.");
-                break;
-            }
-        }
-        
-        // Log the cards in hand after drawing
-        Debug.Log($"After drawing, {entityName} has {combatHand.GetCardCount()} cards in hand");
-    }
-
-    // Server-side logic for drawing one card
-    // Returns true if a card was successfully drawn
-    public bool DrawOneCard()
-    {
-        if (parentEntity == null || !FishNet.InstanceFinder.IsServerStarted) return false;
-        if (combatHand == null)
-        {
-            Debug.LogError("HandManager: Cannot draw card - CombatHand component not found.");
-            return false;
-        }
-
-        // Check if hand is full before attempting to draw
-        if (combatHand.IsFull())
-        {
-            Debug.Log($"{GetEntityName()} hand is full. Cannot draw more cards.");
-            return false;
-        }
-
-        string entityName = GetEntityName();
-
-        // Check if deck is empty
-        if (combatDeck.GetDeckSize() == 0)
-        {
-            // Reshuffle discard into deck if deck is empty
-            if (combatDiscard.GetCardCount() > 0)
-            {
-                Debug.Log($"{entityName} deck is empty. Reshuffling discard pile into deck.");
-                ReshuffleDiscardIntoDeck();
                 
-                // Check if reshuffle was successful
-                if (combatDeck.GetDeckSize() == 0)
-                {
-                    Debug.LogWarning($"{entityName} deck is still empty after reshuffling. Cannot draw a card.");
-                    return false;
-                }
+        if (!foundCard || cardNetObj == null)
+        {
+            Debug.LogError($"HandManager (Client RPC): RpcSetCardParent - Failed to find card NetworkObject with ID {cardNetObjId}");
+            return;
+        }
+        
+        // Find the parent entity by NetworkObject ID
+        NetworkObject parentEntityNetObj = null;
+        bool foundParent = false;
+        
+        if (NetworkManager.IsClientStarted)
+        {
+            foundParent = NetworkManager.ClientManager.Objects.Spawned.TryGetValue(parentEntityNetObjId, out parentEntityNetObj);
+        }
                 
-                Debug.Log($"{entityName} successfully reshuffled discard. Continuing with draw.");
+        if (!foundParent || parentEntityNetObj == null)
+        {
+            Debug.LogError($"HandManager (Client RPC): RpcSetCardParent - Failed to find parent entity NetworkObject with ID {parentEntityNetObjId}");
+            return;
+        }
+        
+        // Find the target transform within the parent entity
+        Transform targetTransform = null;
+        NetworkEntityUI entityUI = parentEntityNetObj.GetComponent<NetworkEntityUI>();
+        
+        if (entityUI != null)
+        {
+            switch (targetTransformName)
+            {
+                case "Hand":
+                    targetTransform = entityUI.GetHandTransform();
+                    break;
+                case "Deck":
+                    targetTransform = entityUI.GetDeckTransform();
+                    break;
+                case "Discard":
+                    targetTransform = entityUI.GetDiscardTransform();
+                    break;
+            }
+        }
+        
+        if (targetTransform == null)
+        {
+            Debug.LogError($"HandManager (Client RPC): RpcSetCardParent - Failed to find {targetTransformName} transform on entity with ID {parentEntityNetObjId}");
+            return;
+        }
+        
+        // Set the card's parent to the target transform
+        GameObject card = cardNetObj.gameObject;
+        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Setting card {card.name} parent to {targetTransform.name} on {gameObject.name}");
+        card.transform.SetParent(targetTransform);
+        card.transform.localPosition = Vector3.zero;
+    }
+
+    private List<GameObject> GetCardsInTransform(Transform parent)
+    {
+        if (parent == null)
+        {
+            Debug.LogError($"HandManager: Attempted to get cards from null transform on {gameObject.name}");
+            return new List<GameObject>();
+        }
+
+        List<GameObject> cards = new List<GameObject>();
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            Transform childTransform = parent.GetChild(i);
+            if (childTransform != null && childTransform.gameObject != null)
+            {
+                cards.Add(childTransform.gameObject);
+                // Debug.Log($"HandManager: Added card {childTransform.gameObject.name} from {parent.name}"); // Optional: very verbose
             }
             else
             {
-                Debug.Log($"{entityName} has no cards in deck or discard to draw.");
-                return false; // No cards left anywhere
+                Debug.LogError($"HandManager: Found null child transform or null gameObject at index {i} in {parent.name}");
             }
         }
-
-        // Get existing card GameObject from deck - these were created during combat setup
-        // and are stored in the deck's deckCards list
-        List<GameObject> drawnCards = combatDeck.DrawCards(1);
-        if (drawnCards.Count == 0)
-        {
-            Debug.LogWarning($"{entityName} failed to draw a card from deck (size: {combatDeck.GetDeckSize()}).");
-            return false;
-        }
         
-        // Get the first card object from the list
-        GameObject cardObj = drawnCards[0];
-        
-        // Add the existing GameObject to CombatHand - no new card is created here
-        bool added = combatHand.AddCard(cardObj);
-        if (!added)
-        {
-            // If adding to hand failed, put card back in deck 
-            // Using AddCardToDeck to maintain the same card object
-            combatDeck.AddCardToDeck(cardObj);
-            Debug.LogWarning($"{entityName} failed to add card to hand. Card returned to deck.");
-            return false;
-        }
-        
-        // Get card ID for logging
-        Card cardComponent = cardObj.GetComponent<Card>();
-        int cardId = cardComponent != null ? cardComponent.CardId : -1;
-
-        Debug.Log($"{entityName} drew card ID: {cardId}. Hand size: {combatHand.GetCardCount()}");
-        return true;
+        Debug.Log($"HandManager: Found {cards.Count} cards in {parent.name} for {gameObject.name}");
+        return cards;
     }
 
-    // Server-side logic to shuffle the deck
-    private void ShuffleDeck()
+    // Helper method to get transform path for debugging
+    private string GetTransformPath(Transform transform)
     {
-        if (parentEntity == null || !parentEntity.IsServerStarted || combatDeck == null) return;
+        if (transform == null) return "null";
         
-        combatDeck.ShuffleDeck();
-    }
-
-    // Get entity name for logging
-    private string GetEntityName()
-    {
-        NetworkPlayer player = parentEntity as NetworkPlayer;
-        NetworkPet pet = parentEntity as NetworkPet;
+        string path = transform.name;
+        Transform parent = transform.parent;
         
-        if (player != null)
+        while (parent != null)
         {
-            return player.PlayerName.Value;
-        }
-        else if (pet != null)
-        {
-            return pet.PetName.Value;
+            path = parent.name + "/" + path;
+            parent = parent.parent;
         }
         
-        return "Unknown Entity";
+        return path;
     }
+}
 
-    // Card GameObjects parenting/movement in the scene hierarchy:
-    // This is typically handled on the client-side by CombatCanvasManager.RenderHand() in response to SyncList changes.
-    // The server dictates the *state* (which card IDs are in which list).
-    // Clients then update their visuals. For example, when a card ID appears in `playerHandCardIds`,
-    // the client instantiates a visual representation of that card and parents it to `playerHandDisplayArea`.
-    // When an ID moves from `playerHandCardIds` to `discardPileCardIds`, the client moves the corresponding GameObject.
+// Keep the CardLocation enum definition
+public enum CardLocation
+{
+    Deck,
+    Hand,
+    Discard
 } 

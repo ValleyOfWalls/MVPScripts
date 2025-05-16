@@ -14,7 +14,7 @@ public class CardSelectionManager : MonoBehaviour
     [Header("Selection Mode")]
     [SerializeField] private bool isDraftSelection = false; // If false, it's a shop purchase
     
-    private NetworkPlayer localPlayer;
+    private NetworkEntity localPlayer;
     private DeckManager deckManager;
     private CardShopManager cardShopManager;
     private DraftManager draftManager;
@@ -49,8 +49,8 @@ public class CardSelectionManager : MonoBehaviour
     private void Start()
     {
         // Find local player
-        NetworkPlayer[] players = Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
-        foreach (NetworkPlayer player in players)
+        NetworkEntity[] players = Object.FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        foreach (NetworkEntity player in players)
         {
             if (player.IsOwner)
             {

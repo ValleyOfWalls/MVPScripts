@@ -4,7 +4,7 @@ using FishNet.Object;
 
 /// <summary>
 /// Manages adding cards to an entity's persistent deck through NetworkEntityDeck.
-/// Attach to: Both NetworkPlayer and NetworkPet prefabs alongside NetworkEntityDeck.
+/// Attach to: NetworkEntity prefabs alongside NetworkEntityDeck.
 /// </summary>
 public class DeckManager : NetworkBehaviour
 {
@@ -14,17 +14,13 @@ public class DeckManager : NetworkBehaviour
     private void Awake()
     {
         // Get references
-        parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
-        if (parentEntity == null)
-        {
-            parentEntity = GetComponent<NetworkPet>() as NetworkBehaviour;
-        }
+        parentEntity = GetComponent<NetworkEntity>();
         
         entityDeck = GetComponent<NetworkEntityDeck>();
         
         if (parentEntity == null)
         {
-            Debug.LogError("DeckManager requires a NetworkPlayer or NetworkPet component on the same GameObject.");
+            Debug.LogError("DeckManager requires a NetworkEntity component on the same GameObject.");
         }
         
         if (entityDeck == null)
@@ -113,9 +109,8 @@ public class DeckManager : NetworkBehaviour
     {
         if (entityDeck == null) return;
         
-        string entityName = parentEntity is NetworkPlayer player ? 
-            $"Player {player.PlayerName.Value}" : 
-            (parentEntity is NetworkPet pet ? $"Pet {pet.PetName.Value}" : "Unknown Entity");
+        NetworkEntity entity = parentEntity as NetworkEntity;
+        string entityName = entity != null ? $"Entity {entity.EntityName.Value}" : "Unknown Entity";
             
         entityDeck.AddCard(cardId);
         Debug.Log($"{entityName} added card ID {cardId} to their deck via DeckManager.");
@@ -129,9 +124,8 @@ public class DeckManager : NetworkBehaviour
     {
         if (entityDeck == null) return;
         
-        string entityName = parentEntity is NetworkPlayer player ? 
-            $"Player {player.PlayerName.Value}" : 
-            (parentEntity is NetworkPet pet ? $"Pet {pet.PetName.Value}" : "Unknown Entity");
+        NetworkEntity entity = parentEntity as NetworkEntity;
+        string entityName = entity != null ? $"Entity {entity.EntityName.Value}" : "Unknown Entity";
             
         bool removed = entityDeck.RemoveCard(cardId);
         Debug.Log($"{entityName} {(removed ? "removed" : "failed to remove")} card ID {cardId} from their deck via DeckManager.");

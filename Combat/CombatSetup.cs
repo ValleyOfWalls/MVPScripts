@@ -26,7 +26,22 @@ public class CombatSetup : NetworkBehaviour
     private SteamNetworkIntegration steamNetworkIntegration;
     private bool setupCompleted = false;
 
-    private readonly SyncDictionary<uint, bool> readyPlayers = new SyncDictionary<uint, bool>();
+    // Track ready state for each client
+    private readonly SyncDictionary<NetworkConnection, bool> readyClients = new SyncDictionary<NetworkConnection, bool>();
+    private bool allClientsReady = false;
+
+    [Header("Combat Participants")]
+    private NetworkEntity player1;
+    private NetworkEntity pet1;
+    private NetworkEntity player2;
+    private NetworkEntity pet2;
+
+    [Header("Combat State")]
+    private bool isCombatActive = false;
+    private bool isSetupComplete = false;
+
+    public bool IsCombatActive => isCombatActive;
+    public bool IsSetupComplete => isSetupComplete;
 
     private void Awake()
     {
@@ -54,6 +69,90 @@ public class CombatSetup : NetworkBehaviour
         ResolveReferences();
     }
 
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        if (!IsClientStarted) return;
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    private void ServerSetClientReady(NetworkConnection connection)
+    {
+        if (!IsServerInitialized || connection == null)
+        {
+            Debug.LogWarning("CombatSetup: ServerSetClientReady called with null connection or server not initialized.");
+            return;
+        }
+
+        Debug.Log($"CombatSetup: Client {connection.ClientId} reported ready");
+        readyClients[connection] = true;
+        CheckAllClientsReady();
+    }
+
+    private void CheckAllClientsReady()
+    {
+        if (!IsServerInitialized) return;
+
+        // Get all connected client IDs
+        var connectedClientIds = NetworkManager.ServerManager.Clients.Keys.ToList();
+        Debug.Log($"CombatSetup: Checking readiness for {connectedClientIds.Count} connected clients (IDs: {string.Join(", ", connectedClientIds)})");
+
+        // Check if all connected clients are ready
+        bool allReady = true;
+        foreach (int clientId in connectedClientIds)
+        {
+            if (NetworkManager.ServerManager.Clients.TryGetValue(clientId, out NetworkConnection clientConn))
+            {
+                bool isClientReady = readyClients.ContainsKey(clientConn) && readyClients[clientConn];
+                Debug.Log($"CombatSetup: Client {clientConn.ClientId} ready status: {isClientReady}");
+                if (!isClientReady)
+                {
+                    allReady = false;
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"CombatSetup: Could not find NetworkConnection for ClientId {clientId} during readiness check.");
+                allReady = false; // If we can't find the connection, assume not ready.
+            }
+        }
+
+        if (allReady && connectedClientIds.Count > 0 && !allClientsReady) // Ensure there's at least one client and we haven't already set allClientsReady
+        {
+            allClientsReady = true;
+            Debug.Log("CombatSetup: All clients are ready, starting combat");
+            StartCombat();
+        }
+        else if (!allReady)
+        {
+            Debug.Log("CombatSetup: Not all clients are ready yet, waiting...");
+        }
+        else if (connectedClientIds.Count == 0 && !allClientsReady)
+        {
+            Debug.Log("CombatSetup: No clients connected, waiting for connections or manual start if applicable.");
+        }
+    }
+
+    [Server]
+    private void StartCombat()
+    {
+        if (!IsServerInitialized || !allClientsReady) 
+        {
+            Debug.LogWarning("CombatSetup: Cannot start combat - server not initialized or clients not ready");
+            return;
+        }
+        
+        Debug.Log("CombatSetup: All clients ready, starting combat through CombatManager");
+        if (combatManager != null)
+        {
+            combatManager.StartCombat();
+        }
+        else
+        {
+            Debug.LogError("CombatSetup: Cannot start combat - CombatManager reference is missing");
+        }
+    }
+
     private void ResolveReferences()
     {
         steamNetworkIntegration = SteamNetworkIntegration.Instance;
@@ -72,6 +171,7 @@ public class CombatSetup : NetworkBehaviour
     {
         if (!IsServerStarted || setupCompleted) return;
         
+        Debug.Log("CombatSetup: Starting combat initialization...");
         ResolveReferences();
 
         if (!AreRequiredComponentsAvailable())
@@ -80,18 +180,26 @@ public class CombatSetup : NetworkBehaviour
             return;
         }
         
+        Debug.Log("CombatSetup: Transitioning to combat phase...");
         TransitionToPhase();
+        
+        Debug.Log("CombatSetup: Setting up combat decks...");
         SetupCombatDecks();
+        
+        Debug.Log("CombatSetup: Assigning fights...");
         AssignFights();
+        
+        Debug.Log("CombatSetup: Ensuring players are observers...");
         EnsurePlayersAreObservers();
+        
+        Debug.Log("CombatSetup: Triggering combat canvas setup...");
         RpcTriggerCombatCanvasManagerSetup();
         
-        if (combatManager != null)
-        {
-            combatManager.StartCombat();
-        }
-        
         setupCompleted = true;
+        Debug.Log("CombatSetup: Setup completed successfully.");
+
+        // Instead of starting combat immediately, notify clients to check their setup
+        RpcCheckClientSetup();
     }
     
     private bool AreRequiredComponentsAvailable()
@@ -113,73 +221,53 @@ public class CombatSetup : NetworkBehaviour
     [Server]
     private void SetupCombatDecks()
     {
-        if (FishNet.InstanceFinder.NetworkManager == null || 
-            !FishNet.InstanceFinder.NetworkManager.ServerManager.Started)
-        {
-            return;
-        }
+        if (!IsServerInitialized) return;
 
-        SetupPlayerDecks();
-        SetupPetDecks();
-    }
-    
-    private void SetupPlayerDecks()
-    {
-        List<NetworkPlayer> players = GetAllSpawnedEntities<NetworkPlayer>();
+        // Get all spawned entities
+        List<NetworkEntity> entities = GetAllSpawnedEntities<NetworkEntity>();
         
-        foreach (NetworkPlayer player in players)
+        foreach (NetworkEntity entity in entities)
         {
-            InitializeEntityDeck(player.gameObject);
+            CombatDeckSetup deckSetup = entity.GetComponent<CombatDeckSetup>();
+            if (deckSetup != null)
+            {
+                deckSetup.SetupCombatDeck();
+            }
+            else
+            {
+                Debug.LogError($"Entity {entity.EntityName.Value} is missing CombatDeckSetup component");
+            }
         }
-    }
-    
-    private void SetupPetDecks()
-    {
-        List<NetworkPet> pets = GetAllSpawnedEntities<NetworkPet>();
-        
-        foreach (NetworkPet pet in pets)
-        {
-            InitializeEntityDeck(pet.gameObject);
-        }
-    }
-    
-    private List<T> GetAllSpawnedEntities<T>() where T : NetworkBehaviour
-    {
-        return FishNet.InstanceFinder.NetworkManager.ServerManager.Objects.Spawned.Values
-            .Select(nob => nob.GetComponent<T>())
-            .Where(p => p != null)
-            .ToList();
     }
 
     [Server]
     private void AssignFights()
     {
-        if (fightManager == null || 
-            FishNet.InstanceFinder.NetworkManager == null || 
-            !FishNet.InstanceFinder.NetworkManager.ServerManager.Started)
-        {
-            return;
-        }
+        if (!IsServerInitialized || fightManager == null) return;
 
-        List<NetworkPlayer> players = GetAllSpawnedEntities<NetworkPlayer>();
-        List<NetworkPet> pets = GetAllSpawnedEntities<NetworkPet>();
+        // Get all entities
+        List<NetworkEntity> entities = GetAllSpawnedEntities<NetworkEntity>();
+        
+        // Separate players and pets
+        var players = entities.Where(e => e.EntityType == EntityType.Player).ToList();
+        var pets = entities.Where(e => e.EntityType == EntityType.Pet).ToList();
         
         AssignPlayersToPets(players, pets);
     }
     
-    private void AssignPlayersToPets(List<NetworkPlayer> players, List<NetworkPet> pets)
+    private void AssignPlayersToPets(List<NetworkEntity> players, List<NetworkEntity> pets)
     {
-        List<NetworkPet> availablePets = new List<NetworkPet>(pets);
+        List<NetworkEntity> availablePets = new List<NetworkEntity>(pets);
         
-        foreach (NetworkPlayer player in players)
+        foreach (NetworkEntity player in players)
         {
             if (availablePets.Count == 0) break;
             
             // Find player's own pet to avoid pairing with it
-            uint playerOwnedPetId = GetPlayerOwnedPetId(player, pets);
+            NetworkEntity playerOwnedPet = pets.FirstOrDefault(p => p.GetOwnerEntity() == player);
             
             // Find a suitable pet to fight against
-            NetworkPet opponentPet = FindOpponentPet(availablePets, playerOwnedPetId);
+            NetworkEntity opponentPet = FindOpponentPet(availablePets, playerOwnedPet);
             
             if (opponentPet != null)
             {
@@ -189,24 +277,12 @@ public class CombatSetup : NetworkBehaviour
         }
     }
     
-    private uint GetPlayerOwnedPetId(NetworkPlayer player, List<NetworkPet> allPets)
-    {
-        foreach (NetworkPet pet in allPets)
-        {
-            if (pet.OwnerPlayerObjectId.Value == (uint)player.ObjectId)
-            {
-                return (uint)pet.ObjectId;
-            }
-        }
-        return 0;
-    }
-    
-    private NetworkPet FindOpponentPet(List<NetworkPet> availablePets, uint playerOwnedPetId)
+    private NetworkEntity FindOpponentPet(List<NetworkEntity> availablePets, NetworkEntity playerOwnedPet)
     {
         // First try to find a pet that's not owned by the player
-        foreach (NetworkPet pet in availablePets)
+        foreach (NetworkEntity pet in availablePets)
         {
-            if ((uint)pet.ObjectId != playerOwnedPetId)
+            if (pet != playerOwnedPet)
             {
                 return pet;
             }
@@ -216,33 +292,28 @@ public class CombatSetup : NetworkBehaviour
         return availablePets.Count > 0 ? availablePets[0] : null;
     }
 
+    private List<T> GetAllSpawnedEntities<T>() where T : NetworkBehaviour
+    {
+        return FishNet.InstanceFinder.NetworkManager.ServerManager.Objects.Spawned.Values
+            .Select(nob => nob.GetComponent<T>())
+            .Where(p => p != null)
+            .ToList();
+    }
+
     [Server]
     private void EnsurePlayersAreObservers()
     {
-        if (FishNet.InstanceFinder.NetworkManager == null || 
-            combatManager == null ||
-            !FishNet.InstanceFinder.NetworkManager.ServerManager.Started)
-        {
-            return;
-        }
+        if (!IsServerInitialized || combatManager == null) return;
         
         NetworkObject combatManagerNob = combatManager.GetComponent<NetworkObject>();
         if (combatManagerNob == null) return;
 
-        // If the object isn't spawned yet, spawn it with default settings
         if (!combatManagerNob.IsSpawned)
         {
             FishNet.InstanceFinder.ServerManager.Spawn(combatManagerNob);
-            return;
         }
         
-        // For an already spawned object, update its visibility to all clients
-        // This is typically handled by FishNet's default observation system
-        // We can force an observation update or use a custom observer if needed,
-        // but in most cases this isn't necessary if the object is properly spawned
-        
-        // If you need custom observer logic, you can implement this using 
-        // a custom NetworkObserver component or other FishNet methods
+        Debug.Log("CombatSetup: Players set as observers of combat manager");
     }
 
     [ObserversRpc]
@@ -250,59 +321,192 @@ public class CombatSetup : NetworkBehaviour
     {
         if (combatCanvasManager != null)
         {
+            Debug.Log("CombatSetup: RpcTriggerCombatCanvasManagerSetup called");
+            
+            // Enable the combat canvas
+            if (combatCanvas != null)
+            {
+                Debug.Log("CombatSetup: Enabling combat canvas");
+                combatCanvas.SetActive(true);
+            }
+            else
+            {
+                Debug.LogError("CombatSetup: Combat canvas reference is missing");
+            }
+            
             StartCoroutine(SetupCombatUIWithDelay());
+        }
+        else
+        {
+            Debug.LogError("CombatSetup: CombatCanvasManager reference is missing");
         }
     }
 
     private IEnumerator SetupCombatUIWithDelay()
     {
-        // Wait one frame to ensure everything is properly set up
         yield return null;
+        Debug.Log("CombatSetup: Setting up combat UI after delay");
         
-        if (combatCanvasManager != null)
+        // Ensure canvas is enabled before setting up UI
+        if (combatCanvas != null && !combatCanvas.activeSelf)
         {
-            combatCanvasManager.SetupCombatUI();
+            Debug.Log("CombatSetup: Re-enabling combat canvas before UI setup");
+            combatCanvas.SetActive(true);
         }
+        
+        combatCanvasManager.SetupCombatUI();
+        Debug.Log("CombatSetup: Combat UI setup completed");
     }
 
     /// <summary>
-    /// Initializes the combat deck from the entity's network deck
+    /// Sets up a combat between two player-pet pairs
     /// </summary>
     [Server]
-    private void InitializeEntityDeck(GameObject entity)
+    public void SetupCombat(NetworkEntity player1, NetworkEntity pet1, NetworkEntity player2, NetworkEntity pet2)
     {
-        if (!IsServerInitialized || entity == null) return;
-        
-        // Get required components
-        NetworkEntityDeck entityDeck = entity.GetComponent<NetworkEntityDeck>();
-        CombatDeck combatDeck = entity.GetComponent<CombatDeck>();
-        CombatDeckSetup deckSetup = entity.GetComponent<CombatDeckSetup>();
-        
-        if (entityDeck == null)
+        if (!IsServerInitialized) return;
+
+        // Validate entity types
+        if (!ValidateEntities(player1, pet1, player2, pet2))
         {
-            Debug.LogError($"Cannot initialize combat deck: {entity.name} has no NetworkEntityDeck component");
+            Debug.LogError("CombatSetup: Invalid entity types provided");
             return;
         }
-        
-        if (combatDeck == null)
+
+        // Store references
+        this.player1 = player1;
+        this.pet1 = pet1;
+        this.player2 = player2;
+        this.pet2 = pet2;
+
+        // Initialize combat state
+        isCombatActive = true;
+        isSetupComplete = true;
+
+        // Notify clients about combat setup
+        RpcNotifyCombatSetup();
+
+        Debug.Log($"Combat setup complete between {player1.EntityName.Value} & {pet1.EntityName.Value} vs {player2.EntityName.Value} & {pet2.EntityName.Value}");
+    }
+
+    private bool ValidateEntities(NetworkEntity player1, NetworkEntity pet1, NetworkEntity player2, NetworkEntity pet2)
+    {
+        // Check for null references
+        if (player1 == null || pet1 == null || player2 == null || pet2 == null)
+            return false;
+
+        // Validate entity types
+        if (player1.EntityType != EntityType.Player || 
+            pet1.EntityType != EntityType.Pet ||
+            player2.EntityType != EntityType.Player || 
+            pet2.EntityType != EntityType.Pet)
+            return false;
+
+        // Validate ownership relationships
+        if (pet1.GetOwnerEntity() != player1 || pet2.GetOwnerEntity() != player2)
+            return false;
+
+        return true;
+    }
+
+    [ObserversRpc]
+    private void RpcNotifyCombatSetup()
+    {
+        // Client-side setup logic here
+        Debug.Log("Combat setup notification received on client");
+    }
+
+    [Server]
+    public void EndCombat()
+    {
+        if (!IsServerInitialized || !isCombatActive) return;
+
+        isCombatActive = false;
+        isSetupComplete = false;
+
+        // Clear references
+        player1 = null;
+        pet1 = null;
+        player2 = null;
+        pet2 = null;
+
+        // Notify clients about combat end
+        RpcNotifyCombatEnd();
+
+        Debug.Log("Combat ended");
+    }
+
+    [ObserversRpc]
+    private void RpcNotifyCombatEnd()
+    {
+        // Client-side cleanup logic here
+        Debug.Log("Combat end notification received on client");
+    }
+
+    public NetworkEntity GetPlayer1() => player1;
+    public NetworkEntity GetPet1() => pet1;
+    public NetworkEntity GetPlayer2() => player2;
+    public NetworkEntity GetPet2() => pet2;
+
+    [ObserversRpc]
+    private void RpcCheckClientSetup()
+    {
+        if (!IsClientStarted) return;
+
+        StartCoroutine(CheckClientSetupComplete());
+    }
+
+    private IEnumerator CheckClientSetupComplete()
+    {
+        // Wait a short time to ensure all components are properly initialized
+        yield return new WaitForSeconds(0.5f);
+
+        bool setupComplete = true;
+        string setupStatus = "Client setup status for " + LocalConnection.ClientId + ":";
+
+        var entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        if (entities.Length == 0)
         {
-            Debug.LogError($"Cannot initialize combat deck: {entity.name} has no CombatDeck component");
-            return;
+            setupStatus += "\n - No NetworkEntities found on client yet.";
+            // Decide if this means setup is not complete or if it's an expected state (e.g., before entities are spawned for this client)
+            // For now, let's assume if there are no entities, setup isn't verifiable / complete in the context of entities.
+            setupComplete = false; 
         }
-        
-        if (deckSetup == null)
+        else
         {
-            Debug.LogError($"Cannot initialize combat deck: {entity.name} has no CombatDeckSetup component");
-            return;
+            foreach (var entity in entities)
+            {
+                var deckSetup = entity.GetComponent<CombatDeckSetup>();
+                if (deckSetup != null)
+                {
+                    bool entitySetupComplete = deckSetup.IsSetupComplete;
+                    setupStatus += $"\n - Entity '{entity.name}' (ID: {entity.ObjectId}, Owner: {entity.Owner.ClientId}): CombatDeckSetup.IsSetupComplete = {entitySetupComplete}";
+                    if (!entitySetupComplete)
+                    {
+                        setupComplete = false;
+                    }
+                }
+                else
+                {
+                    setupStatus += $"\n - Entity '{entity.name}' (ID: {entity.ObjectId}, Owner: {entity.Owner.ClientId}): Missing CombatDeckSetup component.";
+                    // If a NetworkEntity is expected to have CombatDeckSetup, this might imply setup is not complete.
+                    // For now, we only fail if CombatDeckSetup exists and IsSetupComplete is false.
+                }
+            }
         }
-        
-        // Get the card IDs from the entity's network deck
-        List<int> deckCardIds = entityDeck.GetAllCardIds();
-        
-        Debug.Log($"Initializing combat deck for {entity.name} with {deckCardIds.Count} cards from network deck");
-        
-        // Let the combat deck setup handle the actual deck initialization
-        // This will spawn the actual card GameObjects for each card ID
-        deckSetup.SetupCombatDeck(deckCardIds);
+
+        Debug.Log(setupStatus);
+
+        if (setupComplete)
+        {
+            Debug.Log($"Client {LocalConnection.ClientId} combat setup check passed. Notifying server.");
+            ServerSetClientReady(LocalConnection);
+        }
+        else
+        {
+            Debug.LogWarning($"Client {LocalConnection.ClientId} combat setup check failed. Current status: {setupStatus}. Will retry or wait.");
+            // Optionally, re-schedule this check if it's expected to eventually pass without further server RPCs
+            // StartCoroutine(CheckClientSetupComplete()); // Example: retry after a delay
+        }
     }
 } 

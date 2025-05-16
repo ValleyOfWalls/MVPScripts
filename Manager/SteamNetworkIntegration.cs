@@ -80,8 +80,8 @@ public class SteamNetworkIntegration : MonoBehaviour
 
     // --- Network Integration Fields ---
     [Header("Network Prefabs")]
-    public GameObject NetworkPlayerPrefab; // Assign in Inspector
-    public GameObject NetworkPetPrefab;    // Assign in Inspector
+    [SerializeField] public GameObject NetworkEntityPlayerPrefab; // Assign in Inspector
+    [SerializeField] public GameObject NetworkEntityPetPrefab;    // Assign in Inspector
 
     private PlayerSpawner playerSpawner; // Reference to component rather than instance
     private NetworkManager fishNetManager; // To cache NetworkManager instance
@@ -305,9 +305,9 @@ public class SteamNetworkIntegration : MonoBehaviour
             {
                 Debug.Log($"New player detected in RefreshPlayerList: {GetFriendName(playerId)} ({playerId})");
                 OnPlayerJoinedLobbyEvent?.Invoke(playerId);
-                // if (playerSpawner != null && NetworkPlayerPrefab != null)
+                // if (playerSpawner != null && NetworkEntityPlayerPrefab != null)
                 // {
-                //    playerSpawner.SpawnPlayer(playerId, GetFriendName(playerId), NetworkPlayerPrefab, NetworkPetPrefab);
+                //    playerSpawner.SpawnPlayer(playerId, GetFriendName(playerId), NetworkEntityPlayerPrefab, NetworkEntityPetPrefab);
                 // }
             }
         }
@@ -528,9 +528,9 @@ public class SteamNetworkIntegration : MonoBehaviour
                 {
                     // m_currentLobbyMembers.Add(userChangedID); // RefreshPlayerList will handle this
                     OnPlayerJoinedLobbyEvent?.Invoke(userChangedID);
-                    // if (playerSpawner != null && NetworkPlayerPrefab != null && userChangedID != SteamUser.GetSteamID()) // Don't spawn local player again here
+                    // if (playerSpawner != null && NetworkEntityPlayerPrefab != null && userChangedID != SteamUser.GetSteamID()) // Don't spawn local player again here
                     // {
-                    //    playerSpawner.SpawnPlayer(userChangedID, GetFriendName(userChangedID), NetworkPlayerPrefab, NetworkPetPrefab);
+                    //    playerSpawner.SpawnPlayer(userChangedID, GetFriendName(userChangedID), NetworkEntityPlayerPrefab, NetworkEntityPetPrefab);
                     // }
                 }
                 break;
@@ -598,9 +598,9 @@ public class SteamNetworkIntegration : MonoBehaviour
         // This usually involves the client sending its SteamID to the server upon connection.
         // Once you have the SteamID, you can call:
         // OnPlayerJoinedLobbyEvent?.Invoke(steamIdOfJoiningPlayer);
-        // if (playerSpawner != null && NetworkPlayerPrefab != null)
+        // if (playerSpawner != null && NetworkEntityPlayerPrefab != null)
         // {
-        //    playerSpawner.SpawnPlayer(steamIdOfJoiningPlayer, "PlayerNameFromServer", NetworkPlayerPrefab, NetworkPetPrefab);
+        //    playerSpawner.SpawnPlayer(steamIdOfJoiningPlayer, "PlayerNameFromServer", NetworkEntityPlayerPrefab, NetworkEntityPetPrefab);
         // }
     }
     

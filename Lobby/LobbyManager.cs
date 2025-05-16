@@ -67,7 +67,15 @@ public class LobbyManager : NetworkBehaviour
         if (!connectedPlayers.Contains(conn))
         {
             connectedPlayers.Add(conn);
-            playerReadyStates[conn] = false;
+            if (GameManager.Instance != null)
+            {
+                playerReadyStates[conn] = GameManager.Instance.AutoReadyPlayersOnJoin;
+            }
+            else
+            {
+                playerReadyStates[conn] = false;
+                Debug.LogWarning("LobbyManager: GameManager.Instance not found. Defaulting player ready state to false.");
+            }
             playerDisplayNames[conn] = playerName;
             BroadcastFullPlayerList();
             CheckAllPlayersReady();
@@ -167,9 +175,10 @@ public class LobbyManager : NetworkBehaviour
     #endregion
 
     // Initiates the game start process when conditions are met
-    public void RequestStartGame()
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestStartGame(NetworkConnection conn = null)
     {
-        if (!IsServerStarted) return;
+        if (conn == null) return;
 
         bool canStart = AreAllPlayersReady() && connectedPlayers.Count >= 2;
         if (canStart)

@@ -133,9 +133,9 @@ public class DraftPack : NetworkBehaviour
     public void OnCardSelected(int cardId)
     {
         // Get the local player
-        NetworkPlayer localPlayer = null;
-        NetworkPlayer[] players = Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
-        foreach (NetworkPlayer player in players)
+        NetworkEntity localPlayer = null;
+        NetworkEntity[] players = Object.FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        foreach (NetworkEntity player in players)
         {
             if (player.IsOwner)
             {

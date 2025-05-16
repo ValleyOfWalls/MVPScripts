@@ -4,7 +4,7 @@ using FishNet.Object;
 
 /// <summary>
 /// Initializes a network entity's starter deck.
-/// Attach to: Both NetworkPlayer and NetworkPet prefabs to handle initial deck setup.
+/// Attach to: NetworkEntity prefabs to handle initial deck setup.
 /// </summary>
 public class EntityDeckSetup : NetworkBehaviour
 {
@@ -22,11 +22,7 @@ public class EntityDeckSetup : NetworkBehaviour
     {
         // Get references
         entityDeck = GetComponent<NetworkEntityDeck>();
-        parentEntity = GetComponent<NetworkPlayer>() as NetworkBehaviour;
-        if (parentEntity == null)
-        {
-            parentEntity = GetComponent<NetworkPet>() as NetworkBehaviour;
-        }
+        parentEntity = GetComponent<NetworkEntity>();
         
         if (entityDeck == null)
         {
@@ -35,7 +31,7 @@ public class EntityDeckSetup : NetworkBehaviour
         
         if (parentEntity == null)
         {
-            Debug.LogError($"EntityDeckSetup on {gameObject.name} requires a NetworkPlayer or NetworkPet component on the same GameObject.");
+            Debug.LogError($"EntityDeckSetup on {gameObject.name} requires a NetworkEntity component on the same GameObject.");
         }
         
         if (starterDeckDefinition == null)
@@ -60,16 +56,8 @@ public class EntityDeckSetup : NetworkBehaviour
     {
         if (!IsServerInitialized || initialized || entityDeck == null) return;
         
-        // Log entity type for debugging
-        string entityType = "unknown";
-        if (parentEntity is NetworkPlayer)
-        {
-            entityType = "player";
-        }
-        else if (parentEntity is NetworkPet)
-        {
-            entityType = "pet";
-        }
+        NetworkEntity entity = parentEntity as NetworkEntity;
+        string entityType = entity != null ? "entity" : "unknown";
         
         // Use StarterDeckDefinition to initialize deck
         if (starterDeckDefinition != null && starterDeckDefinition.CardsInDeck != null)

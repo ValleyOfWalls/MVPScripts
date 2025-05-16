@@ -78,7 +78,7 @@ public class LobbyUIManager : MonoBehaviour
     {
         if (lobbyManager != null)
         {
-            lobbyManager.RequestStartGame();
+            lobbyManager.RequestStartGame(lobbyManager.LocalConnection);
         }
     }
 

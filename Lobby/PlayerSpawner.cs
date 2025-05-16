@@ -6,14 +6,15 @@ using FishNet.Managing;
 using System.Collections.Generic;
 
 /// <summary>
-/// Handles the spawning of NetworkPlayer and NetworkPet prefabs for connected clients.
-/// Attach to: The same GameObject as SteamNetworkIntegration to handle player spawning when connections are established.
+/// Handles the spawning of NetworkEntity prefabs (players and pets) for connected clients.
+/// Attach to: The same GameObject as SteamNetworkIntegration to handle entity spawning when connections are established.
 /// </summary>
-// Convert to MonoBehaviour to be attached to a GameObject alongside SteamNetworkIntegration
 public class PlayerSpawner : MonoBehaviour
 {
-    private NetworkObject networkPlayerPrefab;
-    private NetworkObject networkPetPrefab;
+    [Header("Entity Prefabs")]
+    [SerializeField] private NetworkObject playerPrefab;
+    [SerializeField] private NetworkObject petPrefab;
+
     private NetworkManager fishNetManager;
     private SteamNetworkIntegration steamNetworkIntegration;
 
@@ -24,88 +25,145 @@ public class PlayerSpawner : MonoBehaviour
 
         if (steamNetworkIntegration != null) 
         {
-            networkPlayerPrefab = steamNetworkIntegration.NetworkPlayerPrefab?.GetComponent<NetworkObject>();
-            networkPetPrefab = steamNetworkIntegration.NetworkPetPrefab?.GetComponent<NetworkObject>();
+            playerPrefab = steamNetworkIntegration.NetworkEntityPlayerPrefab?.GetComponent<NetworkObject>();
+            petPrefab = steamNetworkIntegration.NetworkEntityPetPrefab?.GetComponent<NetworkObject>();
         }
- 
+
+        ValidatePrefabs();
+    }
+
+    private void ValidatePrefabs()
+    {
+        if (playerPrefab != null)
+        {
+            var playerEntity = playerPrefab.GetComponent<NetworkEntity>();
+            if (playerEntity == null)
+                Debug.LogError("PlayerSpawner: Player prefab is missing NetworkEntity component");
+            else if (playerEntity.EntityType != EntityType.Player)
+                Debug.LogError("PlayerSpawner: Player prefab's NetworkEntity type is not set to Player");
+        }
+        else
+            Debug.LogError("PlayerSpawner: Player prefab is not assigned");
+
+        if (petPrefab != null)
+        {
+            var petEntity = petPrefab.GetComponent<NetworkEntity>();
+            if (petEntity == null)
+                Debug.LogError("PlayerSpawner: Pet prefab is missing NetworkEntity component");
+            else if (petEntity.EntityType != EntityType.Pet)
+                Debug.LogError("PlayerSpawner: Pet prefab's NetworkEntity type is not set to Pet");
+        }
+        else
+            Debug.LogError("PlayerSpawner: Pet prefab is not assigned");
     }
 
     public void SpawnPlayerForConnection(NetworkConnection conn)
     {
-        
         // Log connection info for debugging
         bool isHostConnection = fishNetManager.IsHostStarted && conn.ClientId == 0;
-        Debug.Log($"PlayerSpawner: Attempting to spawn NetworkPlayer for client {conn.ClientId}. IsHost: {isHostConnection}");
-        
-       
-        // Create player instance
-        GameObject playerGameObjectInstance = Object.Instantiate(networkPlayerPrefab.gameObject);
-        
-        // Spawn on server with the connection as the owner
-        fishNetManager.ServerManager.Spawn(playerGameObjectInstance, conn);
-        NetworkObject playerInstance = playerGameObjectInstance.GetComponent<NetworkObject>();
+        Debug.Log($"PlayerSpawner: Attempting to spawn entities for client {conn.ClientId}. IsHost: {isHostConnection}");
 
-        if (playerInstance != null)
+        // Spawn player entity
+        NetworkEntity playerEntity = SpawnEntity(playerPrefab, conn);
+        if (playerEntity == null)
         {
-            // Verify ownership assignment
-            Debug.Log($"Spawned NetworkPlayer (ID: {playerInstance.ObjectId}, OwnerId: {playerInstance.OwnerId}, HasOwner: {playerInstance.Owner != null}) for client {conn.ClientId}");
-            NetworkPlayer netPlayer = playerInstance.GetComponent<NetworkPlayer>();
-            
-            if(netPlayer != null) {
-                // Set player name (e.g., from Steam or connection ID)
-                if (steamNetworkIntegration != null && steamNetworkIntegration.IsSteamInitialized)
-                {
-                    // This requires a way to map NetworkConnection to CSteamID if you want specific Steam names for remote players.
-                    // For now, using a generic name.
-                    string steamName = "Player";
-                    // Since we're no longer spawning for host, this check is less relevant but kept for safety
-                    if (conn == fishNetManager.ClientManager.Connection)
-                    {
-                         steamName = steamNetworkIntegration.GetPlayerName();
-                    }
-                   
-                    netPlayer.PlayerName.Value = $"{steamName} ({conn.ClientId})";
-                }
-                else
-                {
-                    netPlayer.PlayerName.Value = "Player " + conn.ClientId;
-                }
-            }
-
-            Debug.Log($"PlayerSpawner: Attempting to spawn NetworkPet for client {conn.ClientId}.");
-            GameObject petGameObjectInstance = Object.Instantiate(networkPetPrefab.gameObject);
-            fishNetManager.ServerManager.Spawn(petGameObjectInstance, conn);
-            NetworkObject petInstance = petGameObjectInstance.GetComponent<NetworkObject>();
-
-            if (petInstance != null)
-            {
-                Debug.Log($"Spawned NetworkPet (ID: {petInstance.ObjectId}, OwnerId: {petInstance.OwnerId}, HasOwner: {petInstance.Owner != null}) for client {conn.ClientId}");
-                NetworkPet netPet = petInstance.GetComponent<NetworkPet>();
-                if(netPet != null && netPlayer != null)
-                {
-                    netPet.SetOwnerPlayer(netPlayer);
-                    
-                    // Establish relationship between player and pet
-                    RelationshipManager.SetupPlayerPetRelationship(netPlayer, netPet);
-                    
-                    // Verify pet-player relationship
-                    Debug.Log($"Connected pet (ID: {petInstance.ObjectId}) to player (ID: {playerInstance.ObjectId}). Pet.OwnerPlayerObjectId={netPet.OwnerPlayerObjectId.Value}");
-                }
-            }
-
+            Debug.LogError($"PlayerSpawner: Failed to spawn player entity for client {conn.ClientId}");
+            return;
         }
 
+        // Set player name
+        SetEntityName(playerEntity, conn);
+
+        // Spawn pet entity
+        NetworkEntity petEntity = SpawnEntity(petPrefab, conn);
+        if (petEntity == null)
+        {
+            Debug.LogError($"PlayerSpawner: Failed to spawn pet entity for client {conn.ClientId}");
+            return;
+        }
+
+        // Set up pet-player relationship
+        if (petEntity != null && playerEntity != null)
+        {
+            petEntity.SetOwnerEntity(playerEntity);
+            SetupPlayerPetRelationship(playerEntity, petEntity);
+            Debug.Log($"Connected pet (ID: {petEntity.ObjectId}) to player (ID: {playerEntity.ObjectId})");
+        }
+    }
+
+    private NetworkEntity SpawnEntity(NetworkObject prefab, NetworkConnection conn)
+    {
+        if (prefab == null) return null;
+
+        GameObject instance = Object.Instantiate(prefab.gameObject);
+        fishNetManager.ServerManager.Spawn(instance, conn);
+
+        NetworkEntity entity = instance.GetComponent<NetworkEntity>();
+        if (entity != null)
+        {
+            Debug.Log($"Spawned {entity.EntityType} (ID: {entity.ObjectId}, OwnerId: {entity.Owner?.ClientId}) for client {conn.ClientId}");
+            return entity;
+        }
+
+        Debug.LogError($"PlayerSpawner: Spawned instance missing NetworkEntity component");
+        return null;
+    }
+
+    private void SetEntityName(NetworkEntity entity, NetworkConnection conn)
+    {
+        if (entity == null || entity.EntityType != EntityType.Player) return;
+
+        string entityName;
+        if (steamNetworkIntegration != null && steamNetworkIntegration.IsSteamInitialized)
+        {
+            string steamName = "Player";
+            if (conn == fishNetManager.ClientManager.Connection)
+            {
+                steamName = steamNetworkIntegration.GetPlayerName();
+            }
+            entityName = $"{steamName} ({conn.ClientId})";
+        }
+        else
+        {
+            entityName = $"Player {conn.ClientId}";
+        }
+
+        entity.EntityName.Value = entityName;
+    }
+
+    private void SetupPlayerPetRelationship(NetworkEntity player, NetworkEntity pet)
+    {
+        if (player == null || pet == null) return;
+        if (player.EntityType != EntityType.Player || pet.EntityType != EntityType.Pet)
+        {
+            Debug.LogError("SetupPlayerPetRelationship: Invalid entity types provided");
+            return;
+        }
+
+        // Get the RelationshipManager components
+        var playerRelationship = player.GetComponent<RelationshipManager>();
+        var petRelationship = pet.GetComponent<RelationshipManager>();
+
+        if (playerRelationship != null && petRelationship != null)
+        {
+            // Set up the relationship
+            playerRelationship.SetAlly(pet);
+            petRelationship.SetAlly(player);
+        }
+        else
+        {
+            Debug.LogError("SetupPlayerPetRelationship: Missing RelationshipManager components");
+        }
     }
 
     public void DespawnEntitiesForConnection(NetworkConnection conn)
     {
         if (fishNetManager == null || !fishNetManager.ServerManager.Started)
         {
-             Debug.LogWarning("PlayerSpawner: Cannot despawn. FishNet ServerManager is not started or NetworkManager is null.");
+            Debug.LogWarning("PlayerSpawner: Cannot despawn. FishNet ServerManager is not started or NetworkManager is null.");
             return;
         }
-        // FishNet usually handles despawning objects owned by the connection automatically.
-        // If you have custom logic for unregistering, it would go here.
-        Debug.Log($"PlayerSpawner: DespawnEntitiesForConnection called for {conn.ClientId}. FishNet should handle owned object despawn.");
+        // FishNet handles despawning objects owned by the connection automatically
+        Debug.Log($"PlayerSpawner: DespawnEntitiesForConnection called for {conn.ClientId}. FishNet will handle owned object despawn.");
     }
 } 

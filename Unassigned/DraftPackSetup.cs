@@ -39,13 +39,13 @@ public class DraftPackSetup : NetworkBehaviour
     {
         if (!IsServerInitialized) return;
         
-        // Get all network players
-        NetworkPlayer[] players = Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
+        // Get all network entities
+        NetworkEntity[] players = Object.FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
         
         // Create one pack per player
         for (int i = 0; i < players.Length; i++)
         {
-            NetworkPlayer player = players[i];
+            NetworkEntity player = players[i];
             
             // Spawn a draft pack network object
             GameObject packObj = Instantiate(draftPackPrefab, draftPackSpawnPoint);

@@ -133,9 +133,9 @@ public class ArtifactShopManager : NetworkBehaviour
         if (artifact == null || artifact.ArtifactData == null) return;
         
         // Find local player
-        NetworkPlayer localPlayer = null;
-        NetworkPlayer[] players = Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
-        foreach (NetworkPlayer player in players)
+        NetworkEntity localPlayer = null;
+        NetworkEntity[] players = Object.FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        foreach (NetworkEntity player in players)
         {
             if (player.IsOwner)
             {
@@ -173,7 +173,7 @@ public class ArtifactShopManager : NetworkBehaviour
         NetworkObject playerObj = null;
         if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out playerObj))
         {
-            NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
+            NetworkEntity player = playerObj.GetComponent<NetworkEntity>();
             if (player == null) return;
             
             // Get artifact data
@@ -200,7 +200,7 @@ public class ArtifactShopManager : NetworkBehaviour
             // Check if player has enough currency
             if (player.Currency.Value < artifactData.Cost)
             {
-                Debug.LogWarning($"ArtifactShopManager: Player {player.PlayerName} does not have enough currency.");
+                Debug.LogWarning($"ArtifactShopManager: Entity {player.EntityName} does not have enough currency.");
                 return;
             }
             

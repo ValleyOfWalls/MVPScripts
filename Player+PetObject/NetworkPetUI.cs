@@ -2,40 +2,31 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
+using FishNet.Object;
 
 /// <summary>
-/// Handles the UI visualization for NetworkPet
-/// Attach to: The same GameObject as NetworkPet
+/// Handles the UI visualization for pet entities
+/// Attach to: The same GameObject as NetworkEntity (Pet type)
 /// </summary>
 public class NetworkPetUI : MonoBehaviour
 {
-    // Static instance for easy access
+    // Singleton pattern for easy access
     public static NetworkPetUI Instance { get; private set; }
-    
-    [Header("References")]
-    [SerializeField] private NetworkPet pet;
-    [SerializeField] private NetworkEntityDeck entityDeck;
-    [SerializeField] private CombatDiscard combatDiscard;
-    [SerializeField] private CanvasGroup canvasGroup;
-    
-    [Header("UI Elements")]
+
+    [SerializeField] private NetworkEntity entity;
+
+    [Header("UI References")]
     [SerializeField] private Transform petHandTransform;
     [SerializeField] private Transform deckTransform;
     [SerializeField] private Transform discardTransform;
-    
-    [Header("Pet Stats UI")]
-    [SerializeField] private TextMeshProUGUI petNameText;
-    [SerializeField] private TextMeshProUGUI healthText;
-    [SerializeField] private TextMeshProUGUI energyText;
-    [SerializeField] private Image healthBar;
-    
-    [Header("Card System UI")]
-    [SerializeField] private TextMeshProUGUI deckCountText;
-    [SerializeField] private TextMeshProUGUI discardCountText;
-    
+
+    private NetworkEntityDeck entityDeck;
+    private HandManager handManager;
+    private NetworkObject networkObject;
+
     private void Awake()
     {
-        // Set static instance
+        // Singleton setup
         if (Instance == null)
         {
             Instance = this;
@@ -43,269 +34,109 @@ public class NetworkPetUI : MonoBehaviour
         else if (Instance != this)
         {
             Debug.LogWarning("More than one NetworkPetUI instance exists. This may cause issues.");
+            Destroy(gameObject);
+            return;
         }
-        
-        if (pet == null) pet = GetComponent<NetworkPet>();
-        if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
-        if (combatDiscard == null) combatDiscard = GetComponent<CombatDiscard>();
-        if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
-        
-        // Add CanvasGroup if not already present
-        if (canvasGroup == null)
-        {
-            canvasGroup = gameObject.AddComponent<CanvasGroup>();
-        }
-        
-        if (pet == null)
-        {
-            Debug.LogError("NetworkPetUI: Cannot find NetworkPet component.");
-        }
-        
-        if (entityDeck == null)
-        {
-            Debug.LogError("NetworkPetUI: Cannot find NetworkEntityDeck component.");
-        }
-        
-        if (combatDiscard == null)
-        {
-            Debug.LogError("NetworkPetUI: Cannot find CombatDiscard component.");
-        }
-        
-        // Default to hidden until the game state determines visibility
-        SetVisible(false);
+
+        // Get required components
+        if (entity == null) entity = GetComponent<NetworkEntity>();
+        entityDeck = GetComponent<NetworkEntityDeck>();
+        handManager = GetComponent<HandManager>();
+        networkObject = GetComponent<NetworkObject>();
+
+        ValidateComponents();
     }
-    
-    private void OnEnable()
-    {
-        if (entityDeck != null)
-        {
-            entityDeck.OnDeckChanged += UpdateDeckDisplay;
-        }
-        
-        if (combatDiscard != null)
-        {
-            combatDiscard.OnDiscardChanged += UpdateDiscardDisplay;
-        }
-        
-        if (pet != null)
-        {
-            // Subscribe to pet stat changes
-            pet.PetName.OnChange += OnPetNameChanged;
-            pet.CurrentHealth.OnChange += OnCurrentHealthChanged;
-            pet.MaxHealth.OnChange += OnMaxHealthChanged;
-            pet.CurrentEnergy.OnChange += OnCurrentEnergyChanged;
-            pet.MaxEnergy.OnChange += OnMaxEnergyChanged;
-        }
-    }
-    
-    private void OnDisable()
-    {
-        if (entityDeck != null)
-        {
-            entityDeck.OnDeckChanged -= UpdateDeckDisplay;
-        }
-        
-        if (combatDiscard != null)
-        {
-            combatDiscard.OnDiscardChanged -= UpdateDiscardDisplay;
-        }
-        
-        if (pet != null)
-        {
-            // Unsubscribe from pet stat changes
-            pet.PetName.OnChange -= OnPetNameChanged;
-            pet.CurrentHealth.OnChange -= OnCurrentHealthChanged;
-            pet.MaxHealth.OnChange -= OnMaxHealthChanged;
-            pet.CurrentEnergy.OnChange -= OnCurrentEnergyChanged;
-            pet.MaxEnergy.OnChange -= OnMaxEnergyChanged;
-        }
-    }
-    
+
     private void Start()
     {
-        if (pet != null)
-        {
-            // Initial UI setup
-            UpdatePetUI();
-        }
-        
-        // Initialize card system UI
-        UpdateDeckDisplay();
-        UpdateDiscardDisplay();
+        // Log transform paths for debugging
+        LogTransformPaths();
     }
-    
-    /// <summary>
-    /// Set the visibility of this UI
-    /// </summary>
-    public void SetVisible(bool visible)
+
+    private void LogTransformPaths()
     {
-        if (canvasGroup != null)
+        string objId = networkObject != null ? networkObject.ObjectId.ToString() : "no NetworkObject";
+        
+        if (deckTransform != null)
         {
-            canvasGroup.alpha = visible ? 1.0f : 0.0f;
-            canvasGroup.interactable = visible;
-            canvasGroup.blocksRaycasts = visible;
+            string path = GetTransformPath(deckTransform);
+            Debug.Log($"NetworkPetUI (ID: {objId}) - deckTransform path: {path}");
         }
         else
         {
-            gameObject.SetActive(visible);
+            Debug.LogError($"NetworkPetUI (ID: {objId}) - deckTransform is null");
         }
-    }
-    
-    /// <summary>
-    /// Updates the pet's stats UI
-    /// </summary>
-    public void UpdatePetUI()
-    {
-        if (pet == null) return;
-        
-        if (petNameText != null) petNameText.text = pet.PetName.Value;
-        UpdateHealthUI();
-        UpdateEnergyUI();
-    }
-    
-    /// <summary>
-    /// Handles pet name changes
-    /// </summary>
-    private void OnPetNameChanged(string prev, string next, bool asServer)
-    {
-        if (petNameText != null)
+
+        if (petHandTransform != null)
         {
-            petNameText.text = next;
+            string path = GetTransformPath(petHandTransform);
+            Debug.Log($"NetworkPetUI (ID: {objId}) - petHandTransform path: {path}");
         }
-    }
-    
-    /// <summary>
-    /// Handles current health changes
-    /// </summary>
-    private void OnCurrentHealthChanged(int prev, int next, bool asServer)
-    {
-        UpdateHealthUI();
-    }
-    
-    /// <summary>
-    /// Handles max health changes
-    /// </summary>
-    private void OnMaxHealthChanged(int prev, int next, bool asServer)
-    {
-        UpdateHealthUI();
-    }
-    
-    /// <summary>
-    /// Updates the health UI elements
-    /// </summary>
-    private void UpdateHealthUI()
-    {
-        if (pet == null) return;
-        
-        int current = pet.CurrentHealth.Value;
-        int max = pet.MaxHealth.Value;
-        
-        if (healthText != null)
+
+        if (discardTransform != null)
         {
-            healthText.text = $"{current}/{max}";
+            string path = GetTransformPath(discardTransform);
+            Debug.Log($"NetworkPetUI (ID: {objId}) - discardTransform path: {path}");
         }
+    }
+
+    private string GetTransformPath(Transform transform)
+    {
+        if (transform == null) return "null";
         
-        if (healthBar != null)
+        string path = transform.name;
+        Transform parent = transform.parent;
+        
+        while (parent != null)
         {
-            healthBar.fillAmount = max > 0 ? (float)current / max : 0;
+            path = parent.name + "/" + path;
+            parent = parent.parent;
         }
-    }
-    
-    /// <summary>
-    /// Handles current energy changes
-    /// </summary>
-    private void OnCurrentEnergyChanged(int prev, int next, bool asServer)
-    {
-        UpdateEnergyUI();
-    }
-    
-    /// <summary>
-    /// Handles max energy changes
-    /// </summary>
-    private void OnMaxEnergyChanged(int prev, int next, bool asServer)
-    {
-        UpdateEnergyUI();
-    }
-    
-    /// <summary>
-    /// Updates the energy UI elements
-    /// </summary>
-    private void UpdateEnergyUI()
-    {
-        if (pet == null) return;
         
-        int current = pet.CurrentEnergy.Value;
-        int max = pet.MaxEnergy.Value;
-        
-        if (energyText != null)
+        return path;
+    }
+
+    private void ValidateComponents()
+    {
+        if (entity == null || entity.EntityType != EntityType.Pet)
         {
-            energyText.text = $"{current}/{max}";
+            Debug.LogError("NetworkPetUI: Cannot find NetworkEntity component or entity is not a pet.");
+            return;
         }
-    }
-    
-    /// <summary>
-    /// Updates the deck display with the current cards
-    /// </summary>
-    private void UpdateDeckDisplay()
-    {
-        if (deckCountText != null && pet != null)
+
+        if (entityDeck == null)
         {
-            int deckCount = 0;
-            CombatDeck combatDeck = GetComponent<CombatDeck>();
-            if (combatDeck != null)
-            {
-                deckCount = combatDeck.GetDeckSize();
-            }
-            deckCountText.text = $"Deck: {deckCount}";
+            Debug.LogError("NetworkPetUI: Cannot find NetworkEntityDeck component.");
+            return;
         }
-    }
-    
-    /// <summary>
-    /// Updates the discard pile display
-    /// </summary>
-    private void UpdateDiscardDisplay()
-    {
-        if (discardCountText != null && combatDiscard != null)
+
+        if (handManager == null)
         {
-            discardCountText.text = $"Discard: {combatDiscard.GetCardCount()}";
+            Debug.LogError("NetworkPetUI: Cannot find HandManager component.");
+            return;
+        }
+
+        if (networkObject == null)
+        {
+            Debug.LogError("NetworkPetUI: Cannot find NetworkObject component.");
         }
     }
-    
-    /// <summary>
-    /// Updates the pet's name display in the UI
-    /// </summary>
-    public void UpdateNameDisplay()
+
+    // Public getters for transforms
+    public Transform GetPetHandTransform() => petHandTransform;
+    public Transform GetDeckTransform() 
     {
-        if (pet == null || petNameText == null) return;
-        
-        // Update the pet name text
-        petNameText.text = pet.PetName.Value;
-        
-        // Log the name update
-        Debug.Log($"UI updated for pet name: {pet.PetName.Value}");
-    }
-    
-    /// <summary>
-    /// Gets the pet hand transform for external access
-    /// </summary>
-    public Transform GetPetHandTransform()
-    {
-        return petHandTransform;
-    }
-    
-    /// <summary>
-    /// Gets the deck transform for external access
-    /// </summary>
-    public Transform GetDeckTransform()
-    {
+        if (deckTransform == null)
+        {
+            Debug.LogError($"NetworkPetUI on {gameObject.name}: deckTransform is null");
+            // Create a fallback transform if needed
+            GameObject fallbackObj = new GameObject("FallbackDeckTransform");
+            fallbackObj.transform.SetParent(transform);
+            fallbackObj.transform.localPosition = Vector3.zero;
+            deckTransform = fallbackObj.transform;
+            Debug.Log($"Created fallback deckTransform for {gameObject.name}");
+        }
         return deckTransform;
     }
-    
-    /// <summary>
-    /// Gets the discard transform for external access
-    /// </summary>
-    public Transform GetDiscardTransform()
-    {
-        return discardTransform;
-    }
+    public Transform GetDiscardTransform() => discardTransform;
 } 

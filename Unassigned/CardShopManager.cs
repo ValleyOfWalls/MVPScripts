@@ -130,12 +130,12 @@ public class CardShopManager : NetworkBehaviour
     /// <param name="cardComponent">The card component to purchase</param>
     public void AttemptPurchaseCard(Card cardComponent)
     {
-        if (cardComponent == null || cardComponent.cardData == null) return;
+        if (cardComponent == null || cardComponent.CardData == null) return;
         
         // Find local player
-        NetworkPlayer localPlayer = null;
-        NetworkPlayer[] players = Object.FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
-        foreach (NetworkPlayer player in players)
+        NetworkEntity localPlayer = null;
+        NetworkEntity[] players = Object.FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        foreach (NetworkEntity player in players)
         {
             if (player.IsOwner)
             {
@@ -151,7 +151,7 @@ public class CardShopManager : NetworkBehaviour
         }
         
         // Check if player has enough currency
-        if (localPlayer.Currency.Value < cardComponent.cardData.EnergyCost)
+        if (localPlayer.Currency.Value < cardComponent.CardData.EnergyCost)
         {
             // Display insufficient funds message
             Debug.Log("Not enough currency to purchase card!");
@@ -174,7 +174,7 @@ public class CardShopManager : NetworkBehaviour
         NetworkObject playerObj = null;
         if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(playerObjectId, out playerObj))
         {
-            NetworkPlayer player = playerObj.GetComponent<NetworkPlayer>();
+            NetworkEntity player = playerObj.GetComponent<NetworkEntity>();
             if (player == null) return;
             
             // Get card data
@@ -201,7 +201,7 @@ public class CardShopManager : NetworkBehaviour
             // Check if player has enough currency
             if (player.Currency.Value < cardData.EnergyCost)
             {
-                Debug.LogWarning($"CardShopManager: Player {player.PlayerName} does not have enough currency.");
+                Debug.LogWarning($"CardShopManager: Entity {player.EntityName} does not have enough currency.");
                 return;
             }
             

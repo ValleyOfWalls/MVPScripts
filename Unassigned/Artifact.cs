@@ -85,24 +85,16 @@ public class Artifact : MonoBehaviour
         switch (artifactData.EffectType)
         {
             case ArtifactEffectType.MaxHealthBoost:
-                if (owningEntity is NetworkPlayer player)
+                if (owningEntity is NetworkEntity entity)
                 {
-                    player.IncreaseMaxHealth(artifactData.EffectMagnitude);
-                }
-                else if (owningEntity is NetworkPet pet)
-                {
-                    pet.IncreaseMaxHealth(artifactData.EffectMagnitude);
+                    entity.IncreaseMaxHealth(artifactData.EffectMagnitude);
                 }
                 break;
                 
             case ArtifactEffectType.MaxEnergyBoost:
-                if (owningEntity is NetworkPlayer playerEnergy)
+                if (owningEntity is NetworkEntity entityEnergy)
                 {
-                    playerEnergy.IncreaseMaxEnergy(artifactData.EffectMagnitude);
-                }
-                else if (owningEntity is NetworkPet petEnergy)
-                {
-                    petEnergy.IncreaseMaxEnergy(artifactData.EffectMagnitude);
+                    entityEnergy.IncreaseMaxEnergy(artifactData.EffectMagnitude);
                 }
                 break;
                 

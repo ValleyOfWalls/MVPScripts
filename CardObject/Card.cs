@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI; // For Image
 using TMPro; // For TextMeshProUGUI
+using FishNet.Object;
+using FishNet.Object.Synchronizing;
 
 public enum CardEffectType
 {
@@ -17,28 +19,25 @@ public enum CardEffectType
 /// Represents a card in the game, handling visual display and interaction.
 /// Attach to: Card prefabs that will be instantiated for visual representation in the UI.
 /// </summary>
-public class Card : MonoBehaviour // Changed from NetworkBehaviour
+public class Card : NetworkBehaviour
 {
-    // If this Card script is on a prefab that is NOT a NetworkObject itself, 
-    // but is instantiated by a NetworkObject (like NetworkPlayer/Pet who owns the card instance),
-    // then this script doesn't need to be a NetworkBehaviour.
-    // Let's assume card *definitions* are not NetworkObjects, but card *instances in hand/play* might be.
-    // For server authoritative, the *state* of which cards are where is synced, not necessarily each card itself as a NB.
-    // Given the request, making it a MonoBehaviour is safer for now. If they need to be spawned independently as networked entities, then NetworkBehaviour.
-    // Let's go with MonoBehaviour and assume card instances are managed by their owners (Player/Pet).
-    // If card instances need to be transferred or have their own networked state, then it should be a NetworkBehaviour.
-
     [Header("Card Data")]
-    [SerializeField] private int cardId;
-    public int CardId { get => cardId; }
+    private readonly SyncVar<int> _cardId = new SyncVar<int>();
+    public int CardId => _cardId.Value;
     
     [Header("Card Properties")]
-    [SerializeField] private bool isPurchasable = false; // Can be bought in card shop
-    [SerializeField] private bool isDraftable = true;    // Can be picked in draft packs
-    [SerializeField] private int purchaseCost = 50;      // Cost to purchase if isPurchasable is true
+    private readonly SyncVar<bool> _isPurchasable = new SyncVar<bool>();
+    public bool IsPurchasable => _isPurchasable.Value;
+    
+    private readonly SyncVar<bool> _isDraftable = new SyncVar<bool>();
+    public bool IsDraftable => _isDraftable.Value;
+
+    private readonly SyncVar<int> _purchaseCost = new SyncVar<int>();
+    public int PurchaseCost => _purchaseCost.Value;
     
     [Header("Card State")]
-    [SerializeField] private CardLocation currentContainer = CardLocation.Deck;
+    private readonly SyncVar<CardLocation> _currentContainer = new SyncVar<CardLocation>();
+    public CardLocation CurrentContainer => _currentContainer.Value;
     
     [Header("UI References (Assign in Prefab)")]
     [SerializeField] private TextMeshProUGUI nameText;
@@ -46,169 +45,85 @@ public class Card : MonoBehaviour // Changed from NetworkBehaviour
     [SerializeField] private Image artworkImage;
     [SerializeField] private TextMeshProUGUI energyCostText;
     [SerializeField] private TextMeshProUGUI costText;
-    [SerializeField] private Image cardImage;
-    [SerializeField] private Image backgroundImage;
+    [SerializeField] private Image cardImage; // Will handle both card artwork and background color
 
-    public CardData cardData { get; private set; }
+    // Local reference to card data (not synced over network)
+    [SerializeField]
+    protected CardData cardData;
 
     // Public quick accessors (optional, can just use cardData.PropertyName)
     public string CardName => cardData != null ? cardData.CardName : "No Data";
-    public int EnergyCost => cardData != null ? cardData.EnergyCost : 0;
-    public CardEffectType EffectType => cardData != null ? cardData.EffectType : default(CardEffectType);
-    public int Amount => cardData != null ? cardData.Amount : 0;
-    public bool IsPurchasable => isPurchasable;
-    public bool IsDraftable => isDraftable;
-    public int PurchaseCost => purchaseCost;
-    
-    // Container tracking
-    public CardLocation CurrentContainer => currentContainer;
-    
-    // Event for container changes
-    public delegate void ContainerChanged(CardLocation oldContainer, CardLocation newContainer);
-    public event ContainerChanged OnContainerChanged;
+    public CardData CardData => cardData;
 
+    /// <summary>
+    /// Initializes the card with the provided card data
+    /// </summary>
+    /// <param name="data">The CardData ScriptableObject containing the card's information</param>
     public void Initialize(CardData data)
     {
         if (data == null)
         {
-            Debug.LogError("Card.Initialize: CardData is null");
+            Debug.LogError($"Card {gameObject.name}: Attempted to initialize with null CardData!");
             return;
         }
-        
-        this.cardData = data;
-        this.cardId = data.CardId;
-        
+
+        cardData = data;
+        _cardId.Value = data.CardId;
+
+        // Update UI elements if they exist
         if (nameText != null) nameText.text = data.CardName;
         if (descriptionText != null) descriptionText.text = data.Description;
-        if (artworkImage != null) artworkImage.sprite = data.CardArtwork; // Make sure sprite is assigned in CardData SO
         if (energyCostText != null) energyCostText.text = data.EnergyCost.ToString();
-        if (costText != null) costText.text = data.EnergyCost.ToString();
-        
-        this.gameObject.name = $"Card_{data.CardName}_{data.CardId}";
-        
-        // Update card appearance based on effect type
-        UpdateCardAppearance(data.EffectType);
-        
-        // Update card image if provided
-        if (cardImage != null && data.CardArtwork != null)
+        if (artworkImage != null && data.CardArtwork != null) artworkImage.sprite = data.CardArtwork;
+
+        // Hide cost text by default (only shown in shop)
+        if (costText != null) costText.gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// Sets whether the card is purchasable and its cost
+    /// </summary>
+    public void SetPurchasable(bool purchasable, int cost = 0)
+    {
+        _isPurchasable.Value = purchasable;
+        _purchaseCost.Value = cost;
+
+        // Show/hide and update cost text if it exists
+        if (costText != null)
         {
-            cardImage.sprite = data.CardArtwork;
-            cardImage.enabled = true;
-        }
-        else if (cardImage != null)
-        {
-            cardImage.enabled = false;
+            costText.gameObject.SetActive(purchasable);
+            if (purchasable) costText.text = cost.ToString();
         }
     }
 
     /// <summary>
-    /// Updates the card's visual appearance based on effect type
+    /// Sets whether the card is draftable
     /// </summary>
-    /// <param name="effectType">The card's effect type</param>
-    private void UpdateCardAppearance(CardEffectType effectType)
+    public void SetDraftable(bool draftable)
     {
-        if (backgroundImage == null) return;
-        
-        // Different colors based on effect type
-        Color cardColor = Color.white;
-        
-        switch (effectType)
-        {
-            case CardEffectType.Damage:
-                cardColor = new Color(1.0f, 0.6f, 0.6f); // Red for damage
-                break;
-            case CardEffectType.Heal:
-                cardColor = new Color(0.6f, 1.0f, 0.6f); // Green for healing
-                break;
-            case CardEffectType.DrawCard:
-                cardColor = new Color(0.6f, 0.8f, 1.0f); // Blue for card draw
-                break;
-            case CardEffectType.BuffStats:
-                cardColor = new Color(0.9f, 0.9f, 0.6f); // Yellow for buffs
-                break;
-            case CardEffectType.DebuffStats:
-                cardColor = new Color(0.8f, 0.6f, 1.0f); // Purple for debuffs
-                break;
-            case CardEffectType.ApplyStatus:
-                cardColor = new Color(1.0f, 0.8f, 0.6f); // Orange for status effects
-                break;
-            default:
-                cardColor = Color.white;
-                break;
-        }
-        
-        backgroundImage.color = cardColor;
+        _isDraftable.Value = draftable;
     }
 
     /// <summary>
-    /// Set whether this card can be purchased and at what cost
+    /// Sets the current container location of the card
     /// </summary>
-    public void SetPurchasable(bool canPurchase, int cost = 50)
+    public void SetCurrentContainer(CardLocation location)
     {
-        isPurchasable = canPurchase;
-        if (canPurchase)
-        {
-            purchaseCost = cost;
-        }
-    }
-    
-    /// <summary>
-    /// Set whether this card can be drafted
-    /// </summary>
-    public void SetDraftable(bool canDraft)
-    {
-        isDraftable = canDraft;
-    }
-    
-    /// <summary>
-    /// Set the current container of this card
-    /// </summary>
-    /// <param name="container">Destination container (Deck, Hand, Discard)</param>
-    public void SetCurrentContainer(CardLocation container)
-    {
-        if (container == currentContainer) return;
-        
-        CardLocation oldContainer = currentContainer;
-        currentContainer = container;
-        
-        // Invoke container change event
-        OnContainerChanged?.Invoke(oldContainer, container);
-        
-        // Update card visual state based on container
-        UpdateCardStateForContainer();
-    }
-    
-    /// <summary>
-    /// Updates the card's visual state based on its current container
-    /// </summary>
-    private void UpdateCardStateForContainer()
-    {
-        // Basic state management - will be expanded in CardSpawner for actual visual updates
-        switch (currentContainer)
-        {
-            case CardLocation.Deck:
-                // Cards in deck are disabled (not visible)
-                gameObject.SetActive(false);
-                break;
-                
-            case CardLocation.Hand:
-                // Cards in hand are enabled (visible)
-                gameObject.SetActive(true);
-                break;
-                
-            case CardLocation.Discard:
-                // Cards in discard are disabled (not visible)
-                gameObject.SetActive(false);
-                break;
-        }
+        _currentContainer.Value = location;
     }
 
-    // For in-game spawned cards, you might have a different script or NetworkObject representation.
-    // This current script is more like the definition/template for a card.
-    // If an actual GameObject card is moved around and needs its state synced, it might have a simpler NetworkedCard script
-    // that holds a reference to a CardData (ScriptableObject or this Card script as a template).
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
 
-    // Example: If this Card script itself is on the spawned NetworkObject representing the card in hand/play:
-    // public override void OnStartServer() { base.OnStartServer(); /* Potentially sync some state if needed */ }
-    // public override void OnStartClient() { base.OnStartClient(); /* Update UI based on synced state */ }
-} 
+        // If we have a card ID but no card data, try to load it from the database
+        if (_cardId.Value != 0 && cardData == null && CardDatabase.Instance != null)
+        {
+            cardData = CardDatabase.Instance.GetCardById(_cardId.Value);
+            if (cardData != null)
+            {
+                Initialize(cardData);
+            }
+        }
+    }
+}

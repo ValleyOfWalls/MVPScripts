@@ -30,6 +30,10 @@ public class GameManager : NetworkBehaviour
     [SerializeField, Tooltip("Maximum health a pet can have")]
     private int petMaxHealthAmount = 50;
 
+    [Header("Game Rules")]
+    [SerializeField, Tooltip("If true, players will automatically be set to ready when they join the lobby.")]
+    public bool AutoReadyPlayersOnJoin = false;
+
     // Game Rules - Synced so clients can see them if needed for UI or predictions (though server is authoritative)
     public readonly SyncVar<int> PlayerDrawAmount = new SyncVar<int>();
     public readonly SyncVar<int> PetDrawAmount = new SyncVar<int>();

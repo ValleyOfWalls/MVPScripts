@@ -19,23 +19,36 @@ public class CombatCanvasManager : MonoBehaviour
     [SerializeField] private GameObject fightEndedPanel;
     [SerializeField] private TextMeshProUGUI fightEndedText;
 
-    private NetworkPlayer localPlayer;
-    private NetworkPet opponentPetForLocalPlayer;
+    private NetworkEntity localPlayer;
+    private NetworkEntity opponentPetForLocalPlayer;
 
     private FightManager fightManager;
     private CombatManager combatManager;
 
-    public void Initialize(CombatManager manager, NetworkPlayer player)
+    public void Initialize(CombatManager manager, NetworkEntity player)
     {
         combatManager = manager;
         localPlayer = player;
     }
 
-    public void UpdateTurnIndicator(string currentTurnEntityName)
+    public void UpdateTurnUI(CombatTurn turn)
     {
         if (turnIndicatorText != null)
         {
-            turnIndicatorText.text = $"{currentTurnEntityName}'s Turn";
+            string turnText = turn switch
+            {
+                CombatTurn.PlayerTurn => "Player's Turn",
+                CombatTurn.PetTurn => "Pet's Turn",
+                _ => "Waiting..."
+            };
+            turnIndicatorText.text = turnText;
+        }
+
+        // Enable/disable end turn button based on whose turn it is
+        if (endTurnButton != null)
+        {
+            bool isLocalPlayerTurn = turn == CombatTurn.PlayerTurn && localPlayer != null && localPlayer.IsOwner;
+            endTurnButton.interactable = isLocalPlayerTurn;
         }
     }
 
@@ -45,17 +58,17 @@ public class CombatCanvasManager : MonoBehaviour
         CardData cardData = CardDatabase.Instance.GetCardById(cardId);
         if (cardData == null) return;
 
-        string casterName = caster is NetworkPlayer player ? player.PlayerName.Value : ((NetworkPet)caster).PetName.Value;
-        string targetName = target is NetworkPlayer targetPlayer ? targetPlayer.PlayerName.Value : ((NetworkPet)target).PetName.Value;
+        string casterName = caster.GetComponent<NetworkEntity>()?.EntityName.Value ?? "Unknown";
+        string targetName = target.GetComponent<NetworkEntity>()?.EntityName.Value ?? "Unknown";
         
         Debug.Log($"Card played: {casterName} played {cardData.CardName} on {targetName}");
     }
 
-    public void ShowFightEndedUI(NetworkPlayer player, NetworkPet pet, bool petWon)
+    public void ShowFightEndedPanel(NetworkEntity player, NetworkEntity pet, bool petWon)
     {
         if (fightEndedPanel == null || fightEndedText == null) return;
 
-        string winnerName = petWon ? pet.PetName.Value : player.PlayerName.Value;
+        string winnerName = petWon ? pet.EntityName.Value : player.EntityName.Value;
         fightEndedText.text = $"{winnerName} has won the fight!";
         fightEndedPanel.SetActive(true);
     }
@@ -101,97 +114,61 @@ public class CombatCanvasManager : MonoBehaviour
     
     private void FindLocalPlayer()
     {
-        var localConnection = FishNet.InstanceFinder.ClientManager.Connection;
-        
-        // For host, use special detection method first
-        if (FishNet.InstanceFinder.IsHostStarted)
-        {
-            localPlayer = FindHostPlayerForLocalConnection();
-        }
-        
-        // If still no player, try standard approaches
+        // Try to find local player through various means
+        localPlayer = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None)
+            .FirstOrDefault(p => p.EntityType == EntityType.Player && p.IsOwner);
+
         if (localPlayer == null)
         {
-            // 1. First try the standard approach
-            localPlayer = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None)
-                .FirstOrDefault(p => p.Owner == localConnection && p.IsOwner);
-                
-            // 2. If that fails, just check for IsOwner
-            if (localPlayer == null)
-            {
-                localPlayer = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None)
-                    .FirstOrDefault(p => p.IsOwner);
-            }
-            
-            // 3. If that fails and we're the host, try a more lenient approach
-            if (localPlayer == null && FishNet.InstanceFinder.IsHostStarted)
-            {
-                // Try by connection clientID
-                if (localConnection != null)
-                {
-                    localPlayer = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None)
-                        .FirstOrDefault(p => p.Owner != null && p.Owner.ClientId == localConnection.ClientId);
-                }
-                
-                // Last resort: if host and still no player, use first NetworkPlayer found
-                if (localPlayer == null && FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None).Length > 0)
-                {
-                    localPlayer = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None).First();
-                }
-            }
+            Debug.LogWarning("Could not find local player through direct search.");
         }
     }
-    
+
     private void LogLocalPlayerError()
     {
-        Debug.LogError("Local NetworkPlayer not found for UI setup.");
-        // Additional debug info to help troubleshoot
-        int playerCount = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None).Length;
-        Debug.LogError($"Found {playerCount} NetworkPlayer objects in the scene but none matched local connection.");
-        
-        var localConnection = FishNet.InstanceFinder.ClientManager.Connection;
-        if (localConnection != null)
-            Debug.LogError($"Local connection ClientId: {localConnection.ClientId}, IsOwner not set properly?");
-        else
-            Debug.LogError("Local connection is null!");
+        Debug.LogError("CombatCanvasManager: Could not find local player. UI setup failed.");
     }
-    
-    // Retry finding the opponent with a delay to allow network sync
+
     private IEnumerator RetryFindOpponent()
     {
-        int maxAttempts = 5;
-        int attempts = 0;
-        
-        while (opponentPetForLocalPlayer == null && attempts < maxAttempts)
+        int retryCount = 0;
+        const int maxRetries = 5;
+        const float retryDelay = 0.5f;
+
+        while (opponentPetForLocalPlayer == null && retryCount < maxRetries)
         {
-            yield return new WaitForSeconds(0.5f);
-            
-            if (fightManager != null && localPlayer != null)
-            {
-                opponentPetForLocalPlayer = fightManager.GetOpponentForPlayer(localPlayer);
-                
-                if (opponentPetForLocalPlayer != null)
-                {
-                    CompleteUISetup();
-                    yield break;
-                }
-            }
-            
-            attempts++;
+            yield return new WaitForSeconds(retryDelay);
+            opponentPetForLocalPlayer = fightManager.GetOpponentForPlayer(localPlayer);
+            retryCount++;
         }
-        
-        // Even if we didn't find an opponent, we should still set up as much of the UI as we can
-        CompleteUISetup();
+
+        if (opponentPetForLocalPlayer != null)
+        {
+            CompleteUISetup();
+        }
+        else
+        {
+            Debug.LogError("Failed to find opponent pet after retries.");
+        }
     }
-    
-    // Finalize UI setup
+
     private void CompleteUISetup()
     {
-        InitializeButtonListeners();
+        // Set up UI elements based on the local player and their opponent
+        if (localPlayer != null && opponentPetForLocalPlayer != null)
+        {
+            Debug.Log($"Setting up combat UI for {localPlayer.EntityName.Value} vs {opponentPetForLocalPlayer.EntityName.Value}");
+            
+            // Initialize button listeners
+            InitializeButtonListeners();
+            
+            // Additional UI setup code here
+        }
     }
 
     private void InitializeButtonListeners()
     {
+        Debug.Log("CombatCanvasManager: Initializing button listeners");
         SetupEndTurnButton();
     }
 
@@ -200,22 +177,29 @@ public class CombatCanvasManager : MonoBehaviour
     /// </summary>
     private void SetupEndTurnButton()
     {
-        if (endTurnButton != null && combatManager != null)
+        if (endTurnButton != null)
         {
+            Debug.Log("CombatCanvasManager: Setting up end turn button");
             endTurnButton.onClick.RemoveAllListeners();
             endTurnButton.onClick.AddListener(() => {
-                Debug.Log("End Turn button clicked, using RelationshipManager to find local player");
-                
-                // Use the improved method that finds the local player using RelationshipManager
-                combatManager.EndTurnForLocalPlayer();
+                Debug.Log("CombatCanvasManager: End turn button clicked");
+                if (combatManager != null && localPlayer != null)
+                {
+                    Debug.Log($"CombatCanvasManager: Sending end turn request for player {localPlayer.EntityName.Value}");
+                    // Call the server method to end the turn
+                    combatManager.OnEndTurnButtonPressed(localPlayer.Owner);
+                }
+                else
+                {
+                    Debug.LogError($"Cannot end turn: Missing {(combatManager == null ? "CombatManager" : "local player")} reference");
+                }
             });
             
-            Debug.Log("End turn button setup complete with improved local player detection");
+            Debug.Log("CombatCanvasManager: End turn button setup complete");
         }
         else
         {
-            if(endTurnButton == null) Debug.LogError("End Turn Button not assigned in CombatCanvasManager.");
-            if(combatManager == null) Debug.LogError("CombatManager not assigned in CombatCanvasManager (for end turn).");
+            Debug.LogError("End Turn Button not assigned in CombatCanvasManager");
         }
     }
 
@@ -230,19 +214,5 @@ public class CombatCanvasManager : MonoBehaviour
         {
             endTurnButton.interactable = interactable;
         }
-    }
-    
-    private NetworkPlayer FindHostPlayerForLocalConnection()
-    {
-        // This method specifically helps in host mode
-        var players = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
-        foreach (var player in players)
-        {
-            if (player.IsOwner || player.IsHostInitialized)
-            {
-                return player;
-            }
-        }
-        return null;
     }
 } 

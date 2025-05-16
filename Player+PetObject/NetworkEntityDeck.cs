@@ -5,8 +5,8 @@ using FishNet.Object.Synchronizing;
 using FishNet.Serializing;
 
 /// <summary>
-/// Maintains an entity's collection of cards that persists between combats.
-/// Attach to: Both NetworkPlayer and NetworkPet prefabs to store their persistent card collections.
+/// Stores and manages a persistent collection of cards for a network entity.
+/// Attach to: NetworkEntity prefabs to store their persistent card collections.
 /// </summary>
 [System.Serializable]
 public class NetworkEntityDeck : NetworkBehaviour
