@@ -22,8 +22,15 @@ public enum CardEffectType
 public class Card : NetworkBehaviour
 {
     [Header("Card Data")]
+    [SerializeField] private NetworkEntity ownerEntity;
+    // Use SyncVar<T> and subscribe to its OnChange event for synchronization
+    private readonly SyncVar<int> _ownerEntityId = new SyncVar<int>();
+    public NetworkEntity OwnerEntity => ownerEntity;
     private readonly SyncVar<int> _cardId = new SyncVar<int>();
     public int CardId => _cardId.Value;
+    
+    [Header("Network Ownership Info (Inspector Display)")]
+    [SerializeField] private int inspectorNetworkOwnerClientId = -1;
     
     [Header("Card Properties")]
     private readonly SyncVar<bool> _isPurchasable = new SyncVar<bool>();
@@ -36,6 +43,7 @@ public class Card : NetworkBehaviour
     public int PurchaseCost => _purchaseCost.Value;
     
     [Header("Card State")]
+    // Using SyncVar for card location and subscribing to its OnChange event
     private readonly SyncVar<CardLocation> _currentContainer = new SyncVar<CardLocation>();
     public CardLocation CurrentContainer => _currentContainer.Value;
     
@@ -54,6 +62,73 @@ public class Card : NetworkBehaviour
     // Public quick accessors (optional, can just use cardData.PropertyName)
     public string CardName => cardData != null ? cardData.CardName : "No Data";
     public CardData CardData => cardData;
+
+    // Add reference to SourceAndTargetIdentifier
+    private SourceAndTargetIdentifier sourceAndTargetIdentifier;
+
+    [Header("Components")]
+    [SerializeField] private HandleCardPlay handleCardPlay;
+    [SerializeField] private BoxCollider2D cardCollider;
+    
+    private void Awake()
+    {
+        // Setup and validate required components
+        SetupRequiredComponents();
+        
+        // Subscribe to the OnChange event for _ownerEntityId
+        _ownerEntityId.OnChange += OnOwnerEntityIdChanged;
+        
+        // Subscribe to the OnChange event for _currentContainer
+        _currentContainer.OnChange += OnContainerChanged;
+    }
+
+    private void SetupRequiredComponents()
+    {
+        // Check and get/add SourceAndTargetIdentifier
+        sourceAndTargetIdentifier = GetComponent<SourceAndTargetIdentifier>();
+        if (sourceAndTargetIdentifier == null)
+        {
+            Debug.Log($"Card {gameObject.name}: Adding missing SourceAndTargetIdentifier component");
+            sourceAndTargetIdentifier = gameObject.AddComponent<SourceAndTargetIdentifier>();
+        }
+
+        // Check and get/add HandleCardPlay
+        handleCardPlay = GetComponent<HandleCardPlay>();
+        if (handleCardPlay == null)
+        {
+            Debug.Log($"Card {gameObject.name}: Adding missing HandleCardPlay component");
+            handleCardPlay = gameObject.AddComponent<HandleCardPlay>();
+        }
+        
+        // Check for collider for mouse interactions
+        cardCollider = GetComponent<BoxCollider2D>();
+        if (cardCollider == null)
+        {
+            // If we're not using a collider, we might be using UI elements
+            var button = GetComponent<UnityEngine.UI.Button>();
+            if (button == null)
+            {
+                // Only add a collider if we don't have a UI button
+                Debug.Log($"Card {gameObject.name}: Adding missing BoxCollider2D for mouse interactions");
+                cardCollider = gameObject.AddComponent<BoxCollider2D>();
+                // Set appropriate size
+                cardCollider.size = new Vector2(2f, 3f); // Default card size, adjust as needed
+                cardCollider.isTrigger = true;
+            }
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Unsubscribe to prevent memory leaks
+        _ownerEntityId.OnChange -= OnOwnerEntityIdChanged;
+        _currentContainer.OnChange -= OnContainerChanged;
+    }
+
+    private void OnContainerChanged(CardLocation oldValue, CardLocation newValue, bool asServer)
+    {
+        Debug.Log($"Card {gameObject.name}: Container changed from {oldValue} to {newValue}, asServer: {asServer}");
+    }
 
     /// <summary>
     /// Initializes the card with the provided card data
@@ -78,6 +153,70 @@ public class Card : NetworkBehaviour
 
         // Hide cost text by default (only shown in shop)
         if (costText != null) costText.gameObject.SetActive(false);
+        
+        // Initialize the HandleCardPlay component with this card data
+        if (handleCardPlay != null)
+        {
+            Debug.Log($"Card {gameObject.name}: Initializing HandleCardPlay with card data");
+            handleCardPlay.Initialize(data);
+        }
+    }
+
+    /// <summary>
+    /// Sets the logical owner of this card.
+    /// Should be called by the spawning authority (e.g., CardSpawner) ON THE SERVER.
+    /// </summary>
+    /// <param name="entity">The NetworkEntity that owns this card.</param>
+    [Server]
+    public void SetOwnerEntity(NetworkEntity entity)
+    {
+        if (entity == null)
+        {
+            Debug.LogError($"Card {gameObject.name}: Attempted to set null owner entity on server!");
+            _ownerEntityId.Value = 0; // Ensure it's reset if entity is null
+            return;
+        }
+
+        Debug.Log($"Card {gameObject.name} (Server): BEGIN SetOwnerEntity - Target: {entity.EntityName.Value}");
+        
+        // Set the reference directly for server-side use
+        ownerEntity = entity;
+        
+        // Set the synchronized ID to ensure clients can find it
+        NetworkObject netObj = entity.GetComponent<NetworkObject>();
+        int entityObjectId = netObj ? netObj.ObjectId : 0;
+        
+        // This will trigger the OnChange event on clients if the value changes
+        _ownerEntityId.Value = entityObjectId; 
+        
+        Debug.Log($"Card {gameObject.name} (Server): - _ownerEntityId.Value set to {_ownerEntityId.Value}");
+        Debug.Log($"Card {gameObject.name} (Server): END SetOwnerEntity");
+    }
+
+    // SyncVar hook called when _ownerEntityId changes
+    private void OnOwnerEntityIdChanged(int oldValue, int newValue, bool asServer)
+    {
+        Debug.Log($"Card {gameObject.name}: OnOwnerEntityIdChanged from {oldValue} to {newValue}, asServer: {asServer}");
+        
+        // On clients, when the ID changes (and it's not 0), try to find the entity reference.
+        if (!asServer && newValue != 0)
+        {
+            // Check if we already have the correct reference or if the new ID is different
+            if (ownerEntity == null || ownerEntity.GetComponent<NetworkObject>().ObjectId != newValue)
+            {
+                 Debug.Log($"Card {gameObject.name} (Client): _ownerEntityId changed to {newValue}. Attempting to find NetworkEntity.");
+                FindOwnerEntityById(newValue);
+            }
+            else if (ownerEntity != null && ownerEntity.GetComponent<NetworkObject>().ObjectId == newValue)
+            {
+                Debug.Log($"Card {gameObject.name} (Client): _ownerEntityId changed to {newValue}, but ownerEntity is already correctly set.");
+            }
+        }
+        else if (!asServer && newValue == 0)
+        {
+            Debug.Log($"Card {gameObject.name} (Client): _ownerEntityId changed to 0. Clearing ownerEntity reference.");
+            ownerEntity = null;
+        }
     }
 
     /// <summary>
@@ -109,12 +248,53 @@ public class Card : NetworkBehaviour
     /// </summary>
     public void SetCurrentContainer(CardLocation location)
     {
+        Debug.Log($"Card {gameObject.name}: SetCurrentContainer called with location {location}, previous value was {_currentContainer.Value}");
         _currentContainer.Value = location;
     }
 
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+
+        // Update inspector network owner ID
+        inspectorNetworkOwnerClientId = Owner?.ClientId ?? -1;
+
+        // Initialize SyncVar defaults on the server if needed, although CardSpawner should set it.
+        if (_ownerEntityId.Value == 0 && ownerEntity != null)
+        {
+            // This case might happen if ownerEntity was assigned in prefab but not through SetOwnerEntity yet
+            NetworkObject netObj = ownerEntity.GetComponent<NetworkObject>();
+            _ownerEntityId.Value = netObj ? netObj.ObjectId : 0;
+            Debug.Log($"Card {gameObject.name} (Server OnStartServer): Initialized _ownerEntityId to {_ownerEntityId.Value} from existing ownerEntity field.");
+        }
+    }
+    
     public override void OnStartClient()
     {
         base.OnStartClient();
+
+        // Update inspector network owner ID
+        inspectorNetworkOwnerClientId = Owner?.ClientId ?? -1;
+
+        Debug.Log($"Card {gameObject.name} (Client): OnStartClient BEGIN - Network Owner: {(Owner != null ? Owner.ClientId.ToString() : "null")}, IsNetworkOwner: {IsOwner}");
+        Debug.Log($"Card {gameObject.name} (Client): - Current logical ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}");
+        Debug.Log($"Card {gameObject.name} (Client): - Current _ownerEntityId.Value is {_ownerEntityId.Value}");
+        Debug.Log($"Card {gameObject.name} (Client): - Current _currentContainer.Value is {_currentContainer.Value}");
+
+        // The OnChange event should handle finding the entity.
+        // However, if the value was already set before this client connected (e.g. late join),
+        // we might need to explicitly check and find it here too.
+        if (_ownerEntityId.Value != 0 && ownerEntity == null)
+        {
+            Debug.Log($"Card {gameObject.name} (Client): OnStartClient - _ownerEntityId is {_ownerEntityId.Value} but ownerEntity is null. Attempting find.");
+            FindOwnerEntityById(_ownerEntityId.Value);
+        }
+        else if (_ownerEntityId.Value != 0 && ownerEntity != null && ownerEntity.GetComponent<NetworkObject>().ObjectId != _ownerEntityId.Value)
+        {
+             Debug.Log($"Card {gameObject.name} (Client): OnStartClient - Mismatch! _ownerEntityId is {_ownerEntityId.Value} but current ownerEntity is {ownerEntity.GetComponent<NetworkObject>().ObjectId}. Attempting re-find.");
+             FindOwnerEntityById(_ownerEntityId.Value);
+        }
+
 
         // If we have a card ID but no card data, try to load it from the database
         if (_cardId.Value != 0 && cardData == null && CardDatabase.Instance != null)
@@ -124,6 +304,100 @@ public class Card : NetworkBehaviour
             {
                 Initialize(cardData);
             }
+        }
+
+        Debug.Log($"Card {gameObject.name} (Client): OnStartClient END - Final logical ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}");
+    }
+
+    private void FindOwnerEntityById(int entityObjectId)
+    {
+        if (entityObjectId == 0) 
+        {
+            Debug.Log($"Card {gameObject.name}: FindOwnerEntityById - entityObjectId is 0. Clearing ownerEntity.");
+            ownerEntity = null; // Clear if ID is 0
+            return;
+        }
+
+        Debug.Log($"Card {gameObject.name}: FindOwnerEntityById BEGIN - Looking for entity with ObjectId: {entityObjectId}");
+        
+        NetworkObject ownerObj = null;
+        // It's safer to use InstanceFinder.ClientManager.Objects or ServerManager.Objects
+        // depending on whether this code is running on client or server.
+        // Since this is primarily for clients reacting to SyncVar changes, use ClientManager.
+        // For server-side lookups (if any), use ServerManager.
+
+        if (IsClientInitialized) // Check if we are on a client
+        {
+            bool found = FishNet.InstanceFinder.ClientManager.Objects.Spawned.TryGetValue(entityObjectId, out ownerObj);
+            Debug.Log($"Card {gameObject.name} (Client): - Client lookup for ObjectId {entityObjectId}. Found={found}");
+        }
+        // If this method could also be called on the server (e.g., via OnStartServer if needed):
+        // else if (IsServerInitialized)
+        // {
+        //     bool found = FishNet.InstanceFinder.ServerManager.Objects.Spawned.TryGetValue(entityObjectId, out ownerObj);
+        //     Debug.Log($"Card {gameObject.name} (Server): - Server lookup for ObjectId {entityObjectId}. Found={found}");
+        // }
+
+
+        if (ownerObj != null)
+        {
+            NetworkEntity foundEntity = ownerObj.GetComponent<NetworkEntity>();
+            if (foundEntity != null)
+            {
+                ownerEntity = foundEntity;
+                Debug.Log($"Card {gameObject.name}: - SUCCESS - Found and set ownerEntity to {ownerEntity.EntityName.Value} (GameObject: {ownerEntity.gameObject.name})");
+            }
+            else
+            {
+                Debug.LogWarning($"Card {gameObject.name}: - FAILURE - Found NetworkObject for ID {entityObjectId} but it has no NetworkEntity component.");
+                ownerEntity = null; // Ensure ownerEntity is null if component is missing
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"Card {gameObject.name}: - FAILURE - Could not find NetworkObject with ID {entityObjectId}.");
+            ownerEntity = null; // Ensure ownerEntity is null if object is not found
+        }
+
+        Debug.Log($"Card {gameObject.name}: FindOwnerEntityById END - Final ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}");
+    }
+
+    private void OnMouseEnter()
+    {
+        // Trigger target identification on hover as well
+        if (sourceAndTargetIdentifier != null)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseEnter - Updating source and target");
+            sourceAndTargetIdentifier.UpdateSourceAndTarget();
+        }
+    }
+
+    public void OnMouseDown()
+    {
+        // Check Network Owner (controller of the NetworkObject)
+        if (!IsOwner || CurrentContainer != CardLocation.Hand) 
+        {
+             Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. IsNetworkOwner: {IsOwner}, CurrentContainer: {CurrentContainer}. Expected Hand.");
+            return;
+        }
+        
+        // Additionally, check logical owner (who the card belongs to in game terms)
+        if (ownerEntity == null || !ownerEntity.IsOwner)
+        {
+            Debug.LogWarning($"Card {gameObject.name}: OnMouseDown - Logical ownerEntity is null OR logical ownerEntity is not the network owner. " +
+                             $"ownerEntity: {(ownerEntity != null ? ownerEntity.EntityName.Value : "NULL")}, " +
+                             $"ownerEntity.IsOwner: {(ownerEntity != null ? ownerEntity.IsOwner.ToString() : "N/A")}");
+            // Decide if this scenario should prevent play. Usually, the NetworkObject owner (IsOwner) is key for input.
+        }
+        
+        if (handleCardPlay != null)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Calling handleCardPlay.OnCardClicked()");
+            handleCardPlay.OnCardClicked();
+        }
+        else
+        {
+            Debug.LogError($"Card {gameObject.name}: OnMouseDown - handleCardPlay is null!");
         }
     }
 }

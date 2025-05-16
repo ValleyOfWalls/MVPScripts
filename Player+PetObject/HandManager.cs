@@ -176,6 +176,83 @@ public class HandManager : NetworkBehaviour
         Debug.Log($"HandManager: Finished discarding {handCards.Count} cards for {gameObject.name}");
     }
 
+    /// <summary>
+    /// Draws a single card from deck to hand
+    /// </summary>
+    [Server]
+    public void DrawOneCard()
+    {
+        if (!IsServerInitialized) return;
+        Debug.Log($"HandManager: Drawing one card for {gameObject.name}");
+
+        // Check if transforms are available
+        if (deckTransform == null || handTransform == null)
+        {
+            Debug.LogError($"HandManager: Missing deck or hand transform for {gameObject.name}");
+            return;
+        }
+
+        // Get cards in deck
+        List<GameObject> deckCards = GetCardsInTransform(deckTransform);
+        List<GameObject> discardCards = GetCardsInTransform(discardTransform);
+
+        // If deck is empty, try to recycle discard pile
+        if (deckCards.Count == 0 && discardCards.Count > 0)
+        {
+            Debug.Log($"HandManager: Deck is empty. Recycling and shuffling {discardCards.Count} cards from discard pile.");
+            RecycleAndShuffleDiscardPile();
+            // Get updated deck cards after recycling
+            deckCards = GetCardsInTransform(deckTransform);
+            Debug.Log($"HandManager: After recycling, deck now has {deckCards.Count} cards.");
+        }
+
+        // Check if we have any cards to draw
+        if (deckCards.Count == 0)
+        {
+            Debug.LogWarning($"HandManager: No cards available to draw for {gameObject.name}");
+            return;
+        }
+
+        // Draw one card
+        GameObject card = deckCards[0];
+        if (card == null)
+        {
+            Debug.LogError($"HandManager: Null card found in deck for {gameObject.name}");
+            return;
+        }
+
+        Debug.Log($"HandManager: Moving card {card.name} to hand for {gameObject.name}");
+        MoveCardToHand(card);
+    }
+
+    /// <summary>
+    /// Discards a specific card from hand
+    /// </summary>
+    [Server]
+    public void DiscardCard(GameObject card)
+    {
+        if (!IsServerInitialized || card == null) return;
+        Debug.Log($"HandManager: Discarding specific card {card.name} for {gameObject.name}");
+
+        // Check if transforms are available
+        if (handTransform == null || discardTransform == null)
+        {
+            Debug.LogError($"HandManager: Missing hand or discard transform for {gameObject.name}");
+            return;
+        }
+
+        // Verify the card is in hand
+        List<GameObject> handCards = GetCardsInTransform(handTransform);
+        if (!handCards.Contains(card))
+        {
+            Debug.LogError($"HandManager: Card {card.name} is not in hand for {gameObject.name}");
+            return;
+        }
+
+        Debug.Log($"HandManager: Moving card {card.name} to discard for {gameObject.name}");
+        MoveCardToDiscard(card);
+    }
+
     [Server]
     private void MoveCardToHand(GameObject card)
     {
@@ -190,6 +267,18 @@ public class HandManager : NetworkBehaviour
         {
             Debug.LogError($"HandManager: Card {card.name} is missing NetworkObject component for {gameObject.name}");
             return;
+        }
+
+        // Update Card's CurrentContainer
+        Card cardComponent = card.GetComponent<Card>();
+        if (cardComponent != null)
+        {
+            Debug.Log($"HandManager: Setting {card.name} container to Hand for {gameObject.name}");
+            cardComponent.SetCurrentContainer(CardLocation.Hand);
+        }
+        else
+        {
+            Debug.LogError($"HandManager: Card {card.name} is missing Card component for {gameObject.name}");
         }
 
         NetworkObject parentEntityNetObj = handTransform.GetComponentInParent<NetworkObject>();
@@ -226,6 +315,18 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
+        // Update Card's CurrentContainer
+        Card cardComponent = card.GetComponent<Card>();
+        if (cardComponent != null)
+        {
+            Debug.Log($"HandManager: Setting {card.name} container to Discard for {gameObject.name}");
+            cardComponent.SetCurrentContainer(CardLocation.Discard);
+        }
+        else
+        {
+            Debug.LogError($"HandManager: Card {card.name} is missing Card component for {gameObject.name}");
+        }
+
         NetworkObject parentEntityNetObj = discardTransform.GetComponentInParent<NetworkObject>();
         if (parentEntityNetObj == null)
         {
@@ -258,6 +359,18 @@ public class HandManager : NetworkBehaviour
         {
             Debug.LogError($"HandManager: Card {card.name} is missing NetworkObject component for {gameObject.name}");
             return;
+        }
+        
+        // Update Card's CurrentContainer
+        Card cardComponent = card.GetComponent<Card>();
+        if (cardComponent != null)
+        {
+            Debug.Log($"HandManager: Setting {card.name} container to Deck for {gameObject.name}");
+            cardComponent.SetCurrentContainer(CardLocation.Deck);
+        }
+        else
+        {
+            Debug.LogError($"HandManager: Card {card.name} is missing Card component for {gameObject.name}");
         }
         
         // Get the NetworkObject ID for the parent transform's owner (the entity)

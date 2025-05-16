@@ -36,6 +36,11 @@ public class RelationshipManager : NetworkBehaviour
     {
         base.OnStartClient();
         UpdateConnectionInfo();
+        allyEntity.OnChange += OnAllyChanged;
+        if (IsClientOnly && allyEntity.Value != null)
+        {
+            inspectorAllyReference = allyEntity.Value;
+        }
     }
 
     public override void OnOwnershipClient(NetworkConnection prevOwner)
@@ -53,15 +58,32 @@ public class RelationshipManager : NetworkBehaviour
     public override void OnStopServer()
     {
         base.OnStopServer();
-        allyEntity.Value = null;
+        if (IsServerInitialized)
+        {
+            allyEntity.Value = null;
+        }
         inspectorAllyReference = null;
     }
 
     public override void OnStopClient()
     {
         base.OnStopClient();
-        allyEntity.Value = null;
+        allyEntity.OnChange -= OnAllyChanged;
         inspectorAllyReference = null;
+    }
+
+    /// <summary>
+    /// Called when the allyEntity SyncVar changes.
+    /// </summary>
+    private void OnAllyChanged(NetworkBehaviour prevAlly, NetworkBehaviour newAlly, bool asServer)
+    {
+        if (!asServer) // This means the change was received from the server for a client
+        {
+            inspectorAllyReference = newAlly; // Update client's inspector for debugging
+            Debug.Log($"Client (ID: {OwnerClientId}): AllyEntity updated from '{prevAlly?.name}' to '{newAlly?.name}'. IsOwnedByLocalPlayer: {IsOwnedByLocalPlayer}");
+        }
+        // If asServer is true, this callback is also invoked on the server when it changes the value.
+        // In that case, SetAlly already updated inspectorAllyReference.
     }
 
     /// <summary>
@@ -72,7 +94,8 @@ public class RelationshipManager : NetworkBehaviour
     {
         if (!IsServerInitialized) return;
         allyEntity.Value = ally;
-        inspectorAllyReference = ally; // Update the inspector reference immediately
+        inspectorAllyReference = ally; // Update the server's inspector reference
+        Debug.Log($"Server: SetAlly called for {gameObject.name}. New ally: {ally?.name}. Current allyEntity: {allyEntity.Value?.name}");
     }
     
     /// <summary>

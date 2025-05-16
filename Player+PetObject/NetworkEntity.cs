@@ -21,6 +21,9 @@ public class NetworkEntity : NetworkBehaviour
     [SerializeField] private EntityType entityType;
     public EntityType EntityType => entityType;
 
+    [Header("Ownership Info (Inspector Display)")]
+    [SerializeField] private int inspectorOwnerClientId = -1;
+
     // Basic entity info
     public readonly SyncVar<string> EntityName = new SyncVar<string>();
     public readonly SyncVar<uint> OwnerEntityId = new SyncVar<uint>(); // For pets, this is their owner's ObjectId
@@ -59,6 +62,9 @@ public class NetworkEntity : NetworkBehaviour
     {
         base.OnStartServer();
         gameManager = FindFirstObjectByType<GameManager>();
+
+        // Update inspector owner ID
+        inspectorOwnerClientId = Owner?.ClientId ?? -1;
 
         // Use serialized fields as initial values
         MaxHealth.Value = _maxHealth;
@@ -100,6 +106,9 @@ public class NetworkEntity : NetworkBehaviour
     public override void OnStartClient()
     {
         base.OnStartClient();
+
+        // Update inspector owner ID
+        inspectorOwnerClientId = Owner?.ClientId ?? -1;
 
         // Add more detailed ownership debugging
         bool isLocalConnection = Owner == FishNet.InstanceFinder.ClientManager.Connection;
