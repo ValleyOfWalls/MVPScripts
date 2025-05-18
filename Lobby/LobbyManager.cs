@@ -3,6 +3,7 @@ using FishNet.Managing;
 using FishNet.Connection;
 using FishNet.Object;
 using System.Collections.Generic;
+using System;
 
 /// <summary>
 /// Manages the core lobby functionality, player tracking, ready states, and game start logic.
@@ -19,9 +20,30 @@ public class LobbyManager : NetworkBehaviour
     private Dictionary<NetworkConnection, bool> playerReadyStates = new Dictionary<NetworkConnection, bool>();
     private Dictionary<NetworkConnection, string> playerDisplayNames = new Dictionary<NetworkConnection, string>();
 
+    // Event that triggers when player ready states change
+    public event Action OnPlayersReadyStateChanged;
+
     private void Awake()
     {
         FindRequiredComponents();
+    }
+    
+    // Get the current number of connected players
+    public int GetConnectedPlayerCount()
+    {
+        return connectedPlayers.Count;
+    }
+    
+    // Check if all players are in ready state
+    public bool AreAllPlayersReady()
+    {
+        return connectedPlayers.Count > 0 && AreAllPlayersReadyInternal();
+    }
+    
+    // Returns connected players list for testing purposes
+    public IReadOnlyList<NetworkConnection> GetConnectedPlayers()
+    {
+        return connectedPlayers.AsReadOnly();
     }
     
     private void FindRequiredComponents()
@@ -79,6 +101,9 @@ public class LobbyManager : NetworkBehaviour
             playerDisplayNames[conn] = playerName;
             BroadcastFullPlayerList();
             CheckAllPlayersReady();
+            
+            // Notify about player ready state change
+            OnPlayersReadyStateChanged?.Invoke();
         }
     }
 
@@ -93,6 +118,9 @@ public class LobbyManager : NetworkBehaviour
             playerReadyStates[conn] = !currentState;
             BroadcastFullPlayerList();
             CheckAllPlayersReady();
+            
+            // Notify about player ready state change
+            OnPlayersReadyStateChanged?.Invoke();
         }
     }
 
@@ -143,12 +171,12 @@ public class LobbyManager : NetworkBehaviour
     {
         if (!IsServerStarted) return;
 
-        bool allReady = AreAllPlayersReady();
+        bool allReady = AreAllPlayersReadyInternal();
         RpcUpdateStartButtonState(allReady);
     }
     
     [Server]
-    private bool AreAllPlayersReady()
+    private bool AreAllPlayersReadyInternal()
     {
         int totalPlayers = connectedPlayers.Count;
         if (totalPlayers == 0) return false;
@@ -180,7 +208,7 @@ public class LobbyManager : NetworkBehaviour
     {
         if (conn == null) return;
 
-        bool canStart = AreAllPlayersReady() && connectedPlayers.Count >= 2;
+        bool canStart = AreAllPlayersReadyInternal() && connectedPlayers.Count >= 2;
         if (canStart)
         {
             RpcStartGame();
@@ -230,6 +258,9 @@ public class LobbyManager : NetworkBehaviour
             
             BroadcastFullPlayerList();
             CheckAllPlayersReady();
+            
+            // Notify about player ready state change
+            OnPlayersReadyStateChanged?.Invoke();
         }
     }
 } 

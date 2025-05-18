@@ -8,29 +8,32 @@ public class AutoTestRunner : MonoBehaviour
     [Tooltip("Enable this flag to run the automated test sequence.")]
     public bool enableAutoTesting = false;
 
-    [Header("Time Delays (Seconds)")]
-    [Tooltip("Time to wait before clicking the start screen button.")]
-    public float delayBeforeStartScreenClick = 2f;
-    [Tooltip("Time to wait after the lobby canvas is active before clicking the lobby start game button.")]
-    public float delayBeforeLobbyClick = 5f;
-
     [Header("Button References")]
     [Tooltip("Drag the 'Start Button' GameObject from the initial start screen here.")]
-    public Button startScreenStartButton; 
+    public Button startScreenStartButton;
 
     [Tooltip("Drag the 'Start Game Button' GameObject from the Lobby UI here.")]
-    public Button lobbyStartGameButton; 
+    public Button lobbyStartGameButton;
 
-    [Header("Canvas References")]
-    [Tooltip("Drag the main Lobby Canvas GameObject here. The script will wait for this to be active.")]
-    public GameObject lobbyCanvasGameObject; 
+    [Header("Component References")]
+    [Tooltip("Drag the LobbyManager here.")]
+    public LobbyManager lobbyManager;
+    
+    [Tooltip("Drag the StartScreenManager here.")]
+    public StartScreenManager startScreenManager;
+    
+    [Tooltip("Drag the SteamNetworkIntegration object here.")]
+    public SteamNetworkIntegration steamNetworkIntegration;
+
+    private bool startButtonClicked = false;
+    private bool readyToStartGame = false;
 
     void Start()
     {
         if (enableAutoTesting)
         {
             Debug.Log("AutoTestRunner: Automated testing enabled. Starting sequence...");
-            StartCoroutine(AutoTestSequence());
+            StartCoroutine(WaitForStartScreenReadiness());
         }
         else
         {
@@ -38,51 +41,84 @@ public class AutoTestRunner : MonoBehaviour
         }
     }
 
-    private IEnumerator AutoTestSequence()
+    private IEnumerator WaitForStartScreenReadiness()
     {
-        // --- Step 1: Click Start Screen Button ---
-        Debug.Log($"AutoTestRunner: Waiting {delayBeforeStartScreenClick} seconds to click Start Screen Button.");
-        yield return new WaitForSeconds(delayBeforeStartScreenClick);
-
-        if (startScreenStartButton != null)
+        Debug.Log("AutoTestRunner: Waiting for Steam to initialize and start button to be available...");
+        
+        // Wait for Steam initialization
+        if (steamNetworkIntegration != null)
         {
-            Debug.Log($"AutoTestRunner: Found Start Screen Button reference, invoking onClick.");
-            startScreenStartButton.onClick.Invoke();
+            yield return new WaitUntil(() => steamNetworkIntegration.IsSteamInitialized);
+            Debug.Log("AutoTestRunner: Steam initialized successfully.");
         }
         else
         {
-            Debug.LogError($"AutoTestRunner: 'Start Screen Start Button' reference is not set in the Inspector.");
+            Debug.LogWarning("AutoTestRunner: SteamNetworkIntegration reference not set, skipping Steam initialization check.");
         }
-
-        // --- Step 2: Wait for Lobby Canvas GameObject and Click Start Game Button ---
-        Debug.Log("AutoTestRunner: Waiting for Lobby Canvas GameObject to be assigned and active...");
-        yield return new WaitUntil(() =>
-        {
-            if (lobbyCanvasGameObject != null && lobbyCanvasGameObject.activeInHierarchy)
-            {
-                Debug.Log("AutoTestRunner: Lobby Canvas GameObject is assigned and active.");
-                return true;
-            }
-            if (lobbyCanvasGameObject == null)
-            {
-                Debug.LogWarning("AutoTestRunner: Waiting for Lobby Canvas GameObject to be assigned in the Inspector...");
-            }
-            return false;
-        });
         
-        Debug.Log($"AutoTestRunner: Waiting {delayBeforeLobbyClick} seconds to click Lobby Start Game Button.");
-        yield return new WaitForSeconds(delayBeforeLobbyClick);
+        // Wait until the start button is available and interactable
+        yield return new WaitUntil(() => startScreenStartButton != null && startScreenStartButton.gameObject.activeInHierarchy && startScreenStartButton.interactable);
+        Debug.Log("AutoTestRunner: Start Screen Button is now available and interactable.");
+        
+        // Click the start button
+        startScreenStartButton.onClick.Invoke();
+        startButtonClicked = true;
+        Debug.Log("AutoTestRunner: Start Screen Button clicked. Moving to lobby phase.");
+        
+        // Start monitoring lobby conditions
+        StartCoroutine(WaitForLobbyReadiness());
+    }
 
-        if (lobbyStartGameButton != null)
+    private IEnumerator WaitForLobbyReadiness()
+    {
+        Debug.Log("AutoTestRunner: Waiting for lobby conditions to be met...");
+        
+        // Wait until lobby manager is ready
+        yield return new WaitUntil(() => lobbyManager != null && lobbyManager.gameObject.activeInHierarchy);
+        
+        // Subscribe to lobby events
+        lobbyManager.OnPlayersReadyStateChanged += CheckLobbyConditions;
+        
+        // Wait until conditions are met to start the game
+        yield return new WaitUntil(() => readyToStartGame);
+        
+        // Only the host should click the start button
+        if (steamNetworkIntegration != null && steamNetworkIntegration.IsUserSteamHost && lobbyStartGameButton != null && lobbyStartGameButton.interactable)
         {
-            Debug.Log($"AutoTestRunner: Found Lobby Start Game Button reference, invoking onClick.");
+            Debug.Log("AutoTestRunner: This client is the host and lobby conditions are met. Clicking Start Game button.");
             lobbyStartGameButton.onClick.Invoke();
         }
         else
         {
-            Debug.LogError($"AutoTestRunner: 'Lobby Start Game Button' reference is not set in the Inspector.");
+            Debug.Log("AutoTestRunner: This client is not the host or button is not interactable. Waiting for host to start the game.");
         }
+        
+        Debug.Log("AutoTestRunner: Automated test sequence completed.");
+    }
 
-        Debug.Log("AutoTestRunner: Automated test sequence finished.");
+    private void CheckLobbyConditions()
+    {
+        if (lobbyManager == null) return;
+        
+        int playerCount = lobbyManager.GetConnectedPlayerCount();
+        bool allPlayersReady = lobbyManager.AreAllPlayersReady();
+        
+        Debug.Log($"AutoTestRunner: Checking lobby conditions - Players: {playerCount}, All Ready: {allPlayersReady}");
+        
+        // Conditions: At least 2 players and all players are ready
+        if (playerCount >= 2 && allPlayersReady)
+        {
+            readyToStartGame = true;
+            Debug.Log("AutoTestRunner: Lobby conditions met! Two or more players are present and all are ready.");
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Unsubscribe from events
+        if (lobbyManager != null)
+        {
+            lobbyManager.OnPlayersReadyStateChanged -= CheckLobbyConditions;
+        }
     }
 } 
