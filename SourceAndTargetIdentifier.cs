@@ -17,6 +17,9 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
     [SerializeField, ReadOnly] private string currentSourceName;
     [SerializeField, ReadOnly] private string currentTargetName;
 
+    // Flag to track if we've already updated on this hover
+    private bool hasUpdatedThisHover = false;
+
     public NetworkEntity SourceEntity => sourceEntity;
     public NetworkEntity TargetEntity => targetEntity;
 
@@ -66,12 +69,25 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         return fm;
     }
 
-    public void OnMouseOver()
+    public void OnMouseEnter()
     {
         if (!IsOwner) return;
         
-        // Update source and target entities
-        UpdateSourceAndTarget();
+        // Only update source and target if we haven't done it for this hover yet
+        if (!hasUpdatedThisHover)
+        {
+            // Update source and target entities
+            UpdateSourceAndTarget();
+            
+            // Set the flag to true so we don't update again until mouse exit
+            hasUpdatedThisHover = true;
+        }
+    }
+    
+    public void OnMouseExit()
+    {
+        // Reset the flag when mouse exits so we can update again on the next hover
+        hasUpdatedThisHover = false;
     }
 
     /// <summary>
@@ -162,5 +178,19 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// Forces update of source and target entities for AI-controlled cards
+    /// </summary>
+    public void ForceUpdateSourceAndTarget(NetworkEntity source, NetworkEntity target)
+    {
+        Debug.Log($"SourceAndTargetIdentifier: ForceUpdateSourceAndTarget called for card {gameObject.name} with source: {source.EntityName.Value}, target: {target.EntityName.Value}");
+        
+        sourceEntity = source;
+        targetEntity = target;
+        
+        // Update debug info
+        UpdateDebugInfo();
     }
 } 

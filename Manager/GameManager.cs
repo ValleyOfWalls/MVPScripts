@@ -34,6 +34,18 @@ public class GameManager : NetworkBehaviour
     [SerializeField, Tooltip("If true, players will automatically be set to ready when they join the lobby.")]
     public bool AutoReadyPlayersOnJoin = false;
 
+    [Header("Damage Modifiers")]
+    [SerializeField, Tooltip("If true, critical hits can occur during combat")]
+    private bool criticalHitsEnabled = true;
+    [SerializeField, Tooltip("Base chance of critical hit occurring (0.05 = 5%)")]
+    private float baseCriticalChance = 0.05f;
+    [SerializeField, Tooltip("Damage multiplier when a critical hit occurs")]
+    private float criticalHitModifier = 1.5f;
+    [SerializeField, Tooltip("Damage multiplier when attacker has Weak status")]
+    private float weakStatusModifier = 0.75f;
+    [SerializeField, Tooltip("Damage multiplier when target has Break status")]
+    private float breakStatusModifier = 1.5f;
+
     // Game Rules - Synced so clients can see them if needed for UI or predictions (though server is authoritative)
     public readonly SyncVar<int> PlayerDrawAmount = new SyncVar<int>();
     public readonly SyncVar<int> PetDrawAmount = new SyncVar<int>();
@@ -45,6 +57,13 @@ public class GameManager : NetworkBehaviour
     // Target hand sizes for each round - how many cards entities should have after drawing
     public readonly SyncVar<int> PlayerTargetHandSize = new SyncVar<int>();
     public readonly SyncVar<int> PetTargetHandSize = new SyncVar<int>();
+    
+    // Damage modifier SyncVars
+    public readonly SyncVar<bool> CriticalHitsEnabled = new SyncVar<bool>();
+    public readonly SyncVar<float> BaseCriticalChance = new SyncVar<float>();
+    public readonly SyncVar<float> CriticalHitModifier = new SyncVar<float>();
+    public readonly SyncVar<float> WeakStatusModifier = new SyncVar<float>();
+    public readonly SyncVar<float> BreakStatusModifier = new SyncVar<float>();
 
     private void Awake()
     {
@@ -73,9 +92,17 @@ public class GameManager : NetworkBehaviour
         PlayerMaxHealth.Value = playerMaxHealthAmount;
         PetMaxHealth.Value = petMaxHealthAmount;
         
+        // Initialize damage modifier SyncVars
+        CriticalHitsEnabled.Value = criticalHitsEnabled;
+        BaseCriticalChance.Value = baseCriticalChance;
+        CriticalHitModifier.Value = criticalHitModifier;
+        WeakStatusModifier.Value = weakStatusModifier;
+        BreakStatusModifier.Value = breakStatusModifier;
+        
         Debug.Log("GameManager started on Server. Initializing game rules.");
         Debug.Log($"Player settings - Initial Draw: {PlayerDrawAmount.Value}, Target Hand: {PlayerTargetHandSize.Value}, Max Energy: {PlayerMaxEnergy.Value}, Max Health: {PlayerMaxHealth.Value}");
         Debug.Log($"Pet settings - Initial Draw: {PetDrawAmount.Value}, Target Hand: {PetTargetHandSize.Value}, Max Energy: {PetMaxEnergy.Value}, Max Health: {PetMaxHealth.Value}");
+        Debug.Log($"Damage Modifiers - Crits Enabled: {CriticalHitsEnabled.Value}, Base Crit Chance: {BaseCriticalChance.Value}, Crit Multiplier: {CriticalHitModifier.Value}, Weak Modifier: {WeakStatusModifier.Value}, Break Modifier: {BreakStatusModifier.Value}");
     }
 
     public override void OnStartClient()

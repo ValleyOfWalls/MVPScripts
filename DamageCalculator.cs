@@ -8,10 +8,16 @@ using FishNet.Object;
 /// </summary>
 public class DamageCalculator : MonoBehaviour
 {
-    [Header("Damage Modifiers")]
-    [SerializeField] private float weakStatusModifier = 0.75f;
-    [SerializeField] private float breakStatusModifier = 1.5f;
-    [SerializeField] private float criticalHitModifier = 1.5f;
+    [Header("References")]
+    [SerializeField] private GameManager gameManager;
+    
+    private void Awake()
+    {
+        if (gameManager == null)
+        {
+            gameManager = GameManager.Instance;
+        }
+    }
     
     /// <summary>
     /// Calculates the final damage amount based on card data and entity status effects
@@ -64,7 +70,7 @@ public class DamageCalculator : MonoBehaviour
         // Check for effects that modify outgoing damage
         if (sourceEffects.HasEffect("Weak"))
         {
-            modifiedDamage *= weakStatusModifier;
+            modifiedDamage *= gameManager.WeakStatusModifier.Value;
             Debug.Log($"DamageCalculator: Source has Weak status, damage reduced to {modifiedDamage}");
         }
         
@@ -91,7 +97,7 @@ public class DamageCalculator : MonoBehaviour
         // Check for effects that modify incoming damage
         if (targetEffects.HasEffect("Break"))
         {
-            modifiedDamage *= breakStatusModifier;
+            modifiedDamage *= gameManager.BreakStatusModifier.Value;
             Debug.Log($"DamageCalculator: Target has Break status, damage increased to {modifiedDamage}");
         }
         
@@ -109,11 +115,17 @@ public class DamageCalculator : MonoBehaviour
     
     private float ApplyCriticalHitChance(NetworkEntity source, NetworkEntity target, float damage)
     {
+        // Skip critical hit calculation if crits are disabled in GameManager
+        if (!gameManager.CriticalHitsEnabled.Value)
+        {
+            return damage;
+        }
+        
         // Get source effect handler to check for increased crit chance
         EffectHandler sourceEffects = source.GetComponent<EffectHandler>();
         
-        // Base crit chance (5%)
-        float critChance = 0.05f;
+        // Start with base crit chance from GameManager
+        float critChance = gameManager.BaseCriticalChance.Value;
         
         // Increase crit chance based on effects if applicable
         if (sourceEffects != null && sourceEffects.HasEffect("CriticalUp"))
@@ -125,7 +137,7 @@ public class DamageCalculator : MonoBehaviour
         // Check for critical hit
         if (Random.value < critChance)
         {
-            float critDamage = damage * criticalHitModifier;
+            float critDamage = damage * gameManager.CriticalHitModifier.Value;
             Debug.Log($"DamageCalculator: Critical hit! Damage increased from {damage} to {critDamage}");
             
             // TODO: Consider notifying UI for critical hit display effect

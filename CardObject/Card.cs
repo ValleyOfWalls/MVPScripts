@@ -364,12 +364,11 @@ public class Card : NetworkBehaviour
 
     private void OnMouseEnter()
     {
-        // Trigger target identification on hover as well
-        if (sourceAndTargetIdentifier != null)
-        {
-            Debug.Log($"Card {gameObject.name}: OnMouseEnter - Updating source and target");
-            sourceAndTargetIdentifier.UpdateSourceAndTarget();
-        }
+        // We don't need to call UpdateSourceAndTarget here anymore
+        // The SourceAndTargetIdentifier component will handle this with its own OnMouseEnter
+        
+        // Still log this event for debugging
+        Debug.Log($"Card {gameObject.name}: OnMouseEnter");
     }
 
     public void OnMouseDown()

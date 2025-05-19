@@ -30,21 +30,21 @@ public class CardEffectResolver : NetworkBehaviour
     
     private void Start()
     {
-        // Find the DamageCalculator (on GameManager)
+        // Find the DamageCalculator (now on CombatManager)
         if (damageCalculator == null)
         {
-            GameManager gameManager = FindFirstObjectByType<GameManager>();
-            if (gameManager != null)
+            CombatManager combatManager = FindFirstObjectByType<CombatManager>();
+            if (combatManager != null)
             {
-                damageCalculator = gameManager.GetComponent<DamageCalculator>();
+                damageCalculator = combatManager.GetComponent<DamageCalculator>();
                 if (damageCalculator == null)
                 {
-                    Debug.LogError($"CardEffectResolver on {gameObject.name}: Could not find DamageCalculator on GameManager!");
+                    Debug.LogError($"CardEffectResolver on {gameObject.name}: Could not find DamageCalculator on CombatManager!");
                 }
             }
             else
             {
-                Debug.LogError($"CardEffectResolver on {gameObject.name}: Could not find GameManager!");
+                Debug.LogError($"CardEffectResolver on {gameObject.name}: Could not find CombatManager!");
             }
         }
     }
@@ -158,15 +158,15 @@ public class CardEffectResolver : NetworkBehaviour
     
     private void ProcessDamageEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, CardData cardData)
     {
-        // Get damage calculator from game manager
+        // Get damage calculator from CombatManager
         if (damageCalculator == null)
         {
-            GameManager gameManager = FindFirstObjectByType<GameManager>();
-            damageCalculator = gameManager?.GetComponent<DamageCalculator>();
+            CombatManager combatManager = FindFirstObjectByType<CombatManager>();
+            damageCalculator = combatManager?.GetComponent<DamageCalculator>();
             
             if (damageCalculator == null)
             {
-                Debug.LogError("CardEffectResolver: Could not find DamageCalculator!");
+                Debug.LogError("CardEffectResolver: Could not find DamageCalculator on CombatManager!");
                 return;
             }
         }
@@ -254,5 +254,23 @@ public class CardEffectResolver : NetworkBehaviour
         }
         
         return netObj?.GetComponent<NetworkEntity>();
+    }
+    
+    /// <summary>
+    /// Directly resolves card effects on the server for AI-controlled entities
+    /// </summary>
+    [Server]
+    public void ServerResolveCardEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, CardData cardData)
+    {
+        if (!IsServerInitialized)
+        {
+            Debug.LogError("CardEffectResolver: Cannot resolve effect on server - server not initialized");
+            return;
+        }
+        
+        Debug.Log($"CardEffectResolver: ServerResolveCardEffect for card {cardData.CardName} from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}");
+        
+        // Process the effect directly since we're already on the server
+        ProcessCardEffect(sourceEntity, targetEntity, cardData);
     }
 } 

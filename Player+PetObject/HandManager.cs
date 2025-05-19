@@ -597,6 +597,14 @@ public class HandManager : NetworkBehaviour
         
         return path;
     }
+
+    /// <summary>
+    /// Gets the hand transform for direct access
+    /// </summary>
+    public Transform GetHandTransform()
+    {
+        return handTransform;
+    }
 }
 
 // Keep the CardLocation enum definition

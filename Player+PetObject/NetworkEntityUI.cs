@@ -167,7 +167,10 @@ public class NetworkEntityUI : MonoBehaviour
         UpdateHealthUI();
     }
 
-    private void UpdateHealthUI()
+    /// <summary>
+    /// Updates the entity health UI
+    /// </summary>
+    public void UpdateHealthUI()
     {
         if (entity == null) return;
 
@@ -195,7 +198,10 @@ public class NetworkEntityUI : MonoBehaviour
         UpdateEnergyUI();
     }
 
-    private void UpdateEnergyUI()
+    /// <summary>
+    /// Updates the entity energy UI
+    /// </summary>
+    public void UpdateEnergyUI()
     {
         if (entity == null) return;
 

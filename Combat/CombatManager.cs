@@ -121,6 +121,9 @@ public class CombatManager : NetworkBehaviour
             Debug.LogError($"CombatManager: Fight rounds dictionary doesn't contain entry for player {player.EntityName.Value}");
             return;
         }
+        
+        // Notify clients to refresh energy for their local fight
+        RpcStartNewRound(player.ObjectId, pet.ObjectId, fightRounds[player]);
 
         // Draw cards for both entities in this specific fight
         Debug.Log($"CombatManager: Drawing cards for player {player.EntityName.Value}");
@@ -131,6 +134,63 @@ public class CombatManager : NetworkBehaviour
         // Set turn to player for this fight
         Debug.Log($"CombatManager: Setting turn to PlayerTurn for fight: {player.EntityName.Value} vs {pet.EntityName.Value}");
         SetTurn(player, CombatTurn.PlayerTurn);
+    }
+    
+    [ObserversRpc]
+    private void RpcStartNewRound(int playerObjectId, int petObjectId, int roundNumber)
+    {
+        // Check if this is the local player's fight
+        if (fightManager != null && 
+            fightManager.ClientCombatPlayer != null && 
+            fightManager.ClientCombatOpponentPet != null && 
+            fightManager.ClientCombatPlayer.ObjectId == playerObjectId && 
+            fightManager.ClientCombatOpponentPet.ObjectId == petObjectId)
+        {
+            Debug.Log($"CombatManager: Local fight round {roundNumber} started. Refreshing energy for local player and opponent pet.");
+            
+            // Refresh energy for both entities in the local fight
+            RefreshEntityEnergy(fightManager.ClientCombatPlayer);
+            RefreshEntityEnergy(fightManager.ClientCombatOpponentPet);
+        }
+    }
+    
+    private void RefreshEntityEnergy(NetworkEntity entity)
+    {
+        if (entity == null) return;
+        
+        EnergyHandler energyHandler = entity.GetComponent<EnergyHandler>();
+        if (energyHandler != null)
+        {
+            Debug.Log($"CombatManager: Refreshing energy for {entity.EntityName.Value}");
+            
+            // Always request refresh energy for both player and opponent entities in local fights
+            ClientRequestRefreshEnergy(entity.ObjectId);
+        }
+        else
+        {
+            Debug.LogError($"CombatManager: No EnergyHandler found on entity {entity.EntityName.Value}");
+        }
+    }
+    
+    [ServerRpc(RequireOwnership = false)]
+    private void ClientRequestRefreshEnergy(int entityObjectId)
+    {
+        if (!IsServerInitialized) return;
+        
+        NetworkObject networkObject;
+        if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(entityObjectId, out networkObject))
+        {
+            NetworkEntity entity = networkObject.GetComponent<NetworkEntity>();
+            if (entity != null)
+            {
+                EnergyHandler energyHandler = entity.GetComponent<EnergyHandler>();
+                if (energyHandler != null)
+                {
+                    Debug.Log($"CombatManager: Server refreshing energy for {entity.EntityName.Value}");
+                    energyHandler.ReplenishEnergy();
+                }
+            }
+        }
     }
 
     [Server]
