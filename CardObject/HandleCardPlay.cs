@@ -17,6 +17,7 @@ public class HandleCardPlay : NetworkBehaviour
     [SerializeField] private Button cardButton;
     [SerializeField] private SourceAndTargetIdentifier sourceAndTargetIdentifier;
     [SerializeField] private Card card;
+    [SerializeField] private CardEffectResolver cardEffectResolver;
 
     private CardData cardData;
 
@@ -37,6 +38,11 @@ public class HandleCardPlay : NetworkBehaviour
         {
             card = GetComponent<Card>();
         }
+        
+        if (cardEffectResolver == null)
+        {
+            cardEffectResolver = GetComponent<CardEffectResolver>();
+        }
 
         ValidateComponents();
     }
@@ -51,6 +57,9 @@ public class HandleCardPlay : NetworkBehaviour
         
         if (card == null)
             Debug.LogError($"HandleCardPlay on {gameObject.name}: Missing Card component");
+            
+        if (cardEffectResolver == null)
+            Debug.LogError($"HandleCardPlay on {gameObject.name}: Missing CardEffectResolver component");
     }
 
     public void Initialize(CardData data)
@@ -83,15 +92,121 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
 
+        // Check if player has enough energy
+        NetworkEntity owner = card.OwnerEntity;
+        if (owner != null && cardData != null && owner.CurrentEnergy.Value < cardData.EnergyCost)
+        {
+            Debug.LogWarning($"HandleCardPlay: Not enough energy to play card. Required: {cardData.EnergyCost}, Available: {owner.CurrentEnergy.Value}");
+            // Consider showing a UI notification to the player
+            return;
+        }
+
         // Card is valid to be clicked - Update source and target references
         if (sourceAndTargetIdentifier != null)
         {
             Debug.Log($"HandleCardPlay: Triggering UpdateSourceAndTarget for card {gameObject.name}");
             sourceAndTargetIdentifier.UpdateSourceAndTarget();
+            
+            // Verify we have valid source and target
+            if (sourceAndTargetIdentifier.SourceEntity == null || sourceAndTargetIdentifier.TargetEntity == null)
+            {
+                Debug.LogError($"HandleCardPlay: Missing source or target entity for card {gameObject.name}");
+                return;
+            }
+            
+            // Now that we have valid source and target, play the card
+            PlayCard();
         }
         else
         {
             Debug.LogError($"HandleCardPlay: Missing SourceAndTargetIdentifier component for card {gameObject.name}");
         }
+    }
+    
+    /// <summary>
+    /// Plays the card by resolving its effect and handling energy cost
+    /// </summary>
+    private void PlayCard()
+    {
+        Debug.Log($"HandleCardPlay: Playing card {gameObject.name}");
+        
+        // Get owner entity (should be the source entity from SourceAndTargetIdentifier)
+        NetworkEntity owner = sourceAndTargetIdentifier.SourceEntity;
+        
+        // Handle energy cost on server
+        if (cardData != null)
+        {
+            CmdDeductEnergyCost(owner.ObjectId, cardData.EnergyCost);
+        }
+        
+        // Resolve the card effect
+        if (cardEffectResolver != null)
+        {
+            Debug.Log($"HandleCardPlay: Calling cardEffectResolver.ResolveCardEffect() for card {gameObject.name}");
+            cardEffectResolver.ResolveCardEffect();
+        }
+        else
+        {
+            Debug.LogError($"HandleCardPlay: Missing CardEffectResolver component for card {gameObject.name}");
+        }
+        
+        // Move the card to the discard pile
+        CmdMoveCardToDiscard();
+    }
+    
+    [ServerRpc]
+    private void CmdDeductEnergyCost(int ownerEntityId, int energyCost)
+    {
+        // Find the entity by ID
+        NetworkEntity entity = FindEntityById(ownerEntityId);
+        if (entity == null)
+        {
+            Debug.LogError($"HandleCardPlay: Could not find entity with ID {ownerEntityId}");
+            return;
+        }
+        
+        // Deduct energy cost
+        entity.ChangeEnergy(-energyCost);
+        Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {entity.EntityName.Value}. New energy: {entity.CurrentEnergy.Value}");
+    }
+    
+    [ServerRpc]
+    private void CmdMoveCardToDiscard()
+    {
+        // Get the card's owner
+        NetworkEntity owner = card.OwnerEntity;
+        if (owner == null)
+        {
+            Debug.LogError($"HandleCardPlay: Card {gameObject.name} has no owner");
+            return;
+        }
+        
+        // Get the hand manager
+        HandManager handManager = owner.GetComponent<HandManager>();
+        if (handManager == null)
+        {
+            Debug.LogError($"HandleCardPlay: Owner {owner.EntityName.Value} has no HandManager component");
+            return;
+        }
+        
+        // Move the card from hand to discard pile
+        handManager.DiscardCard(card.gameObject);
+        Debug.Log($"HandleCardPlay: Moved card {gameObject.name} to discard pile");
+    }
+    
+    private NetworkEntity FindEntityById(int entityId)
+    {
+        NetworkObject netObj = null;
+        
+        if (IsServerInitialized)
+        {
+            FishNet.InstanceFinder.ServerManager.Objects.Spawned.TryGetValue(entityId, out netObj);
+        }
+        else if (IsClientInitialized)
+        {
+            FishNet.InstanceFinder.ClientManager.Objects.Spawned.TryGetValue(entityId, out netObj);
+        }
+        
+        return netObj?.GetComponent<NetworkEntity>();
     }
 } 
