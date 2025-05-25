@@ -107,6 +107,9 @@ public class EntityVisibilityManager : MonoBehaviour
             case GameState.Lobby:
                 UpdateVisibilityForLobby();
                 break;
+            case GameState.Draft:
+                UpdateVisibilityForDraft();
+                break;
             case GameState.Combat:
                 UpdateVisibilityForCombat();
                 break;
@@ -143,6 +146,24 @@ public class EntityVisibilityManager : MonoBehaviour
                 }
             }
         }
+    }
+    
+    private void UpdateVisibilityForDraft()
+    {
+        // During draft phase, hide all network entities
+        foreach (var entity in allEntities)
+        {
+            if (entity != null)
+            {
+                var entityUI = entity.GetComponent<NetworkEntityUI>();
+                if (entityUI != null)
+                {
+                    entityUI.SetVisible(false);
+                    LogDebug($"Hidden entity {entity.EntityName.Value} for draft phase");
+                }
+            }
+        }
+        LogDebug("All entities hidden for draft phase");
     }
     
     private void UpdateVisibilityForCombat()
@@ -265,6 +286,25 @@ public class EntityVisibilityManager : MonoBehaviour
                 UpdateEntityVisibility(entity);
             }
         }
+    }
+    
+    /// <summary>
+    /// Hides all registered entities regardless of current game state
+    /// </summary>
+    public void HideAllEntities()
+    {
+        foreach (var entity in allEntities)
+        {
+            if (entity != null)
+            {
+                var entityUI = entity.GetComponent<NetworkEntityUI>();
+                if (entityUI != null)
+                {
+                    entityUI.SetVisible(false);
+                }
+            }
+        }
+        LogDebug("All entities forcibly hidden");
     }
     
     #endregion

@@ -18,6 +18,7 @@ public class CombatCanvasManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI turnIndicatorText;
     [SerializeField] private GameObject fightEndedPanel;
     [SerializeField] private TextMeshProUGUI fightEndedText;
+    [SerializeField] private GameObject combatCanvas;
 
     private NetworkEntity localPlayer;
     private NetworkEntity opponentPetForLocalPlayer;
@@ -214,5 +215,70 @@ public class CombatCanvasManager : MonoBehaviour
         {
             endTurnButton.interactable = interactable;
         }
+    }
+    
+    /// <summary>
+    /// Disables the end turn button when the local player's fight is over
+    /// </summary>
+    public void DisableEndTurnButton()
+    {
+        if (endTurnButton != null)
+        {
+            endTurnButton.gameObject.SetActive(false);
+            Debug.Log("CombatCanvasManager: End turn button disabled - fight is over");
+        }
+    }
+    
+    /// <summary>
+    /// Enables the end turn button (used when starting a new fight)
+    /// </summary>
+    public void EnableEndTurnButton()
+    {
+        if (endTurnButton != null)
+        {
+            endTurnButton.gameObject.SetActive(true);
+            Debug.Log("CombatCanvasManager: End turn button enabled");
+        }
+    }
+    
+    /// <summary>
+    /// Disables the entire combat canvas (used during draft transition)
+    /// </summary>
+    public void DisableCombatCanvas()
+    {
+        if (combatCanvas != null)
+        {
+            combatCanvas.SetActive(false);
+            Debug.Log("CombatCanvasManager: Combat canvas GameObject disabled");
+        }
+        else
+        {
+            Debug.LogError("CombatCanvasManager: Combat canvas reference is not assigned");
+        }
+    }
+    
+    /// <summary>
+    /// Enables the entire combat canvas (used when returning to combat)
+    /// </summary>
+    public void EnableCombatCanvas()
+    {
+        if (combatCanvas != null)
+        {
+            combatCanvas.SetActive(true);
+            Debug.Log("CombatCanvasManager: Combat canvas GameObject enabled");
+        }
+        else
+        {
+            Debug.LogError("CombatCanvasManager: Combat canvas reference is not assigned");
+        }
+    }
+    
+    /// <summary>
+    /// Called when the local player's fight ends to update UI accordingly
+    /// </summary>
+    public void OnLocalFightEnded()
+    {
+        DisableEndTurnButton();
+        Debug.Log("CombatCanvasManager: Local fight ended - UI updated");
     }
 } 

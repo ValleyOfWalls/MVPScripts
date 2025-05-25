@@ -7,8 +7,18 @@ using UnityEngine.UI;
 using System.Collections;
 
 /// <summary>
-/// Handles spawning and despawning of card GameObjects based on changes to HandManager.
-/// Attach to: NetworkEntity prefabs alongside HandManager.
+/// Handles spawning and despawning of card GameObjects.
+/// Can be used for both owned cards (player/pet decks) and unowned cards (draft packs).
+/// 
+/// Configuration:
+/// - For Player/Pet decks: Attach to NetworkEntity prefabs, keep requiresNetworkEntity = true
+/// - For Draft packs: Attach to DraftPack prefabs, set requiresNetworkEntity = false
+/// 
+/// Usage:
+/// - SpawnCard(): Creates cards owned by the spawner's NetworkEntity (for player/pet decks)
+/// - SpawnUnownedCard(): Creates unowned cards (for draft packs)
+/// 
+/// Attach to: NetworkEntity prefabs alongside HandManager, or DraftPack prefabs.
 /// </summary>
 public class CardSpawner : NetworkBehaviour
 {
@@ -17,13 +27,18 @@ public class CardSpawner : NetworkBehaviour
 
     [Header("Optional Settings")]
     [SerializeField] private Vector3 defaultSpawnOffset = new Vector3(0, 0, -0.1f);
+    
+    [Header("Spawner Type")]
+    [SerializeField] private bool requiresNetworkEntity = true;
 
     private NetworkEntity _spawnerNetworkEntity;
 
     private void Awake()
     {
         _spawnerNetworkEntity = GetComponent<NetworkEntity>();
-        if (_spawnerNetworkEntity == null)
+        
+        // Only require NetworkEntity if explicitly configured to do so
+        if (requiresNetworkEntity && _spawnerNetworkEntity == null)
         {
             Debug.LogError($"CardSpawner on {gameObject.name}: Missing NetworkEntity component on the spawner itself!");
         }
@@ -43,7 +58,7 @@ public class CardSpawner : NetworkBehaviour
     }
 
     /// <summary>
-    /// Spawns a card with the given card data
+    /// Spawns a card with the given card data and assigns ownership to the spawner's NetworkEntity
     /// </summary>
     /// <param name="cardData">The data for the card to spawn</param>
     /// <returns>The spawned card GameObject, or null if spawn failed</returns>
@@ -58,15 +73,39 @@ public class CardSpawner : NetworkBehaviour
 
         if (_spawnerNetworkEntity == null)
         {
-            Debug.LogError($"CardSpawner on {gameObject.name}: Cannot spawn card - Spawner's NetworkEntity is missing.");
+            Debug.LogError($"CardSpawner on {gameObject.name}: Cannot spawn owned card - Spawner's NetworkEntity is missing. Use SpawnUnownedCard for draft cards.");
             return null;
         }
 
-        // Log the network entity we're about to use as the owner
-        Debug.Log($"CardSpawner on {gameObject.name}: PREPARING TO SPAWN CARD with Owner NetworkEntity: {_spawnerNetworkEntity.name} " +
-                 $"(EntityName: {_spawnerNetworkEntity.EntityName.Value}, ObjectId: {_spawnerNetworkEntity.GetComponent<NetworkObject>().ObjectId}, " +
-                 $"ClientId: {_spawnerNetworkEntity.Owner?.ClientId ?? -1})");
+        return SpawnCardInternal(cardData, _spawnerNetworkEntity);
+    }
+    
+    /// <summary>
+    /// Spawns an unowned card with the given card data (for draft packs)
+    /// </summary>
+    /// <param name="cardData">The data for the card to spawn</param>
+    /// <returns>The spawned card GameObject, or null if spawn failed</returns>
+    [Server]
+    public GameObject SpawnUnownedCard(CardData cardData)
+    {
+        if (!IsServerInitialized || cardPrefab == null || cardData == null)
+        {
+            Debug.LogError($"CardSpawner on {gameObject.name}: Cannot spawn unowned card - missing required components or data");
+            return null;
+        }
 
+        return SpawnCardInternal(cardData, null);
+    }
+    
+    /// <summary>
+    /// Internal method that handles the actual card spawning logic
+    /// </summary>
+    /// <param name="cardData">The data for the card to spawn</param>
+    /// <param name="ownerEntity">The NetworkEntity that will own this card, or null for unowned cards</param>
+    /// <returns>The spawned card GameObject, or null if spawn failed</returns>
+    [Server]
+    private GameObject SpawnCardInternal(CardData cardData, NetworkEntity ownerEntity)
+    {
         // Instantiate the card prefab
         GameObject cardObject = Instantiate(cardPrefab);
         
@@ -87,32 +126,49 @@ public class CardSpawner : NetworkBehaviour
             return null;
         }
 
-        // Spawn the card on the network, giving ownership to the client that owns the spawner's entity
+        // Spawn the card on the network
         NetworkObject networkObject = cardObject.GetComponent<NetworkObject>();
         if (networkObject != null)
         {
-            // Spawn first so the NetworkObject has a valid ObjectId
-            FishNet.InstanceFinder.ServerManager.Spawn(networkObject, _spawnerNetworkEntity.Owner);
-            Debug.Log($"CardSpawner on {gameObject.name}: NETWORK SPAWNED card {cardData.CardName} (ID: {cardData.CardId}) " +
-                     $"for network owner {_spawnerNetworkEntity.Owner?.ClientId ?? -1}");
-            
-            // IMPORTANT: Set owner AFTER spawning so ObjectId is valid and SyncVars work correctly
-            Debug.Log($"CardSpawner on {gameObject.name}: SETTING OWNER ENTITY on Card {cardObject.name} (Card Component ID: {card.GetInstanceID()})");
-            Debug.Log($"CardSpawner on {gameObject.name}: - Setting to NetworkEntity: {_spawnerNetworkEntity.name} (Component ID: {_spawnerNetworkEntity.GetInstanceID()})");
-            
-            // Set the logical owner of the card AFTER network spawn
-            card.SetOwnerEntity(_spawnerNetworkEntity);
-            
-            // Verify the owner entity was set correctly
-            Debug.Log($"CardSpawner on {gameObject.name}: - VERIFICATION - Card.ownerEntity is {(card.OwnerEntity != null ? "SET" : "NULL")}");
-            if (card.OwnerEntity != null)
+            if (ownerEntity != null)
             {
-                Debug.Log($"CardSpawner on {gameObject.name}: - Card.ownerEntity = {card.OwnerEntity.name} (ID: {card.OwnerEntity.GetInstanceID()})");
+                // Log the network entity we're about to use as the owner
+                Debug.Log($"CardSpawner on {gameObject.name}: PREPARING TO SPAWN OWNED CARD with Owner NetworkEntity: {ownerEntity.name} " +
+                         $"(EntityName: {ownerEntity.EntityName.Value}, ObjectId: {ownerEntity.GetComponent<NetworkObject>().ObjectId}, " +
+                         $"ClientId: {ownerEntity.Owner?.ClientId ?? -1})");
+                
+                // Spawn with specific owner
+                FishNet.InstanceFinder.ServerManager.Spawn(networkObject, ownerEntity.Owner);
+                Debug.Log($"CardSpawner on {gameObject.name}: NETWORK SPAWNED owned card {cardData.CardName} (ID: {cardData.CardId}) " +
+                         $"for network owner {ownerEntity.Owner?.ClientId ?? -1}");
+                
+                // IMPORTANT: Set owner AFTER spawning so ObjectId is valid and SyncVars work correctly
+                Debug.Log($"CardSpawner on {gameObject.name}: SETTING OWNER ENTITY on Card {cardObject.name} (Card Component ID: {card.GetInstanceID()})");
+                Debug.Log($"CardSpawner on {gameObject.name}: - Setting to NetworkEntity: {ownerEntity.name} (Component ID: {ownerEntity.GetInstanceID()})");
+                
+                // Set the logical owner of the card AFTER network spawn
+                card.SetOwnerEntity(ownerEntity);
+                
+                // Verify the owner entity was set correctly
+                Debug.Log($"CardSpawner on {gameObject.name}: - VERIFICATION - Card.ownerEntity is {(card.OwnerEntity != null ? "SET" : "NULL")}");
+                if (card.OwnerEntity != null)
+                {
+                    Debug.Log($"CardSpawner on {gameObject.name}: - Card.ownerEntity = {card.OwnerEntity.name} (ID: {card.OwnerEntity.GetInstanceID()})");
+                }
+                
+                // One final verification after network spawn and owner setting
+                Debug.Log($"CardSpawner on {gameObject.name}: FINAL VERIFICATION - " +
+                         $"Card.ownerEntity is {(card.OwnerEntity != null ? $"SET to {card.OwnerEntity.name}" : "NULL")}");
             }
-            
-            // One final verification after network spawn and owner setting
-            Debug.Log($"CardSpawner on {gameObject.name}: FINAL VERIFICATION - " +
-                     $"Card.ownerEntity is {(card.OwnerEntity != null ? $"SET to {card.OwnerEntity.name}" : "NULL")}");
+            else
+            {
+                // Spawn without specific owner (server-owned, unowned card for draft)
+                FishNet.InstanceFinder.ServerManager.Spawn(networkObject);
+                Debug.Log($"CardSpawner on {gameObject.name}: NETWORK SPAWNED unowned card {cardData.CardName} (ID: {cardData.CardId}) for draft");
+                
+                // Don't set an owner entity for draft cards - they remain unowned until picked
+                Debug.Log($"CardSpawner on {gameObject.name}: Card {cardObject.name} spawned as unowned (for draft)");
+            }
         }
         else
         {

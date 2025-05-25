@@ -34,6 +34,12 @@ public class GameManager : NetworkBehaviour
     [SerializeField, Tooltip("If true, players will automatically be set to ready when they join the lobby.")]
     public bool AutoReadyPlayersOnJoin = false;
 
+    [Header("Draft Settings")]
+    [SerializeField, Tooltip("Number of cards in each draft pack")]
+    private int draftPackSize = 4;
+    [SerializeField, Tooltip("Number of draft rounds per drafting phase")]
+    private int draftRounds = 3;
+
     [Header("Damage Modifiers")]
     [SerializeField, Tooltip("If true, critical hits can occur during combat")]
     private bool criticalHitsEnabled = true;
@@ -64,6 +70,10 @@ public class GameManager : NetworkBehaviour
     public readonly SyncVar<float> CriticalHitModifier = new SyncVar<float>();
     public readonly SyncVar<float> WeakStatusModifier = new SyncVar<float>();
     public readonly SyncVar<float> BreakStatusModifier = new SyncVar<float>();
+
+    // Draft settings SyncVars
+    public readonly SyncVar<int> DraftPackSize = new SyncVar<int>();
+    public readonly SyncVar<int> DraftRounds = new SyncVar<int>();
 
     private void Awake()
     {
@@ -99,10 +109,15 @@ public class GameManager : NetworkBehaviour
         WeakStatusModifier.Value = weakStatusModifier;
         BreakStatusModifier.Value = breakStatusModifier;
         
+        // Initialize draft settings SyncVars
+        DraftPackSize.Value = draftPackSize;
+        DraftRounds.Value = draftRounds;
+        
         Debug.Log("GameManager started on Server. Initializing game rules.");
         Debug.Log($"Player settings - Initial Draw: {PlayerDrawAmount.Value}, Target Hand: {PlayerTargetHandSize.Value}, Max Energy: {PlayerMaxEnergy.Value}, Max Health: {PlayerMaxHealth.Value}");
         Debug.Log($"Pet settings - Initial Draw: {PetDrawAmount.Value}, Target Hand: {PetTargetHandSize.Value}, Max Energy: {PetMaxEnergy.Value}, Max Health: {PetMaxHealth.Value}");
         Debug.Log($"Damage Modifiers - Crits Enabled: {CriticalHitsEnabled.Value}, Base Crit Chance: {BaseCriticalChance.Value}, Crit Multiplier: {CriticalHitModifier.Value}, Weak Modifier: {WeakStatusModifier.Value}, Break Modifier: {BreakStatusModifier.Value}");
+        Debug.Log($"Draft Settings - Pack Size: {DraftPackSize.Value}, Rounds: {DraftRounds.Value}");
     }
 
     public override void OnStartClient()

@@ -23,6 +23,7 @@ public class CombatManager : NetworkBehaviour
     [Header("References")]
     [SerializeField] private CombatCanvasManager combatCanvasManager;
     [SerializeField] private FightManager fightManager;
+    [SerializeField] private DraftSetup draftSetup;
 
     // Track round numbers for each fight independently
     private readonly SyncDictionary<NetworkEntity, int> fightRounds = new SyncDictionary<NetworkEntity, int>();
@@ -33,10 +34,14 @@ public class CombatManager : NetworkBehaviour
     // Track current turn for each fight
     private readonly SyncDictionary<NetworkEntity, CombatTurn> fightTurns = new SyncDictionary<NetworkEntity, CombatTurn>();
     
+    // Track fight results
+    private readonly SyncDictionary<NetworkEntity, bool> fightResults = new SyncDictionary<NetworkEntity, bool>(); // true if player won, false if pet won
+    
     private void Awake()
     {
         if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
         if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
+        if (draftSetup == null) draftSetup = FindFirstObjectByType<DraftSetup>();
     }
 
     [Server]
@@ -347,5 +352,192 @@ public class CombatManager : NetworkBehaviour
             }
         }
         return null;
+    }
+    
+    /// <summary>
+    /// Called when an entity dies during combat
+    /// </summary>
+    [Server]
+    public void HandleEntityDeath(NetworkEntity deadEntity, NetworkEntity killer)
+    {
+        if (!IsServerInitialized)
+        {
+            Debug.LogError("CombatManager: Cannot handle entity death - server not initialized");
+            return;
+        }
+        
+        Debug.Log($"CombatManager: Handling death of {deadEntity.EntityName.Value} killed by {(killer != null ? killer.EntityName.Value : "unknown")}");
+        
+        // Find the fight this entity was involved in
+        NetworkEntity player = null;
+        NetworkEntity pet = null;
+        bool playerWon = false;
+        
+        if (deadEntity.EntityType == EntityType.Player)
+        {
+            // Player died, find their opponent pet
+            player = deadEntity;
+            if (activeFights.TryGetValue(player, out pet))
+            {
+                playerWon = false; // Pet won
+            }
+        }
+        else if (deadEntity.EntityType == EntityType.Pet)
+        {
+            // Pet died, find the player they were fighting
+            pet = deadEntity;
+            player = GetPlayerFightingPet(pet);
+            if (player != null)
+            {
+                playerWon = true; // Player won
+            }
+        }
+        
+        if (player != null && pet != null)
+        {
+            // Despawn all remaining cards for both entities in this fight
+            DespawnFightCards(player, pet);
+            
+            // Record the fight result
+            fightResults[player] = playerWon;
+            
+            // Remove the fight from active fights
+            activeFights.Remove(player);
+            fightRounds.Remove(player);
+            fightTurns.Remove(player);
+            
+            // Notify clients about the fight end
+            RpcNotifyFightEnded(player, pet, playerWon);
+            
+            Debug.Log($"CombatManager: Fight ended - {(playerWon ? player.EntityName.Value : pet.EntityName.Value)} won");
+            
+            // Check if all fights are complete
+            CheckAllFightsComplete();
+        }
+        else
+        {
+            Debug.LogWarning($"CombatManager: Could not determine fight participants for dead entity {deadEntity.EntityName.Value}");
+        }
+    }
+    
+    /// <summary>
+    /// Despawns all remaining cards for both entities in a fight
+    /// </summary>
+    [Server]
+    private void DespawnFightCards(NetworkEntity player, NetworkEntity pet)
+    {
+        Debug.Log($"CombatManager: Despawning all cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}");
+        
+        // Despawn player's cards
+        HandManager playerHandManager = player.GetComponent<HandManager>();
+        if (playerHandManager != null)
+        {
+            Debug.Log($"CombatManager: Despawning cards for player {player.EntityName.Value}");
+            playerHandManager.DespawnAllCards();
+        }
+        else
+        {
+            Debug.LogWarning($"CombatManager: Player {player.EntityName.Value} has no HandManager component");
+        }
+        
+        // Despawn pet's cards
+        HandManager petHandManager = pet.GetComponent<HandManager>();
+        if (petHandManager != null)
+        {
+            Debug.Log($"CombatManager: Despawning cards for pet {pet.EntityName.Value}");
+            petHandManager.DespawnAllCards();
+        }
+        else
+        {
+            Debug.LogWarning($"CombatManager: Pet {pet.EntityName.Value} has no HandManager component");
+        }
+        
+        Debug.Log($"CombatManager: Finished despawning cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}");
+    }
+    
+    /// <summary>
+    /// Gets the player that is fighting against a specific pet
+    /// </summary>
+    [Server]
+    private NetworkEntity GetPlayerFightingPet(NetworkEntity pet)
+    {
+        foreach (var fight in activeFights)
+        {
+            if (fight.Value == pet)
+            {
+                return fight.Key;
+            }
+        }
+        return null;
+    }
+    
+    /// <summary>
+    /// Checks if all fights are complete and transitions to draft phase if so
+    /// </summary>
+    [Server]
+    private void CheckAllFightsComplete()
+    {
+        if (activeFights.Count == 0)
+        {
+            Debug.Log("CombatManager: All fights complete, transitioning to draft phase");
+            TransitionToDraftPhase();
+        }
+        else
+        {
+            Debug.Log($"CombatManager: {activeFights.Count} fights still active");
+        }
+    }
+    
+    /// <summary>
+    /// Transitions from combat to draft phase
+    /// </summary>
+    [Server]
+    private void TransitionToDraftPhase()
+    {
+        Debug.Log("CombatManager: Starting transition to draft phase");
+        
+        if (draftSetup != null)
+        {
+            draftSetup.InitializeDraft();
+        }
+        else
+        {
+            Debug.LogError("CombatManager: DraftSetup not found, cannot transition to draft phase");
+        }
+    }
+    
+    /// <summary>
+    /// Gets the results of all completed fights
+    /// </summary>
+    public Dictionary<NetworkEntity, bool> GetFightResults()
+    {
+        Dictionary<NetworkEntity, bool> results = new Dictionary<NetworkEntity, bool>();
+        foreach (var result in fightResults)
+        {
+            results[result.Key] = result.Value;
+        }
+        return results;
+    }
+    
+    [ObserversRpc]
+    private void RpcNotifyFightEnded(NetworkEntity player, NetworkEntity pet, bool playerWon)
+    {
+        // Check if this is the local player's fight by checking if the player entity is owned by this client
+        bool isLocalPlayerFight = (player != null && player.IsOwner);
+        
+        // Notify clients about the fight end
+        if (combatCanvasManager != null)
+        {
+            combatCanvasManager.ShowFightEndedPanel(player, pet, !playerWon);
+            
+            // Only disable the end turn button if this is specifically the local player's fight
+            if (isLocalPlayerFight)
+            {
+                combatCanvasManager.OnLocalFightEnded();
+                Debug.Log($"CombatManager: Local player {player.EntityName.Value}'s fight ended - disabling end turn button");
+            }
+        }
+        
+        Debug.Log($"CombatManager: Client notified - Fight ended, {(playerWon ? player.EntityName.Value : pet.EntityName.Value)} won");
     }
 } 

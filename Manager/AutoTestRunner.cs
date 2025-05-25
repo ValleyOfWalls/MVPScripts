@@ -1,12 +1,17 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 using System.Collections;
+using FishNet.Managing;
 
 public class AutoTestRunner : MonoBehaviour
 {
     [Header("Settings")]
     [Tooltip("Enable this flag to run the automated test sequence.")]
     public bool enableAutoTesting = false;
+    
+    [Tooltip("Enable this flag to show host/client status text when combat setup is complete.")]
+    public bool enableHostClientDisplay = false;
 
     [Header("Button References")]
     [Tooltip("Drag the 'Start Button' GameObject from the initial start screen here.")]
@@ -24,12 +29,32 @@ public class AutoTestRunner : MonoBehaviour
     
     [Tooltip("Drag the SteamNetworkIntegration object here.")]
     public SteamNetworkIntegration steamNetworkIntegration;
+    
+    [Tooltip("Drag the CombatSetup object here.")]
+    public CombatSetup combatSetup;
+
+    [Header("UI References")]
+    [Tooltip("Text element to display host/client status. Will be enabled when combat setup is complete.")]
+    public TextMeshProUGUI hostClientStatusText;
 
     private bool startButtonClicked = false;
     private bool readyToStartGame = false;
+    private bool combatSetupComplete = false;
 
     void Start()
     {
+        // Initially hide the host/client status text
+        if (hostClientStatusText != null)
+        {
+            hostClientStatusText.gameObject.SetActive(false);
+        }
+        
+        // Find CombatSetup if not assigned
+        if (combatSetup == null)
+        {
+            combatSetup = FindFirstObjectByType<CombatSetup>();
+        }
+        
         if (enableAutoTesting)
         {
             Debug.Log("AutoTestRunner: Automated testing enabled. Starting sequence...");
@@ -39,6 +64,90 @@ public class AutoTestRunner : MonoBehaviour
         {
             Debug.Log("AutoTestRunner: Automated testing disabled.");
         }
+        
+        // Start monitoring combat setup regardless of auto testing
+        if (enableHostClientDisplay)
+        {
+            StartCoroutine(MonitorCombatSetup());
+        }
+    }
+
+    private IEnumerator MonitorCombatSetup()
+    {
+        Debug.Log("AutoTestRunner: Starting to monitor combat setup completion...");
+        
+        // Wait until CombatSetup is available
+        yield return new WaitUntil(() => combatSetup != null);
+        Debug.Log("AutoTestRunner: CombatSetup component found, now monitoring IsSetupComplete...");
+        
+        // Add periodic logging to track the setup status
+        float checkInterval = 1.0f;
+        float lastCheckTime = 0f;
+        
+        while (!combatSetup.IsSetupComplete)
+        {
+            if (Time.time - lastCheckTime >= checkInterval)
+            {
+                Debug.Log($"AutoTestRunner: Combat setup status - IsSetupComplete: {combatSetup.IsSetupComplete}, IsCombatActive: {combatSetup.IsCombatActive}");
+                lastCheckTime = Time.time;
+            }
+            yield return null;
+        }
+        
+        combatSetupComplete = true;
+        Debug.Log("AutoTestRunner: Combat setup detected as complete! Displaying host/client status.");
+        
+        DisplayHostClientStatus();
+    }
+
+    private void DisplayHostClientStatus()
+    {
+        if (!enableHostClientDisplay || hostClientStatusText == null)
+        {
+            return;
+        }
+        
+        string statusText = "Unknown";
+        
+        // Use FishNet's network state instead of Steam host status for more accurate detection
+        if (FishNet.InstanceFinder.NetworkManager != null)
+        {
+            var networkManager = FishNet.InstanceFinder.NetworkManager;
+            
+            if (networkManager.IsServerStarted && networkManager.IsClientStarted)
+            {
+                statusText = "HOST"; // Both server and client are running (host mode)
+            }
+            else if (networkManager.IsClientStarted && !networkManager.IsServerStarted)
+            {
+                statusText = "CLIENT"; // Only client is running (client mode)
+            }
+            else if (networkManager.IsServerStarted && !networkManager.IsClientStarted)
+            {
+                statusText = "SERVER"; // Only server is running (dedicated server mode)
+            }
+            else
+            {
+                statusText = "DISCONNECTED"; // Neither server nor client is running
+            }
+        }
+        else if (steamNetworkIntegration != null)
+        {
+            // Fallback to Steam host status if FishNet is not available
+            if (steamNetworkIntegration.IsUserSteamHost)
+            {
+                statusText = "STEAM_HOST";
+            }
+            else
+            {
+                statusText = "STEAM_CLIENT";
+            }
+        }
+        
+        hostClientStatusText.text = $"Status: {statusText}";
+        hostClientStatusText.gameObject.SetActive(true);
+        
+        Debug.Log($"AutoTestRunner: Displaying status - {statusText}");
     }
 
     private IEnumerator WaitForStartScreenReadiness()

@@ -373,30 +373,123 @@ public class Card : NetworkBehaviour
 
     public void OnMouseDown()
     {
-        // Check Network Owner (controller of the NetworkObject)
-        if (!IsOwner || CurrentContainer != CardLocation.Hand) 
+        Debug.Log($"Card {gameObject.name}: OnMouseDown called - Starting ownership validation");
+        
+        // First check if card is in the correct container
+        if (CurrentContainer != CardLocation.Hand) 
         {
-             Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. IsNetworkOwner: {IsOwner}, CurrentContainer: {CurrentContainer}. Expected Hand.");
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. CurrentContainer: {CurrentContainer}. Expected Hand.");
             return;
         }
         
-        // Additionally, check logical owner (who the card belongs to in game terms)
-        if (ownerEntity == null || !ownerEntity.IsOwner)
+        // Check logical owner (who the card belongs to in game terms)
+        if (ownerEntity == null)
         {
-            Debug.LogWarning($"Card {gameObject.name}: OnMouseDown - Logical ownerEntity is null OR logical ownerEntity is not the network owner. " +
-                             $"ownerEntity: {(ownerEntity != null ? ownerEntity.EntityName.Value : "NULL")}, " +
-                             $"ownerEntity.IsOwner: {(ownerEntity != null ? ownerEntity.IsOwner.ToString() : "N/A")}");
-            // Decide if this scenario should prevent play. Usually, the NetworkObject owner (IsOwner) is key for input.
+            Debug.LogWarning($"Card {gameObject.name}: OnMouseDown - Cannot play. ownerEntity is null.");
+            return;
+        }
+        
+        // Primary ownership check: Does the logical owner have network authority?
+        bool canPlay = false;
+        string ownershipStatus = "";
+        
+        if (ownerEntity.IsOwner)
+        {
+            // The logical owner has network authority - this is the ideal case
+            canPlay = true;
+            ownershipStatus = "Logical owner has network authority";
+        }
+        else if (IsOwner)
+        {
+            // The card's NetworkObject is owned by this client, but logical owner doesn't have authority
+            // This can happen during transitions - check if we're the local player
+            NetworkEntity localPlayer = GetLocalPlayer();
+            if (localPlayer != null && localPlayer == ownerEntity)
+            {
+                canPlay = true;
+                ownershipStatus = "Card network owner matches local player (transition state)";
+            }
+            else
+            {
+                ownershipStatus = $"Card network owned but logical owner ({ownerEntity.EntityName.Value}) is not local player";
+            }
+        }
+        else
+        {
+            ownershipStatus = $"Neither card network ownership nor logical owner authority. Card IsOwner: {IsOwner}, ownerEntity.IsOwner: {ownerEntity.IsOwner}";
+        }
+        
+        Debug.Log($"Card {gameObject.name}: OnMouseDown - Ownership check: {ownershipStatus}");
+        
+        if (!canPlay)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. {ownershipStatus}");
+            return;
         }
         
         if (handleCardPlay != null)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Calling handleCardPlay.OnCardClicked()");
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Ownership validated. Calling handleCardPlay.OnCardClicked()");
             handleCardPlay.OnCardClicked();
         }
         else
         {
             Debug.LogError($"Card {gameObject.name}: OnMouseDown - handleCardPlay is null!");
         }
+    }
+    
+    /// <summary>
+    /// Gets the local player entity (the one owned by this client)
+    /// </summary>
+    private NetworkEntity GetLocalPlayer()
+    {
+        NetworkEntity[] entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        foreach (NetworkEntity entity in entities)
+        {
+            if (entity.EntityType == EntityType.Player && entity.IsOwner)
+            {
+                return entity;
+            }
+        }
+        return null;
+    }
+    
+    /// <summary>
+    /// Public method to check if this card can be played by the local player
+    /// </summary>
+    public bool CanBePlayedByLocalPlayer()
+    {
+        if (CurrentContainer != CardLocation.Hand) return false;
+        if (ownerEntity == null) return false;
+        
+        if (ownerEntity.IsOwner) return true;
+        
+        if (IsOwner)
+        {
+            NetworkEntity localPlayer = GetLocalPlayer();
+            return localPlayer != null && localPlayer == ownerEntity;
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Debug method to log detailed ownership information
+    /// </summary>
+    public void LogOwnershipDebugInfo()
+    {
+        Debug.Log($"=== Card Ownership Debug Info for {gameObject.name} ===");
+        Debug.Log($"CurrentContainer: {CurrentContainer}");
+        Debug.Log($"Card NetworkObject IsOwner: {IsOwner}");
+        Debug.Log($"Card NetworkObject Owner ClientId: {(Owner != null ? Owner.ClientId.ToString() : "null")}");
+        Debug.Log($"ownerEntity: {(ownerEntity != null ? ownerEntity.EntityName.Value : "null")}");
+        Debug.Log($"ownerEntity IsOwner: {(ownerEntity != null ? ownerEntity.IsOwner.ToString() : "N/A")}");
+        Debug.Log($"ownerEntity Owner ClientId: {(ownerEntity?.Owner != null ? ownerEntity.Owner.ClientId.ToString() : "null")}");
+        
+        NetworkEntity localPlayer = GetLocalPlayer();
+        Debug.Log($"Local Player: {(localPlayer != null ? localPlayer.EntityName.Value : "null")}");
+        Debug.Log($"Local Player ClientId: {(localPlayer?.Owner != null ? localPlayer.Owner.ClientId.ToString() : "null")}");
+        Debug.Log($"Can Be Played: {CanBePlayedByLocalPlayer()}");
+        Debug.Log($"=== End Debug Info ===");
     }
 }

@@ -137,4 +137,31 @@ public class CardDatabase : MonoBehaviour
         // Return the requested number of cards (or all if count > available)
         return availableCards.Take(Mathf.Min(count, availableCards.Count)).ToList();
     }
+
+    /// <summary>
+    /// Gets random cards allowing duplicates - useful for draft packs
+    /// </summary>
+    /// <param name="count">Number of cards to get</param>
+    /// <returns>List of random cards, potentially with duplicates</returns>
+    public List<CardData> GetRandomCardsWithDuplicates(int count)
+    {
+        if (count <= 0) return new List<CardData>();
+        
+        if (allCardDataList.Count == 0)
+        {
+            Debug.LogWarning("CardDatabase: No cards available to select from.");
+            return new List<CardData>();
+        }
+        
+        List<CardData> result = new List<CardData>();
+        
+        // Select random cards allowing duplicates
+        for (int i = 0; i < count; i++)
+        {
+            int randomIndex = Random.Range(0, allCardDataList.Count);
+            result.Add(allCardDataList[randomIndex]);
+        }
+        
+        return result;
+    }
 } 

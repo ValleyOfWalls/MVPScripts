@@ -605,6 +605,70 @@ public class HandManager : NetworkBehaviour
     {
         return handTransform;
     }
+
+    /// <summary>
+    /// Despawns all cards for this entity (hand, deck, and discard)
+    /// Called when a fight ends to clean up remaining cards
+    /// </summary>
+    [Server]
+    public void DespawnAllCards()
+    {
+        if (!IsServerInitialized)
+        {
+            Debug.LogError($"HandManager: Cannot despawn cards - server not initialized for {gameObject.name}");
+            return;
+        }
+        
+        Debug.Log($"HandManager: Despawning all cards for {gameObject.name}");
+        
+        // Get CardSpawner component
+        CardSpawner cardSpawner = GetComponent<CardSpawner>();
+        if (cardSpawner == null)
+        {
+            Debug.LogError($"HandManager: Missing CardSpawner component on {gameObject.name}");
+            return;
+        }
+        
+        // Collect all cards from all locations
+        List<GameObject> allCards = new List<GameObject>();
+        
+        // Add cards from hand
+        if (handTransform != null)
+        {
+            List<GameObject> handCards = GetCardsInTransform(handTransform);
+            allCards.AddRange(handCards);
+            Debug.Log($"HandManager: Found {handCards.Count} cards in hand for {gameObject.name}");
+        }
+        
+        // Add cards from deck
+        if (deckTransform != null)
+        {
+            List<GameObject> deckCards = GetCardsInTransform(deckTransform);
+            allCards.AddRange(deckCards);
+            Debug.Log($"HandManager: Found {deckCards.Count} cards in deck for {gameObject.name}");
+        }
+        
+        // Add cards from discard
+        if (discardTransform != null)
+        {
+            List<GameObject> discardCards = GetCardsInTransform(discardTransform);
+            allCards.AddRange(discardCards);
+            Debug.Log($"HandManager: Found {discardCards.Count} cards in discard for {gameObject.name}");
+        }
+        
+        // Despawn all cards
+        Debug.Log($"HandManager: Despawning {allCards.Count} total cards for {gameObject.name}");
+        foreach (GameObject card in allCards)
+        {
+            if (card != null)
+            {
+                Debug.Log($"HandManager: Despawning card {card.name} for {gameObject.name}");
+                cardSpawner.DespawnCard(card);
+            }
+        }
+        
+        Debug.Log($"HandManager: Finished despawning all cards for {gameObject.name}");
+    }
 }
 
 // Keep the CardLocation enum definition

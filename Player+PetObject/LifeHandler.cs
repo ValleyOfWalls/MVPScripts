@@ -103,13 +103,15 @@ public class LifeHandler : NetworkBehaviour
         // Notify clients
         RpcOnDeath(killer != null ? killer.ObjectId : 0);
         
-        // TODO: Implement additional death logic (e.g., removing from combat, awarding XP, etc.)
-        // For now, just notify the combat manager if it exists
+        // Notify the combat manager about the entity death
         CombatManager combatManager = FindFirstObjectByType<CombatManager>();
         if (combatManager != null)
         {
-            // Call appropriate method on CombatManager to handle entity death
-            // combatManager.HandleEntityDeath(entity, killer);
+            combatManager.HandleEntityDeath(entity, killer);
+        }
+        else
+        {
+            Debug.LogWarning($"LifeHandler: CombatManager not found, cannot notify about death of {entity.EntityName.Value}");
         }
     }
     

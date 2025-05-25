@@ -82,6 +82,51 @@ public class HandleCardPlay : NetworkBehaviour
     {
         Debug.Log($"HandleCardPlay: OnCardClicked for card {gameObject.name}");
         
+        // Check the current game phase to determine which handler to use
+        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+        if (gamePhaseManager != null)
+        {
+            GamePhaseManager.GamePhase currentPhase = gamePhaseManager.GetCurrentPhase();
+            
+            if (currentPhase == GamePhaseManager.GamePhase.Draft)
+            {
+                // In draft phase, delegate to DraftCardSelection if available
+                DraftCardSelection draftSelection = GetComponent<DraftCardSelection>();
+                if (draftSelection != null)
+                {
+                    Debug.Log($"HandleCardPlay: Delegating to DraftCardSelection for card {gameObject.name}");
+                    draftSelection.OnCardClicked();
+                    return;
+                }
+                else
+                {
+                    Debug.LogWarning($"HandleCardPlay: Card {gameObject.name} clicked in draft phase but no DraftCardSelection component found");
+                    return;
+                }
+            }
+            else if (currentPhase == GamePhaseManager.GamePhase.Combat)
+            {
+                // In combat phase, check if card is draftable (should not be playable in combat)
+                if (card != null && card.IsDraftable)
+                {
+                    Debug.Log($"HandleCardPlay: Card {gameObject.name} is draftable and cannot be played in combat");
+                    return;
+                }
+                
+                // Continue with normal combat card play logic
+                Debug.Log($"HandleCardPlay: Processing combat card play for {gameObject.name}");
+            }
+            else
+            {
+                Debug.Log($"HandleCardPlay: Card {gameObject.name} clicked in {currentPhase} phase - no action taken");
+                return;
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"HandleCardPlay: GamePhaseManager not found, assuming combat phase for card {gameObject.name}");
+        }
+        
         // Prevent double processing
         if (isProcessingCardPlay)
         {
@@ -89,7 +134,7 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
         
-        // Validate basic conditions
+        // Validate basic conditions for combat card play
         if (!IsOwner)
         {
             Debug.LogWarning($"HandleCardPlay: Cannot handle click, not network owner of card {gameObject.name}");

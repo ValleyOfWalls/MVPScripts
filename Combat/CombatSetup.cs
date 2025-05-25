@@ -24,7 +24,6 @@ public class CombatSetup : NetworkBehaviour
     [SerializeField] private GamePhaseManager gamePhaseManager;
     
     private SteamNetworkIntegration steamNetworkIntegration;
-    private bool setupCompleted = false;
 
     // Track ready state for each client
     private readonly SyncDictionary<NetworkConnection, bool> readyClients = new SyncDictionary<NetworkConnection, bool>();
@@ -38,10 +37,10 @@ public class CombatSetup : NetworkBehaviour
 
     [Header("Combat State")]
     private bool isCombatActive = false;
-    private bool isSetupComplete = false;
+    private readonly SyncVar<bool> isSetupComplete = new SyncVar<bool>(false);
 
     public bool IsCombatActive => isCombatActive;
-    public bool IsSetupComplete => isSetupComplete;
+    public bool IsSetupComplete => isSetupComplete.Value;
 
     private void Awake()
     {
@@ -66,6 +65,9 @@ public class CombatSetup : NetworkBehaviour
         base.OnStartServer();
         if (!IsServerStarted) return;
         
+        // Set up SyncVar change callback
+        isSetupComplete.OnChange += OnSetupCompleteChanged;
+        
         ResolveReferences();
     }
 
@@ -73,6 +75,26 @@ public class CombatSetup : NetworkBehaviour
     {
         base.OnStartClient();
         if (!IsClientStarted) return;
+        
+        // Set up SyncVar change callback for clients
+        isSetupComplete.OnChange += OnSetupCompleteChanged;
+    }
+    
+    public override void OnStopClient()
+    {
+        base.OnStopClient();
+        isSetupComplete.OnChange -= OnSetupCompleteChanged;
+    }
+    
+    public override void OnStopServer()
+    {
+        base.OnStopServer();
+        isSetupComplete.OnChange -= OnSetupCompleteChanged;
+    }
+    
+    private void OnSetupCompleteChanged(bool prev, bool next, bool asServer)
+    {
+        Debug.Log($"CombatSetup: Setup complete changed from {prev} to {next} on {(asServer ? "Server" : "Client")}");
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -145,7 +167,9 @@ public class CombatSetup : NetworkBehaviour
         Debug.Log("CombatSetup: All clients ready, starting combat through CombatManager");
         if (combatManager != null)
         {
+            isCombatActive = true; // Set combat as active when it actually starts
             combatManager.StartCombat();
+            Debug.Log("CombatSetup: Combat is now active");
         }
         else
         {
@@ -169,7 +193,7 @@ public class CombatSetup : NetworkBehaviour
     [Server]
     public void InitializeCombat()
     {
-        if (!IsServerStarted || setupCompleted) return;
+        if (!IsServerStarted || isSetupComplete.Value) return; // Return if already setup
         
         Debug.Log("CombatSetup: Starting combat initialization...");
         ResolveReferences();
@@ -195,7 +219,7 @@ public class CombatSetup : NetworkBehaviour
         Debug.Log("CombatSetup: Triggering combat canvas setup...");
         RpcTriggerCombatCanvasManagerSetup();
         
-        setupCompleted = true;
+        isSetupComplete.Value = true; // Mark setup as complete
         Debug.Log("CombatSetup: Setup completed successfully.");
 
         // Instead of starting combat immediately, notify clients to check their setup
@@ -381,7 +405,7 @@ public class CombatSetup : NetworkBehaviour
 
         // Initialize combat state
         isCombatActive = true;
-        isSetupComplete = true;
+        isSetupComplete.Value = true;
 
         // Notify clients about combat setup
         RpcNotifyCombatSetup();
@@ -422,7 +446,7 @@ public class CombatSetup : NetworkBehaviour
         if (!IsServerInitialized || !isCombatActive) return;
 
         isCombatActive = false;
-        isSetupComplete = false;
+        isSetupComplete.Value = false;
 
         // Clear references
         player1 = null;
