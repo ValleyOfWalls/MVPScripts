@@ -202,6 +202,9 @@ public class EntityVisibilityManager : MonoBehaviour
         }
         
         UpdateEntitiesVisibilityForCombat(playerInFightId, petInFightId);
+        
+        // Also update card visibility for combat
+        UpdateAllCardVisibility();
     }
     
     private void UpdateEntitiesVisibilityForCombat(uint visiblePlayerId, uint visiblePetId)
@@ -286,6 +289,9 @@ public class EntityVisibilityManager : MonoBehaviour
                 UpdateEntityVisibility(entity);
             }
         }
+        
+        // Also update card visibility
+        UpdateAllCardVisibility();
     }
     
     /// <summary>
@@ -305,6 +311,156 @@ public class EntityVisibilityManager : MonoBehaviour
             }
         }
         LogDebug("All entities forcibly hidden");
+    }
+    
+    #endregion
+    
+    #region Card Visibility Management
+    
+    /// <summary>
+    /// Applies combat-aware visibility filtering to a card
+    /// Should be called whenever a card's visibility state changes
+    /// </summary>
+    public void ApplyCardVisibilityFilter(GameObject cardObject, bool serverRequestedState)
+    {
+        if (cardObject == null) return;
+        
+        Card card = cardObject.GetComponent<Card>();
+        if (card == null) return;
+        
+        bool shouldBeVisible = ShouldCardBeVisibleToLocalClient(card);
+        bool finalVisibility = serverRequestedState && shouldBeVisible;
+        
+        cardObject.SetActive(finalVisibility);
+        
+        LogDebug($"Card visibility filter applied: {cardObject.name} -> SetActive({finalVisibility}) (server: {serverRequestedState}, shouldBeVisible: {shouldBeVisible})");
+    }
+    
+    /// <summary>
+    /// Determines if a card should be visible to the local client based on current game state and combat assignments
+    /// </summary>
+    private bool ShouldCardBeVisibleToLocalClient(Card card)
+    {
+        if (card == null || card.OwnerEntity == null)
+        {
+            return false;
+        }
+        
+        // During combat, use fight-based visibility
+        if (currentGameState == GameState.Combat)
+        {
+            return ShouldCardBeVisibleInCombat(card);
+        }
+        
+        // For other game states, use simple ownership
+        return card.OwnerEntity.IsOwner;
+    }
+    
+    /// <summary>
+    /// Determines if a card should be visible during combat based on fight assignments
+    /// </summary>
+    private bool ShouldCardBeVisibleInCombat(Card card)
+    {
+        if (card == null || card.OwnerEntity == null)
+        {
+            return false;
+        }
+        
+        // Get the local client's connection
+        var networkManager = FishNet.InstanceFinder.NetworkManager;
+        if (networkManager == null || !networkManager.IsClientStarted)
+        {
+            return false;
+        }
+        
+        NetworkConnection localConnection = networkManager.ClientManager.Connection;
+        if (localConnection == null)
+        {
+            return false;
+        }
+        
+        // Get the fight manager to check combat assignments
+        TryFindFightManager();
+        if (fightManager == null)
+        {
+            // If no fight manager, fall back to simple ownership check
+            return card.OwnerEntity.IsOwner;
+        }
+        
+        // Get the fight assignment for this client
+        var fightAssignment = fightManager.GetFightForConnection(localConnection);
+        if (!fightAssignment.HasValue)
+        {
+            // If no fight assignment, fall back to simple ownership check
+            return card.OwnerEntity.IsOwner;
+        }
+        
+        // Check if the card belongs to entities involved in this client's fight
+        uint cardOwnerObjectId = (uint)card.OwnerEntity.ObjectId;
+        uint playerInFightId = fightAssignment.Value.PlayerObjectId;
+        uint opponentPetInFightId = fightAssignment.Value.PetObjectId;
+        
+        // Card should be visible if it belongs to:
+        // 1. The player in the fight (the client's own player)
+        // 2. The opponent pet in the fight (the pet the client is fighting)
+        bool shouldBeVisible = (cardOwnerObjectId == playerInFightId) || (cardOwnerObjectId == opponentPetInFightId);
+        
+        LogDebug($"Combat card visibility check: Card {card.gameObject.name} owner ID: {cardOwnerObjectId}, Player in fight: {playerInFightId}, Opponent pet: {opponentPetInFightId}, Visible: {shouldBeVisible}");
+        
+        return shouldBeVisible;
+    }
+    
+    /// <summary>
+    /// Updates visibility for all cards belonging to registered entities
+    /// Call this when game state changes or fight assignments change
+    /// </summary>
+    public void UpdateAllCardVisibility()
+    {
+        foreach (var entity in allEntities)
+        {
+            if (entity != null)
+            {
+                UpdateCardVisibilityForEntity(entity);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Updates visibility for all cards belonging to a specific entity
+    /// </summary>
+    public void UpdateCardVisibilityForEntity(NetworkEntity entity)
+    {
+        if (entity == null) return;
+        
+        // Get all card transforms for this entity
+        var entityUI = entity.GetComponent<NetworkEntityUI>();
+        if (entityUI == null) return;
+        
+        var handTransform = entityUI.GetHandTransform();
+        var deckTransform = entityUI.GetDeckTransform();
+        var discardTransform = entityUI.GetDiscardTransform();
+        
+        // Update visibility for cards in each location
+        UpdateCardVisibilityInTransform(handTransform, true);  // Hand cards should be visible when enabled
+        UpdateCardVisibilityInTransform(deckTransform, false); // Deck cards should be hidden
+        UpdateCardVisibilityInTransform(discardTransform, false); // Discard cards should be hidden
+    }
+    
+    /// <summary>
+    /// Updates card visibility for all cards in a specific transform
+    /// </summary>
+    private void UpdateCardVisibilityInTransform(Transform parentTransform, bool locationShouldBeVisible)
+    {
+        if (parentTransform == null) return;
+        
+        for (int i = 0; i < parentTransform.childCount; i++)
+        {
+            Transform childTransform = parentTransform.GetChild(i);
+            if (childTransform != null && childTransform.gameObject != null)
+            {
+                ApplyCardVisibilityFilter(childTransform.gameObject, locationShouldBeVisible);
+            }
+        }
     }
     
     #endregion

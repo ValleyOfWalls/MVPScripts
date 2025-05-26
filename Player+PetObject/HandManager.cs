@@ -464,32 +464,73 @@ public class HandManager : NetworkBehaviour
         Debug.Log($"HandManager: Completed recycle and shuffle. Final deck count: {finalDeckContents.Count}. Expected {initialExistingDeckCards.Count + discardCards.Count} for {gameObject.name}");
     }
 
-    [ObserversRpc(ExcludeServer = true)]
-    private void RpcSetCardEnabled(int cardNetObjId, bool enabled) // Changed to int cardNetObjId
+    [ObserversRpc]
+    private void RpcSetCardEnabled(int cardNetObjId, bool enabled)
     {
+        Debug.Log($"HandManager (Client RPC): RpcSetCardEnabled called for card NOB ID: {cardNetObjId}, enabled: {enabled}");
+        
         NetworkObject cardNetObj = null;
         bool foundCard = false;
-        if (NetworkManager.IsClientStarted) // Should only execute on clients now
+        
+        if (NetworkManager.IsClientStarted)
         {
             foundCard = NetworkManager.ClientManager.Objects.Spawned.TryGetValue(cardNetObjId, out cardNetObj);
         }
         
-        if (foundCard && cardNetObj != null)
+        if (!foundCard || cardNetObj == null)
         {
-            GameObject card = cardNetObj.gameObject;
-            Debug.Log($"HandManager (Client RPC): Setting card {card.name} enabled={enabled} for {gameObject.name}");
-            card.SetActive(enabled);
+            Debug.LogError($"HandManager (Client RPC): RpcSetCardEnabled - Failed to find card NetworkObject with ID {cardNetObjId}");
+            return;
+        }
+
+        GameObject cardObject = cardNetObj.gameObject;
+        
+        // Use EntityVisibilityManager for proper visibility filtering
+        EntityVisibilityManager entityVisManager = FindEntityVisibilityManager();
+        if (entityVisManager != null)
+        {
+            entityVisManager.ApplyCardVisibilityFilter(cardObject, enabled);
         }
         else
         {
-            Debug.LogError($"HandManager (Client RPC): RpcSetCardEnabled - Failed to find card NetworkObject with ID {cardNetObjId} for {gameObject.name}");
+            // Fallback: set active state directly if no EntityVisibilityManager found
+            cardObject.SetActive(enabled);
+            Debug.LogWarning($"HandManager (Client RPC): No EntityVisibilityManager found, using fallback for card {cardObject.name}");
         }
+        
+        Debug.Log($"HandManager (Client RPC): RpcSetCardEnabled - Card {cardObject.name} visibility updated (requested: {enabled})");
+    }
+
+    /// <summary>
+    /// Finds the EntityVisibilityManager instance
+    /// </summary>
+    private EntityVisibilityManager FindEntityVisibilityManager()
+    {
+        // Try to find via GamePhaseManager first
+        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+        if (gamePhaseManager != null)
+        {
+            EntityVisibilityManager entityVisManager = gamePhaseManager.GetComponent<EntityVisibilityManager>();
+            if (entityVisManager != null) return entityVisManager;
+        }
+        
+        // Fallback to direct search
+        return FindFirstObjectByType<EntityVisibilityManager>();
     }
 
     [ObserversRpc(ExcludeServer = true)]
     private void RpcSetCardParent(int cardNetObjId, int parentEntityNetObjId, string targetTransformName)
     {
         Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Setting card with ID {cardNetObjId} parent to {targetTransformName} on entity with ID {parentEntityNetObjId}");
+        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - This HandManager is on entity {gameObject.name} with NOB ID: {this.NetworkObject.ObjectId}");
+        
+        // First check if this HandManager instance is for the correct entity
+        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION 1: this.NetworkObject.ObjectId ({this.NetworkObject.ObjectId}) vs parentEntityNetObjId ({parentEntityNetObjId})");
+        if (this.NetworkObject.ObjectId != parentEntityNetObjId)
+        {
+            Debug.Log($"HandManager (Client RPC): RpcSetCardParent - This HandManager is for entity {this.NetworkObject.ObjectId}, but card belongs to entity {parentEntityNetObjId}. Ignoring.");
+            return;
+        }
         
         // Find the card by NetworkObject ID
         NetworkObject cardNetObj = null;
@@ -504,6 +545,20 @@ public class HandManager : NetworkBehaviour
         {
             Debug.LogError($"HandManager (Client RPC): RpcSetCardParent - Failed to find card NetworkObject with ID {cardNetObjId}");
             return;
+        }
+        
+        // Additional validation: Check if the card actually belongs to this entity
+        Card card = cardNetObj.GetComponent<Card>();
+        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION 2: Card component found: {card != null}");
+        if (card != null && card.OwnerEntity != null)
+        {
+            NetworkObject cardOwnerNetObj = card.OwnerEntity.GetComponent<NetworkObject>();
+            Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION 2: Card.OwnerEntity = {card.OwnerEntity.EntityName.Value}, cardOwnerNetObj.ObjectId = {cardOwnerNetObj?.ObjectId ?? -1}, this.NetworkObject.ObjectId = {this.NetworkObject.ObjectId}");
+            if (cardOwnerNetObj != null && cardOwnerNetObj.ObjectId != this.NetworkObject.ObjectId)
+            {
+                Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Card {card.name} belongs to entity {card.OwnerEntity.EntityName.Value} (NOB ID: {cardOwnerNetObj.ObjectId}), not this entity (NOB ID: {this.NetworkObject.ObjectId}). Ignoring.");
+                return;
+            }
         }
         
         // Find the parent entity by NetworkObject ID
@@ -548,10 +603,10 @@ public class HandManager : NetworkBehaviour
         }
         
         // Set the card's parent to the target transform
-        GameObject card = cardNetObj.gameObject;
-        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Setting card {card.name} parent to {targetTransform.name} on {gameObject.name}");
-        card.transform.SetParent(targetTransform);
-        card.transform.localPosition = Vector3.zero;
+        GameObject cardObject = cardNetObj.gameObject;
+        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION PASSED - Setting card {cardObject.name} parent to {targetTransform.name} on {gameObject.name}");
+        cardObject.transform.SetParent(targetTransform);
+        cardObject.transform.localPosition = Vector3.zero;
     }
 
     private List<GameObject> GetCardsInTransform(Transform parent)

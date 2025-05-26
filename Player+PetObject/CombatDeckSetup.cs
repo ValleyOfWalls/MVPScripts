@@ -207,6 +207,14 @@ public class CombatDeckSetup : NetworkBehaviour
             yield break;
         }
 
+        // Log detailed information about this entity
+        Debug.Log($"=== CombatDeckSetup.SpawnDeckCards for {gameObject.name} ===");
+        Debug.Log($"Entity Type: {ownerEntity?.EntityType}");
+        Debug.Log($"Entity Name: {ownerEntity?.EntityName.Value}");
+        Debug.Log($"Entity IsOwner: {ownerEntity?.IsOwner}");
+        Debug.Log($"Entity Owner ClientId: {ownerEntity?.Owner?.ClientId ?? -1}");
+        Debug.Log($"=== Starting card spawn process ===");
+
         // Get all card IDs from the entity's deck
         List<int> cardIds = entityDeck.GetAllCardIds();
         if (cardIds == null || cardIds.Count == 0)
@@ -220,6 +228,8 @@ public class CombatDeckSetup : NetworkBehaviour
             yield break;
         }
 
+        Debug.Log($"Spawning {cardIds.Count} cards for {gameObject.name}");
+
         // Spawn each card
         foreach (int cardId in cardIds)
         {
@@ -230,6 +240,8 @@ public class CombatDeckSetup : NetworkBehaviour
                 continue;
             }
 
+            Debug.Log($"About to spawn card {cardData.CardName} for entity {ownerEntity?.EntityName.Value} (ClientId: {ownerEntity?.Owner?.ClientId ?? -1})");
+
             // Spawn the card
             GameObject cardObject = cardSpawner.SpawnCard(cardData);
             if (cardObject == null)
@@ -238,6 +250,13 @@ public class CombatDeckSetup : NetworkBehaviour
                 continue;
             }
 
+            // Log the card's ownership after spawning
+            NetworkObject cardNetObj = cardObject.GetComponent<NetworkObject>();
+            Card card = cardObject.GetComponent<Card>();
+            Debug.Log($"Card {cardData.CardName} spawned - NetworkObject Owner ClientId: {cardNetObj?.Owner?.ClientId ?? -1}");
+            Debug.Log($"Card {cardData.CardName} - Card.OwnerEntity: {(card?.OwnerEntity != null ? card.OwnerEntity.EntityName.Value : "null")}");
+            Debug.Log($"Card {cardData.CardName} - Card.OwnerEntity ClientId: {(card?.OwnerEntity?.Owner?.ClientId ?? -1)}");
+
             // Log the parent transform before setup
             Debug.Log($"Setting up card {cardObject.name} with parent transform {deckTransform.name} (exists: {deckTransform != null}, path: {GetTransformPath(deckTransform)})");
 
@@ -245,7 +264,6 @@ public class CombatDeckSetup : NetworkBehaviour
             cardParenter.SetupCard(cardObject, ownerEntity, deckTransform);
 
             // Initialize the card's container state
-            Card card = cardObject.GetComponent<Card>();
             if (card != null)
             {
                 card.SetCurrentContainer(CardLocation.Deck);

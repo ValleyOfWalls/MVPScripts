@@ -161,6 +161,8 @@ public class PetCombatAI : NetworkBehaviour
 
     /// <summary>
     /// Gets all cards in the pet's hand
+    /// Note: Uses logical state (transform hierarchy) rather than visual state (activeSelf)
+    /// since AI should be able to play cards regardless of client visibility filtering
     /// </summary>
     private List<GameObject> GetCardsInHand(Transform handTransform)
     {
@@ -168,7 +170,7 @@ public class PetCombatAI : NetworkBehaviour
         for (int i = 0; i < handTransform.childCount; i++)
         {
             Transform child = handTransform.GetChild(i);
-            if (child.gameObject.activeSelf)
+            if (child != null && child.gameObject != null)
             {
                 cards.Add(child.gameObject);
             }

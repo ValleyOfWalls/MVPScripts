@@ -3,6 +3,7 @@ using UnityEngine.UI; // For Image
 using TMPro; // For TextMeshProUGUI
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using System.Collections;
 
 public enum CardEffectType
 {
@@ -386,6 +387,32 @@ public class Card : NetworkBehaviour
         if (ownerEntity == null)
         {
             Debug.LogWarning($"Card {gameObject.name}: OnMouseDown - Cannot play. ownerEntity is null.");
+            
+            // Try to refresh the owner entity in case it wasn't properly initialized
+            if (_ownerEntityId.Value != 0)
+            {
+                Debug.Log($"Card {gameObject.name}: Attempting to refresh ownerEntity from _ownerEntityId: {_ownerEntityId.Value}");
+                FindOwnerEntityById(_ownerEntityId.Value);
+                
+                // If we found it, continue with the check
+                if (ownerEntity == null)
+                {
+                    Debug.LogWarning($"Card {gameObject.name}: Still no ownerEntity after refresh attempt.");
+                    return;
+                }
+            }
+            else
+            {
+                return;
+            }
+        }
+        
+        // Check if network is properly initialized
+        if (!IsNetworkInitialized())
+        {
+            Debug.LogWarning($"Card {gameObject.name}: Network not properly initialized. Delaying card play.");
+            // Try again after a short delay
+            StartCoroutine(RetryCardPlayAfterDelay(0.1f));
             return;
         }
         
@@ -416,6 +443,21 @@ public class Card : NetworkBehaviour
         }
         else
         {
+            // Neither ownership check passed - this might be a timing issue
+            NetworkEntity localPlayer = GetLocalPlayer();
+            if (localPlayer != null && localPlayer == ownerEntity)
+            {
+                // The logical owner is the local player, but network ownership isn't established yet
+                Debug.LogWarning($"Card {gameObject.name}: Network ownership not established but logical owner is local player. This might be a timing/focus issue.");
+                
+                // Log detailed debug info to help diagnose
+                LogOwnershipDebugInfo();
+                
+                // Try again after a short delay to allow network state to stabilize
+                StartCoroutine(RetryCardPlayAfterDelay(0.2f));
+                return;
+            }
+            
             ownershipStatus = $"Neither card network ownership nor logical owner authority. Card IsOwner: {IsOwner}, ownerEntity.IsOwner: {ownerEntity.IsOwner}";
         }
         
@@ -424,6 +466,9 @@ public class Card : NetworkBehaviour
         if (!canPlay)
         {
             Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. {ownershipStatus}");
+            
+            // Log additional debug info for failed attempts
+            LogOwnershipDebugInfo();
             return;
         }
         
@@ -436,6 +481,48 @@ public class Card : NetworkBehaviour
         {
             Debug.LogError($"Card {gameObject.name}: OnMouseDown - handleCardPlay is null!");
         }
+    }
+    
+    /// <summary>
+    /// Checks if the network is properly initialized for this card
+    /// </summary>
+    private bool IsNetworkInitialized()
+    {
+        // Check if FishNet is properly initialized
+        if (FishNet.InstanceFinder.NetworkManager == null)
+        {
+            Debug.LogWarning($"Card {gameObject.name}: NetworkManager is null");
+            return false;
+        }
+        
+        // Check if we're properly connected
+        var networkManager = FishNet.InstanceFinder.NetworkManager;
+        if (!networkManager.IsClientStarted && !networkManager.IsServerStarted)
+        {
+            Debug.LogWarning($"Card {gameObject.name}: Neither client nor server is started");
+            return false;
+        }
+        
+        // Check if this NetworkObject is properly spawned
+        if (!IsSpawned)
+        {
+            Debug.LogWarning($"Card {gameObject.name}: NetworkObject is not spawned");
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// Retries card play after a delay to handle timing/focus issues
+    /// </summary>
+    private System.Collections.IEnumerator RetryCardPlayAfterDelay(float delay)
+    {
+        Debug.Log($"Card {gameObject.name}: Retrying card play after {delay} seconds...");
+        yield return new WaitForSeconds(delay);
+        
+        // Try the card play again
+        OnMouseDown();
     }
     
     /// <summary>
