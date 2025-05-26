@@ -97,10 +97,15 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void SetGameState(GameState newState)
     {
-        if (currentGameState == newState) return;
+        if (currentGameState == newState) 
+        {
+            LogDebug($"Game state already set to {newState}, skipping update");
+            return;
+        }
         
+        GameState previousState = currentGameState;
         currentGameState = newState;
-        LogDebug($"Game state changed to: {newState}");
+        LogDebug($"Game state changed from {previousState} to {newState}");
         
         switch (newState)
         {
@@ -108,6 +113,7 @@ public class EntityVisibilityManager : MonoBehaviour
                 UpdateVisibilityForLobby();
                 break;
             case GameState.Draft:
+                LogDebug("Updating visibility for Draft state");
                 UpdateVisibilityForDraft();
                 break;
             case GameState.Combat:
@@ -164,6 +170,9 @@ public class EntityVisibilityManager : MonoBehaviour
             }
         }
         LogDebug("All entities hidden for draft phase");
+        
+        // Update draft pack visibility to show only the local player's current pack
+        UpdateDraftPackVisibility();
     }
     
     private void UpdateVisibilityForCombat()
@@ -465,6 +474,116 @@ public class EntityVisibilityManager : MonoBehaviour
     
     #endregion
     
+    #region Draft Pack Visibility Management
+    
+    /// <summary>
+    /// Updates visibility for all draft pack cards based on current pack ownership
+    /// Call this when pack ownership changes during draft
+    /// </summary>
+    public void UpdateDraftPackVisibility()
+    {
+        LogDebug($"UpdateDraftPackVisibility called - Current game state: {currentGameState}");
+        
+        if (currentGameState != GameState.Draft)
+        {
+            LogDebug($"Not in draft state, skipping draft pack visibility update");
+            return;
+        }
+        
+        // Find the local player
+        NetworkEntity localPlayer = GetLocalPlayer();
+        if (localPlayer == null)
+        {
+            LogDebug("No local player found for draft pack visibility update");
+            return;
+        }
+        
+        LogDebug($"Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
+        
+        // Find all draft packs
+        DraftPack[] allDraftPacks = FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
+        LogDebug($"Found {allDraftPacks.Length} draft packs");
+        
+        foreach (DraftPack pack in allDraftPacks)
+        {
+            if (pack == null || pack.CardContainer == null) 
+            {
+                LogDebug($"Skipping null pack or pack with null CardContainer");
+                continue;
+            }
+            
+            // Check if this pack is owned by the local player
+            bool isOwnedByLocalPlayer = pack.IsOwnedBy(localPlayer);
+            LogDebug($"Pack {pack.name} owned by local player: {isOwnedByLocalPlayer} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value})");
+            
+            // Update visibility for all cards in this pack
+            UpdateDraftPackCardVisibility(pack, isOwnedByLocalPlayer);
+        }
+        
+        LogDebug($"Updated draft pack visibility for {allDraftPacks.Length} packs");
+    }
+    
+    /// <summary>
+    /// Updates visibility for cards in a specific draft pack
+    /// </summary>
+    private void UpdateDraftPackCardVisibility(DraftPack pack, bool shouldBeVisible)
+    {
+        if (pack == null || pack.CardContainer == null) 
+        {
+            LogDebug("UpdateDraftPackCardVisibility: pack or CardContainer is null");
+            return;
+        }
+        
+        LogDebug($"UpdateDraftPackCardVisibility for pack {pack.name}: shouldBeVisible = {shouldBeVisible}, CardContainer child count = {pack.CardContainer.childCount}");
+        
+        // Update visibility for all cards in the pack's card container
+        for (int i = 0; i < pack.CardContainer.childCount; i++)
+        {
+            Transform cardTransform = pack.CardContainer.GetChild(i);
+            if (cardTransform != null && cardTransform.gameObject != null)
+            {
+                bool wasActive = cardTransform.gameObject.activeSelf;
+                cardTransform.gameObject.SetActive(shouldBeVisible);
+                LogDebug($"Draft pack card {cardTransform.gameObject.name} visibility changed from {wasActive} to {shouldBeVisible}");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Updates visibility for a specific draft pack when ownership changes
+    /// </summary>
+    public void UpdateDraftPackVisibilityForPack(DraftPack pack)
+    {
+        LogDebug($"UpdateDraftPackVisibilityForPack called for pack {(pack != null ? pack.name : "null")} - Current game state: {currentGameState}");
+        
+        if (currentGameState != GameState.Draft || pack == null)
+        {
+            LogDebug($"Skipping pack visibility update - not in draft state or pack is null");
+            return;
+        }
+        
+        // Find the local player
+        NetworkEntity localPlayer = GetLocalPlayer();
+        if (localPlayer == null)
+        {
+            LogDebug("No local player found for pack-specific visibility update");
+            return;
+        }
+        
+        LogDebug($"Local player: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
+        
+        // Check if this pack is owned by the local player
+        bool isOwnedByLocalPlayer = pack.IsOwnedBy(localPlayer);
+        LogDebug($"Pack {pack.name} owned by local player: {isOwnedByLocalPlayer} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value})");
+        
+        // Update visibility for all cards in this pack
+        UpdateDraftPackCardVisibility(pack, isOwnedByLocalPlayer);
+        
+        LogDebug($"Updated visibility for draft pack {pack.name}: {(isOwnedByLocalPlayer ? "Visible" : "Hidden")}");
+    }
+    
+    #endregion
+    
     #region Helper Methods
     
     /// <summary>
@@ -472,8 +591,32 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     private NetworkConnection GetLocalPlayerConnection()
     {
-        var localPlayer = allEntities.Find(e => e.EntityType == EntityType.Player && e.IsOwner);
+        var localPlayer = GetLocalPlayer();
         return localPlayer?.Owner;
+    }
+    
+    /// <summary>
+    /// Get the local player entity
+    /// </summary>
+    private NetworkEntity GetLocalPlayer()
+    {
+        LogDebug($"GetLocalPlayer called - allEntities count: {allEntities.Count}");
+        
+        foreach (var entity in allEntities)
+        {
+            if (entity != null)
+            {
+                LogDebug($"Checking entity: {entity.EntityName.Value} (Type: {entity.EntityType}, IsOwner: {entity.IsOwner})");
+                if (entity.EntityType == EntityType.Player && entity.IsOwner)
+                {
+                    LogDebug($"Found local player: {entity.EntityName.Value}");
+                    return entity;
+                }
+            }
+        }
+        
+        LogDebug("No local player found in allEntities");
+        return null;
     }
     
     private void LogDebug(string message)

@@ -401,6 +401,16 @@ public class DraftPackSetup : NetworkBehaviour
         
         // Draft packs should be visible
         packObject.SetActive(true);
+        
+        // Refresh debug info in DraftManager after pack name is set (server only)
+        if (IsServerInitialized)
+        {
+            DraftManager draftManager = FindFirstObjectByType<DraftManager>();
+            if (draftManager != null)
+            {
+                draftManager.RefreshDebugInfo();
+            }
+        }
     }
 
     public override void OnStartClient()

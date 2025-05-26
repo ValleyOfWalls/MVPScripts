@@ -4,6 +4,7 @@ using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using System.Collections.Generic;
 using System.Linq;
+using System.Collections;
 
 /// <summary>
 /// Represents a networked draft pack containing cards for drafting.
@@ -260,6 +261,16 @@ public class DraftPack : NetworkBehaviour
         if (newOwner != null)
         {
             OnOwnerChanged?.Invoke(this, newOwner);
+            
+            // Update draft pack visibility when ownership changes
+            if (!asServer) // Only on clients
+            {
+                EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+                if (entityVisibilityManager != null)
+                {
+                    entityVisibilityManager.UpdateDraftPackVisibilityForPack(this);
+                }
+            }
         }
     }
     
@@ -282,10 +293,19 @@ public class DraftPack : NetworkBehaviour
                     {
                         Debug.Log($"DraftPack: Reparenting card {cardObject.name} to cardContainer on client");
                         cardObject.transform.SetParent(cardContainer, false);
-                        cardObject.transform.localPosition = Vector3.zero;
-                        cardObject.transform.localRotation = Quaternion.identity;
-                        cardObject.transform.localScale = Vector3.one;
-                        cardObject.SetActive(true);
+                        // Don't override positions - let the layout system handle positioning
+                        
+                        // Use EntityVisibilityManager to determine proper visibility
+                        EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+                        if (entityVisibilityManager != null)
+                        {
+                            entityVisibilityManager.UpdateDraftPackVisibilityForPack(this);
+                        }
+                        else
+                        {
+                            // Fallback: set to active
+                            cardObject.SetActive(true);
+                        }
                     }
                 }
             }
@@ -340,6 +360,15 @@ public class DraftPack : NetworkBehaviour
     {
         Debug.Log($"DraftPack.ObserversSyncCardParenting called on {(IsServerInitialized ? "Server" : "Client")} - Card NOB ID: {cardNetObjId}, Pack NOB ID: {packNetObjId}, Card Name: {cardName}");
         
+        // Use a coroutine to ensure pack ownership is synchronized before updating visibility
+        StartCoroutine(SyncCardParentingWithDelay(cardNetObjId, packNetObjId, cardName));
+    }
+    
+    private System.Collections.IEnumerator SyncCardParentingWithDelay(int cardNetObjId, int packNetObjId, string cardName)
+    {
+        // Wait a frame to ensure SyncVars are synchronized
+        yield return null;
+        
         NetworkObject cardNetObj = null;
         bool foundCard = false;
         
@@ -355,7 +384,7 @@ public class DraftPack : NetworkBehaviour
         if (!foundCard || cardNetObj == null)
         {
             Debug.LogError($"DraftPack: Failed to find card NetworkObject with ID {cardNetObjId} on {(IsServerInitialized ? "Server" : "Client")}.");
-            return;
+            yield break;
         }
 
         GameObject cardObject = cardNetObj.gameObject;
@@ -364,23 +393,35 @@ public class DraftPack : NetworkBehaviour
         // Ensure this DraftPack instance matches the intended pack
         if (this.NetworkObject.ObjectId != packNetObjId)
         {
-            Debug.LogError($"DraftPack.ObserversSyncCardParenting on {gameObject.name} (Pack NOB ID: {this.NetworkObject.ObjectId}): Received packNetObjId {packNetObjId} which does not match this pack. Card will not be parented here.");
-            return;
+            Debug.LogError($"DraftPack.SyncCardParentingWithDelay on {gameObject.name} (Pack NOB ID: {this.NetworkObject.ObjectId}): Received packNetObjId {packNetObjId} which does not match this pack. Card will not be parented here.");
+            yield break;
         }
 
         if (cardContainer == null)
         {
             Debug.LogError($"DraftPack on {gameObject.name} (Pack NOB ID: {this.NetworkObject.ObjectId}): cardContainer is null on client. Card {cardName} (NOB ID: {cardNetObjId}) cannot be parented to pack.");
-            return;
+            yield break;
         }
 
         Debug.Log($"DraftPack on {gameObject.name} (Client): Parenting card {cardName} (NOB ID: {cardNetObjId}) to cardContainer: {cardContainer.name}");
         cardObject.transform.SetParent(cardContainer, false); // worldPositionStays = false to correctly apply local transforms
-        cardObject.transform.localPosition = Vector3.zero;
-        cardObject.transform.localRotation = Quaternion.identity;
-        cardObject.transform.localScale = Vector3.one;
+        // Don't override positions - let the layout system handle positioning
         
-        // Draft pack cards should be visible
-        cardObject.SetActive(true);
+        Debug.Log($"DraftPack: Card {cardName} parented successfully, now checking visibility (CurrentOwnerPlayerId: {CurrentOwnerPlayerId.Value})");
+        
+        // Use EntityVisibilityManager to determine proper visibility for draft pack cards
+        EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        if (entityVisibilityManager != null)
+        {
+            Debug.Log($"DraftPack: EntityVisibilityManager found, calling UpdateDraftPackVisibilityForPack for pack {gameObject.name}");
+            // Let the EntityVisibilityManager handle visibility based on pack ownership
+            entityVisibilityManager.UpdateDraftPackVisibilityForPack(this);
+        }
+        else
+        {
+            // Fallback: Draft pack cards should be visible by default
+            Debug.LogWarning("DraftPack: EntityVisibilityManager not found, using fallback visibility");
+            cardObject.SetActive(true);
+        }
     }
 } 

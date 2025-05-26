@@ -234,6 +234,9 @@ public class DraftSetup : NetworkBehaviour
         {
             draftManager.StartDraft();
             Debug.Log("DraftSetup: Draft manager started successfully");
+            
+            // Trigger initial draft pack visibility update on all clients
+            RpcUpdateInitialDraftPackVisibility();
         }
         else
         {
@@ -321,14 +324,48 @@ public class DraftSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcHideAllNetworkEntities()
     {
+        Debug.Log("DraftSetup: RpcHideAllNetworkEntities called on client");
+        
         if (entityVisibilityManager != null)
         {
-            entityVisibilityManager.HideAllEntities();
-            Debug.Log("DraftSetup: All network entities hidden on client");
+            // Set the game state to Draft on the client as well
+            entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Draft);
+            Debug.Log("DraftSetup: Game state set to Draft and entities hidden on client");
         }
         else
         {
             Debug.LogWarning("DraftSetup: EntityVisibilityManager not found on client");
+        }
+    }
+    
+    [ObserversRpc]
+    private void RpcUpdateInitialDraftPackVisibility()
+    {
+        Debug.Log("DraftSetup: RpcUpdateInitialDraftPackVisibility called on client");
+        
+        // Use a coroutine with a small delay to ensure draft packs are fully initialized
+        StartCoroutine(UpdateDraftPackVisibilityWithDelay());
+    }
+    
+    private System.Collections.IEnumerator UpdateDraftPackVisibilityWithDelay()
+    {
+        // Wait a frame to ensure all draft pack setup is complete
+        yield return null;
+        
+        // Wait a small additional delay
+        yield return new WaitForSeconds(0.1f);
+        
+        Debug.Log("DraftSetup: Updating draft pack visibility after delay");
+        
+        if (entityVisibilityManager != null)
+        {
+            Debug.Log("DraftSetup: EntityVisibilityManager found, calling UpdateDraftPackVisibility");
+            entityVisibilityManager.UpdateDraftPackVisibility();
+            Debug.Log("DraftSetup: Initial draft pack visibility updated on client");
+        }
+        else
+        {
+            Debug.LogWarning("DraftSetup: EntityVisibilityManager not found on client, cannot update initial draft pack visibility");
         }
     }
 } 
