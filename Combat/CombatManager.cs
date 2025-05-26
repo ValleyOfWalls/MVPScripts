@@ -498,6 +498,12 @@ public class CombatManager : NetworkBehaviour
         
         if (draftSetup != null)
         {
+            // Reset the draft setup state to allow a new draft to begin
+            Debug.Log("CombatManager: Resetting draft setup for new draft round");
+            draftSetup.ResetSetup();
+            
+            // Initialize the new draft
+            Debug.Log("CombatManager: Initializing new draft round");
             draftSetup.InitializeDraft();
         }
         else

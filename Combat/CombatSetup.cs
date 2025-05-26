@@ -193,10 +193,27 @@ public class CombatSetup : NetworkBehaviour
     [Server]
     public void InitializeCombat()
     {
-        if (!IsServerStarted || isSetupComplete.Value) return; // Return if already setup
+        if (!IsServerStarted) 
+        {
+            Debug.LogError("CombatSetup: Cannot initialize combat - server not started");
+            return;
+        }
         
-        Debug.Log("CombatSetup: Starting combat initialization...");
+        if (isSetupComplete.Value) 
+        {
+            Debug.LogWarning("CombatSetup: Combat setup already complete, skipping initialization");
+            return;
+        }
+        
+        Debug.Log("CombatSetup: Starting combat initialization from draft transition...");
+        
+        // Reset client ready states for new combat round
+        readyClients.Clear();
+        allClientsReady = false;
+        Debug.Log("CombatSetup: Reset client ready states");
+        
         ResolveReferences();
+        Debug.Log("CombatSetup: References resolved");
 
         if (!AreRequiredComponentsAvailable())
         {
@@ -204,8 +221,13 @@ public class CombatSetup : NetworkBehaviour
             return;
         }
         
+        Debug.Log("CombatSetup: All required components available, proceeding with setup");
+        
         Debug.Log("CombatSetup: Transitioning to combat phase...");
         TransitionToPhase();
+        
+        Debug.Log("CombatSetup: Resetting entity health and energy...");
+        ResetEntityHealthAndEnergy();
         
         Debug.Log("CombatSetup: Setting up combat decks...");
         SetupCombatDecks();
@@ -220,7 +242,7 @@ public class CombatSetup : NetworkBehaviour
         RpcTriggerCombatCanvasManagerSetup();
         
         isSetupComplete.Value = true; // Mark setup as complete
-        Debug.Log("CombatSetup: Setup completed successfully.");
+        Debug.Log("CombatSetup: Setup completed successfully, waiting for client readiness checks");
 
         // Instead of starting combat immediately, notify clients to check their setup
         RpcCheckClientSetup();
@@ -238,7 +260,27 @@ public class CombatSetup : NetworkBehaviour
     {
         if (gamePhaseManager != null)
         {
+            Debug.Log("CombatSetup: Setting combat phase on server");
             gamePhaseManager.SetCombatPhase();
+            
+            // Network the phase change to all clients using PhaseNetworker
+            PhaseNetworker phaseNetworker = gamePhaseManager.GetComponent<PhaseNetworker>();
+            if (phaseNetworker != null)
+            {
+                Debug.Log("CombatSetup: Sending combat phase change to all clients via PhaseNetworker");
+                phaseNetworker.SendPhaseChangeToClients((int)GamePhaseManager.GamePhase.Combat);
+            }
+            else
+            {
+                Debug.LogWarning("CombatSetup: PhaseNetworker not found, using fallback RPC method");
+            }
+            
+            // Also use direct RPC as fallback to ensure phase change reaches all clients
+            RpcUpdateGamePhaseToCombat();
+        }
+        else
+        {
+            Debug.LogError("CombatSetup: GamePhaseManager not found, cannot transition to combat phase");
         }
     }
 
@@ -262,6 +304,36 @@ public class CombatSetup : NetworkBehaviour
                 Debug.LogError($"Entity {entity.EntityName.Value} is missing CombatDeckSetup component");
             }
         }
+    }
+
+    /// <summary>
+    /// Resets all entity health and energy to maximum for the start of combat
+    /// </summary>
+    [Server]
+    private void ResetEntityHealthAndEnergy()
+    {
+        if (!IsServerInitialized) return;
+
+        Debug.Log("CombatSetup: Resetting all entity health and energy to maximum");
+
+        // Get all spawned entities
+        List<NetworkEntity> entities = GetAllSpawnedEntities<NetworkEntity>();
+        
+        foreach (NetworkEntity entity in entities)
+        {
+            if (entity != null)
+            {
+                // Reset health to maximum
+                entity.CurrentHealth.Value = entity.MaxHealth.Value;
+                
+                // Reset energy to maximum
+                entity.CurrentEnergy.Value = entity.MaxEnergy.Value;
+                
+                Debug.Log($"CombatSetup: Reset {entity.EntityName.Value} - Health: {entity.CurrentHealth.Value}/{entity.MaxHealth.Value}, Energy: {entity.CurrentEnergy.Value}/{entity.MaxEnergy.Value}");
+            }
+        }
+        
+        Debug.Log("CombatSetup: Entity health and energy reset completed");
     }
 
     [Server]
@@ -343,21 +415,38 @@ public class CombatSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcTriggerCombatCanvasManagerSetup()
     {
+        Debug.Log("CombatSetup: RpcTriggerCombatCanvasManagerSetup called on client");
+        
         if (combatCanvasManager != null)
         {
-            Debug.Log("CombatSetup: RpcTriggerCombatCanvasManagerSetup called");
+            Debug.Log("CombatSetup: Found CombatCanvasManager, proceeding with setup");
+            
+            // Ensure draft canvas is disabled before enabling combat canvas
+            DraftCanvasManager draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+            if (draftCanvasManager != null)
+            {
+                Debug.Log("CombatSetup: Found DraftCanvasManager, ensuring draft canvas is disabled");
+                draftCanvasManager.DisableDraftCanvas();
+                Debug.Log("CombatSetup: Draft canvas disabled successfully");
+            }
+            else
+            {
+                Debug.LogWarning("CombatSetup: DraftCanvasManager not found, cannot ensure draft canvas is disabled");
+            }
             
             // Enable the combat canvas
             if (combatCanvas != null)
             {
                 Debug.Log("CombatSetup: Enabling combat canvas");
                 combatCanvas.SetActive(true);
+                Debug.Log("CombatSetup: Combat canvas enabled successfully");
             }
             else
             {
                 Debug.LogError("CombatSetup: Combat canvas reference is missing");
             }
             
+            Debug.Log("CombatSetup: Starting combat UI setup with delay");
             StartCoroutine(SetupCombatUIWithDelay());
         }
         else
@@ -531,6 +620,36 @@ public class CombatSetup : NetworkBehaviour
             Debug.LogWarning($"Client {LocalConnection.ClientId} combat setup check failed. Current status: {setupStatus}. Will retry or wait.");
             // Optionally, re-schedule this check if it's expected to eventually pass without further server RPCs
             // StartCoroutine(CheckClientSetupComplete()); // Example: retry after a delay
+        }
+    }
+
+    [ObserversRpc]
+    private void RpcUpdateGamePhaseToCombat()
+    {
+        Debug.Log("CombatSetup: RpcUpdateGamePhaseToCombat called on client");
+        
+        if (gamePhaseManager != null)
+        {
+            Debug.Log($"CombatSetup: Found GamePhaseManager, current phase before change: {gamePhaseManager.GetCurrentPhase()}");
+            Debug.Log("CombatSetup: Setting to combat phase");
+            gamePhaseManager.SetCombatPhase();
+            Debug.Log($"CombatSetup: Game phase after change: {gamePhaseManager.GetCurrentPhase()}");
+        }
+        else
+        {
+            // Try to find GamePhaseManager if reference is missing
+            gamePhaseManager = GamePhaseManager.Instance;
+            if (gamePhaseManager != null)
+            {
+                Debug.Log($"CombatSetup: Found GamePhaseManager via Instance, current phase before change: {gamePhaseManager.GetCurrentPhase()}");
+                Debug.Log("CombatSetup: Setting to combat phase");
+                gamePhaseManager.SetCombatPhase();
+                Debug.Log($"CombatSetup: Game phase after change: {gamePhaseManager.GetCurrentPhase()}");
+            }
+            else
+            {
+                Debug.LogError("CombatSetup: GamePhaseManager reference is missing and Instance is null");
+            }
         }
     }
 } 

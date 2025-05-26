@@ -253,8 +253,40 @@ public class DraftSetup : NetworkBehaviour
     [Server]
     public void ResetSetup()
     {
+        Debug.Log("DraftSetup: Resetting setup state for new draft round");
+        
+        // Reset the setup completion flag
         isSetupComplete = false;
-        Debug.Log("DraftSetup: Setup state reset");
+        
+        // Clear existing draft packs from previous round
+        if (draftPackSetup != null)
+        {
+            Debug.Log("DraftSetup: Clearing existing draft packs from previous round");
+            // Note: We can't call ClearExistingPacks directly as it's private, but CreateDraftPacks will handle this
+            Debug.Log("DraftSetup: DraftPackSetup found, existing packs will be cleared when new packs are created");
+        }
+        else
+        {
+            Debug.LogWarning("DraftSetup: DraftPackSetup not found during reset");
+        }
+        
+        // Reset the draft manager if it exists
+        if (draftManager != null)
+        {
+            // The DraftManager doesn't have a public reset method, but we can ensure it's in a clean state
+            // by checking if it's still active and logging the state
+            Debug.Log($"DraftSetup: DraftManager found, current draft active state: {draftManager.IsDraftActive}");
+            
+            // Clear any debug info from previous draft
+            draftManager.ClearDebugInfo();
+            Debug.Log("DraftSetup: Cleared DraftManager debug info from previous round");
+        }
+        else
+        {
+            Debug.LogWarning("DraftSetup: DraftManager not found during reset");
+        }
+        
+        Debug.Log("DraftSetup: Setup state reset completed");
     }
     
     // RPC Methods

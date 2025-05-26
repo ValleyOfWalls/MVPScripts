@@ -86,6 +86,35 @@ public class DraftCanvasManager : MonoBehaviour
             draftCanvas.SetActive(false);
             Debug.Log("DraftCanvasManager: Draft canvas disabled");
         }
+        
+        // Clean up any active UI state
+        CleanupDraftState();
+    }
+    
+    /// <summary>
+    /// Cleans up draft state when transitioning away from draft
+    /// </summary>
+    public void CleanupDraftState()
+    {
+        // Hide card selection UI
+        HideCardSelectionUI();
+        
+        // Hide continue button
+        HideContinueButton();
+        
+        // Clear status text
+        if (draftStatusText != null)
+        {
+            draftStatusText.text = "";
+        }
+        
+        // Clear pack info text
+        if (packInfoText != null)
+        {
+            packInfoText.text = "";
+        }
+        
+        Debug.Log("DraftCanvasManager: Draft state cleaned up");
     }
     
     public void UpdateDraftStatus(string status)

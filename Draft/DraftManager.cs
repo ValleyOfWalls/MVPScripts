@@ -731,16 +731,131 @@ public class DraftManager : NetworkBehaviour
     [Server]
     private void StartNextCombatRound()
     {
+        Debug.Log("DraftManager: Starting transition from draft to combat");
+        
+        // Clean up draft state
+        CleanupDraftState();
+        
+        // Notify clients to disable draft UI and prepare for combat
+        RpcTransitionToCombat();
+        
+        // Add a small delay to ensure clients have time to process the transition
+        StartCoroutine(InitializeCombatWithDelay());
+    }
+    
+    /// <summary>
+    /// Initializes combat after a small delay to ensure proper transition
+    /// </summary>
+    [Server]
+    private System.Collections.IEnumerator InitializeCombatWithDelay()
+    {
+        // Wait a bit for clients to process the transition
+        yield return new WaitForSeconds(0.5f);
+        
+        Debug.Log("DraftManager: Delay completed, verifying server phase state before combat initialization");
+        
+        // Verify server phase state
+        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+        if (gamePhaseManager != null)
+        {
+            Debug.Log($"DraftManager: Server GamePhaseManager current phase: {gamePhaseManager.GetCurrentPhase()}");
+        }
+        
         // Find and trigger CombatSetup to start a new combat round
         CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
         if (combatSetup != null)
         {
+            // Reset combat setup state if needed
+            if (combatSetup.IsSetupComplete)
+            {
+                Debug.Log("DraftManager: Combat setup already complete, ending previous combat first");
+                combatSetup.EndCombat();
+            }
+            
+            Debug.Log("DraftManager: Initializing new combat round");
             combatSetup.InitializeCombat();
         }
         else
         {
             Debug.LogError("DraftManager: Could not find CombatSetup to start next combat round");
         }
+    }
+    
+    /// <summary>
+    /// Cleans up draft state on the server
+    /// </summary>
+    [Server]
+    private void CleanupDraftState()
+    {
+        // Clear pack queues and visibility
+        playerPackQueues.Clear();
+        currentVisiblePacks.Clear();
+        
+        // Clear ready states
+        playersReady.Clear();
+        
+        // Reset draft state
+        isDraftActive = false;
+        
+        Debug.Log("DraftManager: Draft state cleaned up");
+    }
+    
+    /// <summary>
+    /// Notifies clients to transition from draft to combat
+    /// </summary>
+    [ObserversRpc]
+    private void RpcTransitionToCombat()
+    {
+        Debug.Log("DraftManager: RpcTransitionToCombat called on client");
+        
+        // Update game phase to combat first
+        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+        if (gamePhaseManager != null)
+        {
+            Debug.Log($"DraftManager: Found GamePhaseManager, current phase before change: {gamePhaseManager.GetCurrentPhase()}");
+            Debug.Log("DraftManager: Setting to combat phase");
+            gamePhaseManager.SetCombatPhase();
+            Debug.Log($"DraftManager: Game phase after change: {gamePhaseManager.GetCurrentPhase()}");
+        }
+        else
+        {
+            Debug.LogWarning("DraftManager: GamePhaseManager not found on client");
+        }
+        
+        // Disable draft canvas
+        if (draftCanvasManager != null)
+        {
+            Debug.Log("DraftManager: Found DraftCanvasManager, disabling draft canvas");
+            draftCanvasManager.DisableDraftCanvas();
+            Debug.Log("DraftManager: Draft canvas disabled on client");
+        }
+        else
+        {
+            Debug.LogWarning("DraftManager: DraftCanvasManager not found on client");
+        }
+        
+        // Update entity visibility manager to combat state
+        if (entityVisibilityManager != null)
+        {
+            Debug.Log("DraftManager: Found EntityVisibilityManager, setting to combat state");
+            entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Combat);
+            Debug.Log("DraftManager: Entity visibility manager set to combat state");
+        }
+        else
+        {
+            Debug.LogWarning("DraftManager: EntityVisibilityManager not found on client");
+        }
+        
+        // Reset local draft state
+        isDraftActive = false;
+        
+        // Final verification of phase change
+        if (gamePhaseManager != null)
+        {
+            Debug.Log($"DraftManager: Final phase verification - Current phase: {gamePhaseManager.GetCurrentPhase()}");
+        }
+        
+        Debug.Log("DraftManager: Client transition to combat completed successfully");
     }
     
     // RPC methods

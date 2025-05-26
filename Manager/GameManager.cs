@@ -37,8 +37,6 @@ public class GameManager : NetworkBehaviour
     [Header("Draft Settings")]
     [SerializeField, Tooltip("Number of cards in each draft pack")]
     private int draftPackSize = 4;
-    [SerializeField, Tooltip("Number of draft rounds per drafting phase")]
-    private int draftRounds = 3;
 
     [Header("Damage Modifiers")]
     [SerializeField, Tooltip("If true, critical hits can occur during combat")]
@@ -73,7 +71,6 @@ public class GameManager : NetworkBehaviour
 
     // Draft settings SyncVars
     public readonly SyncVar<int> DraftPackSize = new SyncVar<int>();
-    public readonly SyncVar<int> DraftRounds = new SyncVar<int>();
 
     private void Awake()
     {
@@ -111,13 +108,12 @@ public class GameManager : NetworkBehaviour
         
         // Initialize draft settings SyncVars
         DraftPackSize.Value = draftPackSize;
-        DraftRounds.Value = draftRounds;
         
         Debug.Log("GameManager started on Server. Initializing game rules.");
         Debug.Log($"Player settings - Initial Draw: {PlayerDrawAmount.Value}, Target Hand: {PlayerTargetHandSize.Value}, Max Energy: {PlayerMaxEnergy.Value}, Max Health: {PlayerMaxHealth.Value}");
         Debug.Log($"Pet settings - Initial Draw: {PetDrawAmount.Value}, Target Hand: {PetTargetHandSize.Value}, Max Energy: {PetMaxEnergy.Value}, Max Health: {PetMaxHealth.Value}");
         Debug.Log($"Damage Modifiers - Crits Enabled: {CriticalHitsEnabled.Value}, Base Crit Chance: {BaseCriticalChance.Value}, Crit Multiplier: {CriticalHitModifier.Value}, Weak Modifier: {WeakStatusModifier.Value}, Break Modifier: {BreakStatusModifier.Value}");
-        Debug.Log($"Draft Settings - Pack Size: {DraftPackSize.Value}, Rounds: {DraftRounds.Value}");
+        Debug.Log($"Draft Settings - Pack Size: {DraftPackSize.Value}");
     }
 
     public override void OnStartClient()
