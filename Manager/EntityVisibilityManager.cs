@@ -1,6 +1,7 @@
 using UnityEngine;
 using FishNet.Connection;
 using System.Collections.Generic;
+using System.Linq;
 
 /// <summary>
 /// Manages the visibility of NetworkEntity objects based on game state.
@@ -9,7 +10,7 @@ using System.Collections.Generic;
 public class EntityVisibilityManager : MonoBehaviour
 {
     [Header("Debug Options")]
-    [SerializeField] private bool debugLogEnabled = false;
+    [SerializeField] private bool debugLogEnabled = true;
     
     // Cache all entities for easier management
     private List<NetworkEntity> allEntities = new List<NetworkEntity>();
@@ -482,10 +483,12 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void UpdateDraftPackVisibility()
     {
+        Debug.Log($"[EntityVisibilityManager] UpdateDraftPackVisibility called - Current game state: {currentGameState}");
         LogDebug($"UpdateDraftPackVisibility called - Current game state: {currentGameState}");
         
         if (currentGameState != GameState.Draft)
         {
+            Debug.Log($"[EntityVisibilityManager] Not in draft state, skipping draft pack visibility update");
             LogDebug($"Not in draft state, skipping draft pack visibility update");
             return;
         }
@@ -494,32 +497,60 @@ public class EntityVisibilityManager : MonoBehaviour
         NetworkEntity localPlayer = GetLocalPlayer();
         if (localPlayer == null)
         {
+            Debug.Log("[EntityVisibilityManager] No local player found for draft pack visibility update");
             LogDebug("No local player found for draft pack visibility update");
             return;
         }
         
+        Debug.Log($"[EntityVisibilityManager] Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
         LogDebug($"Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
+        
+        // Find the DraftManager to get the currently visible pack for the local player
+        DraftManager draftManager = FindFirstObjectByType<DraftManager>();
+        if (draftManager == null)
+        {
+            Debug.LogWarning("[EntityVisibilityManager] DraftManager not found, cannot determine currently visible pack");
+            LogDebug("DraftManager not found, cannot determine currently visible pack");
+            return;
+        }
         
         // Find all draft packs
         DraftPack[] allDraftPacks = FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
+        Debug.Log($"[EntityVisibilityManager] Found {allDraftPacks.Length} draft packs");
         LogDebug($"Found {allDraftPacks.Length} draft packs");
         
         foreach (DraftPack pack in allDraftPacks)
         {
             if (pack == null || pack.CardContainer == null) 
             {
+                Debug.Log($"[EntityVisibilityManager] Skipping null pack or pack with null CardContainer");
                 LogDebug($"Skipping null pack or pack with null CardContainer");
                 continue;
             }
             
             // Check if this pack is owned by the local player
             bool isOwnedByLocalPlayer = pack.IsOwnedBy(localPlayer);
-            LogDebug($"Pack {pack.name} owned by local player: {isOwnedByLocalPlayer} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value})");
+            
+            // Check if this pack contains cards that are selectable by the local player (i.e., it's the currently visible pack)
+            bool isSelectableByLocalPlayer = false;
+            List<GameObject> packCards = pack.GetCards();
+            if (packCards.Count > 0)
+            {
+                // Check if any card in this pack is selectable by the local player
+                isSelectableByLocalPlayer = packCards.Any(card => draftManager.IsCardSelectableByPlayer(card, localPlayer));
+            }
+            
+            // A pack should be visible if it's owned by the local player AND it's selectable (currently visible)
+            bool shouldBeVisible = isOwnedByLocalPlayer && isSelectableByLocalPlayer;
+            
+            Debug.Log($"[EntityVisibilityManager] Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value}, LocalPlayer ObjectId: {localPlayer.ObjectId})");
+            LogDebug($"Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value}, LocalPlayer ObjectId: {localPlayer.ObjectId})");
             
             // Update visibility for all cards in this pack
-            UpdateDraftPackCardVisibility(pack, isOwnedByLocalPlayer);
+            UpdateDraftPackCardVisibility(pack, shouldBeVisible);
         }
         
+        Debug.Log($"[EntityVisibilityManager] Updated draft pack visibility for {allDraftPacks.Length} packs");
         LogDebug($"Updated draft pack visibility for {allDraftPacks.Length} packs");
     }
     
@@ -572,14 +603,36 @@ public class EntityVisibilityManager : MonoBehaviour
         
         LogDebug($"Local player: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
         
+        // Find the DraftManager to check if cards are selectable
+        DraftManager draftManager = FindFirstObjectByType<DraftManager>();
+        if (draftManager == null)
+        {
+            LogDebug("DraftManager not found for pack-specific visibility update");
+            return;
+        }
+        
         // Check if this pack is owned by the local player
         bool isOwnedByLocalPlayer = pack.IsOwnedBy(localPlayer);
         LogDebug($"Pack {pack.name} owned by local player: {isOwnedByLocalPlayer} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value})");
         
-        // Update visibility for all cards in this pack
-        UpdateDraftPackCardVisibility(pack, isOwnedByLocalPlayer);
+        // Check if this pack contains cards that are selectable by the local player (i.e., it's the currently visible pack)
+        bool isSelectableByLocalPlayer = false;
+        List<GameObject> packCards = pack.GetCards();
+        if (packCards.Count > 0)
+        {
+            // Check if any card in this pack is selectable by the local player
+            isSelectableByLocalPlayer = packCards.Any(card => draftManager.IsCardSelectableByPlayer(card, localPlayer));
+        }
         
-        LogDebug($"Updated visibility for draft pack {pack.name}: {(isOwnedByLocalPlayer ? "Visible" : "Hidden")}");
+        // A pack should be visible if it's owned by the local player AND it's selectable (currently visible)
+        bool shouldBeVisible = isOwnedByLocalPlayer && isSelectableByLocalPlayer;
+        
+        LogDebug($"Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible}");
+        
+        // Update visibility for all cards in this pack
+        UpdateDraftPackCardVisibility(pack, shouldBeVisible);
+        
+        LogDebug($"Updated visibility for draft pack {pack.name}: {(shouldBeVisible ? "Visible" : "Hidden")}");
     }
     
     #endregion

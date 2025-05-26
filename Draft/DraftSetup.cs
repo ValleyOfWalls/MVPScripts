@@ -178,7 +178,10 @@ public class DraftSetup : NetworkBehaviour
         if (gamePhaseManager != null)
         {
             gamePhaseManager.SetDraftPhase();
-            Debug.Log("DraftSetup: Game phase updated to Draft");
+            Debug.Log("DraftSetup: Game phase updated to Draft on server");
+            
+            // Also notify clients to update their game phase
+            RpcUpdateGamePhase();
         }
         else
         {
@@ -366,6 +369,22 @@ public class DraftSetup : NetworkBehaviour
         else
         {
             Debug.LogWarning("DraftSetup: EntityVisibilityManager not found on client, cannot update initial draft pack visibility");
+        }
+    }
+    
+    [ObserversRpc]
+    private void RpcUpdateGamePhase()
+    {
+        Debug.Log("DraftSetup: RpcUpdateGamePhase called on client");
+        
+        if (gamePhaseManager != null)
+        {
+            gamePhaseManager.SetDraftPhase();
+            Debug.Log("DraftSetup: Game phase updated to Draft on client");
+        }
+        else
+        {
+            Debug.LogWarning("DraftSetup: GamePhaseManager not found on client");
         }
     }
 } 

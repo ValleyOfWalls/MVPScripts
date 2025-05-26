@@ -249,6 +249,14 @@ public class DraftPack : NetworkBehaviour
         return FindEntityById(OriginalOwnerPlayerId.Value);
     }
     
+    /// <summary>
+    /// Checks if this pack contains a card with the specified NetworkObject.ObjectId
+    /// </summary>
+    public bool ContainsCardWithObjectId(int objectId)
+    {
+        return cardObjectIds.Contains(objectId);
+    }
+    
     private void OnCardListChanged(SyncListOperation op, int index, int oldItem, int newItem, bool asServer)
     {
         UpdateLocalCardList();
@@ -257,20 +265,32 @@ public class DraftPack : NetworkBehaviour
     
     private void OnCurrentOwnerChanged(int prev, int next, bool asServer)
     {
+        Debug.Log($"DraftPack {gameObject.name}: OnCurrentOwnerChanged called - prev: {prev}, next: {next}, asServer: {asServer}");
+        
         NetworkEntity newOwner = FindEntityById(next);
         if (newOwner != null)
         {
+            Debug.Log($"DraftPack {gameObject.name}: Found new owner entity: {newOwner.EntityName.Value} (ID: {newOwner.ObjectId})");
             OnOwnerChanged?.Invoke(this, newOwner);
             
             // Update draft pack visibility when ownership changes
             if (!asServer) // Only on clients
             {
+                Debug.Log($"DraftPack {gameObject.name}: Client-side ownership change detected, updating pack visibility");
                 EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
                 if (entityVisibilityManager != null)
                 {
                     entityVisibilityManager.UpdateDraftPackVisibilityForPack(this);
                 }
+                else
+                {
+                    Debug.LogWarning($"DraftPack {gameObject.name}: EntityVisibilityManager not found for pack visibility update");
+                }
             }
+        }
+        else
+        {
+            Debug.LogWarning($"DraftPack {gameObject.name}: Could not find entity with ID {next} for ownership change");
         }
     }
     

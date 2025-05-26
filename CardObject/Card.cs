@@ -81,6 +81,9 @@ public class Card : NetworkBehaviour
         
         // Subscribe to the OnChange event for _currentContainer
         _currentContainer.OnChange += OnContainerChanged;
+        
+        // Subscribe to the OnChange event for _isDraftable
+        _isDraftable.OnChange += OnDraftableChanged;
     }
 
     private void SetupRequiredComponents()
@@ -124,6 +127,7 @@ public class Card : NetworkBehaviour
         // Unsubscribe to prevent memory leaks
         _ownerEntityId.OnChange -= OnOwnerEntityIdChanged;
         _currentContainer.OnChange -= OnContainerChanged;
+        _isDraftable.OnChange -= OnDraftableChanged;
     }
 
     private void OnContainerChanged(CardLocation oldValue, CardLocation newValue, bool asServer)
@@ -242,6 +246,34 @@ public class Card : NetworkBehaviour
     public void SetDraftable(bool draftable)
     {
         _isDraftable.Value = draftable;
+        
+        // Add DraftCardSelection component when card becomes draftable
+        if (draftable)
+        {
+            DraftCardSelection draftSelection = GetComponent<DraftCardSelection>();
+            if (draftSelection == null)
+            {
+                draftSelection = gameObject.AddComponent<DraftCardSelection>();
+                Debug.Log($"Card {gameObject.name}: Added DraftCardSelection component (draftable = {draftable})");
+            }
+        }
+        else
+        {
+            // Remove DraftCardSelection component when card is no longer draftable
+            DraftCardSelection draftSelection = GetComponent<DraftCardSelection>();
+            if (draftSelection != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(draftSelection);
+                }
+                else
+                {
+                    DestroyImmediate(draftSelection);
+                }
+                Debug.Log($"Card {gameObject.name}: Removed DraftCardSelection component (draftable = {draftable})");
+            }
+        }
     }
 
     /// <summary>
@@ -376,12 +408,51 @@ public class Card : NetworkBehaviour
     {
         Debug.Log($"Card {gameObject.name}: OnMouseDown called - Starting ownership validation");
         
+        // Check the current game phase to determine container requirements
+        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+        bool isDraftPhase = gamePhaseManager != null && gamePhaseManager.GetCurrentPhase() == GamePhaseManager.GamePhase.Draft;
+        
+        Debug.Log($"Card {gameObject.name}: OnMouseDown - GamePhaseManager found: {gamePhaseManager != null}");
+        if (gamePhaseManager != null)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Current phase: {gamePhaseManager.GetCurrentPhase()}");
+        }
+        Debug.Log($"Card {gameObject.name}: OnMouseDown - isDraftPhase: {isDraftPhase}");
+        Debug.Log($"Card {gameObject.name}: OnMouseDown - IsDraftable: {IsDraftable}");
+        Debug.Log($"Card {gameObject.name}: OnMouseDown - CurrentContainer: {CurrentContainer}");
+        
         // First check if card is in the correct container
-        if (CurrentContainer != CardLocation.Hand) 
+        // In draft phase, draftable cards can be clicked regardless of container
+        // In combat phase, cards must be in hand
+        if (!isDraftPhase && CurrentContainer != CardLocation.Hand) 
         {
             Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. CurrentContainer: {CurrentContainer}. Expected Hand.");
             return;
         }
+        else if (isDraftPhase && !IsDraftable)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot select in draft. Card is not draftable.");
+            return;
+        }
+        else if (isDraftPhase && IsDraftable)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is draftable. Proceeding with click handling.");
+            
+            // For draft cards, skip ownership validation and go directly to HandleCardPlay
+            if (handleCardPlay != null)
+            {
+                Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft card, calling handleCardPlay.OnCardClicked() directly");
+                handleCardPlay.OnCardClicked();
+            }
+            else
+            {
+                Debug.LogError($"Card {gameObject.name}: OnMouseDown - handleCardPlay is null!");
+            }
+            return;
+        }
+        
+        // For non-draft cards, continue with normal ownership validation
+        Debug.Log($"Card {gameObject.name}: OnMouseDown - Continuing with normal ownership validation for non-draft card");
         
         // Check logical owner (who the card belongs to in game terms)
         if (ownerEntity == null)
@@ -578,5 +649,37 @@ public class Card : NetworkBehaviour
         Debug.Log($"Local Player ClientId: {(localPlayer?.Owner != null ? localPlayer.Owner.ClientId.ToString() : "null")}");
         Debug.Log($"Can Be Played: {CanBePlayedByLocalPlayer()}");
         Debug.Log($"=== End Debug Info ===");
+    }
+
+    private void OnDraftableChanged(bool oldValue, bool newValue, bool asServer)
+    {
+        Debug.Log($"Card {gameObject.name}: OnDraftableChanged from {oldValue} to {newValue}, asServer: {asServer}");
+        
+        // Add or remove DraftCardSelection component based on draftable state
+        if (newValue)
+        {
+            DraftCardSelection draftSelection = GetComponent<DraftCardSelection>();
+            if (draftSelection == null)
+            {
+                draftSelection = gameObject.AddComponent<DraftCardSelection>();
+                Debug.Log($"Card {gameObject.name}: Added DraftCardSelection component via OnDraftableChanged (asServer: {asServer})");
+            }
+        }
+        else
+        {
+            DraftCardSelection draftSelection = GetComponent<DraftCardSelection>();
+            if (draftSelection != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(draftSelection);
+                }
+                else
+                {
+                    DestroyImmediate(draftSelection);
+                }
+                Debug.Log($"Card {gameObject.name}: Removed DraftCardSelection component via OnDraftableChanged (asServer: {asServer})");
+            }
+        }
     }
 }

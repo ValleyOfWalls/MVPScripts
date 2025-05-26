@@ -89,14 +89,27 @@ public class DraftCardSelection : MonoBehaviour
     /// </summary>
     private bool IsCardSelectableByLocalPlayer()
     {
-        if (draftManager == null) return false;
+        if (draftManager == null)
+        {
+            Debug.Log($"DraftCardSelection: IsCardSelectableByLocalPlayer - draftManager is null");
+            return false;
+        }
         
         // Get the local player
         NetworkEntity localPlayer = GetLocalPlayer();
-        if (localPlayer == null) return false;
+        if (localPlayer == null)
+        {
+            Debug.Log($"DraftCardSelection: IsCardSelectableByLocalPlayer - localPlayer is null");
+            return false;
+        }
+        
+        Debug.Log($"DraftCardSelection: IsCardSelectableByLocalPlayer - localPlayer found: {localPlayer.EntityName.Value}");
         
         // Check if the local player has a pack available and this card is in it
-        return draftManager.IsCardSelectableByPlayer(gameObject, localPlayer);
+        bool isSelectable = draftManager.IsCardSelectableByPlayer(gameObject, localPlayer);
+        Debug.Log($"DraftCardSelection: IsCardSelectableByLocalPlayer - draftManager.IsCardSelectableByPlayer returned: {isSelectable}");
+        
+        return isSelectable;
     }
     
     /// <summary>

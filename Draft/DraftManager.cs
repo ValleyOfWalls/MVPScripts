@@ -165,8 +165,9 @@ public class DraftManager : NetworkBehaviour
         
         isDraftActive = true;
         
-        // Notify clients to set up draft UI
+        // Notify clients to set up draft UI and activate draft state
         RpcSetupDraftUI();
+        RpcActivateDraftOnClients();
         
         Debug.Log($"DraftManager: Draft started with {allPlayers.Count} players");
     }
@@ -312,15 +313,22 @@ public class DraftManager : NetworkBehaviour
             return;
         }
         
-        // Send selection to server
-        ServerSelectCard(localPlayer.Owner, cardComponent.CardData.CardId, targetEntityType);
+        NetworkObject cardNetObj = cardObject.GetComponent<NetworkObject>();
+        if (cardNetObj == null)
+        {
+            Debug.LogError("DraftManager: Selected card has no NetworkObject component");
+            return;
+        }
+        
+        // Send selection to server using NetworkObject.ObjectId
+        ServerSelectCard(localPlayer.Owner, cardNetObj.ObjectId, targetEntityType);
     }
     
     /// <summary>
     /// Server-side card selection handling
     /// </summary>
     [ServerRpc(RequireOwnership = false)]
-    private void ServerSelectCard(NetworkConnection playerConnection, int cardId, EntityType targetEntityType)
+    private void ServerSelectCard(NetworkConnection playerConnection, int cardObjectId, EntityType targetEntityType)
     {
         if (!IsServerInitialized || !isDraftActive)
         {
@@ -336,11 +344,11 @@ public class DraftManager : NetworkBehaviour
             return;
         }
         
-        // Find the card object
-        GameObject cardObject = FindCardObjectById(cardId);
+        // Find the card object by NetworkObject.ObjectId
+        GameObject cardObject = FindCardObjectByNetworkObjectId(cardObjectId);
         if (cardObject == null)
         {
-            Debug.LogError($"DraftManager: Could not find card object with ID {cardId}");
+            Debug.LogError($"DraftManager: Could not find card object with NetworkObject.ObjectId {cardObjectId}");
             return;
         }
         
@@ -415,29 +423,60 @@ public class DraftManager : NetworkBehaviour
     [Server]
     private void RemoveCardFromPack(NetworkEntity player, GameObject cardObject)
     {
-        if (!currentVisiblePacks.ContainsKey(player))
+        if (cardObject == null)
         {
-            Debug.LogError($"DraftManager: No visible pack found for player {player.EntityName.Value}");
+            Debug.LogError("DraftManager: Cannot remove card - cardObject is null");
             return;
         }
         
-        DraftPack currentPack = currentVisiblePacks[player];
-        bool removed = currentPack.RemoveCard(cardObject);
+        NetworkObject cardNetObj = cardObject.GetComponent<NetworkObject>();
+        if (cardNetObj == null)
+        {
+            Debug.LogError("DraftManager: Card object has no NetworkObject component");
+            return;
+        }
+        
+        int cardObjectId = cardNetObj.ObjectId;
+        Debug.Log($"DraftManager: Attempting to remove card {cardObject.name} (ObjectId: {cardObjectId}) for player {player.EntityName.Value}");
+        
+        // Search across all draft packs to find the one containing this card by ObjectId
+        List<DraftPack> allPacks = draftPackSetup.GetAllActivePacks();
+        DraftPack packContainingCard = null;
+        
+        foreach (DraftPack pack in allPacks)
+        {
+            // Check if this pack contains the card by ObjectId
+            if (pack.ContainsCardWithObjectId(cardObjectId))
+            {
+                packContainingCard = pack;
+                Debug.Log($"DraftManager: Found card with ObjectId {cardObjectId} in pack {pack.name}");
+                break;
+            }
+        }
+        
+        if (packContainingCard == null)
+        {
+            Debug.LogError($"DraftManager: Could not find card {cardObject.name} (ObjectId: {cardObjectId}) in any draft pack");
+            return;
+        }
+        
+        // Remove the card from the pack
+        bool removed = packContainingCard.RemoveCard(cardObject);
         
         if (removed)
         {
-            Debug.Log($"DraftManager: Removed card from pack for player {player.EntityName.Value}");
+            Debug.Log($"DraftManager: Successfully removed card {cardObject.name} from pack {packContainingCard.name}");
             
             // Despawn the card object
-            NetworkObject cardNetObj = cardObject.GetComponent<NetworkObject>();
-            if (cardNetObj != null && cardNetObj.IsSpawned)
+            if (cardNetObj.IsSpawned)
             {
                 FishNet.InstanceFinder.ServerManager.Despawn(cardNetObj);
+                Debug.Log($"DraftManager: Despawned card {cardObject.name}");
             }
         }
         else
         {
-            Debug.LogError($"DraftManager: Failed to remove card from pack for player {player.EntityName.Value}");
+            Debug.LogError($"DraftManager: Failed to remove card {cardObject.name} from pack {packContainingCard.name}");
         }
     }
     
@@ -482,6 +521,9 @@ public class DraftManager : NetworkBehaviour
         
         // Update debug info after pack movement
         UpdateDebugInfoDelayed();
+        
+        // Update draft pack visibility for all clients after pack circulation
+        RpcUpdateDraftPackVisibility();
     }
     
     /// <summary>
@@ -576,15 +618,64 @@ public class DraftManager : NetworkBehaviour
     /// </summary>
     public bool IsCardSelectableByPlayer(GameObject cardObject, NetworkEntity player)
     {
-        if (!isDraftActive || !currentVisiblePacks.ContainsKey(player))
+        Debug.Log($"DraftManager.IsCardSelectableByPlayer called - Card: {cardObject.name}, Player: {player.EntityName.Value}");
+        Debug.Log($"DraftManager.IsCardSelectableByPlayer - isDraftActive: {isDraftActive}");
+        
+        if (!isDraftActive)
         {
+            Debug.Log($"DraftManager.IsCardSelectableByPlayer - Draft not active");
             return false;
         }
         
-        DraftPack visiblePack = currentVisiblePacks[player];
-        List<GameObject> packCards = visiblePack.GetCards();
+        // On server, use the currentVisiblePacks dictionary for efficiency
+        if (IsServerInitialized && currentVisiblePacks.ContainsKey(player))
+        {
+            DraftPack visiblePack = currentVisiblePacks[player];
+            Debug.Log($"DraftManager.IsCardSelectableByPlayer (Server) - Player's visible pack: {(visiblePack != null ? visiblePack.name : "null")}");
+            
+            List<GameObject> packCards = visiblePack.GetCards();
+            Debug.Log($"DraftManager.IsCardSelectableByPlayer (Server) - Pack has {packCards.Count} cards");
+            
+            bool contains = packCards.Contains(cardObject);
+            Debug.Log($"DraftManager.IsCardSelectableByPlayer (Server) - Pack contains this card: {contains}");
+            
+            return contains;
+        }
         
-        return packCards.Contains(cardObject);
+        // On client, or if server doesn't have visible pack info, check pack ownership directly
+        Debug.Log($"DraftManager.IsCardSelectableByPlayer - Using client-side pack ownership check");
+        
+        // Find all draft packs and check if any owned by this player contains the card
+        DraftPack[] allPacks = FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
+        Debug.Log($"DraftManager.IsCardSelectableByPlayer - Found {allPacks.Length} draft packs");
+        
+        foreach (DraftPack pack in allPacks)
+        {
+            if (pack.IsOwnedBy(player))
+            {
+                Debug.Log($"DraftManager.IsCardSelectableByPlayer - Found pack owned by player: {pack.name}");
+                
+                List<GameObject> packCards = pack.GetCards();
+                Debug.Log($"DraftManager.IsCardSelectableByPlayer - Pack has {packCards.Count} cards");
+                
+                bool contains = packCards.Contains(cardObject);
+                Debug.Log($"DraftManager.IsCardSelectableByPlayer - Pack contains this card: {contains}");
+                
+                if (!contains)
+                {
+                    Debug.Log($"DraftManager.IsCardSelectableByPlayer - Card names in pack:");
+                    for (int i = 0; i < packCards.Count; i++)
+                    {
+                        Debug.Log($"  [{i}]: {packCards[i].name}");
+                    }
+                }
+                
+                return contains;
+            }
+        }
+        
+        Debug.Log($"DraftManager.IsCardSelectableByPlayer - No pack owned by player found");
+        return false;
     }
     
     /// <summary>
@@ -692,6 +783,52 @@ public class DraftManager : NetworkBehaviour
         }
     }
     
+    [ObserversRpc]
+    private void RpcActivateDraftOnClients()
+    {
+        Debug.Log("DraftManager: RpcActivateDraftOnClients called on client");
+        
+        // Activate draft on client
+        isDraftActive = true;
+        
+        // Initialize client-side pack visibility
+        if (entityVisibilityManager != null)
+        {
+            entityVisibilityManager.UpdateDraftPackVisibility();
+            Debug.Log("DraftManager: Client draft activated and pack visibility updated");
+        }
+        else
+        {
+            Debug.LogWarning("DraftManager: EntityVisibilityManager not found on client");
+        }
+    }
+    
+    [ObserversRpc]
+    private void RpcUpdateDraftPackVisibility()
+    {
+        Debug.Log("DraftManager: RpcUpdateDraftPackVisibility called on client");
+        
+        // Update draft pack visibility on all clients
+        EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        if (entityVisibilityManager != null)
+        {
+            Debug.Log($"DraftManager: EntityVisibilityManager found: {entityVisibilityManager.name}");
+            Debug.Log($"DraftManager: EntityVisibilityManager current game state before SetGameState: {entityVisibilityManager.GetType().GetField("currentGameState", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(entityVisibilityManager)}");
+            
+            // Ensure the EntityVisibilityManager is in Draft state
+            entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Draft);
+            Debug.Log($"DraftManager: Called SetGameState(Draft) on EntityVisibilityManager");
+            
+            Debug.Log($"DraftManager: About to call UpdateDraftPackVisibility()");
+            entityVisibilityManager.UpdateDraftPackVisibility();
+            Debug.Log("DraftManager: Draft pack visibility updated on client");
+        }
+        else
+        {
+            Debug.LogWarning("DraftManager: EntityVisibilityManager not found on client for visibility update");
+        }
+    }
+    
     /// <summary>
     /// Syncs debug info to all clients
     /// </summary>
@@ -791,17 +928,16 @@ public class DraftManager : NetworkBehaviour
         return null;
     }
     
-    private GameObject FindCardObjectById(int cardId)
+    private GameObject FindCardObjectByNetworkObjectId(int cardObjectId)
     {
-        // This is a simplified approach - in practice, you might want to maintain a lookup table
-        Card[] allCards = FindObjectsByType<Card>(FindObjectsSortMode.None);
-        foreach (Card card in allCards)
+        // Search for the card by NetworkObject.ObjectId
+        NetworkObject netObj = null;
+        
+        if (FishNet.InstanceFinder.ServerManager.Objects.Spawned.TryGetValue(cardObjectId, out netObj))
         {
-            if (card.CardId == cardId)
-            {
-                return card.gameObject;
-            }
+            return netObj.gameObject;
         }
+        
         return null;
     }
     
