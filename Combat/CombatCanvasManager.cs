@@ -13,6 +13,8 @@ public class CombatCanvasManager : MonoBehaviour
 {
     [Header("Controls")]
     [SerializeField] private Button endTurnButton;
+    [SerializeField] private Button spectateButton;
+    [SerializeField] private Button returnToOwnFightButton;
 
     [Header("UI References")]
     [SerializeField] private TextMeshProUGUI turnIndicatorText;
@@ -25,6 +27,10 @@ public class CombatCanvasManager : MonoBehaviour
 
     private FightManager fightManager;
     private CombatManager combatManager;
+
+    // Public properties for accessing UI elements
+    public Button SpectateButton => spectateButton;
+    public Button ReturnToOwnFightButton => returnToOwnFightButton;
 
     public void Initialize(CombatManager manager, NetworkEntity player)
     {

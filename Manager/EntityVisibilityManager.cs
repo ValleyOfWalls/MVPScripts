@@ -185,30 +185,24 @@ public class EntityVisibilityManager : MonoBehaviour
             return;
         }
         
-        // Get the local client's connection
-        NetworkConnection localConnection = GetLocalPlayerConnection();
-        if (localConnection == null)
-        {
-            LogDebug("No local player connection found. Cannot determine combat visibility.");
-            return;
-        }
+        // Use the viewed combat references from FightManager instead of local player's fight
+        // This allows spectating to work by changing what fight is being viewed
+        NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
+        NetworkEntity viewedPet = fightManager.ViewedCombatOpponentPet;
         
-        // Get the fight assignment for the local client
-        var fightAssignment = fightManager.GetFightForConnection(localConnection);
-        
-        // IDs of entities in the fight
+        // IDs of entities in the currently viewed fight
         uint playerInFightId = 0;
         uint petInFightId = 0;
         
-        if (fightAssignment.HasValue)
+        if (viewedPlayer != null && viewedPet != null)
         {
-            playerInFightId = fightAssignment.Value.PlayerObjectId;
-            petInFightId = fightAssignment.Value.PetObjectId;
-            LogDebug($"Combat participants - Player ID: {playerInFightId}, Pet ID: {petInFightId}");
+            playerInFightId = (uint)viewedPlayer.ObjectId;
+            petInFightId = (uint)viewedPet.ObjectId;
+            LogDebug($"Combat participants (viewed fight) - Player ID: {playerInFightId}, Pet ID: {petInFightId}");
         }
         else
         {
-            LogDebug("No fight assignment found for this client");
+            LogDebug("No viewed fight found in FightManager");
         }
         
         UpdateEntitiesVisibilityForCombat(playerInFightId, petInFightId);
@@ -258,25 +252,24 @@ public class EntityVisibilityManager : MonoBehaviour
         }
         else if (currentGameState == GameState.Combat)
         {
-            // We need to determine if this entity is involved in the local client's fight
-            NetworkConnection localConnection = GetLocalPlayerConnection();
-            if (localConnection == null) return;
-            
+            // Use the viewed combat references from FightManager instead of local player's fight
+            // This allows spectating to work by showing entities for the currently viewed fight
             TryFindFightManager();
             if (fightManager == null) return;
             
-            var fightAssignment = fightManager.GetFightForConnection(localConnection);
+            NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
+            NetworkEntity viewedPet = fightManager.ViewedCombatOpponentPet;
             
-            if (fightAssignment.HasValue)
+            if (viewedPlayer != null && viewedPet != null)
             {
                 bool shouldBeVisible = false;
                 if (entity.EntityType == EntityType.Player)
                 {
-                    shouldBeVisible = (uint)entity.ObjectId == fightAssignment.Value.PlayerObjectId;
+                    shouldBeVisible = (uint)entity.ObjectId == (uint)viewedPlayer.ObjectId;
                 }
                 else if (entity.EntityType == EntityType.Pet)
                 {
-                    shouldBeVisible = (uint)entity.ObjectId == fightAssignment.Value.PetObjectId;
+                    shouldBeVisible = (uint)entity.ObjectId == (uint)viewedPet.ObjectId;
                 }
                 entityUI.SetVisible(shouldBeVisible);
             }
@@ -376,19 +369,6 @@ public class EntityVisibilityManager : MonoBehaviour
             return false;
         }
         
-        // Get the local client's connection
-        var networkManager = FishNet.InstanceFinder.NetworkManager;
-        if (networkManager == null || !networkManager.IsClientStarted)
-        {
-            return false;
-        }
-        
-        NetworkConnection localConnection = networkManager.ClientManager.Connection;
-        if (localConnection == null)
-        {
-            return false;
-        }
-        
         // Get the fight manager to check combat assignments
         TryFindFightManager();
         if (fightManager == null)
@@ -397,25 +377,28 @@ public class EntityVisibilityManager : MonoBehaviour
             return card.OwnerEntity.IsOwner;
         }
         
-        // Get the fight assignment for this client
-        var fightAssignment = fightManager.GetFightForConnection(localConnection);
-        if (!fightAssignment.HasValue)
+        // Use the viewed combat references from FightManager instead of local player's fight
+        // This allows spectating to work by showing cards for the currently viewed fight
+        NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
+        NetworkEntity viewedPet = fightManager.ViewedCombatOpponentPet;
+        
+        if (viewedPlayer == null || viewedPet == null)
         {
-            // If no fight assignment, fall back to simple ownership check
+            // If no viewed fight, fall back to simple ownership check
             return card.OwnerEntity.IsOwner;
         }
         
-        // Check if the card belongs to entities involved in this client's fight
+        // Check if the card belongs to entities involved in the currently viewed fight
         uint cardOwnerObjectId = (uint)card.OwnerEntity.ObjectId;
-        uint playerInFightId = fightAssignment.Value.PlayerObjectId;
-        uint opponentPetInFightId = fightAssignment.Value.PetObjectId;
+        uint playerInFightId = (uint)viewedPlayer.ObjectId;
+        uint opponentPetInFightId = (uint)viewedPet.ObjectId;
         
         // Card should be visible if it belongs to:
-        // 1. The player in the fight (the client's own player)
-        // 2. The opponent pet in the fight (the pet the client is fighting)
+        // 1. The player in the viewed fight
+        // 2. The opponent pet in the viewed fight
         bool shouldBeVisible = (cardOwnerObjectId == playerInFightId) || (cardOwnerObjectId == opponentPetInFightId);
         
-        LogDebug($"Combat card visibility check: Card {card.gameObject.name} owner ID: {cardOwnerObjectId}, Player in fight: {playerInFightId}, Opponent pet: {opponentPetInFightId}, Visible: {shouldBeVisible}");
+        LogDebug($"Combat card visibility check: Card {card.gameObject.name} owner ID: {cardOwnerObjectId}, Player in viewed fight: {playerInFightId}, Opponent pet: {opponentPetInFightId}, Visible: {shouldBeVisible}");
         
         return shouldBeVisible;
     }
