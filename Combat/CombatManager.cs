@@ -207,7 +207,7 @@ public class CombatManager : NetworkBehaviour
             return;
         }
 
-        HandManager handManager = entity.GetComponent<HandManager>();
+        HandManager handManager = GetHandManagerForEntity(entity);
         if (handManager != null)
         {
             Debug.Log($"CombatManager: Found HandManager for {entity.EntityName.Value}, calling DrawCards()");
@@ -215,8 +215,46 @@ public class CombatManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogError($"CombatManager: No HandManager found on entity {entity.EntityName.Value}");
+            Debug.LogError($"CombatManager: No HandManager found for entity {entity.EntityName.Value}");
         }
+    }
+
+    /// <summary>
+    /// Gets the HandManager for an entity by finding its hand entity through RelationshipManager
+    /// </summary>
+    private HandManager GetHandManagerForEntity(NetworkEntity entity)
+    {
+        if (entity == null) return null;
+
+        // Find the hand entity through RelationshipManager
+        var relationshipManager = entity.GetComponent<RelationshipManager>();
+        if (relationshipManager == null)
+        {
+            Debug.LogError($"CombatManager: No RelationshipManager found on entity {entity.EntityName.Value}");
+            return null;
+        }
+
+        if (relationshipManager.HandEntity == null)
+        {
+            Debug.LogError($"CombatManager: No hand entity found for entity {entity.EntityName.Value}");
+            return null;
+        }
+
+        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+        if (handEntity == null)
+        {
+            Debug.LogError($"CombatManager: Hand entity is not a valid NetworkEntity for entity {entity.EntityName.Value}");
+            return null;
+        }
+
+        var handManager = handEntity.GetComponent<HandManager>();
+        if (handManager == null)
+        {
+            Debug.LogError($"CombatManager: No HandManager found on hand entity for entity {entity.EntityName.Value}");
+            return null;
+        }
+
+        return handManager;
     }
 
     [Server]
@@ -284,7 +322,7 @@ public class CombatManager : NetworkBehaviour
         Debug.Log($"CombatManager: Processing end turn for {playerEntity.EntityName.Value}");
 
         // Discard player's hand
-        HandManager handManager = playerEntity.GetComponent<HandManager>();
+        HandManager handManager = GetHandManagerForEntity(playerEntity);
         if (handManager != null)
         {
             Debug.Log($"CombatManager: Discarding hand for {playerEntity.EntityName.Value}");
@@ -292,7 +330,7 @@ public class CombatManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogError($"CombatManager: No HandManager found on player {playerEntity.EntityName.Value}");
+            Debug.LogError($"CombatManager: No HandManager found for player {playerEntity.EntityName.Value}");
             return;
         }
 
@@ -320,7 +358,7 @@ public class CombatManager : NetworkBehaviour
         yield return StartCoroutine(petAI.TakeTurn());
 
         // Discard pet's remaining cards
-        HandManager handManager = pet.GetComponent<HandManager>();
+        HandManager handManager = GetHandManagerForEntity(pet);
         if (handManager != null)
         {
             Debug.Log($"CombatManager: Pet {pet.EntityName.Value} discarding hand.");
@@ -328,7 +366,7 @@ public class CombatManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogError($"CombatManager: No HandManager found on pet {pet.EntityName.Value} to discard hand.");
+            Debug.LogError($"CombatManager: No HandManager found for pet {pet.EntityName.Value} to discard hand.");
         }
 
         // Add a short pause before starting the new round
@@ -396,7 +434,7 @@ public class CombatManager : NetworkBehaviour
         if (player != null && pet != null)
         {
             // Despawn all remaining cards for both entities in this fight
-            DespawnFightCards(player, pet);
+            DespawnAllCardsForFight(player, pet);
             
             // Record the fight result
             fightResults[player] = playerWon;
@@ -424,12 +462,12 @@ public class CombatManager : NetworkBehaviour
     /// Despawns all remaining cards for both entities in a fight
     /// </summary>
     [Server]
-    private void DespawnFightCards(NetworkEntity player, NetworkEntity pet)
+    private void DespawnAllCardsForFight(NetworkEntity player, NetworkEntity pet)
     {
         Debug.Log($"CombatManager: Despawning all cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}");
         
         // Despawn player's cards
-        HandManager playerHandManager = player.GetComponent<HandManager>();
+        HandManager playerHandManager = GetHandManagerForEntity(player);
         if (playerHandManager != null)
         {
             Debug.Log($"CombatManager: Despawning cards for player {player.EntityName.Value}");
@@ -441,7 +479,7 @@ public class CombatManager : NetworkBehaviour
         }
         
         // Despawn pet's cards
-        HandManager petHandManager = pet.GetComponent<HandManager>();
+        HandManager petHandManager = GetHandManagerForEntity(pet);
         if (petHandManager != null)
         {
             Debug.Log($"CombatManager: Despawning cards for pet {pet.EntityName.Value}");

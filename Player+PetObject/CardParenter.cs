@@ -13,7 +13,6 @@ public class CardParenter : NetworkBehaviour
 {
     [Header("References")]
     [SerializeField] private NetworkEntityUI entityUI;
-    [SerializeField] private NetworkEntityDeck entityDeck;
 
     private Transform handTransform;
     private Transform deckTransform;
@@ -23,7 +22,6 @@ public class CardParenter : NetworkBehaviour
     {
         // Get required components
         if (entityUI == null) entityUI = GetComponent<NetworkEntityUI>();
-        if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
 
         // Get transforms from UI
         if (entityUI != null)
@@ -40,8 +38,6 @@ public class CardParenter : NetworkBehaviour
     {
         if (entityUI == null)
             Debug.LogError($"CardParenter on {gameObject.name}: Missing NetworkEntityUI component");
-        if (entityDeck == null)
-            Debug.LogError($"CardParenter on {gameObject.name}: Missing NetworkEntityDeck component");
         if (handTransform == null)
             Debug.LogError($"CardParenter on {gameObject.name}: Missing hand transform reference");
         if (deckTransform == null)

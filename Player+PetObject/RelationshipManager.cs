@@ -12,8 +12,12 @@ public class RelationshipManager : NetworkBehaviour
     // Networked reference to ally entity
     public readonly SyncVar<NetworkBehaviour> allyEntity = new SyncVar<NetworkBehaviour>();
     
-    // Inspector reference for debugging
+    // Networked reference to hand entity
+    public readonly SyncVar<NetworkBehaviour> handEntity = new SyncVar<NetworkBehaviour>();
+    
+    // Inspector references for debugging
     [SerializeField] private NetworkBehaviour inspectorAllyReference;
+    [SerializeField] private NetworkBehaviour inspectorHandReference;
     
     // Connection tracking
     private int ownerClientId = -1;
@@ -25,6 +29,7 @@ public class RelationshipManager : NetworkBehaviour
     public bool IsOwnedByLocalPlayer => isOwnedByLocalPlayer;
     
     public NetworkBehaviour AllyEntity => allyEntity.Value;
+    public NetworkBehaviour HandEntity => handEntity.Value;
 
     public override void OnStartServer()
     {
@@ -37,9 +42,14 @@ public class RelationshipManager : NetworkBehaviour
         base.OnStartClient();
         UpdateConnectionInfo();
         allyEntity.OnChange += OnAllyChanged;
+        handEntity.OnChange += OnHandChanged;
         if (IsClientOnly && allyEntity.Value != null)
         {
             inspectorAllyReference = allyEntity.Value;
+        }
+        if (IsClientOnly && handEntity.Value != null)
+        {
+            inspectorHandReference = handEntity.Value;
         }
     }
 
@@ -61,15 +71,19 @@ public class RelationshipManager : NetworkBehaviour
         if (IsServerInitialized)
         {
             allyEntity.Value = null;
+            handEntity.Value = null;
         }
         inspectorAllyReference = null;
+        inspectorHandReference = null;
     }
 
     public override void OnStopClient()
     {
         base.OnStopClient();
         allyEntity.OnChange -= OnAllyChanged;
+        handEntity.OnChange -= OnHandChanged;
         inspectorAllyReference = null;
+        inspectorHandReference = null;
     }
 
     /// <summary>
@@ -87,6 +101,20 @@ public class RelationshipManager : NetworkBehaviour
     }
 
     /// <summary>
+    /// Called when the handEntity SyncVar changes.
+    /// </summary>
+    private void OnHandChanged(NetworkBehaviour prevHand, NetworkBehaviour newHand, bool asServer)
+    {
+        if (!asServer) // This means the change was received from the server for a client
+        {
+            inspectorHandReference = newHand; // Update client's inspector for debugging
+            Debug.Log($"Client (ID: {OwnerClientId}): HandEntity updated from '{prevHand?.name}' to '{newHand?.name}'. IsOwnedByLocalPlayer: {IsOwnedByLocalPlayer}");
+        }
+        // If asServer is true, this callback is also invoked on the server when it changes the value.
+        // In that case, SetHand already updated inspectorHandReference.
+    }
+
+    /// <summary>
     /// Sets the ally entity for this entity
     /// </summary>
     [Server]
@@ -98,6 +126,18 @@ public class RelationshipManager : NetworkBehaviour
         Debug.Log($"Server: SetAlly called for {gameObject.name}. New ally: {ally?.name}. Current allyEntity: {allyEntity.Value?.name}");
     }
     
+    /// <summary>
+    /// Sets the hand entity for this entity
+    /// </summary>
+    [Server]
+    public void SetHand(NetworkBehaviour hand)
+    {
+        if (!IsServerInitialized) return;
+        handEntity.Value = hand;
+        inspectorHandReference = hand; // Update the server's inspector reference
+        Debug.Log($"Server: SetHand called for {gameObject.name}. New hand: {hand?.name}. Current handEntity: {handEntity.Value?.name}");
+    }
+
     /// <summary>
     /// Updates the connection tracking properties
     /// </summary>

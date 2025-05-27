@@ -12,7 +12,6 @@ public class HandManager : NetworkBehaviour
 {
     [Header("References")]
     [SerializeField] private NetworkEntityUI entityUI;
-    [SerializeField] private NetworkEntityDeck entityDeck;
 
     private Transform handTransform;
     private Transform deckTransform;
@@ -22,7 +21,6 @@ public class HandManager : NetworkBehaviour
     {
         // Get required components
         if (entityUI == null) entityUI = GetComponent<NetworkEntityUI>();
-        if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
 
         // Get transforms from UI
         if (entityUI != null)
@@ -39,8 +37,6 @@ public class HandManager : NetworkBehaviour
     {
         if (entityUI == null)
             Debug.LogError($"HandManager on {gameObject.name}: Missing NetworkEntityUI component");
-        if (entityDeck == null)
-            Debug.LogError($"HandManager on {gameObject.name}: Missing NetworkEntityDeck component");
         if (handTransform == null)
             Debug.LogError($"HandManager on {gameObject.name}: Missing hand transform reference");
         if (deckTransform == null)

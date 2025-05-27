@@ -27,6 +27,12 @@ public class CombatCanvasManager : NetworkBehaviour
     [SerializeField] private GameObject ownPetViewPrefab;
     [SerializeField] private OwnPetViewController ownPetViewController;
 
+    [Header("Combat Entity Positioning")]
+    [SerializeField] private Transform playerPositionTransform;
+    [SerializeField] private Transform opponentPetPositionTransform;
+    [SerializeField] private Transform playerHandPositionTransform;
+    [SerializeField] private Transform opponentPetHandPositionTransform;
+
     private NetworkEntity localPlayer;
     private NetworkEntity opponentPetForLocalPlayer;
 
@@ -176,6 +182,9 @@ public class CombatCanvasManager : NetworkBehaviour
             
             // Setup own pet view
             SetupOwnPetView();
+            
+            // Position combat entities
+            PositionCombatEntities(localPlayer, opponentPetForLocalPlayer);
             
             // Additional UI setup code here
         }
@@ -463,6 +472,116 @@ public class CombatCanvasManager : NetworkBehaviour
     public OwnPetViewController GetOwnPetViewController()
     {
         return ownPetViewController;
+    }
+
+    /// <summary>
+    /// Positions combat entities in their designated UI positions
+    /// </summary>
+    public void PositionCombatEntities(NetworkEntity player, NetworkEntity opponentPet)
+    {
+        Debug.Log($"CombatCanvasManager: PositionCombatEntities called - Player: {player?.EntityName.Value}, OpponentPet: {opponentPet?.EntityName.Value}");
+        
+        if (player == null || opponentPet == null)
+        {
+            Debug.LogWarning("CombatCanvasManager: Cannot position entities - player or opponent pet is null");
+            return;
+        }
+
+        // Position player
+        if (playerPositionTransform != null)
+        {
+            Debug.Log($"CombatCanvasManager: Positioning player {player.EntityName.Value} from {player.transform.position} to {playerPositionTransform.position}");
+            player.transform.position = playerPositionTransform.position;
+            Debug.Log($"CombatCanvasManager: Player positioned at {player.transform.position}");
+        }
+        else
+        {
+            Debug.LogError("CombatCanvasManager: playerPositionTransform is null - cannot position player");
+        }
+
+        // Position opponent pet
+        if (opponentPetPositionTransform != null)
+        {
+            Debug.Log($"CombatCanvasManager: Positioning opponent pet {opponentPet.EntityName.Value} from {opponentPet.transform.position} to {opponentPetPositionTransform.position}");
+            opponentPet.transform.position = opponentPetPositionTransform.position;
+            Debug.Log($"CombatCanvasManager: Opponent pet positioned at {opponentPet.transform.position}");
+        }
+        else
+        {
+            Debug.LogError("CombatCanvasManager: opponentPetPositionTransform is null - cannot position opponent pet");
+        }
+
+        // Position player hand
+        var playerRelationship = player.GetComponent<RelationshipManager>();
+        if (playerRelationship != null)
+        {
+            if (playerRelationship.HandEntity != null)
+            {
+                if (playerHandPositionTransform != null)
+                {
+                    var playerHand = playerRelationship.HandEntity.GetComponent<NetworkEntity>();
+                    if (playerHand != null)
+                    {
+                        Debug.Log($"CombatCanvasManager: Positioning player hand from {playerHand.transform.position} to {playerHandPositionTransform.position}");
+                        playerHand.transform.position = playerHandPositionTransform.position;
+                        Debug.Log($"CombatCanvasManager: Player hand positioned at {playerHand.transform.position}");
+                    }
+                    else
+                    {
+                        Debug.LogError("CombatCanvasManager: Player hand entity found but missing NetworkEntity component");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("CombatCanvasManager: playerHandPositionTransform is null - cannot position player hand");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"CombatCanvasManager: Player {player.EntityName.Value} has no hand entity - cannot position player hand");
+            }
+        }
+        else
+        {
+            Debug.LogError($"CombatCanvasManager: Player {player.EntityName.Value} missing RelationshipManager - cannot find hand");
+        }
+
+        // Position opponent pet hand
+        var petRelationship = opponentPet.GetComponent<RelationshipManager>();
+        if (petRelationship != null)
+        {
+            if (petRelationship.HandEntity != null)
+            {
+                if (opponentPetHandPositionTransform != null)
+                {
+                    var petHand = petRelationship.HandEntity.GetComponent<NetworkEntity>();
+                    if (petHand != null)
+                    {
+                        Debug.Log($"CombatCanvasManager: Positioning opponent pet hand from {petHand.transform.position} to {opponentPetHandPositionTransform.position}");
+                        petHand.transform.position = opponentPetHandPositionTransform.position;
+                        Debug.Log($"CombatCanvasManager: Opponent pet hand positioned at {petHand.transform.position}");
+                    }
+                    else
+                    {
+                        Debug.LogError("CombatCanvasManager: Opponent pet hand entity found but missing NetworkEntity component");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("CombatCanvasManager: opponentPetHandPositionTransform is null - cannot position opponent pet hand");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"CombatCanvasManager: Opponent pet {opponentPet.EntityName.Value} has no hand entity - cannot position opponent pet hand");
+            }
+        }
+        else
+        {
+            Debug.LogError($"CombatCanvasManager: Opponent pet {opponentPet.EntityName.Value} missing RelationshipManager - cannot find hand");
+        }
+        
+        Debug.Log("CombatCanvasManager: PositionCombatEntities completed");
     }
 
     private IEnumerator FindAndParentSpawnedOwnPetView()

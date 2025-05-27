@@ -226,6 +226,11 @@ public class EntityVisibilityManager : MonoBehaviour
             {
                 shouldBeVisible = (uint)entity.ObjectId == visiblePetId;
             }
+            else if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
+            {
+                // Hand entities should be visible if their owner is in the viewed fight
+                shouldBeVisible = IsHandEntityInViewedFight(entity, visiblePlayerId, visiblePetId);
+            }
             
             var entityUI = entity.GetComponent<NetworkEntityUI>();
             if (entityUI != null)
@@ -271,6 +276,11 @@ public class EntityVisibilityManager : MonoBehaviour
                 {
                     shouldBeVisible = (uint)entity.ObjectId == (uint)viewedPet.ObjectId;
                 }
+                else if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
+                {
+                    // Hand entities should be visible if their owner is in the viewed fight
+                    shouldBeVisible = IsHandEntityInViewedFight(entity, (uint)viewedPlayer.ObjectId, (uint)viewedPet.ObjectId);
+                }
                 entityUI.SetVisible(shouldBeVisible);
             }
             else
@@ -278,6 +288,35 @@ public class EntityVisibilityManager : MonoBehaviour
                 entityUI.SetVisible(false);
             }
         }
+    }
+    
+    /// <summary>
+    /// Determines if a hand entity should be visible based on whether its owner is in the viewed fight
+    /// </summary>
+    private bool IsHandEntityInViewedFight(NetworkEntity handEntity, uint visiblePlayerId, uint visiblePetId)
+    {
+        if (handEntity == null) return false;
+        
+        // Find all entities to check for ownership relationships
+        foreach (var entity in allEntities)
+        {
+            if (entity == null) continue;
+            
+            // Check if this entity has a relationship to the hand
+            var relationshipManager = entity.GetComponent<RelationshipManager>();
+            if (relationshipManager != null && relationshipManager.HandEntity != null)
+            {
+                var entityHand = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+                if (entityHand != null && (uint)entityHand.ObjectId == (uint)handEntity.ObjectId)
+                {
+                    // This entity owns the hand, check if the entity is in the viewed fight
+                    uint entityId = (uint)entity.ObjectId;
+                    return entityId == visiblePlayerId || entityId == visiblePetId;
+                }
+            }
+        }
+        
+        return false;
     }
     
     /// <summary>
@@ -388,19 +427,74 @@ public class EntityVisibilityManager : MonoBehaviour
             return card.OwnerEntity.IsOwner;
         }
         
-        // Check if the card belongs to entities involved in the currently viewed fight
-        uint cardOwnerObjectId = (uint)card.OwnerEntity.ObjectId;
+        // Get the main entity (Player/Pet) that owns this card
+        NetworkEntity cardMainOwner = GetMainEntityForCard(card);
+        if (cardMainOwner == null)
+        {
+            LogDebug($"Combat card visibility: Could not find main owner for card {card.gameObject.name}");
+            return false;
+        }
+        
+        // Check if the card's main owner is involved in the currently viewed fight
+        uint cardMainOwnerObjectId = (uint)cardMainOwner.ObjectId;
         uint playerInFightId = (uint)viewedPlayer.ObjectId;
         uint opponentPetInFightId = (uint)viewedPet.ObjectId;
         
-        // Card should be visible if it belongs to:
+        // Card should be visible if its main owner is:
         // 1. The player in the viewed fight
         // 2. The opponent pet in the viewed fight
-        bool shouldBeVisible = (cardOwnerObjectId == playerInFightId) || (cardOwnerObjectId == opponentPetInFightId);
+        bool shouldBeVisible = (cardMainOwnerObjectId == playerInFightId) || (cardMainOwnerObjectId == opponentPetInFightId);
         
-        LogDebug($"Combat card visibility check: Card {card.gameObject.name} owner ID: {cardOwnerObjectId}, Player in viewed fight: {playerInFightId}, Opponent pet: {opponentPetInFightId}, Visible: {shouldBeVisible}");
+        LogDebug($"Combat card visibility check: Card {card.gameObject.name} main owner: {cardMainOwner.EntityName.Value} (ID: {cardMainOwnerObjectId}), Player in viewed fight: {playerInFightId}, Opponent pet: {opponentPetInFightId}, Visible: {shouldBeVisible}");
         
         return shouldBeVisible;
+    }
+    
+    /// <summary>
+    /// Gets the main entity (Player/Pet) that owns a card, handling the case where cards are owned by Hand entities
+    /// </summary>
+    private NetworkEntity GetMainEntityForCard(Card card)
+    {
+        if (card == null || card.OwnerEntity == null)
+        {
+            return null;
+        }
+        
+        NetworkEntity cardOwner = card.OwnerEntity;
+        
+        // If the card is owned by a Hand entity, find the main entity that owns the hand
+        if (cardOwner.EntityType == EntityType.PlayerHand || cardOwner.EntityType == EntityType.PetHand)
+        {
+            // Search through all entities to find the one that has this hand
+            foreach (var entity in allEntities)
+            {
+                if (entity != null && (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet))
+                {
+                    var relationshipManager = entity.GetComponent<RelationshipManager>();
+                    if (relationshipManager != null && relationshipManager.HandEntity != null)
+                    {
+                        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+                        if (handEntity != null && (uint)handEntity.ObjectId == (uint)cardOwner.ObjectId)
+                        {
+                            // Found the main entity that owns this hand
+                            return entity;
+                        }
+                    }
+                }
+            }
+            
+            LogDebug($"GetMainEntityForCard: Could not find main entity for hand {cardOwner.EntityName.Value} (ID: {cardOwner.ObjectId})");
+            return null;
+        }
+        
+        // If the card is owned by a main entity (Player/Pet), return it directly
+        if (cardOwner.EntityType == EntityType.Player || cardOwner.EntityType == EntityType.Pet)
+        {
+            return cardOwner;
+        }
+        
+        LogDebug($"GetMainEntityForCard: Unknown entity type {cardOwner.EntityType} for card owner {cardOwner.EntityName.Value}");
+        return null;
     }
     
     /// <summary>
@@ -425,7 +519,23 @@ public class EntityVisibilityManager : MonoBehaviour
     {
         if (entity == null) return;
         
-        // Get all card transforms for this entity
+        // For main entities (Player/Pet), find their hand entity to get card transforms
+        if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet)
+        {
+            var relationshipManager = entity.GetComponent<RelationshipManager>();
+            if (relationshipManager != null && relationshipManager.HandEntity != null)
+            {
+                var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+                if (handEntity != null)
+                {
+                    // Update card visibility for the hand entity instead
+                    UpdateCardVisibilityForEntity(handEntity);
+                }
+            }
+            return;
+        }
+        
+        // For Hand entities, get the transforms directly
         var entityUI = entity.GetComponent<NetworkEntityUI>();
         if (entityUI == null) return;
         

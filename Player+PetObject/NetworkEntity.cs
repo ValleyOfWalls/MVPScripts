@@ -8,7 +8,9 @@ using Steamworks;
 public enum EntityType
 {
     Player,
-    Pet
+    Pet,
+    PlayerHand,
+    PetHand
 }
 
 /// <summary>

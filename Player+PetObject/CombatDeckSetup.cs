@@ -11,13 +11,11 @@ using FishNet.Object.Synchronizing;
 public class CombatDeckSetup : NetworkBehaviour
 {
     [Header("Required Components")]
-    [SerializeField] private CardSpawner cardSpawner;
-    [SerializeField] private CardParenter cardParenter;
     [SerializeField] private NetworkEntityDeck entityDeck;
-    [SerializeField] private HandManager handManager;
 
-    // Reference to the owner entity
+    // Reference to the owner entity and its hand
     private NetworkEntity ownerEntity;
+    private NetworkEntity handEntity;
     private Transform deckTransform;
     private int deckTransformResolutionAttempts = 0;
     private const int MAX_TRANSFORM_RESOLUTION_ATTEMPTS = 3;
@@ -27,22 +25,21 @@ public class CombatDeckSetup : NetworkBehaviour
 
     private void Awake()
     {
-        // Get required components
-        if (cardSpawner == null) cardSpawner = GetComponent<CardSpawner>();
-        if (cardParenter == null) cardParenter = GetComponent<CardParenter>();
+        // Get required components that should be on the main entity
         if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
-        if (handManager == null) handManager = GetComponent<HandManager>();
 
         // Get owner entity reference
         ownerEntity = GetComponent<NetworkEntity>();
+        
+        // CardSpawner and CardParenter are now on Hand entities - we'll find them when needed
     }
 
     public override void OnStartNetwork()
     {
         base.OnStartNetwork();
         
-        // Get deck transform on both server and client when network is ready
-        GetDeckTransform();
+        // Don't try to get deck transform immediately - Hand entities may not be spawned yet
+        // We'll resolve this when SetupCombatDeck is actually called
         ValidateComponents();
     }
 
@@ -61,63 +58,33 @@ public class CombatDeckSetup : NetworkBehaviour
             }
         }
 
-        // Get the appropriate UI component based on entity type
-        if (ownerEntity.EntityType == EntityType.Player)
+        // Find the hand entity through RelationshipManager
+        var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
+        if (relationshipManager != null && relationshipManager.HandEntity != null)
         {
-            var playerUI = GetComponent<NetworkPlayerUI>();
-            if (playerUI != null)
+            handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+            if (handEntity != null)
             {
-                deckTransform = playerUI.GetDeckTransform();
-                Debug.Log($"CombatDeckSetup on {gameObject.name}: Using NetworkPlayerUI deck transform. Path: {GetTransformPath(deckTransform)}");
-            }
-        }
-        else if (ownerEntity.EntityType == EntityType.Pet)
-        {
-            var petUI = GetComponent<NetworkPetUI>();
-            if (petUI != null)
-            {
-                deckTransform = petUI.GetDeckTransform();
-                Debug.Log($"CombatDeckSetup on {gameObject.name}: Using NetworkPetUI deck transform. Path: {GetTransformPath(deckTransform)}");
-            }
-        }
-
-        // Fall back to NetworkEntityUI if specific UI not found
-        if (deckTransform == null)
-        {
-            var entityUI = GetComponent<NetworkEntityUI>();
-            if (entityUI != null)
-            {
-                deckTransform = entityUI.GetDeckTransform();
-                Debug.Log($"CombatDeckSetup on {gameObject.name}: Using NetworkEntityUI deck transform. Path: {GetTransformPath(deckTransform)}");
-            }
-        }
-
-        // Last resort - try to find by name
-        if (deckTransform == null)
-        {
-            // Look for transforms with appropriate names
-            Transform[] allTransforms = GetComponentsInChildren<Transform>(true);
-            foreach (var t in allTransforms)
-            {
-                if (t.name.Contains("Deck"))
+                Debug.Log($"CombatDeckSetup on {gameObject.name}: Found hand entity: {handEntity.EntityName.Value}");
+                
+                // Get deck transform from the hand entity
+                var handEntityUI = handEntity.GetComponent<NetworkEntityUI>();
+                if (handEntityUI != null)
                 {
-                    deckTransform = t;
-                    Debug.Log($"CombatDeckSetup on {gameObject.name}: Found deck transform by name search: {t.name}");
-                    break;
+                    deckTransform = handEntityUI.GetDeckTransform();
+                    if (deckTransform != null)
+                    {
+                        Debug.Log($"CombatDeckSetup on {gameObject.name}: Using hand entity deck transform. Path: {GetTransformPath(deckTransform)}");
+                        return;
+                    }
                 }
             }
         }
 
-        if (deckTransform == null)
-        {
-            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Could not find a deck transform in any UI component. Creating fallback.");
-            
-            // Create a fallback transform
-            GameObject fallbackObj = new GameObject("FallbackDeckTransform");
-            fallbackObj.transform.SetParent(transform);
-            fallbackObj.transform.localPosition = Vector3.zero;
-            deckTransform = fallbackObj.transform;
-        }
+        // If we get here, the hand entity or its components aren't ready yet
+        Debug.LogWarning($"CombatDeckSetup on {gameObject.name}: Hand entity not ready yet. RelationshipManager: {relationshipManager != null}, HandEntity: {relationshipManager?.HandEntity != null}");
+        handEntity = null;
+        deckTransform = null;
     }
 
     private string GetTransformPath(Transform transform)
@@ -138,18 +105,15 @@ public class CombatDeckSetup : NetworkBehaviour
 
     private void ValidateComponents()
     {
-        if (cardSpawner == null)
-            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Missing CardSpawner component");
-        if (cardParenter == null)
-            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Missing CardParenter component");
-        if (entityDeck == null)
-            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Missing NetworkEntityDeck component");
-        if (handManager == null)
-            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Missing HandManager component");
         if (ownerEntity == null)
             Debug.LogError($"CombatDeckSetup on {gameObject.name}: Missing NetworkEntity component");
-        if (deckTransform == null)
-            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Missing deck transform reference");
+        if (entityDeck == null)
+            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Missing NetworkEntityDeck component");
+        
+        // CardSpawner and CardParenter are now on Hand entities, not main entities
+        // We'll find them through the Hand entity when needed
+        
+        // deckTransform will be resolved when SetupCombatDeck is called
     }
 
     /// <summary>
@@ -160,26 +124,27 @@ public class CombatDeckSetup : NetworkBehaviour
     {
         if (!IsServerInitialized) return;
 
-        // Ensure we have a valid deck transform
-        if (deckTransform == null)
+        // Try to find the hand entity and deck transform
+        if (deckTransform == null || handEntity == null)
+        {
+            GetDeckTransform();
+        }
+
+        // If we still don't have what we need, retry with delay
+        if (deckTransform == null || handEntity == null)
         {
             if (deckTransformResolutionAttempts < MAX_TRANSFORM_RESOLUTION_ATTEMPTS)
             {
                 deckTransformResolutionAttempts++;
-                GetDeckTransform();
+                Debug.LogWarning($"CombatDeckSetup on {gameObject.name}: Hand entity or deck transform not ready, retrying in 0.5s (attempt {deckTransformResolutionAttempts}/{MAX_TRANSFORM_RESOLUTION_ATTEMPTS})");
                 
-                if (deckTransform == null)
-                {
-                    Debug.LogError($"CombatDeckSetup on {gameObject.name}: Cannot setup combat deck - deck transform still null after {deckTransformResolutionAttempts} attempts");
-                    
-                    // Retry after a delay
-                    StartCoroutine(RetrySetupAfterDelay(0.5f));
-                    return;
-                }
+                // Retry after a delay
+                StartCoroutine(RetrySetupAfterDelay(0.5f));
+                return;
             }
             else
             {
-                Debug.LogError($"CombatDeckSetup on {gameObject.name}: Failed to resolve deck transform after {MAX_TRANSFORM_RESOLUTION_ATTEMPTS} attempts.");
+                Debug.LogError($"CombatDeckSetup on {gameObject.name}: Failed to find hand entity or deck transform after {MAX_TRANSFORM_RESOLUTION_ATTEMPTS} attempts.");
                 return;
             }
         }
@@ -195,7 +160,7 @@ public class CombatDeckSetup : NetworkBehaviour
 
     private IEnumerator SpawnDeckCards()
     {
-        if (entityDeck == null || cardSpawner == null || cardParenter == null)
+        if (entityDeck == null)
         {
             Debug.LogError($"CombatDeckSetup on {gameObject.name}: Missing required components for deck setup");
             yield break;
@@ -207,12 +172,38 @@ public class CombatDeckSetup : NetworkBehaviour
             yield break;
         }
 
+        // Find CardSpawner and CardParenter from the Hand entity
+        CardSpawner handCardSpawner = null;
+        CardParenter handCardParenter = null;
+        
+        if (handEntity != null)
+        {
+            handCardSpawner = handEntity.GetComponent<CardSpawner>();
+            handCardParenter = handEntity.GetComponent<CardParenter>();
+            
+            if (handCardSpawner == null)
+                Debug.LogError($"CombatDeckSetup on {gameObject.name}: Hand entity {handEntity.EntityName.Value} is missing CardSpawner component");
+            if (handCardParenter == null)
+                Debug.LogError($"CombatDeckSetup on {gameObject.name}: Hand entity {handEntity.EntityName.Value} is missing CardParenter component");
+        }
+        else
+        {
+            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Hand entity is null - this should not happen at this point");
+        }
+
+        if (handCardSpawner == null || handCardParenter == null)
+        {
+            Debug.LogError($"CombatDeckSetup on {gameObject.name}: Cannot find CardSpawner or CardParenter on hand entity");
+            yield break;
+        }
+
         // Log detailed information about this entity
         Debug.Log($"=== CombatDeckSetup.SpawnDeckCards for {gameObject.name} ===");
         Debug.Log($"Entity Type: {ownerEntity?.EntityType}");
         Debug.Log($"Entity Name: {ownerEntity?.EntityName.Value}");
         Debug.Log($"Entity IsOwner: {ownerEntity?.IsOwner}");
         Debug.Log($"Entity Owner ClientId: {ownerEntity?.Owner?.ClientId ?? -1}");
+        Debug.Log($"Hand Entity: {handEntity?.EntityName.Value}");
         Debug.Log($"=== Starting card spawn process ===");
 
         // Get all card IDs from the entity's deck
@@ -242,8 +233,8 @@ public class CombatDeckSetup : NetworkBehaviour
 
             Debug.Log($"About to spawn card {cardData.CardName} for entity {ownerEntity?.EntityName.Value} (ClientId: {ownerEntity?.Owner?.ClientId ?? -1})");
 
-            // Spawn the card
-            GameObject cardObject = cardSpawner.SpawnCard(cardData);
+            // Spawn the card using the Hand entity's CardSpawner
+            GameObject cardObject = handCardSpawner.SpawnCard(cardData);
             if (cardObject == null)
             {
                 Debug.LogError($"Failed to spawn card {cardData.CardName} for {gameObject.name}");
@@ -260,8 +251,8 @@ public class CombatDeckSetup : NetworkBehaviour
             // Log the parent transform before setup
             Debug.Log($"Setting up card {cardObject.name} with parent transform {deckTransform.name} (exists: {deckTransform != null}, path: {GetTransformPath(deckTransform)})");
 
-            // Set up card ownership and parenting
-            cardParenter.SetupCard(cardObject, ownerEntity, deckTransform);
+            // Set up card ownership and parenting using the Hand entity's CardParenter
+            handCardParenter.SetupCard(cardObject, ownerEntity, deckTransform);
 
             // Initialize the card's container state
             if (card != null)

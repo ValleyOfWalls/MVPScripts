@@ -12,7 +12,6 @@ public class PetCombatAI : NetworkBehaviour
 {
     [Header("References")]
     [SerializeField] private NetworkEntity petEntity;
-    [SerializeField] private HandManager handManager;
 
     [Header("AI Settings")]
     [SerializeField] private float delayBetweenActions = 1.0f;
@@ -26,7 +25,6 @@ public class PetCombatAI : NetworkBehaviour
     {
         // Get required components
         if (petEntity == null) petEntity = GetComponent<NetworkEntity>();
-        if (handManager == null) handManager = GetComponent<HandManager>();
 
         ValidateComponents();
     }
@@ -35,8 +33,6 @@ public class PetCombatAI : NetworkBehaviour
     {
         if (petEntity == null)
             Debug.LogError($"PetCombatAI on {gameObject.name}: Missing NetworkEntity component");
-        if (handManager == null)
-            Debug.LogError($"PetCombatAI on {gameObject.name}: Missing HandManager component");
     }
 
     /// <summary>
@@ -54,6 +50,14 @@ public class PetCombatAI : NetworkBehaviour
         yield return new WaitForSeconds(delayBeforeFirstAction);
 
         // Get all cards in hand
+        HandManager handManager = GetHandManager();
+        if (handManager == null)
+        {
+            Debug.LogError($"PetCombatAI: Cannot find hand manager for {petEntity.EntityName.Value}");
+            hasFinishedTurn = true;
+            yield break;
+        }
+
         Transform handTransform = handManager.GetHandTransform();
         if (handTransform == null)
         {
@@ -282,5 +286,41 @@ public class PetCombatAI : NetworkBehaviour
         }
         
         return priority;
+    }
+
+    /// <summary>
+    /// Gets the HandManager from the pet's hand entity
+    /// </summary>
+    private HandManager GetHandManager()
+    {
+        // Find the hand entity through RelationshipManager
+        var relationshipManager = petEntity.GetComponent<RelationshipManager>();
+        if (relationshipManager == null)
+        {
+            Debug.LogError($"PetCombatAI: No RelationshipManager found on pet {petEntity.EntityName.Value}");
+            return null;
+        }
+
+        if (relationshipManager.HandEntity == null)
+        {
+            Debug.LogError($"PetCombatAI: No hand entity found for pet {petEntity.EntityName.Value}");
+            return null;
+        }
+
+        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+        if (handEntity == null)
+        {
+            Debug.LogError($"PetCombatAI: Hand entity is not a valid NetworkEntity for pet {petEntity.EntityName.Value}");
+            return null;
+        }
+
+        var handManager = handEntity.GetComponent<HandManager>();
+        if (handManager == null)
+        {
+            Debug.LogError($"PetCombatAI: No HandManager found on hand entity for pet {petEntity.EntityName.Value}");
+            return null;
+        }
+
+        return handManager;
     }
 } 

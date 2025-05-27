@@ -153,8 +153,71 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         // The source is the owner of the card
         if (card != null && card.CurrentContainer == CardLocation.Hand)
         {
-            return card.OwnerEntity;
+            NetworkEntity cardOwner = card.OwnerEntity;
+            if (cardOwner == null) return null;
+            
+            // If the card is owned by a Hand entity, find the main entity that owns the hand
+            if (cardOwner.EntityType == EntityType.PlayerHand || cardOwner.EntityType == EntityType.PetHand)
+            {
+                // Find the main entity (Player/Pet) that owns this hand
+                NetworkEntity mainEntity = GetMainEntityForHand(cardOwner);
+                if (mainEntity != null)
+                {
+                    Debug.Log($"SourceAndTargetIdentifier: Card {gameObject.name} owned by hand {cardOwner.EntityName.Value}, main entity is {mainEntity.EntityName.Value}");
+                    return mainEntity;
+                }
+                else
+                {
+                    Debug.LogWarning($"SourceAndTargetIdentifier: Could not find main entity for hand {cardOwner.EntityName.Value}");
+                    return null;
+                }
+            }
+            
+            // If the card is owned by a main entity (Player/Pet), return it directly
+            if (cardOwner.EntityType == EntityType.Player || cardOwner.EntityType == EntityType.Pet)
+            {
+                return cardOwner;
+            }
+            
+            Debug.LogWarning($"SourceAndTargetIdentifier: Unknown entity type {cardOwner.EntityType} for card owner {cardOwner.EntityName.Value}");
+            return null;
         }
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the main entity (Player/Pet) that owns a hand entity
+    /// </summary>
+    private NetworkEntity GetMainEntityForHand(NetworkEntity handEntity)
+    {
+        if (handEntity == null) return null;
+        
+        // Search through all spawned NetworkObjects to find the one that has this hand
+        var spawnedObjects = IsServerInitialized ? 
+            NetworkManager.ServerManager.Objects.Spawned.Values :
+            NetworkManager.ClientManager.Objects.Spawned.Values;
+            
+        foreach (var networkObject in spawnedObjects)
+        {
+            if (networkObject == null) continue;
+            
+            var entity = networkObject.GetComponent<NetworkEntity>();
+            if (entity != null && (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet))
+            {
+                var relationshipManager = entity.GetComponent<RelationshipManager>();
+                if (relationshipManager != null && relationshipManager.HandEntity != null)
+                {
+                    var entityHand = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+                    if (entityHand != null && (uint)entityHand.ObjectId == (uint)handEntity.ObjectId)
+                    {
+                        // Found the main entity that owns this hand
+                        return entity;
+                    }
+                }
+            }
+        }
+        
+        Debug.LogWarning($"GetMainEntityForHand: Could not find main entity for hand {handEntity.EntityName.Value} (ID: {handEntity.ObjectId})");
         return null;
     }
 

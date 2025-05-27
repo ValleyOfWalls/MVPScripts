@@ -294,15 +294,20 @@ public class CombatSetup : NetworkBehaviour
         
         foreach (NetworkEntity entity in entities)
         {
-            CombatDeckSetup deckSetup = entity.GetComponent<CombatDeckSetup>();
-            if (deckSetup != null)
+            // Only look for CombatDeckSetup on Player and Pet entities, not Hand entities
+            if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet)
             {
-                deckSetup.SetupCombatDeck();
+                CombatDeckSetup deckSetup = entity.GetComponent<CombatDeckSetup>();
+                if (deckSetup != null)
+                {
+                    deckSetup.SetupCombatDeck();
+                }
+                else
+                {
+                    Debug.LogError($"Entity {entity.EntityName.Value} ({entity.EntityType}) is missing CombatDeckSetup component");
+                }
             }
-            else
-            {
-                Debug.LogError($"Entity {entity.EntityName.Value} is missing CombatDeckSetup component");
-            }
+            // Hand entities don't need CombatDeckSetup - they have CardSpawner/CardParenter/HandManager instead
         }
     }
 
@@ -321,7 +326,7 @@ public class CombatSetup : NetworkBehaviour
         
         foreach (NetworkEntity entity in entities)
         {
-            if (entity != null)
+            if (entity != null && (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet))
             {
                 // Reset health to maximum
                 entity.CurrentHealth.Value = entity.MaxHealth.Value;
