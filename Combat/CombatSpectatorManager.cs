@@ -196,6 +196,7 @@ public class CombatSpectatorManager : MonoBehaviour
         
         // Get all fight assignments
         var allFights = fightManager.GetAllFightAssignments();
+        LogDebug($"Found {allFights.Count} total fights");
         
         // Ensure we have the local player fight cached if we're spectating
         if (isSpectating && !localPlayerFight.HasValue)
@@ -203,33 +204,56 @@ public class CombatSpectatorManager : MonoBehaviour
             CacheLocalPlayerFight();
         }
         
-        // Filter out the local player's fight if we have one
+        // Include ALL fights in the available list for cycling
+        // We'll handle the logic of when to exit spectating mode elsewhere
         availableFights.Clear();
+        availableFights.AddRange(allFights);
+        
         foreach (var fight in allFights)
         {
-            if (!localPlayerFight.HasValue || 
-                fight.PlayerObjectId != localPlayerFight.Value.PlayerObjectId)
+            if (localPlayerFight.HasValue && fight.PlayerObjectId == localPlayerFight.Value.PlayerObjectId)
             {
-                availableFights.Add(fight);
+                LogDebug($"Added local player's fight to cycle: Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}");
+            }
+            else
+            {
+                LogDebug($"Added other player's fight to cycle: Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}");
             }
         }
         
-        // If we're spectating and there are no other fights available, we should exit spectating mode
+        // If we're spectating and there are no fights available, we should exit spectating mode
         if (isSpectating && availableFights.Count == 0)
         {
-            LogDebug("No other fights available while spectating - exiting spectating mode");
+            LogDebug("No fights available while spectating - exiting spectating mode");
             ExitSpectatingMode();
         }
         
-        LogDebug($"Updated available fights: {availableFights.Count} fights available for spectating");
+        LogDebug($"Updated available fights: {availableFights.Count} fights available for cycling");
     }
     
     private void UpdateSpectateButtonState()
     {
         if (spectateButton == null) return;
         
+        // Count how many fights are NOT the local player's fight
+        int otherFightsCount = 0;
+        if (localPlayerFight.HasValue)
+        {
+            foreach (var fight in availableFights)
+            {
+                if (fight.PlayerObjectId != localPlayerFight.Value.PlayerObjectId)
+                {
+                    otherFightsCount++;
+                }
+            }
+        }
+        else
+        {
+            otherFightsCount = availableFights.Count;
+        }
+        
         // Enable spectate button if there are other fights to watch
-        bool canSpectate = availableFights.Count > 0;
+        bool canSpectate = otherFightsCount > 0;
         spectateButton.interactable = canSpectate;
         
         // Update button text based on state
@@ -246,7 +270,7 @@ public class CombatSpectatorManager : MonoBehaviour
             }
         }
         
-        LogDebug($"Spectate button state updated - interactable: {canSpectate}, isSpectating: {isSpectating}");
+        LogDebug($"Spectate button state updated - interactable: {canSpectate}, isSpectating: {isSpectating}, otherFights: {otherFightsCount}");
     }
     
     private void StartSpectating()
@@ -264,8 +288,36 @@ public class CombatSpectatorManager : MonoBehaviour
             return;
         }
         
+        // Update available fights now that we have the local player fight cached
+        UpdateAvailableFights();
+        
+        // Check again if there are fights available after updating
+        if (availableFights.Count == 0)
+        {
+            LogDebug("No fights available to spectate after updating");
+            return;
+        }
+        
+        // Find the first fight that is NOT the local player's fight to start with
+        currentSpectatedFightIndex = -1;
+        for (int i = 0; i < availableFights.Count; i++)
+        {
+            if (!localPlayerFight.HasValue || 
+                availableFights[i].PlayerObjectId != localPlayerFight.Value.PlayerObjectId)
+            {
+                currentSpectatedFightIndex = i;
+                break;
+            }
+        }
+        
+        // If all fights are the local player's fight (shouldn't happen with multiple players)
+        if (currentSpectatedFightIndex == -1)
+        {
+            LogDebug("Only local player's fight available - cannot start spectating");
+            return;
+        }
+        
         isSpectating = true;
-        currentSpectatedFightIndex = 0;
         
         // Show the return button
         if (returnToOwnFightButton != null)
@@ -279,7 +331,7 @@ public class CombatSpectatorManager : MonoBehaviour
             combatCanvasManager.SetEndTurnButtonInteractable(false);
         }
         
-        // Switch to the first available fight
+        // Switch to the first available fight that's not the local player's
         SwitchToFight(availableFights[currentSpectatedFightIndex]);
         
         UpdateSpectateButtonState();
@@ -298,7 +350,7 @@ public class CombatSpectatorManager : MonoBehaviour
         // Move to next fight (cycle back to 0 if at end)
         currentSpectatedFightIndex = (currentSpectatedFightIndex + 1) % availableFights.Count;
         
-        // Switch to the new fight
+        // Switch to the new fight (this will automatically exit spectating if it's the local player's fight)
         SwitchToFight(availableFights[currentSpectatedFightIndex]);
         
         LogDebug($"Switched to spectating fight {currentSpectatedFightIndex + 1} of {availableFights.Count}");
@@ -379,6 +431,13 @@ public class CombatSpectatorManager : MonoBehaviour
             if (entityVisibilityManager != null)
             {
                 entityVisibilityManager.UpdateAllEntitiesVisibility();
+            }
+            
+            // Notify CombatCanvasManager to update the OwnPetView for the new viewed fight
+            if (combatCanvasManager != null)
+            {
+                combatCanvasManager.OnViewedCombatChanged();
+                LogDebug("Notified CombatCanvasManager of viewed combat change");
             }
             
             // Check if we've cycled back to the local player's own fight

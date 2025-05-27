@@ -9,7 +9,7 @@ using System.Collections;
 /// Manages the UI elements for the combat phase, including turn indicators, and notifications.
 /// Attach to: The CombatCanvas GameObject that contains all combat UI elements.
 /// </summary>
-public class CombatCanvasManager : MonoBehaviour
+public class CombatCanvasManager : NetworkBehaviour
 {
     [Header("Controls")]
     [SerializeField] private Button endTurnButton;
@@ -21,6 +21,11 @@ public class CombatCanvasManager : MonoBehaviour
     [SerializeField] private GameObject fightEndedPanel;
     [SerializeField] private TextMeshProUGUI fightEndedText;
     [SerializeField] private GameObject combatCanvas;
+
+    [Header("Own Pet View")]
+    [SerializeField] private Transform ownPetViewContainer;
+    [SerializeField] private GameObject ownPetViewPrefab;
+    [SerializeField] private OwnPetViewController ownPetViewController;
 
     private NetworkEntity localPlayer;
     private NetworkEntity opponentPetForLocalPlayer;
@@ -169,6 +174,9 @@ public class CombatCanvasManager : MonoBehaviour
             // Initialize button listeners
             InitializeButtonListeners();
             
+            // Setup own pet view
+            SetupOwnPetView();
+            
             // Additional UI setup code here
         }
     }
@@ -207,6 +215,161 @@ public class CombatCanvasManager : MonoBehaviour
         else
         {
             Debug.LogError("End Turn Button not assigned in CombatCanvasManager");
+        }
+    }
+
+    /// <summary>
+    /// Sets up the own pet view functionality
+    /// </summary>
+    private void SetupOwnPetView()
+    {
+        Debug.Log("CombatCanvasManager: SetupOwnPetView() called");
+        
+        // Validate container
+        if (ownPetViewContainer == null)
+        {
+            Debug.LogWarning("CombatCanvasManager: OwnPetViewContainer not assigned. Own pet view will not be available.");
+            return;
+        }
+        
+        Debug.Log($"CombatCanvasManager: Container found: {ownPetViewContainer.name}, active: {ownPetViewContainer.gameObject.activeInHierarchy}");
+        
+        // Find existing OwnPetViewController if not assigned
+        if (ownPetViewController == null)
+        {
+            ownPetViewController = ownPetViewContainer.GetComponentInChildren<OwnPetViewController>();
+            if (ownPetViewController != null)
+            {
+                Debug.Log($"CombatCanvasManager: Found existing OwnPetViewController: {ownPetViewController.name}, active: {ownPetViewController.gameObject.activeInHierarchy}");
+            }
+        }
+        
+        // If still not found, try to spawn the prefab (server only)
+        if (ownPetViewController == null)
+        {
+            if (ownPetViewPrefab != null)
+            {
+                Debug.Log($"CombatCanvasManager: Prefab assigned: {ownPetViewPrefab.name}");
+                
+                // Check if the prefab has a NetworkObject component
+                NetworkObject prefabNetworkObject = ownPetViewPrefab.GetComponent<NetworkObject>();
+                if (prefabNetworkObject != null)
+                {
+                    Debug.Log("CombatCanvasManager: Prefab has NetworkObject component");
+                    
+                    // Only spawn on server, clients will receive it automatically
+                    var networkManager = FishNet.InstanceFinder.NetworkManager;
+                    if (networkManager != null && networkManager.IsServerStarted)
+                    {
+                        Debug.Log("CombatCanvasManager: Server spawning OwnPetView NetworkObject");
+                        
+                        // Spawn at root first to avoid NetworkObject parenting issues
+                        GameObject spawnedObject = Instantiate(ownPetViewPrefab);
+                        Debug.Log($"CombatCanvasManager: Instantiated object: {spawnedObject.name}, active: {spawnedObject.activeInHierarchy}");
+                        
+                        NetworkObject spawnedNetworkObject = spawnedObject.GetComponent<NetworkObject>();
+                        
+                        if (spawnedNetworkObject != null)
+                        {
+                            Debug.Log("CombatCanvasManager: About to spawn NetworkObject");
+                            
+                            // Spawn the NetworkObject first
+                            networkManager.ServerManager.Spawn(spawnedNetworkObject);
+                            Debug.Log($"CombatCanvasManager: NetworkObject spawned, active: {spawnedObject.activeInHierarchy}");
+                            
+                            // Then move to correct parent after spawning
+                            spawnedObject.transform.SetParent(ownPetViewContainer, false);
+                            Debug.Log($"CombatCanvasManager: Set parent, active: {spawnedObject.activeInHierarchy}");
+                            
+                            // Ensure it's active
+                            spawnedObject.SetActive(true);
+                            Debug.Log($"CombatCanvasManager: Explicitly set active: {spawnedObject.activeInHierarchy}");
+                            
+                            ownPetViewController = spawnedObject.GetComponent<OwnPetViewController>();
+                            
+                            // Use RPC to notify clients about the correct parent
+                            if (spawnedNetworkObject.IsServerInitialized)
+                            {
+                                Debug.Log("CombatCanvasManager: Sending RPC to clients");
+                                SetOwnPetViewParentRpc(spawnedNetworkObject.ObjectId);
+                            }
+                            
+                            // Check if it's still active after a frame
+                            StartCoroutine(CheckActiveStatusAfterFrame(spawnedObject));
+                        }
+                        else
+                        {
+                            Debug.LogError("CombatCanvasManager: Failed to get NetworkObject component from spawned prefab!");
+                            Destroy(spawnedObject);
+                            return;
+                        }
+                    }
+                    else if (networkManager != null && networkManager.IsClientStarted)
+                    {
+                        Debug.Log("CombatCanvasManager: Client - looking for spawned NetworkObject");
+                        // On client, look for spawned NetworkObject and move it to correct parent
+                        // Note: The RPC might handle this, but we have a backup coroutine
+                        StartCoroutine(FindAndParentSpawnedOwnPetView());
+                        return;
+                    }
+                }
+                else
+                {
+                    // Fallback to regular instantiation if not a NetworkObject
+                    Debug.LogWarning("CombatCanvasManager: OwnPetViewPrefab is not a NetworkObject, using regular instantiation");
+                    GameObject instantiatedPrefab = Instantiate(ownPetViewPrefab, ownPetViewContainer);
+                    Debug.Log($"CombatCanvasManager: Regular instantiation complete, active: {instantiatedPrefab.activeInHierarchy}");
+                    ownPetViewController = instantiatedPrefab.GetComponent<OwnPetViewController>();
+                }
+                
+                if (ownPetViewController == null)
+                {
+                    Debug.LogError("CombatCanvasManager: Spawned/instantiated prefab does not contain OwnPetViewController component!");
+                    return;
+                }
+            }
+            else
+            {
+                Debug.LogWarning("CombatCanvasManager: OwnPetViewPrefab not assigned. Cannot spawn own pet view.");
+                return;
+            }
+        }
+        
+        // Final fallback - search entire scene
+        if (ownPetViewController == null)
+        {
+            Debug.Log("CombatCanvasManager: Searching entire scene for OwnPetViewController");
+            ownPetViewController = FindFirstObjectByType<OwnPetViewController>();
+            if (ownPetViewController != null)
+            {
+                Debug.Log($"CombatCanvasManager: Found OwnPetViewController in scene: {ownPetViewController.name}, active: {ownPetViewController.gameObject.activeInHierarchy}");
+            }
+        }
+        
+        if (ownPetViewController != null)
+        {
+            Debug.Log($"CombatCanvasManager: Final check - OwnPetViewController active: {ownPetViewController.gameObject.activeInHierarchy}");
+            
+            // Refresh the displayed pet to show the currently viewed player's pet
+            ownPetViewController.RefreshDisplayedPet();
+            Debug.Log("CombatCanvasManager: Own pet view setup complete");
+        }
+        else
+        {
+            Debug.LogWarning("CombatCanvasManager: OwnPetViewController not found. Own pet view will not be available.");
+        }
+    }
+
+    /// <summary>
+    /// Called when the viewed combat changes (e.g., when spectating)
+    /// Updates the own pet view to show the new viewed player's pet
+    /// </summary>
+    public void OnViewedCombatChanged()
+    {
+        if (ownPetViewController != null)
+        {
+            ownPetViewController.RefreshDisplayedPet();
+            Debug.Log("CombatCanvasManager: Updated own pet view for new viewed combat");
         }
     }
 
@@ -272,6 +435,12 @@ public class CombatCanvasManager : MonoBehaviour
         {
             combatCanvas.SetActive(true);
             Debug.Log("CombatCanvasManager: Combat canvas GameObject enabled");
+            
+            // Refresh own pet view when canvas is re-enabled
+            if (ownPetViewController != null)
+            {
+                ownPetViewController.RefreshDisplayedPet();
+            }
         }
         else
         {
@@ -286,5 +455,124 @@ public class CombatCanvasManager : MonoBehaviour
     {
         DisableEndTurnButton();
         Debug.Log("CombatCanvasManager: Local fight ended - UI updated");
+    }
+
+    /// <summary>
+    /// Gets the OwnPetViewController for external access
+    /// </summary>
+    public OwnPetViewController GetOwnPetViewController()
+    {
+        return ownPetViewController;
+    }
+
+    private IEnumerator FindAndParentSpawnedOwnPetView()
+    {
+        // Wait for a few frames to allow the NetworkObject to spawn
+        int maxRetries = 10;
+        int retryCount = 0;
+        
+        while (retryCount < maxRetries)
+        {
+            yield return new WaitForSeconds(0.1f);
+            
+            // First check if the RPC has already handled this
+            if (ownPetViewController != null)
+            {
+                Debug.Log("CombatCanvasManager: RPC has already handled OwnPetView setup, stopping coroutine");
+                yield break;
+            }
+            
+            // Look for NetworkObjects with OwnPetViewController component
+            OwnPetViewController[] controllers = FindObjectsByType<OwnPetViewController>(FindObjectsSortMode.None);
+            
+            foreach (var controller in controllers)
+            {
+                NetworkObject networkObject = controller.GetComponent<NetworkObject>();
+                if (networkObject != null)
+                {
+                    // Check if it's already parented correctly
+                    if (controller.transform.IsChildOf(ownPetViewContainer))
+                    {
+                        Debug.Log("CombatCanvasManager: Found already parented OwnPetView (likely via RPC)");
+                        ownPetViewController = controller;
+                        ownPetViewController.RefreshDisplayedPet();
+                        yield break;
+                    }
+                    // Check if it's unparented and needs to be moved
+                    else if (networkObject.transform.parent == null)
+                    {
+                        // Found an unparented NetworkObject with OwnPetViewController
+                        networkObject.transform.SetParent(ownPetViewContainer, false);
+                        networkObject.gameObject.SetActive(true);
+                        
+                        ownPetViewController = controller;
+                        ownPetViewController.RefreshDisplayedPet();
+                        
+                        Debug.Log("CombatCanvasManager: Found and parented spawned OwnPetView on client");
+                        yield break;
+                    }
+                }
+            }
+            
+            retryCount++;
+        }
+        
+        Debug.LogWarning("CombatCanvasManager: Failed to find spawned OwnPetView NetworkObject on client after retries");
+    }
+
+    [ObserversRpc]
+    private void SetOwnPetViewParentRpc(int objectId)
+    {
+        // Find the NetworkObject by ID and set its parent
+        var networkManager = FishNet.InstanceFinder.NetworkManager;
+        if (networkManager != null && networkManager.IsClientStarted)
+        {
+            if (networkManager.ClientManager.Objects.Spawned.TryGetValue(objectId, out NetworkObject networkObject))
+            {
+                if (networkObject != null && ownPetViewContainer != null)
+                {
+                    networkObject.transform.SetParent(ownPetViewContainer, false);
+                    networkObject.gameObject.SetActive(true);
+                    
+                    // Update our reference
+                    ownPetViewController = networkObject.GetComponent<OwnPetViewController>();
+                    if (ownPetViewController != null)
+                    {
+                        Debug.Log($"CombatCanvasManager: RPC found OwnPetViewController, refreshing display");
+                        ownPetViewController.RefreshDisplayedPet();
+                    }
+                    else
+                    {
+                        Debug.LogError("CombatCanvasManager: RPC could not find OwnPetViewController component");
+                    }
+                    
+                    Debug.Log("CombatCanvasManager: Set OwnPetView parent via RPC");
+                }
+                else
+                {
+                    Debug.LogError($"CombatCanvasManager: RPC failed - networkObject: {networkObject != null}, container: {ownPetViewContainer != null}");
+                }
+            }
+            else
+            {
+                Debug.LogError($"CombatCanvasManager: RPC could not find NetworkObject with ID {objectId}");
+            }
+        }
+        else
+        {
+            Debug.LogError("CombatCanvasManager: RPC called but NetworkManager not available or not client");
+        }
+    }
+
+    private IEnumerator CheckActiveStatusAfterFrame(GameObject spawnedObject)
+    {
+        yield return null; // Wait one frame
+        Debug.Log($"CombatCanvasManager: After one frame - spawned object active: {spawnedObject.activeInHierarchy}");
+        
+        yield return new WaitForSeconds(0.5f); // Wait half a second
+        Debug.Log($"CombatCanvasManager: After 0.5 seconds - spawned object active: {spawnedObject.activeInHierarchy}");
+        
+        yield return new WaitForSeconds(1.0f); // Wait another second
+        Debug.Log($"CombatCanvasManager: After 1.5 seconds total - spawned object active: {spawnedObject.activeInHierarchy}");
     }
 } 

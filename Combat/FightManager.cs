@@ -444,6 +444,9 @@ public class FightManager : NetworkBehaviour
         viewedCombatPlayer = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PlayerObjectId);
         viewedCombatOpponentPet = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PetObjectId);
         
+        // Update entity visibility for the new viewed fight
+        UpdateEntityVisibility();
+        
         return true;
     }
     
