@@ -7,63 +7,6 @@ using System.Linq;
 using System.Collections;
 
 /// <summary>
-/// Debug information for tracking pack circulation in the inspector
-/// </summary>
-[System.Serializable]
-public class PackDebugInfo
-{
-    [SerializeField] public DraftPack pack;
-    [SerializeField] public string packName;
-    [SerializeField] public string originalOwner;
-    [SerializeField] public string currentOwner;
-    [SerializeField] public int queuePosition;
-    [SerializeField] public bool isCurrentlyVisible;
-    
-    public PackDebugInfo(DraftPack pack, string currentOwner, int queuePosition, bool isCurrentlyVisible)
-    {
-        this.pack = pack;
-        this.packName = pack != null ? pack.name : "NULL";
-        this.originalOwner = pack?.GetOriginalOwner()?.EntityName?.Value ?? "Unknown";
-        this.currentOwner = currentOwner;
-        this.queuePosition = queuePosition;
-        this.isCurrentlyVisible = isCurrentlyVisible;
-    }
-    
-    // Constructor for network-safe version (without pack reference)
-    public PackDebugInfo(string packName, string originalOwner, string currentOwner, int queuePosition, bool isCurrentlyVisible)
-    {
-        this.pack = null; // Will be null on clients
-        this.packName = packName;
-        this.originalOwner = originalOwner;
-        this.currentOwner = currentOwner;
-        this.queuePosition = queuePosition;
-        this.isCurrentlyVisible = isCurrentlyVisible;
-    }
-}
-
-/// <summary>
-/// Network-safe debug info for RPC transmission (no object references)
-/// </summary>
-[System.Serializable]
-public struct NetworkPackDebugInfo
-{
-    public string packName;
-    public string originalOwner;
-    public string currentOwner;
-    public int queuePosition;
-    public bool isCurrentlyVisible;
-    
-    public NetworkPackDebugInfo(PackDebugInfo debugInfo)
-    {
-        this.packName = debugInfo.packName;
-        this.originalOwner = debugInfo.originalOwner;
-        this.currentOwner = debugInfo.currentOwner;
-        this.queuePosition = debugInfo.queuePosition;
-        this.isCurrentlyVisible = debugInfo.isCurrentlyVisible;
-    }
-}
-
-/// <summary>
 /// Manages the draft flow including pack circulation, card selection, and draft completion.
 /// Attach to: A NetworkObject in the scene that coordinates the draft process.
 /// </summary>
@@ -74,10 +17,6 @@ public class DraftManager : NetworkBehaviour
     [SerializeField] private DraftPackSetup draftPackSetup;
     [SerializeField] private EntityVisibilityManager entityVisibilityManager;
     [SerializeField] private GameManager gameManager;
-    
-    [Header("Debug Info - Pack Circulation")]
-    [SerializeField] private List<PackDebugInfo> packCirculationDebug = new List<PackDebugInfo>();
-    [SerializeField] private bool autoUpdateDebugInfo = true;
     
     // Track which players have completed the draft
     private readonly SyncDictionary<NetworkConnection, bool> playersReady = new SyncDictionary<NetworkConnection, bool>();
@@ -136,8 +75,6 @@ public class DraftManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log("DraftManager: Starting draft process");
-        
         // Get all players
         allPlayers = GetAllPlayerEntities();
         if (allPlayers.Count == 0)
@@ -168,8 +105,6 @@ public class DraftManager : NetworkBehaviour
         // Notify clients to set up draft UI and activate draft state
         RpcSetupDraftUI();
         RpcActivateDraftOnClients();
-        
-        Debug.Log($"DraftManager: Draft started with {allPlayers.Count} players");
     }
     
     /// <summary>
@@ -182,14 +117,11 @@ public class DraftManager : NetworkBehaviour
         currentVisiblePacks.Clear();
         
         List<DraftPack> allPacks = draftPackSetup.GetAllActivePacks();
-        Debug.Log($"DraftManager.InitializePackQueues: Found {allPacks.Count} active packs");
-        Debug.Log($"DraftManager.InitializePackQueues: Found {allPlayers.Count} players");
         
         // Create a queue for each player
         foreach (NetworkEntity player in allPlayers)
         {
             playerPackQueues[player] = new Queue<DraftPack>();
-            Debug.Log($"DraftManager.InitializePackQueues: Created queue for player {player.EntityName.Value}");
         }
         
         // Distribute packs to players (each player starts with their own pack)
@@ -203,21 +135,12 @@ public class DraftManager : NetworkBehaviour
             {
                 playerPackQueues[player].Enqueue(playerPack);
                 currentVisiblePacks[player] = playerPack;
-                Debug.Log($"DraftManager: Assigned pack {playerPack.name} to player {player.EntityName.Value}");
             }
             else
             {
                 Debug.LogError($"DraftManager: Could not find pack for player {player.EntityName.Value}");
             }
         }
-        
-        Debug.Log("DraftManager: Pack queues initialized");
-        Debug.Log($"DraftManager: playerPackQueues.Count = {playerPackQueues.Count}");
-        Debug.Log($"DraftManager: currentVisiblePacks.Count = {currentVisiblePacks.Count}");
-        
-        // Update debug info after initialization (with delay for pack names)
-        Debug.Log("DraftManager: About to call UpdateDebugInfoDelayed");
-        UpdateDebugInfoDelayed();
     }
     
     /// <summary>
@@ -362,8 +285,6 @@ public class DraftManager : NetworkBehaviour
     [Server]
     private void ProcessCardSelection(NetworkEntity player, GameObject cardObject, EntityType targetEntityType)
     {
-        Debug.Log($"DraftManager: Processing card selection for player {player.EntityName.Value}");
-        
         // Find the target entity (player or their pet)
         NetworkEntity targetEntity = GetTargetEntity(player, targetEntityType);
         if (targetEntity == null)
@@ -382,8 +303,6 @@ public class DraftManager : NetworkBehaviour
         
         Card cardComponent = cardObject.GetComponent<Card>();
         targetDeck.AddCard(cardComponent.CardData.CardId);
-        
-        Debug.Log($"DraftManager: Added card {cardComponent.CardData.CardName} to {targetEntity.EntityName.Value}'s deck");
         
         // Remove card from the pack
         RemoveCardFromPack(player, cardObject);
@@ -437,7 +356,6 @@ public class DraftManager : NetworkBehaviour
         }
         
         int cardObjectId = cardNetObj.ObjectId;
-        Debug.Log($"DraftManager: Attempting to remove card {cardObject.name} (ObjectId: {cardObjectId}) for player {player.EntityName.Value}");
         
         // Search across all draft packs to find the one containing this card by ObjectId
         List<DraftPack> allPacks = draftPackSetup.GetAllActivePacks();
@@ -449,7 +367,6 @@ public class DraftManager : NetworkBehaviour
             if (pack.ContainsCardWithObjectId(cardObjectId))
             {
                 packContainingCard = pack;
-                Debug.Log($"DraftManager: Found card with ObjectId {cardObjectId} in pack {pack.name}");
                 break;
             }
         }
@@ -465,13 +382,10 @@ public class DraftManager : NetworkBehaviour
         
         if (removed)
         {
-            Debug.Log($"DraftManager: Successfully removed card {cardObject.name} from pack {packContainingCard.name}");
-            
             // Despawn the card object
             if (cardNetObj.IsSpawned)
             {
                 FishNet.InstanceFinder.ServerManager.Despawn(cardNetObj);
-                Debug.Log($"DraftManager: Despawned card {cardObject.name}");
             }
         }
         else
@@ -509,18 +423,12 @@ public class DraftManager : NetworkBehaviour
             DraftPack nextPack = playerQueue.Peek();
             currentVisiblePacks[player] = nextPack;
             UpdatePackVisibilityForPlayer(player);
-            
-            Debug.Log($"DraftManager: Player {player.EntityName.Value} moved to next pack");
         }
         else
         {
             // No more packs for this player
             currentVisiblePacks.Remove(player);
-            Debug.Log($"DraftManager: Player {player.EntityName.Value} has no more packs");
         }
-        
-        // Update debug info after pack movement
-        UpdateDebugInfoDelayed();
         
         // Update draft pack visibility for all clients after pack circulation
         RpcUpdateDraftPackVisibility();
@@ -534,7 +442,6 @@ public class DraftManager : NetworkBehaviour
     {
         if (pack.IsEmpty)
         {
-            Debug.Log($"DraftManager: Pack is empty, not passing to next player");
             return;
         }
         
@@ -549,8 +456,6 @@ public class DraftManager : NetworkBehaviour
             playerPackQueues[nextPlayer].Enqueue(pack);
             pack.SetCurrentOwner(nextPlayer);
             
-            Debug.Log($"DraftManager: Passed pack from {currentPlayer.EntityName.Value} to {nextPlayer.EntityName.Value}");
-            
             // If the next player doesn't have a visible pack, make this one visible
             if (!currentVisiblePacks.ContainsKey(nextPlayer))
             {
@@ -558,9 +463,6 @@ public class DraftManager : NetworkBehaviour
                 UpdatePackVisibilityForPlayer(nextPlayer);
             }
         }
-        
-        // Update debug info after pack passing
-        UpdateDebugInfoDelayed();
     }
     
     /// <summary>
@@ -574,7 +476,6 @@ public class DraftManager : NetworkBehaviour
         
         if (allPacksEmpty || noVisiblePacks)
         {
-            Debug.Log("DraftManager: Draft is complete");
             CompleteDraft();
         }
     }
@@ -589,11 +490,6 @@ public class DraftManager : NetworkBehaviour
         
         // Notify all clients that draft is complete
         RpcDraftComplete();
-        
-        Debug.Log("DraftManager: Draft completed, waiting for players to continue");
-        
-        // Update debug info after draft completion
-        UpdateDebugInfoDelayed();
     }
     
     /// <summary>
@@ -605,7 +501,6 @@ public class DraftManager : NetworkBehaviour
         if (entityVisibilityManager != null)
         {
             entityVisibilityManager.UpdateDraftPackVisibility();
-            Debug.Log("DraftManager: Initial draft pack visibility updated");
         }
         else
         {
@@ -618,12 +513,8 @@ public class DraftManager : NetworkBehaviour
     /// </summary>
     public bool IsCardSelectableByPlayer(GameObject cardObject, NetworkEntity player)
     {
-        Debug.Log($"DraftManager.IsCardSelectableByPlayer called - Card: {cardObject.name}, Player: {player.EntityName.Value}");
-        Debug.Log($"DraftManager.IsCardSelectableByPlayer - isDraftActive: {isDraftActive}");
-        
         if (!isDraftActive)
         {
-            Debug.Log($"DraftManager.IsCardSelectableByPlayer - Draft not active");
             return false;
         }
         
@@ -631,50 +522,22 @@ public class DraftManager : NetworkBehaviour
         if (IsServerInitialized && currentVisiblePacks.ContainsKey(player))
         {
             DraftPack visiblePack = currentVisiblePacks[player];
-            Debug.Log($"DraftManager.IsCardSelectableByPlayer (Server) - Player's visible pack: {(visiblePack != null ? visiblePack.name : "null")}");
-            
             List<GameObject> packCards = visiblePack.GetCards();
-            Debug.Log($"DraftManager.IsCardSelectableByPlayer (Server) - Pack has {packCards.Count} cards");
-            
-            bool contains = packCards.Contains(cardObject);
-            Debug.Log($"DraftManager.IsCardSelectableByPlayer (Server) - Pack contains this card: {contains}");
-            
-            return contains;
+            return packCards.Contains(cardObject);
         }
         
         // On client, or if server doesn't have visible pack info, check pack ownership directly
-        Debug.Log($"DraftManager.IsCardSelectableByPlayer - Using client-side pack ownership check");
-        
-        // Find all draft packs and check if any owned by this player contains the card
         DraftPack[] allPacks = FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
-        Debug.Log($"DraftManager.IsCardSelectableByPlayer - Found {allPacks.Length} draft packs");
         
         foreach (DraftPack pack in allPacks)
         {
             if (pack.IsOwnedBy(player))
             {
-                Debug.Log($"DraftManager.IsCardSelectableByPlayer - Found pack owned by player: {pack.name}");
-                
                 List<GameObject> packCards = pack.GetCards();
-                Debug.Log($"DraftManager.IsCardSelectableByPlayer - Pack has {packCards.Count} cards");
-                
-                bool contains = packCards.Contains(cardObject);
-                Debug.Log($"DraftManager.IsCardSelectableByPlayer - Pack contains this card: {contains}");
-                
-                if (!contains)
-                {
-                    Debug.Log($"DraftManager.IsCardSelectableByPlayer - Card names in pack:");
-                    for (int i = 0; i < packCards.Count; i++)
-                    {
-                        Debug.Log($"  [{i}]: {packCards[i].name}");
-                    }
-                }
-                
-                return contains;
+                return packCards.Contains(cardObject);
             }
         }
         
-        Debug.Log($"DraftManager.IsCardSelectableByPlayer - No pack owned by player found");
         return false;
     }
     
@@ -689,8 +552,6 @@ public class DraftManager : NetworkBehaviour
             Debug.LogError("DraftManager: Cannot process continue button - server not initialized");
             return;
         }
-        
-        Debug.Log($"DraftManager: Continue button pressed by connection {playerConnection.ClientId}");
         
         playersReady[playerConnection] = true;
         CheckAllPlayersReady();
@@ -720,7 +581,6 @@ public class DraftManager : NetworkBehaviour
         
         if (allReady && connectedClientIds.Count > 0)
         {
-            Debug.Log("DraftManager: All players ready, starting next combat round");
             StartNextCombatRound();
         }
     }
@@ -731,8 +591,6 @@ public class DraftManager : NetworkBehaviour
     [Server]
     private void StartNextCombatRound()
     {
-        Debug.Log("DraftManager: Starting transition from draft to combat");
-        
         // Clean up draft state
         CleanupDraftState();
         
@@ -752,15 +610,6 @@ public class DraftManager : NetworkBehaviour
         // Wait a bit for clients to process the transition
         yield return new WaitForSeconds(0.5f);
         
-        Debug.Log("DraftManager: Delay completed, verifying server phase state before combat initialization");
-        
-        // Verify server phase state
-        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
-        if (gamePhaseManager != null)
-        {
-            Debug.Log($"DraftManager: Server GamePhaseManager current phase: {gamePhaseManager.GetCurrentPhase()}");
-        }
-        
         // Find and trigger CombatSetup to start a new combat round
         CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
         if (combatSetup != null)
@@ -768,11 +617,9 @@ public class DraftManager : NetworkBehaviour
             // Reset combat setup state if needed
             if (combatSetup.IsSetupComplete)
             {
-                Debug.Log("DraftManager: Combat setup already complete, ending previous combat first");
                 combatSetup.EndCombat();
             }
             
-            Debug.Log("DraftManager: Initializing new combat round");
             combatSetup.InitializeCombat();
         }
         else
@@ -796,8 +643,6 @@ public class DraftManager : NetworkBehaviour
         
         // Reset draft state
         isDraftActive = false;
-        
-        Debug.Log("DraftManager: Draft state cleaned up");
     }
     
     /// <summary>
@@ -806,16 +651,11 @@ public class DraftManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcTransitionToCombat()
     {
-        Debug.Log("DraftManager: RpcTransitionToCombat called on client");
-        
         // Update game phase to combat first
         GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
         if (gamePhaseManager != null)
         {
-            Debug.Log($"DraftManager: Found GamePhaseManager, current phase before change: {gamePhaseManager.GetCurrentPhase()}");
-            Debug.Log("DraftManager: Setting to combat phase");
             gamePhaseManager.SetCombatPhase();
-            Debug.Log($"DraftManager: Game phase after change: {gamePhaseManager.GetCurrentPhase()}");
         }
         else
         {
@@ -825,9 +665,7 @@ public class DraftManager : NetworkBehaviour
         // Disable draft canvas
         if (draftCanvasManager != null)
         {
-            Debug.Log("DraftManager: Found DraftCanvasManager, disabling draft canvas");
             draftCanvasManager.DisableDraftCanvas();
-            Debug.Log("DraftManager: Draft canvas disabled on client");
         }
         else
         {
@@ -837,9 +675,7 @@ public class DraftManager : NetworkBehaviour
         // Update entity visibility manager to combat state
         if (entityVisibilityManager != null)
         {
-            Debug.Log("DraftManager: Found EntityVisibilityManager, setting to combat state");
             entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Combat);
-            Debug.Log("DraftManager: Entity visibility manager set to combat state");
         }
         else
         {
@@ -848,14 +684,6 @@ public class DraftManager : NetworkBehaviour
         
         // Reset local draft state
         isDraftActive = false;
-        
-        // Final verification of phase change
-        if (gamePhaseManager != null)
-        {
-            Debug.Log($"DraftManager: Final phase verification - Current phase: {gamePhaseManager.GetCurrentPhase()}");
-        }
-        
-        Debug.Log("DraftManager: Client transition to combat completed successfully");
     }
     
     // RPC methods
@@ -881,7 +709,6 @@ public class DraftManager : NetworkBehaviour
         if (entityVisibilityManager != null)
         {
             entityVisibilityManager.UpdateDraftPackVisibility();
-            Debug.Log($"DraftManager: Updated draft pack visibility for client {target.ClientId}");
         }
         else
         {
@@ -901,8 +728,6 @@ public class DraftManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcActivateDraftOnClients()
     {
-        Debug.Log("DraftManager: RpcActivateDraftOnClients called on client");
-        
         // Activate draft on client
         isDraftActive = true;
         
@@ -910,7 +735,6 @@ public class DraftManager : NetworkBehaviour
         if (entityVisibilityManager != null)
         {
             entityVisibilityManager.UpdateDraftPackVisibility();
-            Debug.Log("DraftManager: Client draft activated and pack visibility updated");
         }
         else
         {
@@ -921,22 +745,13 @@ public class DraftManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcUpdateDraftPackVisibility()
     {
-        Debug.Log("DraftManager: RpcUpdateDraftPackVisibility called on client");
-        
         // Update draft pack visibility on all clients
         EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
         if (entityVisibilityManager != null)
         {
-            Debug.Log($"DraftManager: EntityVisibilityManager found: {entityVisibilityManager.name}");
-            Debug.Log($"DraftManager: EntityVisibilityManager current game state before SetGameState: {entityVisibilityManager.GetType().GetField("currentGameState", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(entityVisibilityManager)}");
-            
             // Ensure the EntityVisibilityManager is in Draft state
             entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Draft);
-            Debug.Log($"DraftManager: Called SetGameState(Draft) on EntityVisibilityManager");
-            
-            Debug.Log($"DraftManager: About to call UpdateDraftPackVisibility()");
             entityVisibilityManager.UpdateDraftPackVisibility();
-            Debug.Log("DraftManager: Draft pack visibility updated on client");
         }
         else
         {
@@ -944,69 +759,10 @@ public class DraftManager : NetworkBehaviour
         }
     }
     
-    /// <summary>
-    /// Syncs debug info to all clients
-    /// </summary>
-    [ObserversRpc]
-    private void RpcSyncDebugInfo(NetworkPackDebugInfo[] debugInfoArray)
-    {
-        if (!IsServerInitialized) // Only update on clients
-        {
-            packCirculationDebug.Clear();
-            
-            // Convert network-safe debug info back to PackDebugInfo
-            foreach (var networkInfo in debugInfoArray)
-            {
-                PackDebugInfo debugInfo = new PackDebugInfo(
-                    networkInfo.packName,
-                    networkInfo.originalOwner,
-                    networkInfo.currentOwner,
-                    networkInfo.queuePosition,
-                    networkInfo.isCurrentlyVisible
-                );
-                packCirculationDebug.Add(debugInfo);
-            }
-            
-            Debug.Log($"DraftManager: Received debug info on client - {debugInfoArray.Length} entries");
-        }
-    }
-    
-    /// <summary>
-    /// Updates debug info with a delay to allow pack names to be set
-    /// </summary>
-    private void UpdateDebugInfoDelayed()
-    {
-        if (IsServerInitialized)
-        {
-            StartCoroutine(UpdateDebugInfoWithDelay());
-        }
-    }
-    
-    private System.Collections.IEnumerator UpdateDebugInfoWithDelay()
-    {
-        // Wait a bit for pack names to be set via RPC
-        yield return new WaitForSeconds(0.2f);
-        
-        UpdatePackCirculationDebugInfo();
-        
-        // Sync to clients
-        if (packCirculationDebug.Count > 0)
-        {
-            RpcSyncDebugInfo(packCirculationDebug.Select(info => new NetworkPackDebugInfo(info)).ToArray());
-        }
-    }
-    
     // Helper methods
     private void OnPlayerReadyChanged(SyncDictionaryOperation op, NetworkConnection key, bool value, bool asServer)
     {
-        if (asServer && key != null)
-        {
-            Debug.Log($"DraftManager: Player {key.ClientId} ready state changed to {value}");
-        }
-        else if (asServer && key == null)
-        {
-            Debug.Log($"DraftManager: Player ready state changed (null connection) - operation: {op}, value: {value}");
-        }
+        // Event handler for player ready state changes
     }
     
     private List<NetworkEntity> GetAllPlayerEntities()
@@ -1054,121 +810,5 @@ public class DraftManager : NetworkBehaviour
         }
         
         return null;
-    }
-    
-    // Debug methods for pack circulation tracking
-    /// <summary>
-    /// Updates the debug information for pack circulation in the inspector
-    /// </summary>
-    private void UpdatePackCirculationDebugInfo()
-    {
-        Debug.Log($"DraftManager.UpdatePackCirculationDebugInfo: autoUpdateDebugInfo = {autoUpdateDebugInfo}");
-        
-        if (!autoUpdateDebugInfo)
-            return;
-            
-        packCirculationDebug.Clear();
-        
-        // Get all active packs
-        List<DraftPack> allPacks = draftPackSetup?.GetAllActivePacks() ?? new List<DraftPack>();
-        Debug.Log($"DraftManager.UpdatePackCirculationDebugInfo: Found {allPacks.Count} active packs");
-        
-        // Track which packs we've already processed to avoid duplicates
-        HashSet<DraftPack> processedPacks = new HashSet<DraftPack>();
-        
-        Debug.Log($"DraftManager.UpdatePackCirculationDebugInfo: playerPackQueues.Count = {playerPackQueues.Count}");
-        
-        // Go through each player's queue and add debug info for each pack
-        foreach (var kvp in playerPackQueues)
-        {
-            NetworkEntity player = kvp.Key;
-            Queue<DraftPack> queue = kvp.Value;
-            
-            string playerName = player?.EntityName?.Value ?? "Unknown Player";
-            Debug.Log($"DraftManager.UpdatePackCirculationDebugInfo: Processing player {playerName} with {queue.Count} packs in queue");
-            
-            // Convert queue to array to access by index
-            DraftPack[] queueArray = queue.ToArray();
-            
-            for (int i = 0; i < queueArray.Length; i++)
-            {
-                DraftPack pack = queueArray[i];
-                if (pack != null && !processedPacks.Contains(pack))
-                {
-                    bool isCurrentlyVisible = currentVisiblePacks.ContainsKey(player) && currentVisiblePacks[player] == pack;
-                    
-                    PackDebugInfo debugInfo = new PackDebugInfo(pack, playerName, i, isCurrentlyVisible);
-                    packCirculationDebug.Add(debugInfo);
-                    processedPacks.Add(pack);
-                    
-                    Debug.Log($"DraftManager.UpdatePackCirculationDebugInfo: Added debug info for pack {pack.name} - Player: {playerName}, Queue: {i}, Visible: {isCurrentlyVisible}");
-                }
-                else if (pack == null)
-                {
-                    Debug.LogWarning($"DraftManager.UpdatePackCirculationDebugInfo: Found null pack in queue for player {playerName} at index {i}");
-                }
-                else if (processedPacks.Contains(pack))
-                {
-                    Debug.Log($"DraftManager.UpdatePackCirculationDebugInfo: Pack {pack.name} already processed, skipping");
-                }
-            }
-        }
-        
-        // Add any packs that might not be in any queue (shouldn't happen in normal flow, but good for debugging)
-        foreach (DraftPack pack in allPacks)
-        {
-            if (pack != null && !processedPacks.Contains(pack))
-            {
-                PackDebugInfo debugInfo = new PackDebugInfo(pack, "No Owner", -1, false);
-                packCirculationDebug.Add(debugInfo);
-                Debug.Log($"DraftManager.UpdatePackCirculationDebugInfo: Added orphaned pack {pack.name}");
-            }
-        }
-        
-        // Sort by pack name for consistent display
-        packCirculationDebug.Sort((a, b) => 
-        {
-            if (a.pack == null && b.pack == null) return 0;
-            if (a.pack == null) return 1;
-            if (b.pack == null) return -1;
-            return string.Compare(a.pack.name, b.pack.name);
-        });
-        
-        Debug.Log($"DraftManager.UpdatePackCirculationDebugInfo: Final packCirculationDebug.Count = {packCirculationDebug.Count}");
-    }
-    
-    /// <summary>
-    /// Public method to refresh debug info (can be called externally)
-    /// </summary>
-    public void RefreshDebugInfo()
-    {
-        if (IsServerInitialized)
-        {
-            UpdateDebugInfoDelayed();
-        }
-    }
-    
-    /// <summary>
-    /// Public method to manually update debug info (useful for testing)
-    /// </summary>
-    [ContextMenu("Update Pack Circulation Debug Info")]
-    public void ManualUpdateDebugInfo()
-    {
-        UpdatePackCirculationDebugInfo();
-        
-        // If on server, sync to clients
-        if (IsServerInitialized && packCirculationDebug.Count > 0)
-        {
-            RpcSyncDebugInfo(packCirculationDebug.Select(info => new NetworkPackDebugInfo(info)).ToArray());
-        }
-    }
-    
-    /// <summary>
-    /// Clears the debug information
-    /// </summary>
-    [ContextMenu("Clear Pack Circulation Debug Info")]
-    public void ClearDebugInfo()
-    {
-        packCirculationDebug.Clear();
     }
 } 

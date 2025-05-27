@@ -276,10 +276,6 @@ public class DraftSetup : NetworkBehaviour
             // The DraftManager doesn't have a public reset method, but we can ensure it's in a clean state
             // by checking if it's still active and logging the state
             Debug.Log($"DraftSetup: DraftManager found, current draft active state: {draftManager.IsDraftActive}");
-            
-            // Clear any debug info from previous draft
-            draftManager.ClearDebugInfo();
-            Debug.Log("DraftSetup: Cleared DraftManager debug info from previous round");
         }
         else
         {
