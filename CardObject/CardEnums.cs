@@ -115,6 +115,18 @@ public enum ScalingType
 }
 
 /// <summary>
+/// Defines how alternative effects interact with main effects
+/// </summary>
+public enum AlternativeEffectLogic
+{
+    [Tooltip("Alternative effect replaces main effect (Either main OR alternative)")]
+    Replace,    // Current behavior: either main effect OR alternative effect
+    
+    [Tooltip("Alternative effect is added to main effect (Both main AND alternative)")]
+    Additional  // New behavior: main effect AND alternative effect
+}
+
+/// <summary>
 /// Conditional effect types for complex card mechanics
 /// </summary>
 public enum ConditionalType
@@ -424,19 +436,121 @@ public class CardEffect
     [Tooltip("This effect only triggers if a condition is met")]
     public ConditionalType conditionType = ConditionalType.None;
     
-    [ConditionalField("conditionType", ConditionalType.None, true)]
-    [Tooltip("Value to compare against for the condition")]
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [Tooltip("Value to compare against for the condition (e.g., 50 for 'if health above 50')")]
     public int conditionValue = 0;
     
-    [ConditionalField("conditionType", ConditionalType.None, true)]
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
     [Tooltip("Alternative effect if condition is not met")]
     public bool hasAlternativeEffect = false;
     
-    [ConditionalField("hasAlternativeEffect", true, true)]
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [ConditionalField("hasAlternativeEffect", true, false)]
+    [Tooltip("How alternative effect interacts with main effect")]
+    public AlternativeEffectLogic alternativeLogic = AlternativeEffectLogic.Replace;
+    
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [ConditionalField("hasAlternativeEffect", true, false)]
     [Tooltip("Effect to use if condition fails")]
     public CardEffectType alternativeEffectType = CardEffectType.Damage;
     
-    [ConditionalField("hasAlternativeEffect", true, true)]
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [ConditionalField("hasAlternativeEffect", true, false)]
     [Tooltip("Amount for alternative effect")]
     public int alternativeEffectAmount = 1;
     

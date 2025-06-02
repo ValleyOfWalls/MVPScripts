@@ -374,13 +374,45 @@ public class CardEffectResolver : NetworkBehaviour
                     effectAmount = CalculateScaledAmountFromEffect(effect, trackingData);
                 }
                 
+                // Always execute the main effect when condition is met
                 ProcessSingleEffect(sourceEntity, targetEntities, effect.effectType, 
                     effectAmount, effect.duration, effect.elementalType);
+                
+                // If has alternative effect with "Additional" logic, also execute alternative
+                if (effect.hasAlternativeEffect && effect.alternativeLogic == AlternativeEffectLogic.Additional)
+                {
+                    ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
+                        effect.alternativeEffectAmount, 0, ElementalType.None);
+                    Debug.Log($"CardEffectResolver: Conditional met - executed both main effect ({effect.effectType}) AND alternative effect ({effect.alternativeEffectType})");
+                }
             }
             else if (effect.hasAlternativeEffect)
             {
-                ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
-                    effect.alternativeEffectAmount, 0, ElementalType.None);
+                // Condition not met - handle based on logic type
+                if (effect.alternativeLogic == AlternativeEffectLogic.Replace)
+                {
+                    // Replace logic: execute only alternative effect
+                    ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
+                        effect.alternativeEffectAmount, 0, ElementalType.None);
+                    Debug.Log($"CardEffectResolver: Conditional failed - executed alternative effect ({effect.alternativeEffectType}) INSTEAD of main effect");
+                }
+                else if (effect.alternativeLogic == AlternativeEffectLogic.Additional)
+                {
+                    // Additional logic: execute main effect + alternative effect
+                    int effectAmount = effect.amount;
+                    
+                    // Apply scaling to main effect if it uses it
+                    if (effect.scalingType != ScalingType.None)
+                    {
+                        effectAmount = CalculateScaledAmountFromEffect(effect, trackingData);
+                    }
+                    
+                    ProcessSingleEffect(sourceEntity, targetEntities, effect.effectType, 
+                        effectAmount, effect.duration, effect.elementalType);
+                    ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
+                        effect.alternativeEffectAmount, 0, ElementalType.None);
+                    Debug.Log($"CardEffectResolver: Conditional failed - executed main effect ({effect.effectType}) AND alternative effect ({effect.alternativeEffectType})");
+                }
             }
         }
     }

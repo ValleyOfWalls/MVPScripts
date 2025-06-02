@@ -211,6 +211,54 @@ public class CardData : ScriptableObject
         _newStance = newStance;
     }
 
+    /// <summary>
+    /// Add a conditional effect to this card with OR logic (alternative replaces main effect)
+    /// </summary>
+    public void AddConditionalEffectOR(CardEffectType mainEffectType, int mainAmount, CardTargetType target, 
+        ConditionalType conditionType, int conditionValue, CardEffectType altEffectType, int altAmount)
+    {
+        if (_effects == null) _effects = new List<CardEffect>();
+        
+        _effects.Add(new CardEffect
+        {
+            effectType = mainEffectType,
+            amount = mainAmount,
+            targetType = target,
+            duration = 0,
+            elementalType = ElementalType.None,
+            conditionType = conditionType,
+            conditionValue = conditionValue,
+            hasAlternativeEffect = true,
+            alternativeEffectType = altEffectType,
+            alternativeEffectAmount = altAmount,
+            alternativeLogic = AlternativeEffectLogic.Replace
+        });
+    }
+
+    /// <summary>
+    /// Add a conditional effect to this card with AND logic (alternative adds to main effect)
+    /// </summary>
+    public void AddConditionalEffectAND(CardEffectType mainEffectType, int mainAmount, CardTargetType target, 
+        ConditionalType conditionType, int conditionValue, CardEffectType bonusEffectType, int bonusAmount)
+    {
+        if (_effects == null) _effects = new List<CardEffect>();
+        
+        _effects.Add(new CardEffect
+        {
+            effectType = mainEffectType,
+            amount = mainAmount,
+            targetType = target,
+            duration = 0,
+            elementalType = ElementalType.None,
+            conditionType = conditionType,
+            conditionValue = conditionValue,
+            hasAlternativeEffect = true,
+            alternativeEffectType = bonusEffectType,
+            alternativeEffectAmount = bonusAmount,
+            alternativeLogic = AlternativeEffectLogic.Additional
+        });
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // UTILITY METHODS
     // ═══════════════════════════════════════════════════════════════
