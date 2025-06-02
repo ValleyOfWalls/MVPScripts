@@ -58,6 +58,11 @@ public class CardSpawner : NetworkBehaviour
     }
 
     /// <summary>
+    /// Public accessor for the card prefab (for deck viewing and other local card creation)
+    /// </summary>
+    public GameObject CardPrefab => cardPrefab;
+
+    /// <summary>
     /// Spawns a card with the given card data and assigns ownership to the spawner's NetworkEntity
     /// </summary>
     /// <param name="cardData">The data for the card to spawn</param>
@@ -98,6 +103,24 @@ public class CardSpawner : NetworkBehaviour
     }
     
     /// <summary>
+    /// Spawns an unowned card with the given card data at a specific position (for deck viewing)
+    /// </summary>
+    /// <param name="cardData">The data for the card to spawn</param>
+    /// <param name="spawnPosition">The world position where the card should be spawned</param>
+    /// <returns>The spawned card GameObject, or null if spawn failed</returns>
+    [Server]
+    public GameObject SpawnUnownedCard(CardData cardData, Vector3 spawnPosition)
+    {
+        if (!IsServerInitialized || cardPrefab == null || cardData == null)
+        {
+            Debug.LogError($"CardSpawner on {gameObject.name}: Cannot spawn unowned card - missing required components or data");
+            return null;
+        }
+
+        return SpawnCardInternal(cardData, null, spawnPosition);
+    }
+    
+    /// <summary>
     /// Internal method that handles the actual card spawning logic
     /// </summary>
     /// <param name="cardData">The data for the card to spawn</param>
@@ -106,17 +129,31 @@ public class CardSpawner : NetworkBehaviour
     [Server]
     private GameObject SpawnCardInternal(CardData cardData, NetworkEntity ownerEntity)
     {
+        return SpawnCardInternal(cardData, ownerEntity, transform.position + defaultSpawnOffset);
+    }
+    
+    /// <summary>
+    /// Internal method that handles the actual card spawning logic with custom spawn position
+    /// </summary>
+    /// <param name="cardData">The data for the card to spawn</param>
+    /// <param name="ownerEntity">The NetworkEntity that will own this card, or null for unowned cards</param>
+    /// <param name="spawnPosition">The world position where the card should be spawned</param>
+    /// <returns>The spawned card GameObject, or null if spawn failed</returns>
+    [Server]
+    private GameObject SpawnCardInternal(CardData cardData, NetworkEntity ownerEntity, Vector3 spawnPosition)
+    {
         Debug.Log($"=== CardSpawner.SpawnCardInternal START ===");
         Debug.Log($"CardSpawner on: {gameObject.name}");
         Debug.Log($"Card to spawn: {cardData.CardName}");
         Debug.Log($"Owner Entity: {(ownerEntity != null ? ownerEntity.EntityName.Value : "null")}");
         Debug.Log($"Owner Entity ClientId: {(ownerEntity?.Owner?.ClientId ?? -1)}");
+        Debug.Log($"Spawn Position: {spawnPosition}");
         
         // Instantiate the card prefab
         GameObject cardObject = Instantiate(cardPrefab);
         
-        // Set the card's position with offset to prevent z-fighting
-        cardObject.transform.position = transform.position + defaultSpawnOffset;
+        // Set the card's position
+        cardObject.transform.position = spawnPosition;
         
         // Initialize the card with data before spawning
         Card card = cardObject.GetComponent<Card>();

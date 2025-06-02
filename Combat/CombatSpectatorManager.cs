@@ -17,6 +17,7 @@ public class CombatSpectatorManager : MonoBehaviour
     private FightManager fightManager;
     private EntityVisibilityManager entityVisibilityManager;
     private CombatCanvasManager combatCanvasManager;
+    private DeckViewerManager deckViewerManager;
     
     // UI References (obtained from CombatCanvasManager)
     private Button spectateButton;
@@ -85,6 +86,17 @@ public class CombatSpectatorManager : MonoBehaviour
             combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
         }
         
+        // Find DeckViewerManager
+        if (deckViewerManager == null)
+        {
+            deckViewerManager = FindFirstObjectByType<DeckViewerManager>();
+            if (deckViewerManager == null && combatCanvasManager != null)
+            {
+                // Try to get it from CombatCanvasManager
+                deckViewerManager = combatCanvasManager.GetDeckViewerManager();
+            }
+        }
+        
         // Get button references from CombatCanvasManager
         if (combatCanvasManager != null)
         {
@@ -92,7 +104,7 @@ public class CombatSpectatorManager : MonoBehaviour
             returnToOwnFightButton = combatCanvasManager.ReturnToOwnFightButton;
         }
         
-        LogDebug($"Manager references found - FightManager: {fightManager != null}, EntityVisibilityManager: {entityVisibilityManager != null}, CombatCanvasManager: {combatCanvasManager != null}");
+        LogDebug($"Manager references found - FightManager: {fightManager != null}, EntityVisibilityManager: {entityVisibilityManager != null}, CombatCanvasManager: {combatCanvasManager != null}, DeckViewerManager: {deckViewerManager != null}");
         LogDebug($"Button references found - SpectateButton: {spectateButton != null}, ReturnToOwnFightButton: {returnToOwnFightButton != null}");
     }
     
@@ -422,6 +434,13 @@ public class CombatSpectatorManager : MonoBehaviour
             return;
         }
         
+        // Close any open deck view before switching fights
+        if (deckViewerManager != null && deckViewerManager.IsDeckViewOpen)
+        {
+            deckViewerManager.CloseDeckView();
+            LogDebug("Closed deck view before switching fights");
+        }
+        
         // Use FightManager's SetViewedFight method to update the viewed combat references
         bool success = fightManager.SetViewedFight(playerEntity);
         
@@ -438,6 +457,13 @@ public class CombatSpectatorManager : MonoBehaviour
             {
                 combatCanvasManager.OnViewedCombatChanged();
                 LogDebug("Notified CombatCanvasManager of viewed combat change");
+            }
+            
+            // Update deck viewer button states for the new fight
+            if (deckViewerManager != null)
+            {
+                deckViewerManager.UpdateButtonStates();
+                LogDebug("Updated deck viewer button states for new fight");
             }
             
             // Check if we've cycled back to the local player's own fight

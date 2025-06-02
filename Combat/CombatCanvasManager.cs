@@ -27,6 +27,9 @@ public class CombatCanvasManager : NetworkBehaviour
     [SerializeField] private GameObject ownPetViewPrefab;
     [SerializeField] private OwnPetViewController ownPetViewController;
 
+    [Header("Deck Viewer")]
+    [SerializeField] private DeckViewerManager deckViewerManager;
+
     [Header("Combat Entity Positioning")]
     [SerializeField] private Transform playerPositionTransform;
     [SerializeField] private Transform opponentPetPositionTransform;
@@ -182,6 +185,9 @@ public class CombatCanvasManager : NetworkBehaviour
             
             // Setup own pet view
             SetupOwnPetView();
+            
+            // Setup deck viewer
+            SetupDeckViewer();
             
             // Position combat entities
             PositionCombatEntities(localPlayer, opponentPetForLocalPlayer);
@@ -380,6 +386,13 @@ public class CombatCanvasManager : NetworkBehaviour
             ownPetViewController.RefreshDisplayedPet();
             Debug.Log("CombatCanvasManager: Updated own pet view for new viewed combat");
         }
+        
+        // Update deck viewer button states for the new viewed combat
+        if (deckViewerManager != null)
+        {
+            deckViewerManager.UpdateButtonStates();
+            Debug.Log("CombatCanvasManager: Updated deck viewer button states for new viewed combat");
+        }
     }
 
     private void OnDestroy()
@@ -450,6 +463,12 @@ public class CombatCanvasManager : NetworkBehaviour
             {
                 ownPetViewController.RefreshDisplayedPet();
             }
+            
+            // Update deck viewer button states when canvas is re-enabled
+            if (deckViewerManager != null)
+            {
+                deckViewerManager.UpdateButtonStates();
+            }
         }
         else
         {
@@ -472,6 +491,43 @@ public class CombatCanvasManager : NetworkBehaviour
     public OwnPetViewController GetOwnPetViewController()
     {
         return ownPetViewController;
+    }
+
+    /// <summary>
+    /// Sets up the deck viewer functionality
+    /// </summary>
+    private void SetupDeckViewer()
+    {
+        Debug.Log("CombatCanvasManager: SetupDeckViewer() called");
+        
+        // Find DeckViewerManager if not assigned
+        if (deckViewerManager == null)
+        {
+            deckViewerManager = FindFirstObjectByType<DeckViewerManager>();
+            if (deckViewerManager != null)
+            {
+                Debug.Log($"CombatCanvasManager: Found DeckViewerManager: {deckViewerManager.name}");
+            }
+        }
+        
+        if (deckViewerManager != null)
+        {
+            // Update button states for the initial combat setup
+            deckViewerManager.UpdateButtonStates();
+            Debug.Log("CombatCanvasManager: Deck viewer setup complete");
+        }
+        else
+        {
+            Debug.LogWarning("CombatCanvasManager: DeckViewerManager not found. Deck viewing will not be available.");
+        }
+    }
+
+    /// <summary>
+    /// Gets the DeckViewerManager for external access
+    /// </summary>
+    public DeckViewerManager GetDeckViewerManager()
+    {
+        return deckViewerManager;
     }
 
     /// <summary>

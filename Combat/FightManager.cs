@@ -450,5 +450,73 @@ public class FightManager : NetworkBehaviour
         return true;
     }
     
+    /// <summary>
+    /// Gets all entities involved in the currently viewed fight
+    /// </summary>
+    /// <returns>A list containing the player, opponent pet, and ally pet (if any) for the viewed fight</returns>
+    public List<NetworkEntity> GetViewedFightEntities()
+    {
+        List<NetworkEntity> entities = new List<NetworkEntity>();
+        
+        if (viewedCombatPlayer != null)
+        {
+            entities.Add(viewedCombatPlayer);
+            
+            // Try to find the ally pet
+            RelationshipManager playerRelationship = viewedCombatPlayer.GetComponent<RelationshipManager>();
+            if (playerRelationship != null && playerRelationship.AllyEntity != null)
+            {
+                NetworkEntity allyPet = playerRelationship.AllyEntity.GetComponent<NetworkEntity>();
+                if (allyPet != null)
+                {
+                    entities.Add(allyPet);
+                }
+            }
+        }
+        
+        if (viewedCombatOpponentPet != null)
+        {
+            entities.Add(viewedCombatOpponentPet);
+        }
+        
+        return entities;
+    }
+    
+    /// <summary>
+    /// Gets all entities involved in a specific fight
+    /// </summary>
+    /// <param name="fightAssignment">The fight assignment to get entities for</param>
+    /// <returns>A list containing the player, opponent pet, and ally pet (if any) for the specified fight</returns>
+    public List<NetworkEntity> GetFightEntities(FightAssignmentData fightAssignment)
+    {
+        List<NetworkEntity> entities = new List<NetworkEntity>();
+        
+        NetworkEntity player = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.PlayerObjectId);
+        NetworkEntity opponentPet = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.PetObjectId);
+        
+        if (player != null)
+        {
+            entities.Add(player);
+            
+            // Try to find the ally pet
+            RelationshipManager playerRelationship = player.GetComponent<RelationshipManager>();
+            if (playerRelationship != null && playerRelationship.AllyEntity != null)
+            {
+                NetworkEntity allyPet = playerRelationship.AllyEntity.GetComponent<NetworkEntity>();
+                if (allyPet != null)
+                {
+                    entities.Add(allyPet);
+                }
+            }
+        }
+        
+        if (opponentPet != null)
+        {
+            entities.Add(opponentPet);
+        }
+        
+        return entities;
+    }
+    
     #endregion
 } 
