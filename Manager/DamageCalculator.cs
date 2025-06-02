@@ -36,12 +36,31 @@ public class DamageCalculator : MonoBehaviour
         
         Debug.Log($"DamageCalculator: Calculating damage for card {cardData.CardName} from {source.EntityName.Value} to {target.EntityName.Value}");
         
-        // Start with base damage from the card
-        float baseDamage = cardData.Amount;
-        Debug.Log($"DamageCalculator: Base damage is {baseDamage}");
+        // Calculate base damage from card's damage effects
+        int baseDamage = 0;
+        if (cardData.HasEffects)
+        {
+            foreach (var effect in cardData.Effects)
+            {
+                if (effect.effectType == CardEffectType.Damage)
+                {
+                    baseDamage += effect.amount;
+                }
+            }
+        }
+        
+        if (baseDamage == 0)
+        {
+            Debug.LogWarning($"DamageCalculator: Card {cardData.CardName} has no damage effects");
+            return 0;
+        }
+        
+        int modifiedDamage = baseDamage;
+        
+        Debug.Log($"DamageCalculator: Total base damage is {modifiedDamage}");
         
         // Apply source modifiers (buffs/debuffs affecting outgoing damage)
-        float modifiedDamage = ApplySourceModifiers(source, baseDamage);
+        modifiedDamage = ApplySourceModifiers(source, modifiedDamage);
         Debug.Log($"DamageCalculator: After source modifiers: {modifiedDamage}");
         
         // Apply target modifiers (buffs/debuffs affecting incoming damage)
@@ -59,21 +78,31 @@ public class DamageCalculator : MonoBehaviour
         return finalDamage;
     }
     
-    private float ApplySourceModifiers(NetworkEntity source, float damage)
+    private int ApplySourceModifiers(NetworkEntity source, int damage)
     {
-        float modifiedDamage = damage;
+        int modifiedDamage = damage;
         
         // Get source entity's effect handler
         EffectHandler sourceEffects = source.GetComponent<EffectHandler>();
         if (sourceEffects == null) return modifiedDamage;
         
-        // Check for effects that modify outgoing damage
-        if (sourceEffects.HasEffect("Weak"))
+        // Apply damage modification from curse effects (negative strength)
+        int damageModification = sourceEffects.GetDamageModification();
+        modifiedDamage += damageModification;
+        if (damageModification != 0)
         {
-            modifiedDamage *= gameManager.WeakStatusModifier.Value;
-            Debug.Log($"DamageCalculator: Source has Weak status, damage reduced to {modifiedDamage}");
+            Debug.Log($"DamageCalculator: Source has curse effects, damage modified by {damageModification} to {modifiedDamage}");
         }
         
+        // Apply damage dealt multiplier (from effects like Weak)
+        float damageMultiplier = sourceEffects.GetDamageDealtMultiplier();
+        if (damageMultiplier != 1.0f)
+        {
+            modifiedDamage = Mathf.RoundToInt(modifiedDamage * damageMultiplier);
+            Debug.Log($"DamageCalculator: Source damage multiplier {damageMultiplier}, damage is now {modifiedDamage}");
+        }
+        
+        // Check for Strength effect (positive damage bonus)
         if (sourceEffects.HasEffect("Strength"))
         {
             int strengthValue = sourceEffects.GetEffectPotency("Strength");
@@ -81,26 +110,26 @@ public class DamageCalculator : MonoBehaviour
             Debug.Log($"DamageCalculator: Source has Strength {strengthValue}, damage increased to {modifiedDamage}");
         }
         
-        // Add more effect checks as needed
-        
         return modifiedDamage;
     }
     
-    private float ApplyTargetModifiers(NetworkEntity target, float damage)
+    private int ApplyTargetModifiers(NetworkEntity target, int damage)
     {
-        float modifiedDamage = damage;
+        int modifiedDamage = damage;
         
         // Get target entity's effect handler
         EffectHandler targetEffects = target.GetComponent<EffectHandler>();
         if (targetEffects == null) return modifiedDamage;
         
-        // Check for effects that modify incoming damage
-        if (targetEffects.HasEffect("Break"))
+        // Apply damage taken multiplier (from effects like Break)
+        float damageTakenMultiplier = targetEffects.GetDamageTakenMultiplier();
+        if (damageTakenMultiplier != 1.0f)
         {
-            modifiedDamage *= gameManager.BreakStatusModifier.Value;
-            Debug.Log($"DamageCalculator: Target has Break status, damage increased to {modifiedDamage}");
+            modifiedDamage = Mathf.RoundToInt(modifiedDamage * damageTakenMultiplier);
+            Debug.Log($"DamageCalculator: Target damage taken multiplier {damageTakenMultiplier}, damage is now {modifiedDamage}");
         }
         
+        // Check for Armor effect
         if (targetEffects.HasEffect("Armor"))
         {
             int armorValue = targetEffects.GetEffectPotency("Armor");
@@ -108,12 +137,10 @@ public class DamageCalculator : MonoBehaviour
             Debug.Log($"DamageCalculator: Target has Armor {armorValue}, damage reduced to {modifiedDamage}");
         }
         
-        // Add more effect checks as needed
-        
         return modifiedDamage;
     }
     
-    private float ApplyCriticalHitChance(NetworkEntity source, NetworkEntity target, float damage)
+    private int ApplyCriticalHitChance(NetworkEntity source, NetworkEntity target, int damage)
     {
         // Skip critical hit calculation if crits are disabled in GameManager
         if (!gameManager.CriticalHitsEnabled.Value)
@@ -142,7 +169,7 @@ public class DamageCalculator : MonoBehaviour
             
             // TODO: Consider notifying UI for critical hit display effect
             
-            return critDamage;
+            return Mathf.RoundToInt(critDamage);
         }
         
         return damage;

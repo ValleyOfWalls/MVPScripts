@@ -140,16 +140,12 @@ public class HandleCardPlay : NetworkBehaviour
         if (sourceTracker != null)
         {
             CardData cardData = card.CardData;
-            bool sequenceValid = cardData.CanPlayWithSequence(
-                sourceTracker.TrackingData.lastPlayedCardType,
-                sourceTracker.ComboCount,
-                sourceTracker.CurrentStance
-            );
+            bool sequenceValid = cardData.CanPlayWithCombo(sourceTracker.ComboCount);
 
             if (!sequenceValid)
             {
                 canPlay = false;
-                playBlockReason = cardData.GetSequenceRequirementText();
+                playBlockReason = $"Requires {cardData.RequiredComboAmount} combo (have {sourceTracker.ComboCount})";
                 return false;
             }
         }
@@ -169,6 +165,17 @@ public class HandleCardPlay : NetworkBehaviour
             canPlay = false;
             playBlockReason = $"Not enough energy (need {card.CardData.EnergyCost}, have {sourceEntity.CurrentEnergy.Value})";
             return false;
+        }
+
+        // Check combo requirements
+        if (card.CardData.RequiresCombo)
+        {
+            bool sequenceValid = card.CardData.CanPlayWithCombo(sourceTracker.ComboCount);
+            if (!sequenceValid)
+            {
+                Debug.Log($"HandleCardPlay: Cannot play {card.CardData.CardName} - combo requirement not met (have {sourceTracker.ComboCount}, need {card.CardData.RequiredComboAmount})");
+                return false;
+            }
         }
 
         return true;
@@ -192,7 +199,7 @@ public class HandleCardPlay : NetworkBehaviour
     }
 
     /// <summary>
-    /// Checks if the card meets sequence requirements
+    /// Checks if the card meets sequence requirements (combo system)
     /// </summary>
     public bool MeetsSequenceRequirements()
     {
@@ -204,11 +211,7 @@ public class HandleCardPlay : NetworkBehaviour
         if (sourceTracker == null)
             return true; // No tracker means no restrictions
 
-        return card.CardData.CanPlayWithSequence(
-            sourceTracker.TrackingData.lastPlayedCardType,
-            sourceTracker.ComboCount,
-            sourceTracker.CurrentStance
-        );
+        return card.CardData.CanPlayWithCombo(sourceTracker.ComboCount);
     }
 
     /// <summary>
@@ -221,28 +224,21 @@ public class HandleCardPlay : NetworkBehaviour
 
         string description = $"Cost: {card.CardData.EnergyCost} energy";
 
-        // Add sequence requirement if any
-        string sequenceText = card.CardData.GetSequenceRequirementText();
-        if (!string.IsNullOrEmpty(sequenceText))
-        {
-            description += $"\n{sequenceText}";
-        }
-
         // Add combo information
-        if (card.CardData.HasComboModifier)
+        if (card.CardData.BuildsCombo)
         {
             description += "\nBuilds combo";
         }
 
-        if (card.CardData.IsFinisher)
+        if (card.CardData.RequiresCombo)
         {
-            description += "\nFinisher card";
+            description += $"\nRequires: {card.CardData.RequiredComboAmount} combo";
         }
 
         // Add stance information
-        if (card.CardData.AffectsStance)
+        if (card.CardData.ChangesStance)
         {
-            description += $"\nChanges stance to {card.CardData.StanceEffect.stanceType}";
+            description += $"\nChanges stance to {card.CardData.NewStance}";
         }
 
         return description;
@@ -262,7 +258,19 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
 
-        // Process the card effect
+        // FIXED: Deduct energy cost BEFORE processing effects (was happening after)
+        // This ensures restore energy effects work correctly with the proper order
+        if (sourceAndTargetIdentifier?.SourceEntity != null && card?.CardData != null)
+        {
+            var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
+            int energyCost = card.CardData.EnergyCost;
+            
+            // Deduct energy cost first
+            sourceEntity.ChangeEnergy(-energyCost);
+            Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value} before applying effects");
+        }
+
+        // Process the card effect AFTER energy deduction
         if (cardEffectResolver != null)
         {
             // Since we're already on server, call the effect resolver directly
@@ -272,6 +280,24 @@ public class HandleCardPlay : NetworkBehaviour
             if (sourceEntity != null && targetEntity != null)
             {
                 cardEffectResolver.ServerResolveCardEffect(sourceEntity, targetEntity, card.CardData);
+            }
+        }
+        
+        // Handle card discarding after effects are processed
+        if (sourceAndTargetIdentifier?.SourceEntity != null && card?.CardData != null)
+        {
+            var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
+            
+            // Find the hand manager and discard the card
+            HandManager handManager = GetHandManagerForEntity(sourceEntity);
+            if (handManager != null)
+            {
+                handManager.DiscardCard(gameObject);
+                Debug.Log($"HandleCardPlay: Discarded card {card?.CardData?.CardName} to discard pile");
+            }
+            else
+            {
+                Debug.LogError($"HandleCardPlay: Could not find HandManager for entity {sourceEntity.EntityName.Value}");
             }
         }
     }

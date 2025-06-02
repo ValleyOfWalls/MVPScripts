@@ -539,25 +539,48 @@ public class CardSpawnerWindow : EditorWindow
             GUILayout.Label(card.Description, EditorStyles.wordWrappedMiniLabel);
         }
         
-        // Effect details
-        string effectDetails = $"Effect: {card.EffectType}";
-        if (card.Amount > 0) effectDetails += $" ({card.Amount})";
-        if (card.Duration > 0) effectDetails += $" for {card.Duration} turns";
-        effectDetails += $" -> {card.TargetType}";
+        // Display card details using new Effects system
+        string effectDetails = "Effects: ";
+        if (card.HasEffects)
+        {
+            for (int i = 0; i < card.Effects.Count; i++)
+            {
+                var effect = card.Effects[i];
+                effectDetails += $"{effect.effectType}";
+                if (effect.amount > 0) effectDetails += $" ({effect.amount})";
+                if (effect.duration > 0) effectDetails += $" for {effect.duration} turns";
+                effectDetails += $" -> {effect.targetType}";
+                
+                if (i < card.Effects.Count - 1) effectDetails += ", ";
+            }
+        }
+        else
+        {
+            effectDetails += "None";
+        }
         
         GUILayout.Label(effectDetails, EditorStyles.miniLabel);
         
-        // Advanced features
+        // Advanced features based on new clean interface
         List<string> features = new List<string>();
-        if (card.HasZoneEffect) features.Add("Zone");
-        if (card.HasScalingEffect) features.Add("Scaling");
-        if (card.HasConditionalEffect) features.Add("Conditional");
-        if (card.HasMultipleEffects) features.Add("Multi-Effect");
-        if (card.AffectsStance) features.Add("Stance");
-        if (card.HasPersistentEffect) features.Add("Persistent");
-        if (card.HasComboModifier) features.Add("Combo");
-        if (card.IsFinisher) features.Add("Finisher");
-        if (card.ElementalType != ElementalType.None) features.Add(card.ElementalType.ToString());
+        
+        if (card.HasEffects && card.Effects.Count > 1) features.Add("Multi-Effect");
+        if (card.BuildsCombo) features.Add("Combo");
+        if (card.RequiresCombo) features.Add("Finisher");
+        if (card.ChangesStance) features.Add("Stance");
+        if (card.CreatesPersistentEffects) features.Add("Persistent");
+        
+        // Check for specific effect types
+        if (card.HasEffects)
+        {
+            bool hasScaling = card.Effects.Any(e => e.scalingType != ScalingType.None);
+            bool hasConditional = card.Effects.Any(e => e.conditionType != ConditionalType.None);
+            bool hasElemental = card.Effects.Any(e => e.elementalType != ElementalType.None);
+            
+            if (hasScaling) features.Add("Scaling");
+            if (hasConditional) features.Add("Conditional");
+            if (hasElemental) features.Add("Elemental");
+        }
         
         if (features.Count > 0)
         {

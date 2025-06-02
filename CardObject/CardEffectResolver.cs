@@ -94,21 +94,15 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        // Check sequence requirements before playing
+        // Get tracking data for combo check
         EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
-        if (sourceTracker != null)
+        
+        // Check sequence requirements (combo system)
+        bool canPlay = cardData.CanPlayWithCombo(sourceTracker?.ComboCount ?? 0);
+        if (!canPlay)
         {
-            bool canPlay = cardData.CanPlayWithSequence(
-                sourceTracker.TrackingData.lastPlayedCardType,
-                sourceTracker.ComboCount,
-                sourceTracker.CurrentStance
-            );
-            
-            if (!canPlay)
-            {
-                Debug.LogWarning($"CardEffectResolver: Card {cardData.CardName} cannot be played due to sequence requirements");
-                return;
-            }
+            Debug.Log($"CardEffectResolver: Card {cardData.CardName} cannot be played - combo requirement not met");
+            return;
         }
         
         // Execute the card effect on the server
@@ -174,7 +168,7 @@ public class CardEffectResolver : NetworkBehaviour
         EntityTracker entityTracker = sourceEntity.GetComponent<EntityTracker>();
         if (entityTracker != null)
         {
-            entityTracker.RecordCardPlayed(cardData.CardId, cardData.HasComboModifier, cardData.CardType, cardData.IsZeroCost);
+            entityTracker.RecordCardPlayed(cardData.CardId, cardData.BuildsCombo, cardData.CardType, cardData.IsZeroCost);
         }
         
         // Record in card tracker if available
@@ -185,7 +179,7 @@ public class CardEffectResolver : NetworkBehaviour
     }
     
     /// <summary>
-    /// Processes all effects for a card (main effect, multi-effects, conditional effects, zone effects, persistent effects)
+    /// Processes all effects for a card using the clean Effects system
     /// </summary>
     private void ProcessCardEffects(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardData cardData)
     {
@@ -193,103 +187,77 @@ public class CardEffectResolver : NetworkBehaviour
         EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
         EntityTrackingData trackingData = sourceTracker?.GetTrackingDataForScaling() ?? new EntityTrackingData();
         
-        // Process zone effects first (they affect all players/pets globally)
-        if (cardData.HasZoneEffect)
+        // Process stance effects if card changes stance
+        if (cardData.ChangesStance)
         {
-            ProcessZoneEffects(sourceEntity, cardData, trackingData);
+            ProcessStanceChange(sourceEntity, cardData.NewStance);
         }
         
-        // Process persistent fight effects
-        if (cardData.HasPersistentEffect)
+        // Process persistent effects if card creates them
+        if (cardData.CreatesPersistentEffects)
         {
             ProcessPersistentEffects(sourceEntity, cardData);
         }
         
-        // Process stance effects
-        if (cardData.AffectsStance)
+        // Process all effects from the Effects list
+        if (cardData.HasEffects)
         {
-            ProcessStanceEffects(sourceEntity, cardData);
-        }
-        
-        // Process main effect with scaling
-        int scaledAmount = cardData.GetScalingAmount(ScalingType.None, cardData.Amount, trackingData);
-        ProcessSingleEffect(sourceEntity, targetEntities, cardData.EffectType, scaledAmount, cardData.Duration, cardData.ElementalType);
-        
-        // Process scaling effects
-        if (cardData.HasScalingEffect)
-        {
-            ProcessScalingEffects(sourceEntity, targetEntities, cardData, trackingData);
-        }
-        
-        // Process multi-effects if any
-        if (cardData.HasMultipleEffects)
-        {
+            Debug.Log($"CardEffectResolver: Processing {cardData.Effects.Count} effects for card {cardData.CardName}");
+            
             foreach (var effect in cardData.Effects)
             {
-                List<NetworkEntity> effectTargets = GetTargetsForEffect(sourceEntity, effect.targetType, targetEntities);
+                Debug.Log($"CardEffectResolver: Processing effect {effect.effectType} with amount {effect.amount}, duration {effect.duration}");
                 
-                // Apply scaling if the effect uses it
-                int effectAmount = effect.amount;
-                if (effect.scalingType != ScalingType.None)
+                // Apply scaling if defined on the effect
+                int amount = effect.amount;
+                if (effect.scalingType != ScalingType.None && trackingData != null)
                 {
-                    effectAmount = CalculateScaledAmountFromEffect(effect, trackingData);
+                    int scalingValue = GetScalingValue(effect.scalingType, trackingData);
+                    int scalingBonus = Mathf.FloorToInt(scalingValue * effect.scalingMultiplier);
+                    int scaledAmount = amount + scalingBonus;
+                    
+                    Debug.Log($"CardEffectResolver: Scaling details - scalingType: {effect.scalingType}, scalingValue: {scalingValue}, multiplier: {effect.scalingMultiplier}, bonus: {scalingBonus}, maxScaling: {effect.maxScaling}");
+                    
+                    // Only apply max scaling if it's higher than the base amount
+                    // This prevents maxScaling from reducing the base effect
+                    if (effect.maxScaling > effect.amount)
+                    {
+                        amount = Mathf.Min(scaledAmount, effect.maxScaling);
+                        Debug.Log($"CardEffectResolver: Applied max scaling cap - final amount: {amount}");
+                    }
+                    else
+                    {
+                        amount = scaledAmount;
+                        Debug.Log($"CardEffectResolver: Max scaling ({effect.maxScaling}) lower than base amount ({effect.amount}), ignoring cap - final amount: {amount}");
+                    }
+                    
+                    Debug.Log($"CardEffectResolver: Scaling applied - original: {effect.amount}, scaled: {amount}");
+                }
+                else if (effect.scalingType != ScalingType.None)
+                {
+                    Debug.Log($"CardEffectResolver: Effect has scaling type {effect.scalingType} but no tracking data available");
                 }
                 
-                ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, effectAmount, effect.duration, effect.elementalType);
+                Debug.Log($"CardEffectResolver: Calling ProcessSingleEffect with amount {amount}, duration {effect.duration}");
+                ProcessSingleEffect(sourceEntity, targetEntities, effect.effectType, amount, effect.duration, effect.elementalType);
             }
         }
-        
-        // Process conditional effects if any
-        if (cardData.HasConditionalEffect)
+        else
         {
-            ProcessConditionalEffect(sourceEntity, targetEntities, cardData, trackingData);
+            Debug.LogWarning($"CardEffectResolver: Card {cardData.CardName} has no effects defined");
         }
     }
     
     /// <summary>
-    /// Processes zone effects that affect all players/pets globally
+    /// Processes stance change effect
     /// </summary>
-    private void ProcessZoneEffects(NetworkEntity sourceEntity, CardData cardData, EntityTrackingData trackingData)
+    private void ProcessStanceChange(NetworkEntity sourceEntity, StanceType newStance)
     {
-        foreach (var zoneEffect in cardData.ZoneEffects)
+        EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
+        if (sourceTracker != null)
         {
-            // Get all entities based on zone effect targeting
-            List<NetworkEntity> zoneTargets = new List<NetworkEntity>();
-            
-            if (zoneEffect.affectAllPlayers || zoneEffect.affectAllPets)
-            {
-                List<NetworkEntity> globalEntities = EntityTracker.GetAllEntitiesForZoneEffect(
-                    zoneEffect.affectAllPlayers, 
-                    zoneEffect.affectAllPets
-                );
-                zoneTargets.AddRange(globalEntities);
-            }
-            
-            // Include caster if specified
-            if (zoneEffect.affectCaster)
-            {
-                zoneTargets.Add(sourceEntity);
-            }
-            
-            // Exclude opponents if specified
-            if (zoneEffect.excludeOpponents)
-            {
-                // This would need logic to determine who are opponents vs allies
-                // For now, placeholder for the concept
-            }
-            
-            // Calculate scaled amount
-            int zoneAmount = zoneEffect.baseAmount;
-            if (zoneEffect.scalingType != ScalingType.None)
-            {
-                int scalingValue = GetScalingValue(zoneEffect.scalingType, trackingData);
-                zoneAmount += Mathf.FloorToInt(scalingValue * zoneEffect.scalingMultiplier);
-            }
-            
-            // Apply the zone effect to all targets
-            ProcessSingleEffect(sourceEntity, zoneTargets, zoneEffect.effectType, zoneAmount, zoneEffect.duration, zoneEffect.elementalType);
-            
-            Debug.Log($"CardEffectResolver: Applied zone effect {zoneEffect.effectType} to {zoneTargets.Count} entities");
+            sourceTracker.SetStance(newStance);
+            Debug.Log($"CardEffectResolver: {sourceEntity.EntityName.Value} entered {newStance} stance");
         }
     }
     
@@ -313,74 +281,7 @@ public class CardEffectResolver : NetworkBehaviour
     }
     
     /// <summary>
-    /// Processes stance effects
-    /// </summary>
-    private void ProcessStanceEffects(NetworkEntity sourceEntity, CardData cardData)
-    {
-        EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
-        if (sourceTracker == null) return;
-        
-        var stanceEffect = cardData.StanceEffect;
-        
-        // Apply stance change
-        sourceTracker.SetStance(stanceEffect.stanceType);
-        
-        // Apply immediate stance benefits
-        if (stanceEffect.grantsThorns)
-        {
-            EffectHandler effectHandler = sourceEntity.GetComponent<EffectHandler>();
-            if (effectHandler != null)
-            {
-                effectHandler.AddEffect("Thorns", stanceEffect.thornsAmount, 999, sourceEntity); // Long duration
-            }
-        }
-        
-        if (stanceEffect.grantsShield)
-        {
-            EffectHandler effectHandler = sourceEntity.GetComponent<EffectHandler>();
-            if (effectHandler != null)
-            {
-                effectHandler.AddEffect("Shield", stanceEffect.shieldAmount, 999, sourceEntity);
-            }
-        }
-        
-        Debug.Log($"CardEffectResolver: {sourceEntity.EntityName.Value} entered {stanceEffect.stanceType} stance");
-    }
-    
-    /// <summary>
-    /// Processes scaling effects
-    /// </summary>
-    private void ProcessScalingEffects(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardData cardData, EntityTrackingData trackingData)
-    {
-        foreach (var scalingEffect in cardData.ScalingEffects)
-        {
-            int scaledAmount = CalculateScaledAmount(scalingEffect, trackingData);
-            ProcessSingleEffect(sourceEntity, targetEntities, scalingEffect.effectType, scaledAmount, 0, scalingEffect.elementalType);
-        }
-    }
-    
-    /// <summary>
-    /// Calculates scaled amount for scaling effects
-    /// </summary>
-    private int CalculateScaledAmount(ScalingEffect scalingEffect, EntityTrackingData trackingData)
-    {
-        int scalingValue = GetScalingValue(scalingEffect.scalingType, trackingData);
-        int scaledAmount = scalingEffect.baseAmount + Mathf.FloorToInt(scalingValue * scalingEffect.scalingMultiplier);
-        return Mathf.Min(scaledAmount, scalingEffect.maxScaling);
-    }
-    
-    /// <summary>
-    /// Calculates scaled amount for a CardEffect with scaling
-    /// </summary>
-    private int CalculateScaledAmountFromEffect(CardEffect effect, EntityTrackingData trackingData)
-    {
-        int scalingValue = GetScalingValue(effect.scalingType, trackingData);
-        int scaledAmount = effect.amount + Mathf.FloorToInt(scalingValue * effect.scalingMultiplier);
-        return Mathf.Min(scaledAmount, effect.maxScaling);
-    }
-    
-    /// <summary>
-    /// Gets the current value for a scaling type
+    /// Calculate scaling value based on tracking data
     /// </summary>
     private int GetScalingValue(ScalingType scalingType, EntityTrackingData trackingData)
     {
@@ -400,9 +301,22 @@ public class CardEffectResolver : NetworkBehaviour
                 return trackingData.damageDealtThisFight;
             case ScalingType.ComboCount:
                 return trackingData.comboCount;
+            case ScalingType.MissingHealth:
+                // This would need current health calculation - simplified for now
+                return 0;
             default:
                 return 0;
         }
+    }
+    
+    /// <summary>
+    /// Calculates scaled amount for a CardEffect with scaling
+    /// </summary>
+    private int CalculateScaledAmountFromEffect(CardEffect effect, EntityTrackingData trackingData)
+    {
+        int scalingValue = GetScalingValue(effect.scalingType, trackingData);
+        int scaledAmount = effect.amount + Mathf.FloorToInt(scalingValue * effect.scalingMultiplier);
+        return Mathf.Min(scaledAmount, effect.maxScaling);
     }
     
     /// <summary>
@@ -502,6 +416,8 @@ public class CardEffectResolver : NetworkBehaviour
     /// </summary>
     private void ProcessSingleEffect(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardEffectType effectType, int amount, int duration, ElementalType elementalType)
     {
+        Debug.Log($"CardEffectResolver: ProcessSingleEffect called with type={effectType}, amount={amount}, duration={duration}");
+        
         foreach (NetworkEntity targetEntity in targetEntities)
         {
             if (targetEntity == null) continue;
@@ -545,6 +461,7 @@ public class CardEffectResolver : NetworkBehaviour
                     break;
                     
                 case CardEffectType.ApplyThorns:
+                    Debug.Log($"CardEffectResolver: ApplyThorns case - passing amount={amount}, duration={duration}");
                     ProcessStatusEffect(sourceEntity, targetEntity, "Thorns", amount, duration);
                     break;
                     
@@ -564,6 +481,10 @@ public class CardEffectResolver : NetworkBehaviour
                     ProcessStrengthEffect(targetEntity, amount);
                     break;
                     
+                case CardEffectType.ApplyCurse:
+                    ProcessStatusEffect(sourceEntity, targetEntity, "Curse", amount, duration);
+                    break;
+                    
                 case CardEffectType.ApplyElementalStatus:
                     ProcessElementalStatusEffect(sourceEntity, targetEntity, elementalType, amount, duration);
                     break;
@@ -578,14 +499,6 @@ public class CardEffectResolver : NetworkBehaviour
                     
                 case CardEffectType.ExitStance:
                     ProcessStanceChangeEffect(targetEntity, StanceType.None); // Exit to neutral stance
-                    break;
-                    
-                case CardEffectType.BuffStats:
-                    ProcessStatusEffect(sourceEntity, targetEntity, "Buff", amount, duration);
-                    break;
-                    
-                case CardEffectType.DebuffStats:
-                    ProcessStatusEffect(sourceEntity, targetEntity, "Debuff", amount, duration);
                     break;
                     
                 default:
@@ -625,9 +538,6 @@ public class CardEffectResolver : NetworkBehaviour
         
         // Debug card data information
         Debug.Log($"CardEffectResolver: Processing damage for card '{originalCardData.CardName}'");
-        Debug.Log($"CardEffectResolver: Card Amount property: {originalCardData.Amount}");
-        Debug.Log($"CardEffectResolver: Card HasEffects: {originalCardData.HasEffects}");
-        Debug.Log($"CardEffectResolver: Card Effects count: {originalCardData.Effects?.Count ?? 0}");
         Debug.Log($"CardEffectResolver: Input amount parameter: {amount}");
         Debug.Log($"CardEffectResolver: Strength bonus: {strengthBonus}");
         Debug.Log($"CardEffectResolver: Total damage calculation: {totalDamage}");
@@ -713,10 +623,17 @@ public class CardEffectResolver : NetworkBehaviour
     
     private void ProcessStatusEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, int potency, int duration)
     {
+        Debug.Log($"CardEffectResolver: ProcessStatusEffect called with effectName={effectName}, potency={potency}, duration={duration}");
+        
         EffectHandler targetEffectHandler = targetEntity.GetComponent<EffectHandler>();
         if (targetEffectHandler != null)
         {
+            Debug.Log($"CardEffectResolver: Calling EffectHandler.AddEffect with potency={potency}");
             targetEffectHandler.AddEffect(effectName, potency, duration, sourceEntity);
+        }
+        else
+        {
+            Debug.LogError($"CardEffectResolver: No EffectHandler found on target {targetEntity.EntityName.Value}");
         }
     }
     

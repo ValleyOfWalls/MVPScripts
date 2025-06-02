@@ -129,6 +129,63 @@ public class EffectHandler : NetworkBehaviour
         
         int sourceId = source != null ? source.ObjectId : 0;
         
+        // Special handling for different effect types
+        switch (effectName)
+        {
+            case "Strength":
+            case "Curse":
+                // Strength and Curse don't use duration - they tick down by 1 each turn
+                // If effect already exists, add to the potency
+                if (activeEffects.ContainsKey(effectName))
+                {
+                    string existingData = activeEffects[effectName];
+                    string[] parts = existingData.Split('|');
+                    if (parts.Length >= 4)
+                    {
+                        int existingPotency = int.Parse(parts[1]);
+                        potency += existingPotency; // Stack the effect
+                    }
+                }
+                duration = 999; // High duration since it ticks down by potency
+                break;
+                
+            case "Break":
+            case "Weak":
+                // Break and Weak don't use amount - they only have duration
+                // If effect already exists, add to the duration
+                if (activeEffects.ContainsKey(effectName))
+                {
+                    string existingData = activeEffects[effectName];
+                    string[] parts = existingData.Split('|');
+                    if (parts.Length >= 4)
+                    {
+                        int existingDuration = int.Parse(parts[2]);
+                        duration += existingDuration; // Stack the duration
+                        Debug.Log($"EffectHandler: Stacking {effectName} duration, new total: {duration}");
+                    }
+                }
+                potency = 1; // Always 1 for Break/Weak since they're binary effects
+                break;
+                
+            case "Thorns":
+                // Thorns stacks with existing Thorns effects
+                // If effect already exists, add to the potency
+                if (activeEffects.ContainsKey(effectName))
+                {
+                    string existingData = activeEffects[effectName];
+                    string[] parts = existingData.Split('|');
+                    if (parts.Length >= 4)
+                    {
+                        int existingPotency = int.Parse(parts[1]);
+                        potency += existingPotency; // Stack the effect
+                        Debug.Log($"EffectHandler: Stacking {effectName} potency, new total: {potency}");
+                    }
+                }
+                // Thorns lasts until start of entity's next turn - give it 1 turn duration
+                duration = 1;
+                break;
+        }
+        
         // Format effect data as a string for syncing
         string effectData = $"{effectName}|{potency}|{duration}|{sourceId}";
         
@@ -263,6 +320,57 @@ public class EffectHandler : NetworkBehaviour
                     Debug.Log($"EffectHandler: {entity.EntityName.Value} is in Limit Break state");
                     break;
                     
+                case "Strength":
+                    // Strength increases damage output - the primary positive damage modifier
+                    // Handled by both EntityTracker.StrengthStacks and EffectHandler for damage calculations
+                    // Ticks down by 1 each turn instead of duration-based
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} has +{potency} strength");
+                    
+                    // Reduce potency by 1 each turn
+                    potency--;
+                    if (potency <= 0)
+                    {
+                        activeEffects.Remove(effectKey);
+                        Debug.Log($"EffectHandler: Strength effect expired on {entity.EntityName.Value}");
+                        continue; // Skip normal duration processing
+                    }
+                    else
+                    {
+                        // Update with reduced potency
+                        activeEffects[effectKey] = $"{effectName}|{potency}|{duration}|{sourceId}";
+                        continue; // Skip normal duration processing
+                    }
+                    
+                case "Curse":
+                    // Curse reduces damage output - handled by other systems when dealing damage
+                    // Ticks down by 1 each turn instead of duration-based
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} has -{potency} damage curse active");
+                    
+                    // Reduce potency by 1 each turn
+                    potency--;
+                    if (potency <= 0)
+                    {
+                        activeEffects.Remove(effectKey);
+                        Debug.Log($"EffectHandler: Curse effect expired on {entity.EntityName.Value}");
+                        continue; // Skip normal duration processing
+                    }
+                    else
+                    {
+                        // Update with reduced potency
+                        activeEffects[effectKey] = $"{effectName}|{potency}|{duration}|{sourceId}";
+                        continue; // Skip normal duration processing
+                    }
+                    
+                case "Weak":
+                    // Weak reduces damage output
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} is weakened for {duration} more turns");
+                    break;
+                    
+                case "Break":
+                    // Break increases damage taken
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} is broken and takes extra damage for {duration} more turns");
+                    break;
+                    
                 // Add more end-of-turn effect types here
             }
             
@@ -324,13 +432,14 @@ public class EffectHandler : NetworkBehaviour
         if (HasEffect("Thorns"))
         {
             int thornsPotency = GetEffectPotency("Thorns");
-            int reflectedDamage = Mathf.Min(thornsPotency, damageAmount); // Thorns can't reflect more than damage taken
+            // Thorns reflects the full amount regardless of damage taken
+            int reflectedDamage = thornsPotency;
             
             LifeHandler attackerLifeHandler = attacker.GetComponent<LifeHandler>();
             if (attackerLifeHandler != null)
             {
                 attackerLifeHandler.TakeDamage(reflectedDamage, entity);
-                Debug.Log($"EffectHandler: {entity.EntityName.Value} reflected {reflectedDamage} thorns damage to {attacker.EntityName.Value}");
+                Debug.Log($"EffectHandler: {entity.EntityName.Value} reflected {reflectedDamage} thorns damage to {attacker.EntityName.Value} (took {damageAmount} damage, thorns potency: {thornsPotency})");
             }
         }
     }
@@ -397,8 +506,14 @@ public class EffectHandler : NetworkBehaviour
         
         Debug.Log($"EffectHandler: Processing start of turn effects for {entity.EntityName.Value}");
         
-        // Similar to ProcessEndOfTurnEffects but for start-of-turn effects
-        // Implement as needed for your game mechanics
+        // Remove Thorns at the start of the entity's turn (they only last until start of next turn)
+        if (HasEffect("Thorns"))
+        {
+            RemoveEffect("Thorns");
+            Debug.Log($"EffectHandler: Removed Thorns from {entity.EntityName.Value} at start of turn");
+        }
+        
+        // Process any other start-of-turn effects here as needed
     }
     
     /// <summary>
@@ -517,6 +632,110 @@ public class EffectHandler : NetworkBehaviour
     {
         RefreshEffectCache();
         return new List<StatusEffect>(effectCache.Values);
+    }
+    
+    /// <summary>
+    /// Gets a formatted list of active effect names and potencies for UI display
+    /// </summary>
+    public List<string> GetActiveEffects()
+    {
+        RefreshEffectCache();
+        List<string> effectNames = new List<string>();
+        
+        foreach (var effect in effectCache.Values)
+        {
+            if (effect.RemainingDuration > 0 || effect.Potency > 0)
+            {
+                string effectDisplay;
+                
+                // Format based on effect type mechanics
+                switch (effect.EffectName)
+                {
+                    case "Strength":
+                    case "Curse":
+                        // Always show potency for damage modifiers
+                        effectDisplay = $"{effect.EffectName} ({effect.Potency})";
+                        break;
+                        
+                    case "Break":
+                    case "Weak":
+                        // Show duration only (they don't have meaningful potency)
+                        effectDisplay = effect.RemainingDuration > 1 ? 
+                            $"{effect.EffectName} ({effect.RemainingDuration})" : 
+                            effect.EffectName;
+                        break;
+                        
+                    case "Thorns":
+                        // Always show potency for Thorns since the amount is important
+                        effectDisplay = $"{effect.EffectName} ({effect.Potency})";
+                        break;
+                        
+                    case "Shield":
+                        // Always show potency for Shield since the amount is important
+                        effectDisplay = $"{effect.EffectName} ({effect.Potency})";
+                        break;
+                        
+                    default:
+                        // For other effects, always show potency if > 0
+                        effectDisplay = effect.Potency > 0 ? 
+                            $"{effect.EffectName} ({effect.Potency})" : 
+                            effect.EffectName;
+                        break;
+                }
+                
+                effectNames.Add(effectDisplay);
+            }
+        }
+        
+        return effectNames;
+    }
+    
+    /// <summary>
+    /// Gets the total damage modification from all active curse effects (negative Strength)
+    /// </summary>
+    public int GetDamageModification()
+    {
+        int modification = 0;
+        
+        // Subtract damage from curses (negative strength)
+        if (HasEffect("Curse"))
+        {
+            modification -= GetEffectPotency("Curse");
+        }
+        
+        return modification;
+    }
+    
+    /// <summary>
+    /// Gets the damage taken multiplier from effects like Break
+    /// </summary>
+    public float GetDamageTakenMultiplier()
+    {
+        float multiplier = 1.0f;
+        
+        if (HasEffect("Break"))
+        {
+            // Break increases damage taken by 50% (this matches GameManager's BreakStatusModifier)
+            multiplier *= 1.5f;
+        }
+        
+        return multiplier;
+    }
+    
+    /// <summary>
+    /// Gets the damage dealt multiplier from effects like Weak
+    /// </summary>
+    public float GetDamageDealtMultiplier()
+    {
+        float multiplier = 1.0f;
+        
+        if (HasEffect("Weak"))
+        {
+            // Weak reduces damage dealt by 25% (this matches GameManager's WeakStatusModifier)
+            multiplier *= 0.75f;
+        }
+        
+        return multiplier;
     }
     
     /// <summary>

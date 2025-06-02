@@ -89,6 +89,10 @@ public class GameManager : NetworkBehaviour
     {
         base.OnStartServer();
         
+        Debug.Log($"GameManager: OnStartServer - About to initialize SyncVars");
+        Debug.Log($"GameManager: Serialized field values - playerInitialDraw: {playerInitialDraw}, playerHandTarget: {playerHandTarget}");
+        Debug.Log($"GameManager: Serialized field values - petInitialDraw: {petInitialDraw}, petHandTarget: {petHandTarget}");
+        
         // Initialize SyncVars from serialized fields
         PlayerDrawAmount.Value = playerInitialDraw;
         PetDrawAmount.Value = petInitialDraw;

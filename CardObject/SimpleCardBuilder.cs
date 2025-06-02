@@ -237,9 +237,17 @@ public class SimpleCardBuilder
                 break;
         }
         
-        if (scaling != ScalingType.None)
+        // Add scaling if specified
+        if (scaling != ScalingType.None && multiplier > 0)
         {
-            card.AddScaling(scaling, multiplier);
+            // Find the first effect and add scaling to it
+            if (card.HasEffects && card.Effects.Count > 0)
+            {
+                var firstEffect = card.Effects[0];
+                firstEffect.scalingType = scaling;
+                firstEffect.scalingMultiplier = multiplier;
+                firstEffect.maxScaling = firstEffect.amount + 10; // Default max scaling bonus
+            }
         }
     }
     
@@ -248,16 +256,19 @@ public class SimpleCardBuilder
         switch (secondaryEffect)
         {
             case SecondaryEffectType.HealSelf:
-                card.AddAdditionalEffect(CardEffectType.Heal, secondaryAmount, CardTargetType.Self);
+                card.AddEffect(CardEffectType.Heal, secondaryAmount, CardTargetType.Self);
                 break;
+                
             case SecondaryEffectType.DrawCard:
-                card.AddAdditionalEffect(CardEffectType.DrawCard, secondaryAmount, CardTargetType.Self);
+                card.AddEffect(CardEffectType.DrawCard, secondaryAmount, CardTargetType.Self);
                 break;
+                
             case SecondaryEffectType.GainEnergy:
-                card.AddAdditionalEffect(CardEffectType.RestoreEnergy, secondaryAmount, CardTargetType.Self);
+                card.AddEffect(CardEffectType.RestoreEnergy, secondaryAmount, CardTargetType.Self);
                 break;
+                
             case SecondaryEffectType.DamageAll:
-                card.AddAdditionalEffect(CardEffectType.Damage, secondaryAmount, CardTargetType.AllEnemies);
+                card.AddEffect(CardEffectType.Damage, secondaryAmount, CardTargetType.AllEnemies);
                 break;
         }
     }

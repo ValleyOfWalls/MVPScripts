@@ -55,8 +55,8 @@ public class ConditionalFieldPropertyDrawer : PropertyDrawer
     {
         ConditionalFieldAttribute conditionalAttribute = (ConditionalFieldAttribute)attribute;
         
-        // Find the source property
-        SerializedProperty sourceProperty = property.serializedObject.FindProperty(conditionalAttribute.ConditionalSourceField);
+        // Find the source property - handle both root level and list element contexts
+        SerializedProperty sourceProperty = FindSourceProperty(property, conditionalAttribute.ConditionalSourceField);
         
         if (sourceProperty == null)
         {
@@ -64,42 +64,67 @@ public class ConditionalFieldPropertyDrawer : PropertyDrawer
             return;
         }
 
-        // Check if condition is met
         bool conditionMet = IsAnyConditionMet(sourceProperty, conditionalAttribute.CompareValues);
         
-        if (!conditionMet && conditionalAttribute.HideInInspector)
+        if (conditionalAttribute.HideInInspector && !conditionMet)
         {
             return; // Don't draw anything
         }
 
-        // Draw the field with conditional styling
-        bool wasEnabled = GUI.enabled;
-        if (!conditionMet)
-        {
-            GUI.enabled = false;
-        }
-
+        EditorGUI.BeginDisabledGroup(!conditionMet);
         EditorGUI.PropertyField(position, property, label);
-        
-        GUI.enabled = wasEnabled;
+        EditorGUI.EndDisabledGroup();
     }
 
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
         ConditionalFieldAttribute conditionalAttribute = (ConditionalFieldAttribute)attribute;
-        SerializedProperty sourceProperty = property.serializedObject.FindProperty(conditionalAttribute.ConditionalSourceField);
+        SerializedProperty sourceProperty = FindSourceProperty(property, conditionalAttribute.ConditionalSourceField);
         
         if (sourceProperty != null)
         {
             bool conditionMet = IsAnyConditionMet(sourceProperty, conditionalAttribute.CompareValues);
             
-            if (!conditionMet && conditionalAttribute.HideInInspector)
+            if (conditionalAttribute.HideInInspector && !conditionMet)
             {
                 return 0f; // Hide completely
             }
         }
 
         return EditorGUI.GetPropertyHeight(property, label);
+    }
+    
+    /// <summary>
+    /// Finds the source property, handling both root level and list element contexts
+    /// </summary>
+    private SerializedProperty FindSourceProperty(SerializedProperty property, string sourceFieldName)
+    {
+        // First try the original approach (root level)
+        SerializedProperty sourceProperty = property.serializedObject.FindProperty(sourceFieldName);
+        if (sourceProperty != null)
+        {
+            return sourceProperty;
+        }
+        
+        // If not found, we might be in a list element - find the parent and look for the field there
+        string propertyPath = property.propertyPath;
+        
+        // For list elements, the path looks like: "_effects.Array.data[0].amount"
+        // We need to find the parent element path: "_effects.Array.data[0]"
+        int lastDotIndex = propertyPath.LastIndexOf('.');
+        if (lastDotIndex > 0)
+        {
+            string parentPath = propertyPath.Substring(0, lastDotIndex);
+            string siblingPath = parentPath + "." + sourceFieldName;
+            sourceProperty = property.serializedObject.FindProperty(siblingPath);
+            
+            if (sourceProperty != null)
+            {
+                return sourceProperty;
+            }
+        }
+        
+        return null;
     }
 
     private bool IsAnyConditionMet(SerializedProperty sourceProperty, object[] compareValues)
@@ -147,8 +172,8 @@ public class ShowIfAnyPropertyDrawer : PropertyDrawer
     {
         ShowIfAnyAttribute showIfAttribute = (ShowIfAnyAttribute)attribute;
         
-        // Find the source property
-        SerializedProperty sourceProperty = property.serializedObject.FindProperty(showIfAttribute.ConditionalSourceField);
+        // Find the source property - handle both root level and list element contexts
+        SerializedProperty sourceProperty = FindSourceProperty(property, showIfAttribute.ConditionalSourceField);
         
         if (sourceProperty == null)
         {
@@ -170,7 +195,7 @@ public class ShowIfAnyPropertyDrawer : PropertyDrawer
     public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
     {
         ShowIfAnyAttribute showIfAttribute = (ShowIfAnyAttribute)attribute;
-        SerializedProperty sourceProperty = property.serializedObject.FindProperty(showIfAttribute.ConditionalSourceField);
+        SerializedProperty sourceProperty = FindSourceProperty(property, showIfAttribute.ConditionalSourceField);
         
         if (sourceProperty != null)
         {
@@ -183,6 +208,39 @@ public class ShowIfAnyPropertyDrawer : PropertyDrawer
         }
 
         return EditorGUI.GetPropertyHeight(property, label);
+    }
+    
+    /// <summary>
+    /// Finds the source property, handling both root level and list element contexts
+    /// </summary>
+    private SerializedProperty FindSourceProperty(SerializedProperty property, string sourceFieldName)
+    {
+        // First try the original approach (root level)
+        SerializedProperty sourceProperty = property.serializedObject.FindProperty(sourceFieldName);
+        if (sourceProperty != null)
+        {
+            return sourceProperty;
+        }
+        
+        // If not found, we might be in a list element - find the parent and look for the field there
+        string propertyPath = property.propertyPath;
+        
+        // For list elements, the path looks like: "_effects.Array.data[0].amount"
+        // We need to find the parent element path: "_effects.Array.data[0]"
+        int lastDotIndex = propertyPath.LastIndexOf('.');
+        if (lastDotIndex > 0)
+        {
+            string parentPath = propertyPath.Substring(0, lastDotIndex);
+            string siblingPath = parentPath + "." + sourceFieldName;
+            sourceProperty = property.serializedObject.FindProperty(siblingPath);
+            
+            if (sourceProperty != null)
+            {
+                return sourceProperty;
+            }
+        }
+        
+        return null;
     }
 
     private bool IsAnyConditionMet(SerializedProperty sourceProperty, object[] compareValues)

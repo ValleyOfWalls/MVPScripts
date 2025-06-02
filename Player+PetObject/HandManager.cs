@@ -69,23 +69,60 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
-        // Get target hand size from GameManager
-        int targetHandSize;
-        if (entity.EntityType == EntityType.Player)
+        // DEBUG: Check GameManager instance and values
+        if (GameManager.Instance == null)
         {
-            targetHandSize = GameManager.Instance.PlayerTargetHandSize.Value;
-            Debug.Log($"HandManager: Player target hand size is {targetHandSize}");
+            Debug.LogError($"HandManager: GameManager.Instance is NULL for {gameObject.name}");
+            return;
         }
-        else // Pet
-        {
-            targetHandSize = GameManager.Instance.PetTargetHandSize.Value;
-            Debug.Log($"HandManager: Pet target hand size is {targetHandSize}");
-        }
+        
+        Debug.Log($"HandManager DEBUG: GameManager found. PlayerDrawAmount: {GameManager.Instance.PlayerDrawAmount.Value}, PlayerTargetHandSize: {GameManager.Instance.PlayerTargetHandSize.Value}");
+        Debug.Log($"HandManager DEBUG: PetDrawAmount: {GameManager.Instance.PetDrawAmount.Value}, PetTargetHandSize: {GameManager.Instance.PetTargetHandSize.Value}");
 
-        // Get current hand size
+        // Get current hand size to determine if this is initial draw
         List<GameObject> currentHand = GetCardsInTransform(handTransform);
         int currentHandSize = currentHand.Count;
         Debug.Log($"HandManager: Current hand size for {gameObject.name} is {currentHandSize}");
+
+        // FIXED: Use initial draw amount for first draw (empty hand), target hand size for subsequent draws
+        int targetHandSize;
+        bool isInitialDraw = (currentHandSize == 0);
+        
+        Debug.Log($"HandManager DEBUG: Entity type is {entity.EntityType}, isInitialDraw: {isInitialDraw}");
+        
+        if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.PlayerHand)
+        {
+            if (isInitialDraw)
+            {
+                targetHandSize = GameManager.Instance.PlayerDrawAmount.Value; // Use initial draw amount
+                Debug.Log($"HandManager: Player initial draw - using PlayerDrawAmount.Value = {targetHandSize} cards");
+            }
+            else
+            {
+                targetHandSize = GameManager.Instance.PlayerTargetHandSize.Value; // Use target hand size
+                Debug.Log($"HandManager: Player subsequent draw - using PlayerTargetHandSize.Value = {targetHandSize}");
+            }
+        }
+        else if (entity.EntityType == EntityType.Pet || entity.EntityType == EntityType.PetHand)
+        {
+            if (isInitialDraw)
+            {
+                targetHandSize = GameManager.Instance.PetDrawAmount.Value; // Use initial draw amount
+                Debug.Log($"HandManager: Pet initial draw - using PetDrawAmount.Value = {targetHandSize} cards");
+            }
+            else
+            {
+                targetHandSize = GameManager.Instance.PetTargetHandSize.Value; // Use target hand size
+                Debug.Log($"HandManager: Pet subsequent draw - using PetTargetHandSize.Value = {targetHandSize}");
+            }
+        }
+        else
+        {
+            Debug.LogError($"HandManager: Unknown entity type {entity.EntityType} for {gameObject.name}");
+            return;
+        }
+
+        Debug.Log($"HandManager DEBUG: Final targetHandSize determined as: {targetHandSize}");
 
         // Calculate how many cards to draw
         int remainingCardsToDraw = targetHandSize - currentHandSize;

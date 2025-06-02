@@ -61,7 +61,7 @@ public class CardData : ScriptableObject
     [SerializeField] private bool _trackDamageHealing = true;
 
     // ═══════════════════════════════════════════════════════════════
-    // DERIVED PROPERTIES FOR BACKWARD COMPATIBILITY
+    // PUBLIC PROPERTIES - CLEAN INTERFACE
     // ═══════════════════════════════════════════════════════════════
     
     public int CardId => _cardId;
@@ -72,16 +72,7 @@ public class CardData : ScriptableObject
     public int EnergyCost => _energyCost;
     public CardData UpgradedVersion => _upgradedVersion;
     
-    // Legacy properties for backward compatibility
-    public CardEffectType EffectType => HasEffects ? _effects[0].effectType : CardEffectType.Damage;
-    public CardTargetType TargetType => HasEffects ? _effects[0].targetType : CardTargetType.Opponent;
-    public int Amount => HasEffects ? _effects[0].amount : 0;
-    public int Duration => HasEffects ? _effects[0].duration : 0;
-    public ElementalType ElementalType => HasEffects ? _effects[0].elementalType : ElementalType.None;
-    public bool HasComboModifier => _buildsCombo;
-    public bool IsFinisher => _requiresCombo;
-    
-    // Derived properties based on list contents
+    // Core mechanics
     public bool HasEffects => _effects != null && _effects.Count > 0;
     public List<CardEffect> Effects => _effects ?? new List<CardEffect>();
     
@@ -96,42 +87,17 @@ public class CardData : ScriptableObject
     
     public bool TrackPlayCount => _trackPlayCount;
     public bool TrackDamageHealing => _trackDamageHealing;
-
-    // Legacy compatibility properties
-    public bool IsGlobalEffect => HasEffects && IsGlobalTargetType(_effects[0].targetType);
-    public bool AffectAllPlayers => HasEffects && (_effects[0].targetType == CardTargetType.All || _effects[0].targetType == CardTargetType.AllPlayers);
-    public bool AffectAllPets => HasEffects && (_effects[0].targetType == CardTargetType.All || _effects[0].targetType == CardTargetType.AllPets);
-    public bool IncludeCaster => HasEffects && _effects[0].targetType == CardTargetType.All;
-    public bool HasZoneEffect => HasEffects && IsGlobalTargetType(_effects[0].targetType);
-    public List<ZoneEffect> ZoneEffects => ConvertToZoneEffects();
-    public bool HasMultipleEffects => HasEffects && _effects.Count > 1;
-    public List<CardEffect> MultiEffects => Effects;
-    public bool HasConditionalBehavior => HasEffects && _effects.Any(e => e.conditionType != ConditionalType.None);
-    public bool HasConditionalEffect => HasConditionalBehavior;
-    public bool AffectsStance => _changesStance;
-    public StanceEffect StanceEffect => ConvertToStanceEffect();
-    public bool HasScalingEffect => HasEffects && _effects.Any(e => e.scalingType != ScalingType.None);
-    public bool ScalesWithGameState => HasScalingEffect;
-    public List<ScalingEffect> ScalingEffects => ConvertToScalingEffects();
-    public bool HasPersistentEffect => CreatesPersistentEffects;
-    public bool HasSequenceRequirement => _requiresCombo;
-    public CardSequenceRequirement SequenceRequirement => ConvertToSequenceRequirement();
-    public bool CanTargetSelf => _canAlsoTargetSelf;
-    public bool CanTargetAlly => _canAlsoTargetAllies;
-    public bool RequiresSpecificTarget => false;
-    public CardTargetType DefaultTargetType => TargetType;
-    public bool TrackDeckComposition => false;
-    public bool TrackPerfection => false;
-    public bool TrackZeroCostCards => _energyCost == 0;
-    public bool TrackSequencing => _requiresCombo;
     
-    // Additional legacy properties for backward compatibility
-    public bool HasAdditionalEffects => HasMultipleEffects;
-    public List<CardEffect> AdditionalEffects => HasEffects && _effects.Count > 1 ? _effects.Skip(1).ToList() : new List<CardEffect>();
-    public ConditionalEffect ConditionalEffect => ConvertToConditionalEffect();
+    // Combo system
+    public bool BuildsCombo => _buildsCombo;
+    public bool RequiresCombo => _requiresCombo;
+    public int RequiredComboAmount => _requiredComboAmount;
+    
+    // Utility properties
+    public bool IsZeroCost => _energyCost == 0;
 
     // ═══════════════════════════════════════════════════════════════
-    // SIMPLIFIED HELPER METHODS
+    // HELPER METHODS FOR CARD SETUP
     // ═══════════════════════════════════════════════════════════════
 
     /// <summary>
@@ -205,9 +171,8 @@ public class CardData : ScriptableObject
     /// </summary>
     public void AddEffect(CardEffectType effectType, int amount, CardTargetType target = CardTargetType.Self, int duration = 0)
     {
-        if (_effects == null)
-            _effects = new List<CardEffect>();
-            
+        if (_effects == null) _effects = new List<CardEffect>();
+        
         _effects.Add(new CardEffect
         {
             effectType = effectType,
@@ -219,54 +184,7 @@ public class CardData : ScriptableObject
     }
 
     /// <summary>
-    /// Legacy method - now just calls AddEffect
-    /// </summary>
-    public void AddAdditionalEffect(CardEffectType effectType, int amount, CardTargetType target = CardTargetType.Self)
-    {
-        AddEffect(effectType, amount, target);
-    }
-
-    /// <summary>
-    /// Add an effect with conditional logic
-    /// </summary>
-    public void AddConditionalEffect(CardEffectType effectType, int amount, ConditionalType conditionType, int conditionValue, CardTargetType target = CardTargetType.Self)
-    {
-        if (_effects == null)
-            _effects = new List<CardEffect>();
-            
-        _effects.Add(new CardEffect
-        {
-            effectType = effectType,
-            amount = amount,
-            targetType = target,
-            conditionType = conditionType,
-            conditionValue = conditionValue,
-            elementalType = ElementalType.None
-        });
-    }
-
-    /// <summary>
-    /// Add an effect with scaling
-    /// </summary>
-    public void AddScalingEffect(CardEffectType effectType, int baseAmount, ScalingType scalingType, float multiplier, int maxScaling, CardTargetType target = CardTargetType.Self)
-    {
-        if (_effects == null)
-            _effects = new List<CardEffect>();
-            
-        _effects.Add(new CardEffect
-        {
-            effectType = effectType,
-            amount = baseAmount,
-            targetType = target,
-            scalingType = scalingType,
-            scalingMultiplier = multiplier,
-            maxScaling = maxScaling,
-            elementalType = ElementalType.None
-        });
-    }
-
-    /// <summary>
-    /// Make this a combo card
+    /// Make this card build combo when played
     /// </summary>
     public void MakeComboCard()
     {
@@ -275,16 +193,7 @@ public class CardData : ScriptableObject
     }
 
     /// <summary>
-    /// Make this require combo to play
-    /// </summary>
-    public void RequireCombo(CardType requiredType = CardType.Combo, bool allowWithActiveCombo = true)
-    {
-        _requiresCombo = true;
-        _cardType = CardType.Finisher;
-    }
-
-    /// <summary>
-    /// Make this require combo to play
+    /// Make this card require combo to be played
     /// </summary>
     public void RequireCombo(int comboAmount = 1)
     {
@@ -294,20 +203,7 @@ public class CardData : ScriptableObject
     }
 
     /// <summary>
-    /// Add simple scaling based on a metric - legacy method
-    /// </summary>
-    public void AddScaling(ScalingType scalingType, float multiplier, int maxBonus = 10)
-    {
-        if (!HasEffects) return;
-        
-        // Apply scaling to the first effect
-        _effects[0].scalingType = scalingType;
-        _effects[0].scalingMultiplier = multiplier;
-        _effects[0].maxScaling = _effects[0].amount + maxBonus;
-    }
-
-    /// <summary>
-    /// Make this card change stance
+    /// Make this card change stance when played
     /// </summary>
     public void ChangeStance(StanceType newStance)
     {
@@ -315,193 +211,13 @@ public class CardData : ScriptableObject
         _newStance = newStance;
     }
 
-    /// <summary>
-    /// Add a persistent effect that lasts the fight
-    /// </summary>
-    public void AddPersistentEffect(string effectName, CardEffectType effectType, int potency, bool lastEntireFight = true)
-    {
-        if (_persistentEffects == null)
-            _persistentEffects = new List<PersistentFightEffect>();
-            
-        _persistentEffects.Add(new PersistentFightEffect
-        {
-            effectName = effectName,
-            effectType = effectType,
-            potency = potency,
-            triggerInterval = 0,
-            lastEntireFight = lastEntireFight,
-            turnDuration = lastEntireFight ? 0 : 3,
-            requiresStance = false,
-            requiredStance = StanceType.None,
-            stackable = true
-        });
-    }
-
-    /// <summary>
-    /// Set conditional behavior - legacy method
-    /// </summary>
-    public void SetConditionalBehavior(ConditionalType conditionType, int conditionValue, CardEffectType effectType, int effectAmount)
-    {
-        if (_effects == null)
-            _effects = new List<CardEffect>();
-            
-        _effects.Add(new CardEffect
-        {
-            effectType = effectType,
-            amount = effectAmount,
-            conditionType = conditionType,
-            conditionValue = conditionValue,
-            targetType = CardTargetType.Opponent,
-            elementalType = ElementalType.None
-        });
-    }
-
     // ═══════════════════════════════════════════════════════════════
     // UTILITY METHODS
     // ═══════════════════════════════════════════════════════════════
 
-    private bool IsGlobalTargetType(CardTargetType targetType)
-    {
-        return targetType == CardTargetType.All || 
-               targetType == CardTargetType.AllEnemies || 
-               targetType == CardTargetType.AllAllies ||
-               targetType == CardTargetType.AllPlayers ||
-               targetType == CardTargetType.AllPets ||
-               targetType == CardTargetType.Everyone;
-    }
-
-    private bool EffectTypeUsesDuration(CardEffectType effectType)
-    {
-        return effectType == CardEffectType.ApplyWeak ||
-               effectType == CardEffectType.ApplyBreak ||
-               effectType == CardEffectType.ApplyThorns ||
-               effectType == CardEffectType.ApplyStun ||
-               effectType == CardEffectType.ApplyDamageOverTime ||
-               effectType == CardEffectType.ApplyHealOverTime ||
-               effectType == CardEffectType.RaiseCriticalChance;
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // LEGACY CONVERSION METHODS (for backward compatibility)
-    // ═══════════════════════════════════════════════════════════════
-
-    private List<ZoneEffect> ConvertToZoneEffects()
-    {
-        if (!HasEffects || !IsGlobalTargetType(_effects[0].targetType)) return new List<ZoneEffect>();
-        
-        var firstEffect = _effects[0];
-        return new List<ZoneEffect>
-        {
-            new ZoneEffect
-            {
-                effectType = firstEffect.effectType,
-                baseAmount = firstEffect.amount,
-                duration = firstEffect.duration,
-                elementalType = firstEffect.elementalType,
-                affectAllPlayers = AffectAllPlayers,
-                affectAllPets = AffectAllPets,
-                affectCaster = IncludeCaster,
-                excludeOpponents = false,
-                scalingType = firstEffect.scalingType,
-                scalingMultiplier = firstEffect.scalingMultiplier
-            }
-        };
-    }
-
-    private StanceEffect ConvertToStanceEffect()
-    {
-        if (!_changesStance) return new StanceEffect();
-        
-        return new StanceEffect
-        {
-            stanceType = _newStance,
-            overridePreviousStance = true,
-            damageModifier = GetStanceModifier(_newStance, "damage"),
-            defenseModifier = GetStanceModifier(_newStance, "defense"),
-            energyModifier = GetStanceModifier(_newStance, "energy"),
-            drawModifier = GetStanceModifier(_newStance, "draw"),
-            healthModifier = 0,
-            grantsThorns = _newStance == StanceType.Guardian,
-            thornsAmount = _newStance == StanceType.Guardian ? 1 : 0,
-            grantsShield = _newStance == StanceType.Defensive || _newStance == StanceType.Guardian,
-            shieldAmount = _newStance == StanceType.Defensive ? 2 : (_newStance == StanceType.Guardian ? 3 : 0),
-            enhancesCritical = _newStance == StanceType.Aggressive,
-            criticalBonus = _newStance == StanceType.Aggressive ? 15 : 0,
-            onTurnStartEffect = CardEffectType.Damage,
-            onTurnStartAmount = 0,
-            onTurnEndEffect = CardEffectType.Damage,
-            onTurnEndAmount = 0
-        };
-    }
-
-    private CardSequenceRequirement ConvertToSequenceRequirement()
-    {
-        return new CardSequenceRequirement
-        {
-            hasSequenceRequirement = _requiresCombo,
-            requiredPreviousCardType = CardType.Combo,
-            requiresExactPrevious = false,
-            requiresAnyInTurn = true,
-            allowIfComboActive = true,
-            allowIfInStance = false,
-            requiredStance = StanceType.None
-        };
-    }
-
-    private string GetStatusDescription(CardEffectType statusType, int potency, int duration)
-    {
-        switch (statusType)
-        {
-            case CardEffectType.ApplyWeak:
-                return $"Apply Weak {potency} for {duration} turns";
-            case CardEffectType.ApplyBreak:
-                return $"Apply Break {potency} for {duration} turns";
-            case CardEffectType.ApplyThorns:
-                return $"Apply Thorns {potency} for {duration} turns";
-            case CardEffectType.ApplyShield:
-                return $"Gain {potency} Shield";
-            case CardEffectType.ApplyStun:
-                return $"Stun for {duration} turns";
-            default:
-                return $"Apply {statusType}";
-        }
-    }
-
-    private CardTargetType GetDefaultTargetForStatus(CardEffectType statusType)
-    {
-        switch (statusType)
-        {
-            case CardEffectType.ApplyWeak:
-            case CardEffectType.ApplyBreak:
-            case CardEffectType.ApplyStun:
-                return CardTargetType.Opponent;
-            case CardEffectType.ApplyThorns:
-            case CardEffectType.ApplyShield:
-            case CardEffectType.RaiseCriticalChance:
-                return CardTargetType.Self;
-            default:
-                return CardTargetType.Opponent;
-        }
-    }
-
-    private int GetStanceModifier(StanceType stance, string modifierType)
-    {
-        switch (stance)
-        {
-            case StanceType.Aggressive:
-                return modifierType == "damage" ? 2 : (modifierType == "defense" ? -1 : 0);
-            case StanceType.Defensive:
-                return modifierType == "defense" ? 2 : 0;
-            case StanceType.Focused:
-                return modifierType == "energy" ? 1 : (modifierType == "draw" ? 1 : 0);
-            case StanceType.Guardian:
-                return modifierType == "defense" ? 1 : 0;
-            default:
-                return 0;
-        }
-    }
-
-    // Legacy methods for compatibility
+    /// <summary>
+    /// Get list of valid target types for this card
+    /// </summary>
     public List<CardTargetType> GetValidTargetTypes()
     {
         List<CardTargetType> validTargets = new List<CardTargetType>();
@@ -517,129 +233,76 @@ public class CardData : ScriptableObject
         return validTargets;
     }
 
+    /// <summary>
+    /// Get the primary target type for this card
+    /// </summary>
     public CardTargetType GetEffectiveTargetType()
     {
         return HasEffects ? _effects[0].targetType : CardTargetType.Opponent;
     }
 
+    /// <summary>
+    /// Check if this card can target the specified type
+    /// </summary>
     public bool CanTarget(CardTargetType targetType)
     {
         return GetValidTargetTypes().Contains(targetType);
     }
 
-    public bool CanPlayWithSequence(CardType lastPlayedType, bool comboActive, StanceType currentStance)
-    {
-        if (!_requiresCombo) return true;
-        return comboActive; // Simple: just need combo to be active
-    }
-
-    public bool CanPlayWithSequence(CardType lastPlayedType, int comboCount, StanceType currentStance)
+    /// <summary>
+    /// Check if this card can be played with the current combo state
+    /// </summary>
+    public bool CanPlayWithCombo(int comboCount)
     {
         if (!_requiresCombo) return true;
         return comboCount >= _requiredComboAmount;
     }
 
-    public int GetScalingAmount(ScalingType scalingType, int baseValue, EntityTrackingData trackingData)
+    private string GetStatusDescription(CardEffectType statusType, int potency, int duration)
     {
-        if (!HasEffects) return baseValue;
-
-        foreach (var effect in _effects)
+        switch (statusType)
         {
-            if (effect.scalingType == scalingType)
-            {
-                int scalingValue = GetScalingValue(scalingType, trackingData);
-                int scaledAmount = effect.amount + Mathf.FloorToInt(scalingValue * effect.scalingMultiplier);
-                return Mathf.Min(scaledAmount, effect.maxScaling);
-            }
-        }
-
-        return baseValue;
-    }
-
-    private int GetScalingValue(ScalingType scalingType, EntityTrackingData trackingData)
-    {
-        switch (scalingType)
-        {
-            case ScalingType.ZeroCostCardsThisTurn:
-                return trackingData.zeroCostCardsThisTurn;
-            case ScalingType.ZeroCostCardsThisFight:
-                return trackingData.zeroCostCardsThisFight;
-            case ScalingType.CardsPlayedThisTurn:
-                return trackingData.cardsPlayedThisTurn;
-            case ScalingType.CardsPlayedThisFight:
-                return trackingData.cardsPlayedThisFight;
-            case ScalingType.DamageDealtThisTurn:
-                return trackingData.damageDealtLastRound;
-            case ScalingType.DamageDealtThisFight:
-                return trackingData.damageDealtThisFight;
-            case ScalingType.ComboCount:
-                return trackingData.comboCount;
+            case CardEffectType.ApplyWeak:
+                return $"Apply Weak for {duration} turns";
+            case CardEffectType.ApplyBreak:
+                return $"Apply Break for {duration} turns";
+            case CardEffectType.ApplyThorns:
+                return $"Apply {potency} Thorns until your next turn";
+            case CardEffectType.ApplyShield:
+                return $"Gain {potency} Shield";
+            case CardEffectType.ApplyStun:
+                return $"Stun for {duration} turns";
+            case CardEffectType.ApplyStrength:
+                return $"Gain {potency} Strength";
+            case CardEffectType.ApplyCurse:
+                return $"Apply {potency} Curse";
             default:
-                return 0;
+                return $"Apply {statusType}";
         }
     }
 
-    public bool IsZeroCost => _energyCost == 0;
-
-    public string GetSequenceRequirementText()
+    private CardTargetType GetDefaultTargetForStatus(CardEffectType statusType)
     {
-        if (!_requiresCombo) return "";
-        if (_requiredComboAmount == 1)
-            return "Requires: Active combo";
-        return $"Requires: {_requiredComboAmount} combo";
-    }
-
-    private List<ScalingEffect> ConvertToScalingEffects()
-    {
-        if (!HasEffects) return new List<ScalingEffect>();
-        
-        return _effects.Where(e => e.scalingType != ScalingType.None)
-                      .Select(e => new ScalingEffect
-                      {
-                          scalingType = e.scalingType,
-                          scalingMultiplier = e.scalingMultiplier,
-                          baseAmount = e.amount,
-                          maxScaling = e.maxScaling,
-                          effectType = e.effectType,
-                          elementalType = e.elementalType
-                      }).ToList();
-    }
-
-    private ConditionalEffect ConvertToConditionalEffect()
-    {
-        var conditionalEffects = _effects.Where(e => e.conditionType != ConditionalType.None).ToList();
-        if (!conditionalEffects.Any()) return new ConditionalEffect();
-        
-        var firstConditional = conditionalEffects[0];
-        return new ConditionalEffect
+        switch (statusType)
         {
-            conditionType = firstConditional.conditionType,
-            conditionValue = firstConditional.conditionValue,
-            conditionMet = false, // Always false in data, computed at runtime
-            effectType = firstConditional.effectType,
-            effectAmount = firstConditional.amount,
-            effectDuration = firstConditional.duration,
-            elementalType = firstConditional.elementalType,
-            hasAlternativeEffect = firstConditional.hasAlternativeEffect,
-            alternativeEffectType = firstConditional.alternativeEffectType,
-            alternativeEffectAmount = firstConditional.alternativeEffectAmount,
-            alternativeEffectDuration = 0,
-            useScaling = firstConditional.scalingType != ScalingType.None,
-            scalingEffect = firstConditional.scalingType != ScalingType.None ? new ScalingEffect
-            {
-                scalingType = firstConditional.scalingType,
-                scalingMultiplier = firstConditional.scalingMultiplier,
-                baseAmount = firstConditional.amount,
-                maxScaling = firstConditional.maxScaling,
-                effectType = firstConditional.effectType,
-                elementalType = firstConditional.elementalType
-            } : new ScalingEffect()
-        };
+            case CardEffectType.ApplyWeak:
+            case CardEffectType.ApplyBreak:
+            case CardEffectType.ApplyStun:
+            case CardEffectType.ApplyCurse:
+                return CardTargetType.Opponent;
+            case CardEffectType.ApplyThorns:
+            case CardEffectType.ApplyShield:
+            case CardEffectType.RaiseCriticalChance:
+            case CardEffectType.ApplyStrength:
+                return CardTargetType.Self;
+            default:
+                return CardTargetType.Opponent;
+        }
     }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SIMPLIFIED DATA STRUCTURES
+// LEGACY SUPPORT CLASSES (can be removed if not used elsewhere)
 // ═══════════════════════════════════════════════════════════════
 
 [System.Serializable]

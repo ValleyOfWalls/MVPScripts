@@ -13,6 +13,7 @@ public class NetworkEntityUI : MonoBehaviour
     [SerializeField] private NetworkEntity entity;
     [SerializeField] private NetworkEntityDeck entityDeck;
     [SerializeField] private HandManager handManager;
+    [SerializeField] private EffectHandler effectHandler;
     [SerializeField] private CanvasGroup canvasGroup;
 
     [Header("UI Elements")]
@@ -25,6 +26,10 @@ public class NetworkEntityUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private Image healthBar;
+
+    [Header("Status Effects UI")]
+    [SerializeField] private TextMeshProUGUI effectsText;
+    [SerializeField] private Transform effectsContainer; // Optional: for individual effect icons later
 
     [Header("Player-Only UI")]
     [SerializeField] private TextMeshProUGUI currencyText;
@@ -39,6 +44,7 @@ public class NetworkEntityUI : MonoBehaviour
         if (entity == null) entity = GetComponent<NetworkEntity>();
         if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
         if (handManager == null) handManager = GetComponent<HandManager>();
+        if (effectHandler == null) effectHandler = GetComponent<EffectHandler>();
         if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
 
         // Add CanvasGroup if not present
@@ -85,6 +91,11 @@ public class NetworkEntityUI : MonoBehaviour
             entityDeck.OnDeckChanged += UpdateDeckDisplay;
         }
 
+        if (effectHandler != null)
+        {
+            effectHandler.OnEffectsChanged += UpdateEffectsDisplay;
+        }
+
         if (entity != null)
         {
             // Subscribe to entity stat changes
@@ -107,6 +118,11 @@ public class NetworkEntityUI : MonoBehaviour
         if (entityDeck != null)
         {
             entityDeck.OnDeckChanged -= UpdateDeckDisplay;
+        }
+
+        if (effectHandler != null)
+        {
+            effectHandler.OnEffectsChanged -= UpdateEffectsDisplay;
         }
 
         if (entity != null)
@@ -135,6 +151,7 @@ public class NetworkEntityUI : MonoBehaviour
 
         UpdateDeckDisplay();
         UpdateDiscardDisplay();
+        UpdateEffectsDisplay();
     }
 
     public void SetVisible(bool visible)
@@ -250,6 +267,28 @@ public class NetworkEntityUI : MonoBehaviour
         if (currencyText != null && entity.EntityType == EntityType.Player)
         {
             currencyText.text = newCurrency.ToString();
+        }
+    }
+
+    private void UpdateEffectsDisplay()
+    {
+        if (effectsText == null) return;
+        
+        if (effectHandler == null)
+        {
+            effectsText.text = ""; // Hide effects text if no effect handler
+            return;
+        }
+        
+        List<string> activeEffects = effectHandler.GetActiveEffects();
+        
+        if (activeEffects.Count == 0)
+        {
+            effectsText.text = ""; // Hide when no effects
+        }
+        else
+        {
+            effectsText.text = "Effects: " + string.Join(", ", activeEffects);
         }
     }
 

@@ -185,11 +185,13 @@ public class CardTracker : NetworkBehaviour
             EntityTracker entityTracker = ownerEntity.GetComponent<EntityTracker>();
             if (entityTracker != null && card?.CardData != null)
             {
+                CardData cardData = card.CardData;
+                bool isComboCard = cardData.BuildsCombo;
                 entityTracker.RecordCardPlayed(
-                    card.CardData.CardId, 
-                    card.CardData.HasComboModifier, 
-                    card.CardData.CardType, 
-                    card.CardData.IsZeroCost
+                    cardData.CardId, 
+                    isComboCard, 
+                    cardData.CardType, 
+                    cardData.IsZeroCost
                 );
             }
         }

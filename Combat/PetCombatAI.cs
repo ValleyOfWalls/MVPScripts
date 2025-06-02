@@ -116,8 +116,23 @@ public class PetCombatAI : NetworkBehaviour
             SourceAndTargetIdentifier sourceTarget = cardObject.GetComponent<SourceAndTargetIdentifier>();
             if (sourceTarget != null)
             {
-                // Force update source and target instead of relying on hover
-                sourceTarget.ForceUpdateSourceAndTarget(petEntity, opponentEntity);
+                // FIXED: Determine the correct target based on the card's actual target type
+                // instead of always forcing opponent target
+                NetworkEntity correctTarget = DetermineTargetForCard(card.CardData, petEntity, opponentEntity);
+                if (correctTarget != null)
+                {
+                    sourceTarget.ForceUpdateSourceAndTarget(petEntity, correctTarget);
+                    // FIXED: Use the actual effective target type instead of legacy TargetType property
+                    CardTargetType effectiveTargetType = card.CardData.GetEffectiveTargetType();
+                    Debug.Log($"PetCombatAI: Set target for {card.CardData.CardName} to {correctTarget.EntityName.Value} (target type: {effectiveTargetType})");
+                }
+                else
+                {
+                    // FIXED: Use the actual effective target type instead of legacy TargetType property
+                    CardTargetType effectiveTargetType = card.CardData.GetEffectiveTargetType();
+                    Debug.LogWarning($"PetCombatAI: Could not determine valid target for card {card.CardData.CardName} with target type {effectiveTargetType}");
+                    continue;
+                }
             }
             else
             {
@@ -235,56 +250,112 @@ public class PetCombatAI : NetworkBehaviour
         float opponentHealthPercent = (float)opponent.CurrentHealth.Value / opponent.MaxHealth.Value;
         float petHealthPercent = (float)petEntity.CurrentHealth.Value / petEntity.MaxHealth.Value;
         
-        // Base priority on card type
-        switch (card.CardData.EffectType)
+        // FIXED: Use Effects list instead of legacy EffectType and Amount properties
+        int totalDamage = 0;
+        int totalHealing = 0;
+        bool hasStun = false;
+        bool hasBuff = false;
+        bool hasDebuff = false;
+        bool hasDrawCard = false;
+        
+        if (card.CardData.HasEffects)
         {
-            case CardEffectType.Damage:
-                // Higher priority when opponent is low
-                priority = 50 + card.CardData.Amount;
-                if (opponentHealthPercent < 0.3f)
-                    priority += 30;
-                else if (opponentHealthPercent < 0.5f)
-                    priority += 20;
-                break;
-                
-            case CardEffectType.Heal:
-                // Higher priority when pet is low on health
-                priority = 30 + card.CardData.Amount;
-                if (petHealthPercent < 0.3f)
-                    priority += 40;
-                else if (petHealthPercent < 0.5f)
-                    priority += 20;
-                else
-                    priority -= 20; // Lower priority if health is high
-                break;
-                
-            case CardEffectType.BuffStats:
-                // Buffs are good early in the fight
-                priority = 40;
-                break;
-                
-            case CardEffectType.DebuffStats:
-                // Status effects are good early in the fight
-                priority = 45;
-                break;
-                
-            case CardEffectType.DrawCard:
-                // Draw cards are good when we have low cards and energy to play them
-                priority = 35 + (petEntity.CurrentEnergy.Value * 5);
-                break;
-                
-            case CardEffectType.ApplyStun:
-                return CalculateStunScore(opponent);
-                
-            default:
-                priority = 30;
-                break;
+            foreach (var effect in card.CardData.Effects)
+            {
+                switch (effect.effectType)
+                {
+                    case CardEffectType.Damage:
+                        totalDamage += effect.amount;
+                        break;
+                    case CardEffectType.Heal:
+                        totalHealing += effect.amount;
+                        break;
+                    case CardEffectType.ApplyStun:
+                        hasStun = true;
+                        break;
+                    case CardEffectType.ApplyStrength:
+                        hasBuff = true;
+                        break;
+                    case CardEffectType.ApplyCurse:
+                        hasDebuff = true;
+                        break;
+                    case CardEffectType.DrawCard:
+                        hasDrawCard = true;
+                        break;
+                }
+            }
+        }
+        else
+        {
+            // Fallback: check if card has effects but we didn't process them above
+            if (card.CardData.HasEffects && card.CardData.Effects.Count > 0)
+            {
+                var firstEffect = card.CardData.Effects[0];
+                switch (firstEffect.effectType)
+                {
+                    case CardEffectType.Damage:
+                        priority += firstEffect.amount;
+                        break;
+                    case CardEffectType.Heal:
+                        priority += firstEffect.amount * 2; // Healing is valuable
+                        break;
+                    default:
+                        priority += 10; // Base priority for other effects
+                        break;
+                }
+            }
         }
         
-        // Adjust for energy efficiency
-        if (card.CardData.EnergyCost > 0)
+        // Calculate priority based on primary effect types
+        if (totalDamage > 0)
         {
-            priority = priority * card.CardData.Amount / (card.CardData.EnergyCost * 10);
+            // Higher priority when opponent is low
+            priority = 50 + totalDamage;
+            if (opponentHealthPercent < 0.3f)
+                priority += 30;
+            else if (opponentHealthPercent < 0.5f)
+                priority += 20;
+        }
+        else if (totalHealing > 0)
+        {
+            // Higher priority when pet is low on health
+            priority = 30 + totalHealing;
+            if (petHealthPercent < 0.3f)
+                priority += 40;
+            else if (petHealthPercent < 0.5f)
+                priority += 20;
+            else
+                priority -= 20; // Lower priority if health is high
+        }
+        else if (hasBuff)
+        {
+            // Buffs are good early in the fight
+            priority = 40;
+        }
+        else if (hasDebuff)
+        {
+            // Status effects are good early in the fight
+            priority = 45;
+        }
+        else if (hasDrawCard)
+        {
+            // Draw cards are good when we have low cards and energy to play them
+            priority = 35 + (petEntity.CurrentEnergy.Value * 5);
+        }
+        else if (hasStun)
+        {
+            return CalculateStunScore(opponent);
+        }
+        else
+        {
+            priority = 30;
+        }
+        
+        // Adjust for energy efficiency using total effective amount
+        int totalEffectAmount = totalDamage + totalHealing;
+        if (card.CardData.EnergyCost > 0 && totalEffectAmount > 0)
+        {
+            priority = priority * totalEffectAmount / (card.CardData.EnergyCost * 10);
         }
         
         return priority;
@@ -362,5 +433,112 @@ public class PetCombatAI : NetworkBehaviour
         }
 
         return handManager;
+    }
+
+    /// <summary>
+    /// Determines the correct target for a card based on its target type
+    /// </summary>
+    private NetworkEntity DetermineTargetForCard(CardData cardData, NetworkEntity petEntity, NetworkEntity opponentEntity)
+    {
+        if (cardData == null) return null;
+        
+        CardTargetType targetType = cardData.GetEffectiveTargetType();
+        
+        switch (targetType)
+        {
+            case CardTargetType.Self:
+                Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Self - returning pet entity");
+                return petEntity;
+                
+            case CardTargetType.Opponent:
+                Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Opponent - returning opponent entity");
+                return opponentEntity;
+                
+            case CardTargetType.Ally:
+                // Get the pet's ally (usually the player)
+                NetworkEntity ally = GetAllyForEntity(petEntity);
+                if (ally != null)
+                {
+                    Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Ally - returning {ally.EntityName.Value}");
+                    return ally;
+                }
+                else
+                {
+                    Debug.LogWarning($"PetCombatAI: Card {cardData.CardName} targets Ally but no ally found");
+                    return null;
+                }
+                
+            case CardTargetType.Random:
+                // For random, pick from all available targets
+                List<NetworkEntity> allTargets = GetAllPossibleTargets(petEntity, opponentEntity);
+                if (allTargets.Count > 0)
+                {
+                    int randomIndex = Random.Range(0, allTargets.Count);
+                    NetworkEntity randomTarget = allTargets[randomIndex];
+                    Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Random - selected {randomTarget.EntityName.Value}");
+                    return randomTarget;
+                }
+                break;
+                
+            case CardTargetType.All:
+            case CardTargetType.AllAllies:
+            case CardTargetType.AllEnemies:
+                // For multi-target cards, return the primary target (usually self for allies, opponent for enemies)
+                if (targetType == CardTargetType.AllEnemies)
+                {
+                    Debug.Log($"PetCombatAI: Card {cardData.CardName} targets All Enemies - returning opponent as primary");
+                    return opponentEntity;
+                }
+                else
+                {
+                    Debug.Log($"PetCombatAI: Card {cardData.CardName} targets All/AllAllies - returning self as primary");
+                    return petEntity;
+                }
+                
+            default:
+                Debug.LogWarning($"PetCombatAI: Unhandled target type {targetType} for card {cardData.CardName}, defaulting to opponent");
+                return opponentEntity;
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the ally entity for the given entity
+    /// </summary>
+    private NetworkEntity GetAllyForEntity(NetworkEntity entity)
+    {
+        if (entity == null) return null;
+
+        RelationshipManager relationshipManager = entity.GetComponent<RelationshipManager>();
+        if (relationshipManager?.AllyEntity != null)
+        {
+            return relationshipManager.AllyEntity.GetComponent<NetworkEntity>();
+        }
+
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets all possible target entities for random targeting
+    /// </summary>
+    private List<NetworkEntity> GetAllPossibleTargets(NetworkEntity petEntity, NetworkEntity opponentEntity)
+    {
+        List<NetworkEntity> targets = new List<NetworkEntity>();
+        
+        // Add self
+        if (petEntity != null)
+            targets.Add(petEntity);
+            
+        // Add ally
+        NetworkEntity ally = GetAllyForEntity(petEntity);
+        if (ally != null)
+            targets.Add(ally);
+            
+        // Add opponent
+        if (opponentEntity != null)
+            targets.Add(opponentEntity);
+            
+        return targets;
     }
 } 

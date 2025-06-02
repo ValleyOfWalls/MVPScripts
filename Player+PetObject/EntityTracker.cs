@@ -353,6 +353,13 @@ public class EntityTracker : NetworkBehaviour
         }
         trackingData.tookDamageThisTurn = false;
 
+        // Process status effects at start of turn
+        EffectHandler effectHandler = entity.GetComponent<EffectHandler>();
+        if (effectHandler != null)
+        {
+            effectHandler.ProcessStartOfTurnEffects();
+        }
+
         // Process persistent effects
         ProcessPersistentEffects();
 
@@ -369,6 +376,13 @@ public class EntityTracker : NetworkBehaviour
     public void OnTurnEnd()
     {
         if (!IsServerInitialized) return;
+
+        // Process status effects at end of turn
+        EffectHandler effectHandler = entity.GetComponent<EffectHandler>();
+        if (effectHandler != null)
+        {
+            effectHandler.ProcessEndOfTurnEffects();
+        }
 
         // Process stance turn-end effects
         ProcessStanceTurnEffects(false);

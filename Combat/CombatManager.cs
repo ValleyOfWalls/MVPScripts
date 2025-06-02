@@ -291,10 +291,36 @@ public class CombatManager : NetworkBehaviour
         // Update turn state for this specific fight
         if (fightTurns.ContainsKey(player))
         {
+            CombatTurn previousTurn = fightTurns[player];
             fightTurns[player] = turn;
             RpcUpdateTurnUI(player, turn);
 
-            // Notify entity trackers about turn start
+            // Process turn end for the entity whose turn is ending
+            if (previousTurn == CombatTurn.PlayerTurn && turn != CombatTurn.PlayerTurn)
+            {
+                // Player's turn is ending
+                EntityTracker playerTracker = player.GetComponent<EntityTracker>();
+                if (playerTracker != null)
+                {
+                    playerTracker.OnTurnEnd();
+                    Debug.Log($"CombatManager: Called OnTurnEnd for player {player.EntityName.Value}");
+                }
+            }
+            else if (previousTurn == CombatTurn.PetTurn && turn != CombatTurn.PetTurn)
+            {
+                // Pet's turn is ending
+                if (activeFights.TryGetValue(player, out NetworkEntity pet))
+                {
+                    EntityTracker petTracker = pet.GetComponent<EntityTracker>();
+                    if (petTracker != null)
+                    {
+                        petTracker.OnTurnEnd();
+                        Debug.Log($"CombatManager: Called OnTurnEnd for pet {pet.EntityName.Value}");
+                    }
+                }
+            }
+
+            // Process turn start for the entity whose turn is beginning
             if (turn == CombatTurn.PlayerTurn)
             {
                 EntityTracker playerTracker = player.GetComponent<EntityTracker>();
@@ -412,11 +438,27 @@ public class CombatManager : NetworkBehaviour
             Debug.LogError($"CombatManager: No HandManager found for pet {pet.EntityName.Value} to discard hand.");
         }
 
+        // Check if the fight is still active before starting a new round
+        // (The fight might have ended during the pet's turn if someone died)
+        if (!activeFights.ContainsKey(player))
+        {
+            Debug.Log($"CombatManager: Fight involving player {player.EntityName.Value} has ended, not starting new round.");
+            yield break;
+        }
+
         // Add a short pause before starting the new round
         Debug.Log($"CombatManager: Adding a 0.25s delay before starting new round for fight involving player {player.EntityName.Value}.");
         yield return new WaitForSeconds(0.25f);
 
+        // Double-check that the fight is still active after the delay
+        if (!activeFights.ContainsKey(player))
+        {
+            Debug.Log($"CombatManager: Fight involving player {player.EntityName.Value} ended during delay, not starting new round.");
+            yield break;
+        }
+
         // Start new round for this specific fight
+        // Note: OnTurnEnd for the pet will be called automatically in SetTurn when transitioning from PetTurn to PlayerTurn
         Debug.Log($"CombatManager: Delay complete. Starting new round for fight involving player {player.EntityName.Value}.");
         StartNewRound(player);
     }

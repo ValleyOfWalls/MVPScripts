@@ -29,8 +29,6 @@ public enum CardEffectType
     Heal,
     DrawCard,
     RestoreEnergy,
-    BuffStats,
-    DebuffStats,
     
     // ═══ STATUS EFFECTS ═══
     ApplyBreak,
@@ -44,6 +42,7 @@ public enum CardEffectType
     ApplyStun,
     ApplyLimitBreak,
     ApplyStrength,
+    ApplyCurse,
     
     // ═══ CARD MANIPULATION ═══
     DiscardRandomCards,
@@ -388,13 +387,25 @@ public class CardEffect
     [Tooltip("What this effect does")]
     public CardEffectType effectType = CardEffectType.Damage;
     
+    [ShowIfAny("effectType", 
+        (int)CardEffectType.Damage, 
+        (int)CardEffectType.Heal, 
+        (int)CardEffectType.DrawCard, 
+        (int)CardEffectType.RestoreEnergy,
+        (int)CardEffectType.ApplyDamageOverTime, 
+        (int)CardEffectType.ApplyHealOverTime, 
+        (int)CardEffectType.ApplyShield,
+        (int)CardEffectType.ApplyStrength,
+        (int)CardEffectType.ApplyCurse,
+        (int)CardEffectType.ApplyThorns,
+        (int)CardEffectType.RaiseCriticalChance,
+        (int)CardEffectType.DiscardRandomCards)]
     [Tooltip("Base power/amount of the effect")]
     public int amount = 3;
     
     [ShowIfAny("effectType", 
         (int)CardEffectType.ApplyWeak, 
         (int)CardEffectType.ApplyBreak, 
-        (int)CardEffectType.ApplyThorns, 
         (int)CardEffectType.ApplyStun, 
         (int)CardEffectType.ApplyDamageOverTime, 
         (int)CardEffectType.ApplyHealOverTime, 
@@ -433,11 +444,31 @@ public class CardEffect
     [Tooltip("This effect scales with game state")]
     public ScalingType scalingType = ScalingType.None;
     
-    [ConditionalField("scalingType", ScalingType.None, true)]
+    [ShowIfAny("scalingType", 
+        (int)ScalingType.ZeroCostCardsThisTurn,
+        (int)ScalingType.ZeroCostCardsThisFight,
+        (int)ScalingType.CardsPlayedThisTurn,
+        (int)ScalingType.CardsPlayedThisFight,
+        (int)ScalingType.DamageDealtThisTurn,
+        (int)ScalingType.DamageDealtThisFight,
+        (int)ScalingType.CurrentHealth,
+        (int)ScalingType.MissingHealth,
+        (int)ScalingType.ComboCount,
+        (int)ScalingType.HandSize)]
     [Tooltip("How much to multiply the scaling value")]
     public float scalingMultiplier = 1.0f;
     
-    [ConditionalField("scalingType", ScalingType.None, true)]
+    [ShowIfAny("scalingType", 
+        (int)ScalingType.ZeroCostCardsThisTurn,
+        (int)ScalingType.ZeroCostCardsThisFight,
+        (int)ScalingType.CardsPlayedThisTurn,
+        (int)ScalingType.CardsPlayedThisFight,
+        (int)ScalingType.DamageDealtThisTurn,
+        (int)ScalingType.DamageDealtThisFight,
+        (int)ScalingType.CurrentHealth,
+        (int)ScalingType.MissingHealth,
+        (int)ScalingType.ComboCount,
+        (int)ScalingType.HandSize)]
     [Tooltip("Maximum value this effect can scale to")]
     public int maxScaling = 10;
 }
