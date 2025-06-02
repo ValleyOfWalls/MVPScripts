@@ -350,15 +350,333 @@ public class CardData : ScriptableObject
 }
 
 // ═══════════════════════════════════════════════════════════════
-// LEGACY SUPPORT CLASSES (can be removed if not used elsewhere)
+// CARD EFFECT STRUCTURES (moved from CardEnums.cs)
 // ═══════════════════════════════════════════════════════════════
 
+/// <summary>
+/// Unified card effect structure - replaces MultiEffect, ConditionalEffect, and main effect
+/// </summary>
 [System.Serializable]
-public class AdditionalEffect
+public class CardEffect
 {
-    public CardEffectType effectType = CardEffectType.Heal;
-    public int amount = 2;
-    public int duration = 0;
+    [Header("═══ EFFECT CONFIGURATION ═══")]
+    [Tooltip("What this effect does")]
+    public CardEffectType effectType = CardEffectType.Damage;
+    
+    [ShowIfAny("effectType", 
+        (int)CardEffectType.Damage, 
+        (int)CardEffectType.Heal, 
+        (int)CardEffectType.DrawCard, 
+        (int)CardEffectType.RestoreEnergy,
+        (int)CardEffectType.ApplyDamageOverTime, 
+        (int)CardEffectType.ApplyHealOverTime, 
+        (int)CardEffectType.ApplyShield,
+        (int)CardEffectType.ApplyStrength,
+        (int)CardEffectType.ApplyCurse,
+        (int)CardEffectType.ApplyThorns,
+        (int)CardEffectType.RaiseCriticalChance,
+        (int)CardEffectType.DiscardRandomCards)]
+    [Tooltip("Base power/amount of the effect")]
+    public int amount = 3;
+    
+    [ShowIfAny("effectType", 
+        (int)CardEffectType.ApplyWeak, 
+        (int)CardEffectType.ApplyBreak, 
+        (int)CardEffectType.ApplyStun, 
+        (int)CardEffectType.ApplyDamageOverTime, 
+        (int)CardEffectType.ApplyHealOverTime, 
+        (int)CardEffectType.RaiseCriticalChance)]
+    [Tooltip("Duration for status effects (turns to last)")]
+    public int duration = 3;
+    
+    [Header("═══ TARGETING ═══")]
+    [Tooltip("Who this effect targets")]
+    public CardTargetType targetType = CardTargetType.Opponent;
+    
+    [Tooltip("Elemental type for special interactions")]
     public ElementalType elementalType = ElementalType.None;
-    public CardTargetType targetType = CardTargetType.Self;
+    
+    [Header("═══ CONDITIONAL TRIGGER (Optional) ═══")]
+    [Tooltip("This effect only triggers if a condition is met")]
+    public ConditionalType conditionType = ConditionalType.None;
+    
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [Tooltip("Value to compare against for the condition (e.g., 50 for 'if health above 50')")]
+    public int conditionValue = 0;
+    
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [Tooltip("Alternative effect if condition is not met")]
+    public bool hasAlternativeEffect = false;
+    
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [ConditionalField("hasAlternativeEffect", true, false)]
+    [Tooltip("How alternative effect interacts with main effect")]
+    public AlternativeEffectLogic alternativeLogic = AlternativeEffectLogic.Replace;
+    
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [ConditionalField("hasAlternativeEffect", true, false)]
+    [Tooltip("Effect to use if condition fails")]
+    public CardEffectType alternativeEffectType = CardEffectType.Damage;
+    
+    [ShowIfAny("conditionType", 
+        (int)ConditionalType.IfTargetHealthBelow,
+        (int)ConditionalType.IfTargetHealthAbove,
+        (int)ConditionalType.IfSourceHealthBelow,
+        (int)ConditionalType.IfSourceHealthAbove,
+        (int)ConditionalType.IfCardsInHand,
+        (int)ConditionalType.IfCardsInDeck,
+        (int)ConditionalType.IfCardsInDiscard,
+        (int)ConditionalType.IfTimesPlayedThisFight,
+        (int)ConditionalType.IfDamageTakenThisFight,
+        (int)ConditionalType.IfDamageTakenLastRound,
+        (int)ConditionalType.IfHealingReceivedThisFight,
+        (int)ConditionalType.IfHealingReceivedLastRound,
+        (int)ConditionalType.IfPerfectionStreak,
+        (int)ConditionalType.IfComboCount,
+        (int)ConditionalType.IfZeroCostCardsThisTurn,
+        (int)ConditionalType.IfZeroCostCardsThisFight,
+        (int)ConditionalType.IfInStance,
+        (int)ConditionalType.IfLastCardType,
+        (int)ConditionalType.IfEnergyRemaining)]
+    [ConditionalField("hasAlternativeEffect", true, false)]
+    [Tooltip("Amount for alternative effect")]
+    public int alternativeEffectAmount = 1;
+    
+    [Header("═══ SCALING (Optional) ═══")]
+    [Tooltip("This effect scales with game state")]
+    public ScalingType scalingType = ScalingType.None;
+    
+    [ShowIfAny("scalingType", 
+        (int)ScalingType.ZeroCostCardsThisTurn,
+        (int)ScalingType.ZeroCostCardsThisFight,
+        (int)ScalingType.CardsPlayedThisTurn,
+        (int)ScalingType.CardsPlayedThisFight,
+        (int)ScalingType.DamageDealtThisTurn,
+        (int)ScalingType.DamageDealtThisFight,
+        (int)ScalingType.CurrentHealth,
+        (int)ScalingType.MissingHealth,
+        (int)ScalingType.ComboCount,
+        (int)ScalingType.HandSize)]
+    [Tooltip("How much to multiply the scaling value")]
+    public float scalingMultiplier = 1.0f;
+    
+    [ShowIfAny("scalingType", 
+        (int)ScalingType.ZeroCostCardsThisTurn,
+        (int)ScalingType.ZeroCostCardsThisFight,
+        (int)ScalingType.CardsPlayedThisTurn,
+        (int)ScalingType.CardsPlayedThisFight,
+        (int)ScalingType.DamageDealtThisTurn,
+        (int)ScalingType.DamageDealtThisFight,
+        (int)ScalingType.CurrentHealth,
+        (int)ScalingType.MissingHealth,
+        (int)ScalingType.ComboCount,
+        (int)ScalingType.HandSize)]
+    [Tooltip("Maximum value this effect can scale to")]
+    public int maxScaling = 10;
+}
+
+/// <summary>
+/// Data structure for card sequencing requirements
+/// </summary>
+[System.Serializable]
+public class CardSequenceRequirement
+{
+    public bool hasSequenceRequirement;
+    public CardType requiredPreviousCardType;
+    public bool requiresExactPrevious;
+    public bool requiresAnyInTurn;
+    public bool allowIfComboActive;
+    public bool allowIfInStance;
+    public StanceType requiredStance;
+}
+
+/// <summary>
+/// Data structure for persistent fight effects
+/// </summary>
+[System.Serializable]
+public class PersistentFightEffect
+{
+    [Header("Basic Configuration")]
+    public string effectName = "Persistent Effect";
+    public CardEffectType effectType = CardEffectType.Damage;
+    public int potency = 1;
+    
+    [Header("Trigger Timing")]
+    public int triggerInterval = 1; // Every X turns
+    public bool lastEntireFight = true;
+    public int turnDuration = 0; // If not entire fight
+    
+    [Header("Requirements")]
+    public bool requiresStance = false;
+    public StanceType requiredStance = StanceType.None;
+    
+    [Header("Stacking")]
+    public bool stackable = true;
+}
+
+/// <summary>
+/// Enhanced tracking data for various card mechanics
+/// </summary>
+[System.Serializable]
+public class CardTrackingData
+{
+    [Header("Play Tracking")]
+    public int timesPlayedThisFight;
+    public int comboCount;
+    public bool hasComboModifier;
+    
+    [Header("Card References")]
+    public CardData upgradedVersion;
+    
+    [Header("Deck Tracking")]
+    public int cardsWithSameNameInDeck;
+    public int cardsWithSameNameInHand;
+    public int cardsWithSameNameInDiscard;
+    
+    [Header("Turn Tracking")]
+    public int zeroCostCardsThisTurn;
+    public int zeroCostCardsThisFight;
+    public CardType lastPlayedCardType;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LEGACY SUPPORT STRUCTURES (for backward compatibility)
+// ═══════════════════════════════════════════════════════════════
+
+/// <summary>
+/// Legacy data structure for scaling effects (for backward compatibility)
+/// </summary>
+[System.Serializable]
+public class ScalingEffect
+{
+    [Header("Scaling Configuration")]
+    public ScalingType scalingType;
+    public float scalingMultiplier = 1.0f;
+    public int baseAmount;
+    public int maxScaling = 999; // Cap for scaling
+    
+    [Header("Effect")]
+    public CardEffectType effectType;
+    public ElementalType elementalType;
+}
+
+/// <summary>
+/// Legacy data structure for conditional effects (for backward compatibility)
+/// </summary>
+[System.Serializable]
+public class ConditionalEffect
+{
+    [Header("Condition")]
+    public ConditionalType conditionType;
+    public int conditionValue;
+    public bool conditionMet;
+    
+    [Header("Effect if Condition Met")]
+    public CardEffectType effectType;
+    public int effectAmount;
+    public int effectDuration;
+    public ElementalType elementalType;
+    
+    [Header("Alternative Effect if Condition Not Met")]
+    public bool hasAlternativeEffect;
+    public CardEffectType alternativeEffectType;
+    public int alternativeEffectAmount;
+    public int alternativeEffectDuration;
+    
+    [Header("Scaling")]
+    public bool useScaling;
+    public ScalingEffect scalingEffect;
+}
+
+/// <summary>
+/// Legacy data structure for multi-effects (for backward compatibility)
+/// </summary>
+[System.Serializable]
+public class MultiEffect
+{
+    public CardEffectType effectType;
+    public int amount;
+    public int duration;
+    public ElementalType elementalType;
+    public CardTargetType targetType; // Can override the main card's target type
+    
+    [Header("Scaling")]
+    public bool useScaling;
+    public ScalingEffect scalingEffect;
 } 

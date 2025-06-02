@@ -758,4 +758,26 @@ public class EffectHandler : NetworkBehaviour
         
         return netObj?.GetComponent<NetworkEntity>();
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ZONE EFFECT STRUCTURES (moved from CardEnums.cs)
+// ═══════════════════════════════════════════════════════════════
+
+/// <summary>
+/// Legacy data structure for zone effects (for backward compatibility)
+/// </summary>
+[System.Serializable]
+public class ZoneEffect
+{
+    public CardEffectType effectType;
+    public int baseAmount;
+    public int duration;
+    public ElementalType elementalType;
+    public bool affectAllPlayers;
+    public bool affectAllPets;
+    public bool affectCaster;
+    public bool excludeOpponents;
+    public ScalingType scalingType;
+    public float scalingMultiplier;
 } 

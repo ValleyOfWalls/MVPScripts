@@ -14,6 +14,7 @@ public class NetworkEntityUI : MonoBehaviour
     [SerializeField] private NetworkEntityDeck entityDeck;
     [SerializeField] private HandManager handManager;
     [SerializeField] private EffectHandler effectHandler;
+    [SerializeField] private EntityTracker entityTracker;
     [SerializeField] private CanvasGroup canvasGroup;
 
     [Header("UI Elements")]
@@ -45,6 +46,7 @@ public class NetworkEntityUI : MonoBehaviour
         if (entityDeck == null) entityDeck = GetComponent<NetworkEntityDeck>();
         if (handManager == null) handManager = GetComponent<HandManager>();
         if (effectHandler == null) effectHandler = GetComponent<EffectHandler>();
+        if (entityTracker == null) entityTracker = GetComponent<EntityTracker>();
         if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
 
         // Add CanvasGroup if not present
@@ -96,6 +98,11 @@ public class NetworkEntityUI : MonoBehaviour
             effectHandler.OnEffectsChanged += UpdateEffectsDisplay;
         }
 
+        if (entityTracker != null)
+        {
+            entityTracker.OnStanceChanged += OnStanceChanged;
+        }
+
         if (entity != null)
         {
             // Subscribe to entity stat changes
@@ -123,6 +130,11 @@ public class NetworkEntityUI : MonoBehaviour
         if (effectHandler != null)
         {
             effectHandler.OnEffectsChanged -= UpdateEffectsDisplay;
+        }
+
+        if (entityTracker != null)
+        {
+            entityTracker.OnStanceChanged -= OnStanceChanged;
         }
 
         if (entity != null)
@@ -274,22 +286,39 @@ public class NetworkEntityUI : MonoBehaviour
     {
         if (effectsText == null) return;
         
-        if (effectHandler == null)
+        List<string> displayItems = new List<string>();
+        
+        // Add current stance if not None
+        if (entityTracker != null && entityTracker.CurrentStance != StanceType.None)
         {
-            effectsText.text = ""; // Hide effects text if no effect handler
-            return;
+            int duration = entityTracker.StanceDuration;
+            string stanceDisplay = duration == 0 ? 
+                $"Stance: {entityTracker.CurrentStance}" : 
+                $"Stance: {entityTracker.CurrentStance} ({duration}/2)";
+            displayItems.Add(stanceDisplay);
         }
         
-        List<string> activeEffects = effectHandler.GetActiveEffects();
-        
-        if (activeEffects.Count == 0)
+        // Add status effects
+        if (effectHandler != null)
         {
-            effectsText.text = ""; // Hide when no effects
+            List<string> activeEffects = effectHandler.GetActiveEffects();
+            displayItems.AddRange(activeEffects);
+        }
+        
+        // Display everything or hide if empty
+        if (displayItems.Count == 0)
+        {
+            effectsText.text = ""; // Hide when no effects or stance
         }
         else
         {
-            effectsText.text = "Effects: " + string.Join(", ", activeEffects);
+            effectsText.text = string.Join(", ", displayItems);
         }
+    }
+
+    private void OnStanceChanged(StanceType prev, StanceType next)
+    {
+        UpdateEffectsDisplay();
     }
 
     // Public getters for transforms

@@ -23,6 +23,7 @@ public class EntityTracker : NetworkBehaviour
     private readonly SyncVar<int> _perfectionStreak = new SyncVar<int>();
     private readonly SyncVar<int> _strengthStacks = new SyncVar<int>();
     private readonly SyncVar<int> _currentStance = new SyncVar<int>(); // StanceType as int
+    private readonly SyncVar<int> _stanceDuration = new SyncVar<int>(); // How many turns in current stance
 
     // Persistent fight effects
     private readonly SyncList<string> _persistentEffects = new SyncList<string>();
@@ -50,6 +51,7 @@ public class EntityTracker : NetworkBehaviour
     public int PerfectionStreak => _perfectionStreak.Value;
     public int StrengthStacks => _strengthStacks.Value;
     public StanceType CurrentStance => (StanceType)_currentStance.Value;
+    public int StanceDuration => _stanceDuration.Value;
     public EntityTrackingData TrackingData => trackingData;
 
     private void Awake()
@@ -77,6 +79,7 @@ public class EntityTracker : NetworkBehaviour
         _cardsPlayedThisTurn.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _cardsPlayedThisFight.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _lastPlayedCardType.OnChange += (prev, next, asServer) => UpdateTrackingData();
+        _stanceDuration.OnChange += (prev, next, asServer) => UpdateTrackingData();
     }
 
     private void UpdateTrackingData()
@@ -87,6 +90,7 @@ public class EntityTracker : NetworkBehaviour
         trackingData.perfectionStreak = _perfectionStreak.Value;
         trackingData.strengthStacks = _strengthStacks.Value;
         trackingData.currentStance = (StanceType)_currentStance.Value;
+        trackingData.stanceDuration = _stanceDuration.Value;
         trackingData.zeroCostCardsThisTurn = _zeroCostCardsThisTurn.Value;
         trackingData.zeroCostCardsThisFight = _zeroCostCardsThisFight.Value;
         trackingData.cardsPlayedThisTurn = _cardsPlayedThisTurn.Value;
@@ -235,7 +239,7 @@ public class EntityTracker : NetworkBehaviour
     }
 
     /// <summary>
-    /// Sets the current stance
+    /// Sets the entity's combat stance
     /// </summary>
     [Server]
     public void SetStance(StanceType stance)
@@ -244,6 +248,13 @@ public class EntityTracker : NetworkBehaviour
         
         StanceType oldStance = (StanceType)_currentStance.Value;
         _currentStance.Value = (int)stance;
+        
+        // Reset stance duration when stance changes (including to None)
+        if (oldStance != stance)
+        {
+            _stanceDuration.Value = 0;
+            Debug.Log($"EntityTracker: {entity.EntityName.Value} stance changed from {oldStance} to {stance}, duration reset to 0");
+        }
         
         // Handle stance-specific effects
         ApplyStanceEffects(stance, oldStance);
@@ -387,6 +398,21 @@ public class EntityTracker : NetworkBehaviour
         // Process stance turn-end effects
         ProcessStanceTurnEffects(false);
         
+        // Handle stance duration tracking and auto-clear
+        StanceType currentStance = (StanceType)_currentStance.Value;
+        if (currentStance != StanceType.None)
+        {
+            _stanceDuration.Value++;
+            Debug.Log($"EntityTracker: {entity.EntityName.Value} has been in {currentStance} stance for {_stanceDuration.Value} turn(s)");
+            
+            // Clear stance if held for 2 consecutive turns
+            if (_stanceDuration.Value >= 2)
+            {
+                Debug.Log($"EntityTracker: {entity.EntityName.Value} has held {currentStance} stance for 2 turns, clearing to None");
+                SetStance(StanceType.None);
+            }
+        }
+        
         Debug.Log($"EntityTracker: Turn end for {entity.EntityName.Value}");
     }
 
@@ -496,6 +522,7 @@ public class EntityTracker : NetworkBehaviour
         _isInLimitBreak.Value = false;
         _strengthStacks.Value = 0;
         _currentStance.Value = (int)StanceType.None;
+        _stanceDuration.Value = 0;
         
         // Clear persistent effects
         _persistentEffects.Clear();
@@ -545,4 +572,81 @@ public class EntityTracker : NetworkBehaviour
 
         return entities;
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ENTITY TRACKING STRUCTURES (moved from CardEnums.cs)
+// ═══════════════════════════════════════════════════════════════
+
+/// <summary>
+/// Enhanced entity tracking data for damage, healing, and perfection streaks
+/// </summary>
+[System.Serializable]
+public class EntityTrackingData
+{
+    [Header("Damage Tracking")]
+    public int damageTakenThisFight;
+    public int damageTakenLastRound;
+    public int damageDealtThisFight;
+    public int damageDealtLastRound;
+    
+    [Header("Healing Tracking")]
+    public int healingReceivedThisFight;
+    public int healingReceivedLastRound;
+    public int healingGivenThisFight;
+    public int healingGivenLastRound;
+    
+    [Header("Perfection Tracking")]
+    public int perfectionStreak; // Turns without taking damage
+    public int currentTurnNumber;
+    public bool tookDamageThisTurn;
+    
+    [Header("Combat State")]
+    public int comboCount;
+    public bool isStunned;
+    public bool isInLimitBreak;
+    public StanceType currentStance;
+    public int stanceDuration; // How many consecutive turns in current stance
+    
+    [Header("Turn Tracking")]
+    public int zeroCostCardsThisTurn;
+    public int zeroCostCardsThisFight;
+    public int cardsPlayedThisTurn;
+    public int cardsPlayedThisFight;
+    public CardType lastPlayedCardType;
+    
+    [Header("Strength")]
+    public int strengthStacks;
+}
+
+/// <summary>
+/// Data structure for stance effects
+/// </summary>
+[System.Serializable]
+public class StanceEffect
+{
+    [Header("Stance Configuration")]
+    public StanceType stanceType;
+    public bool overridePreviousStance;
+    
+    [Header("Stat Modifiers")]
+    public int damageModifier;
+    public int defenseModifier;
+    public int energyModifier;
+    public int drawModifier;
+    public int healthModifier;
+    
+    [Header("Special Effects")]
+    public bool grantsThorns;
+    public int thornsAmount;
+    public bool grantsShield;
+    public int shieldAmount;
+    public bool enhancesCritical;
+    public int criticalBonus;
+    
+    [Header("Ongoing Effects")]
+    public CardEffectType onTurnStartEffect;
+    public int onTurnStartAmount;
+    public CardEffectType onTurnEndEffect;
+    public int onTurnEndAmount;
 } 
