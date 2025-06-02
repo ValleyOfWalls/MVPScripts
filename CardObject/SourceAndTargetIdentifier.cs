@@ -1,8 +1,9 @@
 using UnityEngine;
 using FishNet.Object;
+using System.Collections.Generic;
 
 /// <summary>
-/// Identifies the source and target of a card play.
+/// Identifies the source and target of a card play with enhanced targeting support.
 /// Attach to: Card prefabs alongside the Card component.
 /// </summary>
 public class SourceAndTargetIdentifier : NetworkBehaviour
@@ -14,14 +15,17 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
     [Header("Debug Info (Read Only)")]
     [SerializeField, ReadOnly] private NetworkEntity sourceEntity;
     [SerializeField, ReadOnly] private NetworkEntity targetEntity;
+    [SerializeField, ReadOnly] private List<NetworkEntity> allTargets = new List<NetworkEntity>();
     [SerializeField, ReadOnly] private string currentSourceName;
     [SerializeField, ReadOnly] private string currentTargetName;
+    [SerializeField, ReadOnly] private string allTargetNames;
 
     // Flag to track if we've already updated on this hover
     private bool hasUpdatedThisHover = false;
 
     public NetworkEntity SourceEntity => sourceEntity;
     public NetworkEntity TargetEntity => targetEntity;
+    public List<NetworkEntity> AllTargets => new List<NetworkEntity>(allTargets);
 
     private void Awake()
     {
@@ -38,8 +42,6 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
             if (card == null)
             {
                 Debug.LogError($"SourceAndTargetIdentifier on {gameObject.name}: Missing Card component on the same GameObject!");
-                // You could add it, but it's better if Card adds this component instead
-                // since Card is the primary component and this is a helper
             }
         }
 
@@ -84,6 +86,18 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         }
     }
     
+    public void OnMouseDown()
+    {
+        if (!IsOwner) return;
+        
+        // Always update source and target on mouse down to ensure they're current when the card is played
+        // This is critical because Card.OnMouseDown() needs valid source/target entities
+        UpdateSourceAndTarget();
+        
+        // Reset the hover flag since we've just updated
+        hasUpdatedThisHover = true;
+    }
+    
     public void OnMouseExit()
     {
         // Reset the flag when mouse exits so we can update again on the next hover
@@ -125,15 +139,20 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
             Debug.Log($"SourceAndTargetIdentifier: Source entity for card {gameObject.name} is {sourceEntity.EntityName.Value}");
         }
         
-        // Get the target based on the card's target type
-        targetEntity = GetTargetEntity();
+        // Get targets based on the card's target type
+        allTargets.Clear();
+        GetTargetEntities(allTargets);
+        
+        // Set primary target (first valid target or null)
+        targetEntity = allTargets.Count > 0 ? allTargets[0] : null;
+        
         if (targetEntity == null)
         {
             Debug.LogWarning($"SourceAndTargetIdentifier: Failed to determine target entity for card {gameObject.name}");
         }
         else
         {
-            Debug.Log($"SourceAndTargetIdentifier: Target entity for card {gameObject.name} is {targetEntity.EntityName.Value}");
+            Debug.Log($"SourceAndTargetIdentifier: Primary target entity for card {gameObject.name} is {targetEntity.EntityName.Value}");
         }
 
         // Update debug info
@@ -145,7 +164,23 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         currentSourceName = sourceEntity != null ? sourceEntity.EntityName.Value : "None";
         currentTargetName = targetEntity != null ? targetEntity.EntityName.Value : "None";
         
-        Debug.Log($"SourceAndTargetIdentifier: Debug info updated - Source: {currentSourceName}, Target: {currentTargetName}");
+        // Build all targets string
+        if (allTargets.Count > 0)
+        {
+            List<string> targetNames = new List<string>();
+            foreach (var target in allTargets)
+            {
+                if (target != null)
+                    targetNames.Add(target.EntityName.Value);
+            }
+            allTargetNames = string.Join(", ", targetNames);
+        }
+        else
+        {
+            allTargetNames = "None";
+        }
+        
+        Debug.Log($"SourceAndTargetIdentifier: Debug info updated - Source: {currentSourceName}, Primary Target: {currentTargetName}, All Targets: {allTargetNames}");
     }
 
     private NetworkEntity GetSourceEntity()
@@ -221,26 +256,102 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         return null;
     }
 
-    private NetworkEntity GetTargetEntity()
+    /// <summary>
+    /// Gets all valid target entities based on the card's target type
+    /// </summary>
+    private void GetTargetEntities(List<NetworkEntity> targets)
     {
         if (card == null || card.CardData == null || sourceEntity == null || fightManager == null)
-            return null;
+            return;
 
-        switch (card.CardData.TargetType)
+        CardTargetType effectiveTargetType = card.CardData.GetEffectiveTargetType();
+
+        switch (effectiveTargetType)
         {
             case CardTargetType.Self:
-                return sourceEntity;
+                targets.Add(sourceEntity);
+                break;
                 
             case CardTargetType.Opponent:
-                return fightManager.GetOpponentForPlayer(sourceEntity);
+                NetworkEntity opponent = fightManager.GetOpponentForPlayer(sourceEntity);
+                if (opponent != null)
+                    targets.Add(opponent);
+                break;
                 
             case CardTargetType.Ally:
-                // TODO: Implement ally targeting
-                return null;
+                NetworkEntity ally = GetAllyForEntity(sourceEntity);
+                if (ally != null)
+                    targets.Add(ally);
+                break;
                 
-            default:
-                return null;
+            case CardTargetType.Random:
+                List<NetworkEntity> allPossibleTargets = GetAllPossibleTargets();
+                if (allPossibleTargets.Count > 0)
+                {
+                    int randomIndex = Random.Range(0, allPossibleTargets.Count);
+                    targets.Add(allPossibleTargets[randomIndex]);
+                }
+                break;
+                
+            case CardTargetType.All:
+                targets.AddRange(GetAllPossibleTargets());
+                break;
+                
+            case CardTargetType.AllAllies:
+                targets.Add(sourceEntity); // Self is an ally
+                NetworkEntity allyEntity = GetAllyForEntity(sourceEntity);
+                if (allyEntity != null)
+                    targets.Add(allyEntity);
+                break;
+                
+            case CardTargetType.AllEnemies:
+                NetworkEntity enemyEntity = fightManager.GetOpponentForPlayer(sourceEntity);
+                if (enemyEntity != null)
+                    targets.Add(enemyEntity);
+                // Note: In a 1v1 system, there's only one enemy
+                break;
         }
+    }
+
+    /// <summary>
+    /// Gets the ally entity for the given entity
+    /// </summary>
+    private NetworkEntity GetAllyForEntity(NetworkEntity entity)
+    {
+        if (entity == null) return null;
+
+        RelationshipManager relationshipManager = entity.GetComponent<RelationshipManager>();
+        if (relationshipManager?.AllyEntity != null)
+        {
+            return relationshipManager.AllyEntity.GetComponent<NetworkEntity>();
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets all possible target entities in the current fight
+    /// </summary>
+    private List<NetworkEntity> GetAllPossibleTargets()
+    {
+        List<NetworkEntity> allTargets = new List<NetworkEntity>();
+        
+        if (sourceEntity == null) return allTargets;
+
+        // Add self
+        allTargets.Add(sourceEntity);
+        
+        // Add ally if exists
+        NetworkEntity ally = GetAllyForEntity(sourceEntity);
+        if (ally != null)
+            allTargets.Add(ally);
+            
+        // Add opponent
+        NetworkEntity opponent = fightManager.GetOpponentForPlayer(sourceEntity);
+        if (opponent != null)
+            allTargets.Add(opponent);
+
+        return allTargets;
     }
 
     /// <summary>
@@ -252,6 +363,29 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         
         sourceEntity = source;
         targetEntity = target;
+        
+        // Clear and set all targets list
+        allTargets.Clear();
+        if (target != null)
+            allTargets.Add(target);
+        
+        // Update debug info
+        UpdateDebugInfo();
+    }
+
+    /// <summary>
+    /// Forces update with multiple targets for multi-target cards
+    /// </summary>
+    public void ForceUpdateSourceAndTargets(NetworkEntity source, List<NetworkEntity> targets)
+    {
+        Debug.Log($"SourceAndTargetIdentifier: ForceUpdateSourceAndTargets called for card {gameObject.name} with {targets.Count} targets");
+        
+        sourceEntity = source;
+        allTargets.Clear();
+        allTargets.AddRange(targets);
+        
+        // Set primary target
+        targetEntity = allTargets.Count > 0 ? allTargets[0] : null;
         
         // Update debug info
         UpdateDebugInfo();

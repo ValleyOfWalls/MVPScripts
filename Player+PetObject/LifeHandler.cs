@@ -43,11 +43,25 @@ public class LifeHandler : NetworkBehaviour
         
         Debug.Log($"LifeHandler: {entity.EntityName.Value} taking {amount} damage from {(source != null ? source.EntityName.Value : "unknown")}");
         
+        // Process shield absorption first
+        EffectHandler effectHandler = GetComponent<EffectHandler>();
+        int finalDamage = amount;
+        if (effectHandler != null)
+        {
+            finalDamage = effectHandler.ProcessShieldAbsorption(amount);
+        }
+        
         // Cap damage to prevent negative health
-        int cappedDamage = Mathf.Min(amount, entity.CurrentHealth.Value);
+        int cappedDamage = Mathf.Min(finalDamage, entity.CurrentHealth.Value);
         
         // Apply damage to the entity
         entity.CurrentHealth.Value -= cappedDamage;
+        
+        // Process thorns reflection if damage was actually taken
+        if (cappedDamage > 0 && source != null && effectHandler != null)
+        {
+            effectHandler.ProcessThornsReflection(source, cappedDamage);
+        }
         
         // Notify clients
         RpcOnDamageTaken(cappedDamage, source != null ? source.ObjectId : 0);

@@ -264,7 +264,6 @@ public class PetCombatAI : NetworkBehaviour
                 break;
                 
             case CardEffectType.DebuffStats:
-            case CardEffectType.ApplyStatus:
                 // Status effects are good early in the fight
                 priority = 45;
                 break;
@@ -273,6 +272,9 @@ public class PetCombatAI : NetworkBehaviour
                 // Draw cards are good when we have low cards and energy to play them
                 priority = 35 + (petEntity.CurrentEnergy.Value * 5);
                 break;
+                
+            case CardEffectType.ApplyStun:
+                return CalculateStunScore(opponent);
                 
             default:
                 priority = 30;
@@ -286,6 +288,44 @@ public class PetCombatAI : NetworkBehaviour
         }
         
         return priority;
+    }
+
+    /// <summary>
+    /// Calculates the priority score for stun effects
+    /// </summary>
+    private int CalculateStunScore(NetworkEntity opponent)
+    {
+        // Stun is very valuable - prevents opponent from acting
+        int baseScore = 80;
+        
+        // Higher priority if opponent has more energy (more they lose by being stunned)
+        baseScore += opponent.CurrentEnergy.Value * 5;
+        
+        // Higher priority if opponent has cards in hand
+        HandManager opponentHand = GetOpponentHandManager(opponent);
+        if (opponentHand != null)
+        {
+            int cardsInHand = opponentHand.GetCardsInHand().Count;
+            baseScore += cardsInHand * 3;
+        }
+        
+        return baseScore;
+    }
+
+    /// <summary>
+    /// Gets the HandManager from the opponent entity
+    /// </summary>
+    private HandManager GetOpponentHandManager(NetworkEntity opponent)
+    {
+        if (opponent == null) return null;
+        
+        var relationshipManager = opponent.GetComponent<RelationshipManager>();
+        if (relationshipManager?.HandEntity == null) return null;
+        
+        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+        if (handEntity == null) return null;
+        
+        return handEntity.GetComponent<HandManager>();
     }
 
     /// <summary>

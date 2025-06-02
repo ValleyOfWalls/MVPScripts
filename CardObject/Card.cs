@@ -5,17 +5,6 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using System.Collections;
 
-public enum CardEffectType
-{
-    Damage,
-    Heal,
-    DrawCard,
-    BuffStats,
-    DebuffStats,
-    ApplyStatus
-    // Add more as needed
-}
-
 /// <summary>
 /// Represents a card in the game, handling visual display and interaction.
 /// Attach to: Card prefabs that will be instantiated for visual representation in the UI.
@@ -102,6 +91,14 @@ public class Card : NetworkBehaviour
         {
             Debug.Log($"Card {gameObject.name}: Adding missing HandleCardPlay component");
             handleCardPlay = gameObject.AddComponent<HandleCardPlay>();
+        }
+
+        // Check and get/add CardTracker
+        CardTracker cardTracker = GetComponent<CardTracker>();
+        if (cardTracker == null)
+        {
+            Debug.Log($"Card {gameObject.name}: Adding missing CardTracker component");
+            cardTracker = gameObject.AddComponent<CardTracker>();
         }
         
         // Check for collider for mouse interactions
@@ -436,17 +433,18 @@ public class Card : NetworkBehaviour
         }
         else if (isDraftPhase && IsDraftable)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is draftable. Proceeding with click handling.");
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is draftable. Delegating to DraftCardSelection.");
             
-            // For draft cards, skip ownership validation and go directly to HandleCardPlay
-            if (handleCardPlay != null)
+            // For draft cards, delegate to the DraftCardSelection component
+            DraftCardSelection draftSelection = GetComponent<DraftCardSelection>();
+            if (draftSelection != null)
             {
-                Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft card, calling handleCardPlay.OnCardClicked() directly");
-                handleCardPlay.OnCardClicked();
+                Debug.Log($"Card {gameObject.name}: OnMouseDown - Calling DraftCardSelection.OnCardClicked()");
+                draftSelection.OnCardClicked();
             }
             else
             {
-                Debug.LogError($"Card {gameObject.name}: OnMouseDown - handleCardPlay is null!");
+                Debug.LogError($"Card {gameObject.name}: OnMouseDown - Draft card but no DraftCardSelection component found!");
             }
             return;
         }
@@ -545,8 +543,16 @@ public class Card : NetworkBehaviour
         
         if (handleCardPlay != null)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Ownership validated. Calling handleCardPlay.OnCardClicked()");
-            handleCardPlay.OnCardClicked();
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Ownership validated. Calling handleCardPlay.OnCardPlayAttempt()");
+            
+            // Ensure source and target are updated before playing the card
+            if (sourceAndTargetIdentifier != null)
+            {
+                Debug.Log($"Card {gameObject.name}: OnMouseDown - Updating source and target before card play");
+                sourceAndTargetIdentifier.UpdateSourceAndTarget();
+            }
+            
+            handleCardPlay.OnCardPlayAttempt();
         }
         else
         {

@@ -658,6 +658,30 @@ public class HandManager : NetworkBehaviour
     }
 
     /// <summary>
+    /// Gets all cards currently in the hand
+    /// </summary>
+    public List<GameObject> GetCardsInHand()
+    {
+        return GetCardsInTransform(handTransform);
+    }
+
+    /// <summary>
+    /// Gets all cards currently in the discard pile
+    /// </summary>
+    public List<GameObject> GetCardsInDiscard()
+    {
+        return GetCardsInTransform(discardTransform);
+    }
+
+    /// <summary>
+    /// Gets all cards currently in the deck
+    /// </summary>
+    public List<GameObject> GetCardsInDeck()
+    {
+        return GetCardsInTransform(deckTransform);
+    }
+
+    /// <summary>
     /// Despawns all cards for this entity (hand, deck, and discard)
     /// Called when a fight ends to clean up remaining cards
     /// </summary>

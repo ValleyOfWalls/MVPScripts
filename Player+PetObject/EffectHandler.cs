@@ -215,6 +215,54 @@ public class EffectHandler : NetworkBehaviour
                     }
                     break;
                     
+                case "Thorns":
+                    // Thorns is processed when taking damage, not at end of turn
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} has Thorns ({potency}) active");
+                    break;
+                    
+                case "Shield":
+                    // Shield persists, no end-of-turn processing needed
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} has Shield ({potency}) active");
+                    break;
+                    
+                case "Fire":
+                    // Fire DoT effect
+                    if (lifeHandler != null)
+                    {
+                        lifeHandler.TakeDamage(potency, sourceEntity);
+                        Debug.Log($"EffectHandler: Applied {potency} Fire damage to {entity.EntityName.Value}");
+                    }
+                    break;
+                    
+                case "Ice":
+                    // Ice slows/freezes - could reduce energy or skip turn
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} is affected by Ice ({potency})");
+                    break;
+                    
+                case "Lightning":
+                    // Lightning could chain or cause energy loss
+                    if (entity.CurrentEnergy.Value > 0)
+                    {
+                        entity.ChangeEnergy(-potency);
+                        Debug.Log($"EffectHandler: Lightning drained {potency} energy from {entity.EntityName.Value}");
+                    }
+                    break;
+                    
+                case "Void":
+                    // Void could prevent healing or cause other effects
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} is affected by Void ({potency})");
+                    break;
+                    
+                case "Stun":
+                    // Stun is handled by EntityTracker, but we track duration here
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} is stunned for {duration} more turns");
+                    break;
+                    
+                case "LimitBreak":
+                    // Limit break enhances abilities
+                    Debug.Log($"EffectHandler: {entity.EntityName.Value} is in Limit Break state");
+                    break;
+                    
                 // Add more end-of-turn effect types here
             }
             
@@ -226,12 +274,116 @@ public class EffectHandler : NetworkBehaviour
             {
                 activeEffects.Remove(effectKey);
                 Debug.Log($"EffectHandler: Effect {effectName} expired on {entity.EntityName.Value}");
+                
+                // Handle effect expiration
+                HandleEffectExpiration(effectName);
             }
             else
             {
                 // Update with new duration
                 activeEffects[effectKey] = $"{effectName}|{potency}|{duration}|{sourceId}";
             }
+        }
+    }
+    
+    /// <summary>
+    /// Handles special logic when effects expire
+    /// </summary>
+    private void HandleEffectExpiration(string effectName)
+    {
+        switch (effectName)
+        {
+            case "Stun":
+                // Remove stun state from entity tracker
+                EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+                if (entityTracker != null)
+                {
+                    entityTracker.SetStunned(false);
+                }
+                break;
+                
+            case "LimitBreak":
+                // Remove limit break state
+                EntityTracker limitBreakTracker = entity.GetComponent<EntityTracker>();
+                if (limitBreakTracker != null)
+                {
+                    limitBreakTracker.SetLimitBreak(false);
+                }
+                break;
+        }
+    }
+    
+    /// <summary>
+    /// Processes thorns damage when this entity takes damage
+    /// </summary>
+    [Server]
+    public void ProcessThornsReflection(NetworkEntity attacker, int damageAmount)
+    {
+        if (!IsServerInitialized || attacker == null) return;
+        
+        if (HasEffect("Thorns"))
+        {
+            int thornsPotency = GetEffectPotency("Thorns");
+            int reflectedDamage = Mathf.Min(thornsPotency, damageAmount); // Thorns can't reflect more than damage taken
+            
+            LifeHandler attackerLifeHandler = attacker.GetComponent<LifeHandler>();
+            if (attackerLifeHandler != null)
+            {
+                attackerLifeHandler.TakeDamage(reflectedDamage, entity);
+                Debug.Log($"EffectHandler: {entity.EntityName.Value} reflected {reflectedDamage} thorns damage to {attacker.EntityName.Value}");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Processes shield absorption when this entity takes damage
+    /// </summary>
+    [Server]
+    public int ProcessShieldAbsorption(int incomingDamage)
+    {
+        if (!IsServerInitialized) return incomingDamage;
+        
+        if (HasEffect("Shield"))
+        {
+            int shieldAmount = GetEffectPotency("Shield");
+            int absorbedDamage = Mathf.Min(shieldAmount, incomingDamage);
+            int remainingDamage = incomingDamage - absorbedDamage;
+            
+            // Reduce shield amount
+            int newShieldAmount = shieldAmount - absorbedDamage;
+            if (newShieldAmount <= 0)
+            {
+                RemoveEffect("Shield");
+                Debug.Log($"EffectHandler: {entity.EntityName.Value}'s shield was destroyed, absorbed {absorbedDamage} damage");
+            }
+            else
+            {
+                // Update shield with reduced amount
+                UpdateEffectPotency("Shield", newShieldAmount);
+                Debug.Log($"EffectHandler: {entity.EntityName.Value}'s shield absorbed {absorbedDamage} damage, {newShieldAmount} shield remaining");
+            }
+            
+            return remainingDamage;
+        }
+        
+        return incomingDamage;
+    }
+    
+    /// <summary>
+    /// Updates the potency of an existing effect
+    /// </summary>
+    [Server]
+    private void UpdateEffectPotency(string effectName, int newPotency)
+    {
+        if (!IsServerInitialized || !activeEffects.ContainsKey(effectName)) return;
+        
+        string effectData = activeEffects[effectName];
+        string[] parts = effectData.Split('|');
+        
+        if (parts.Length >= 4)
+        {
+            parts[1] = newPotency.ToString(); // Update potency
+            activeEffects[effectName] = string.Join("|", parts);
         }
     }
     

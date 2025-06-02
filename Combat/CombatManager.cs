@@ -75,6 +75,19 @@ public class CombatManager : NetworkBehaviour
                 fightRounds.Add(player, 0); // Initialize round counter for this fight
                 fightTurns.Add(player, CombatTurn.None); // Initialize turn state
                 
+                // Initialize entity trackers for new fight
+                EntityTracker playerTracker = player.GetComponent<EntityTracker>();
+                if (playerTracker != null)
+                {
+                    playerTracker.ResetForNewFight();
+                }
+                
+                EntityTracker petTracker = opponentPet.GetComponent<EntityTracker>();
+                if (petTracker != null)
+                {
+                    petTracker.ResetForNewFight();
+                }
+                
                 // Start first round for this fight
                 Debug.Log($"CombatManager: Starting first round for player {player.EntityName.Value}");
                 StartNewRound(player);
@@ -125,6 +138,19 @@ public class CombatManager : NetworkBehaviour
         {
             Debug.LogError($"CombatManager: Fight rounds dictionary doesn't contain entry for player {player.EntityName.Value}");
             return;
+        }
+        
+        // Notify entity trackers about new round
+        EntityTracker playerTracker = player.GetComponent<EntityTracker>();
+        if (playerTracker != null)
+        {
+            playerTracker.ResetTurnData();
+        }
+        
+        EntityTracker petTracker = pet.GetComponent<EntityTracker>();
+        if (petTracker != null)
+        {
+            petTracker.ResetTurnData();
         }
         
         // Notify clients to refresh energy for their local fight
@@ -268,8 +294,25 @@ public class CombatManager : NetworkBehaviour
             fightTurns[player] = turn;
             RpcUpdateTurnUI(player, turn);
 
-            if (turn == CombatTurn.PetTurn)
+            // Notify entity trackers about turn start
+            if (turn == CombatTurn.PlayerTurn)
             {
+                EntityTracker playerTracker = player.GetComponent<EntityTracker>();
+                if (playerTracker != null)
+                {
+                    playerTracker.OnTurnStart();
+                }
+            }
+            else if (turn == CombatTurn.PetTurn)
+            {
+                if (activeFights.TryGetValue(player, out NetworkEntity pet))
+                {
+                    EntityTracker petTracker = pet.GetComponent<EntityTracker>();
+                    if (petTracker != null)
+                    {
+                        petTracker.OnTurnStart();
+                    }
+                }
                 StartPetTurn(player);
             }
         }
