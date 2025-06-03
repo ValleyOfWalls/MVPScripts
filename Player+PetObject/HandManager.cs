@@ -274,12 +274,35 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
-        // Verify the card is in hand
-        List<GameObject> handCards = GetCardsInTransform(handTransform);
-        if (!handCards.Contains(card))
+        // Check the card's CurrentContainer status instead of physical location
+        // (cards can be temporarily moved during drag operations)
+        Card cardComponent = card.GetComponent<Card>();
+        if (cardComponent == null)
         {
-            Debug.LogError($"HandManager: Card {card.name} is not in hand for {gameObject.name}");
+            Debug.LogError($"HandManager: Card {card.name} is missing Card component for {gameObject.name}");
             return;
+        }
+        
+        if (cardComponent.CurrentContainer != CardLocation.Hand)
+        {
+            Debug.LogError($"HandManager: Card {card.name} is not in hand (current container: {cardComponent.CurrentContainer}) for {gameObject.name}");
+            return;
+        }
+        
+        // Additional verification: try to find it in hand, but also check if it might be temporarily moved (e.g., during drag)
+        List<GameObject> handCards = GetCardsInTransform(handTransform);
+        bool cardIsInHandTransform = handCards.Contains(card);
+        
+        if (!cardIsInHandTransform)
+        {
+            Debug.LogWarning($"HandManager: Card {card.name} has Hand container status but is not physically in hand transform (possibly due to drag operation). Current parent: {(card.transform.parent?.name ?? "none")}. Proceeding with discard anyway.");
+        }
+
+        // Notify SourceAndTargetIdentifier for damage preview cleanup before discarding
+        SourceAndTargetIdentifier sourceAndTargetIdentifier = card.GetComponent<SourceAndTargetIdentifier>();
+        if (sourceAndTargetIdentifier != null)
+        {
+            sourceAndTargetIdentifier.OnCardPlayedOrDiscarded();
         }
 
         Debug.Log($"HandManager: Moving card {card.name} to discard for {gameObject.name}");

@@ -59,6 +59,14 @@ public class NetworkEntityUI : MonoBehaviour
         {
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
         }
+        
+        // Add DropZone component for card drag and drop targeting
+        DropZone dropZone = GetComponent<DropZone>();
+        if (dropZone == null)
+        {
+            dropZone = gameObject.AddComponent<DropZone>();
+            Debug.Log($"NetworkEntityUI: Added DropZone component to {gameObject.name}");
+        }
 
         ValidateComponents();
 

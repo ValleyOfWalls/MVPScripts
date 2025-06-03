@@ -101,6 +101,14 @@ public class Card : NetworkBehaviour
             cardTracker = gameObject.AddComponent<CardTracker>();
         }
         
+        // Check and get/add CardDragDrop for drag and drop functionality
+        CardDragDrop cardDragDrop = GetComponent<CardDragDrop>();
+        if (cardDragDrop == null)
+        {
+            Debug.Log($"Card {gameObject.name}: Adding missing CardDragDrop component");
+            cardDragDrop = gameObject.AddComponent<CardDragDrop>();
+        }
+        
         // Check for collider for mouse interactions
         cardCollider = GetComponent<BoxCollider2D>();
         if (cardCollider == null)
@@ -109,12 +117,47 @@ public class Card : NetworkBehaviour
             var button = GetComponent<UnityEngine.UI.Button>();
             if (button == null)
             {
-                // Only add a collider if we don't have a UI button
-                Debug.Log($"Card {gameObject.name}: Adding missing BoxCollider2D for mouse interactions");
-                cardCollider = gameObject.AddComponent<BoxCollider2D>();
-                // Set appropriate size
-                cardCollider.size = new Vector2(2f, 3f); // Default card size, adjust as needed
-                cardCollider.isTrigger = true;
+                // Only add a collider if we don't have a UI button AND no CardDragDrop
+                // CardDragDrop uses UI events, so we don't need mouse colliders when it's present
+                if (cardDragDrop == null)
+                {
+                    Debug.Log($"Card {gameObject.name}: Adding missing BoxCollider2D for mouse interactions");
+                    cardCollider = gameObject.AddComponent<BoxCollider2D>();
+                    // Set appropriate size
+                    cardCollider.size = new Vector2(2f, 3f); // Default card size, adjust as needed
+                    cardCollider.isTrigger = true;
+                }
+                else
+                {
+                    Debug.Log($"Card {gameObject.name}: CardDragDrop present - both UI events and mouse hover enabled");
+                }
+            }
+        }
+        else if (cardDragDrop != null)
+        {
+            // Keep CardDragDrop and BoxCollider2D both enabled
+            // CardDragDrop will handle UI events, BoxCollider2D will handle mouse hover for damage previews
+            Debug.Log($"Card {gameObject.name}: CardDragDrop present - both UI events and mouse hover enabled");
+        }
+        
+        // If CardDragDrop is present, ensure we have UI components for proper event handling
+        if (cardDragDrop != null)
+        {
+            // Ensure we have a RectTransform (required for UI events)
+            RectTransform rectTransform = GetComponent<RectTransform>();
+            if (rectTransform == null)
+            {
+                Debug.Log($"Card {gameObject.name}: CardDragDrop present but no RectTransform - adding RectTransform for UI events");
+                // Convert the Transform to a RectTransform if needed
+                gameObject.AddComponent<RectTransform>();
+            }
+            
+            // Ensure we have a CanvasGroup for alpha/raycast control
+            CanvasGroup canvasGroup = GetComponent<CanvasGroup>();
+            if (canvasGroup == null)
+            {
+                Debug.Log($"Card {gameObject.name}: Adding CanvasGroup for drag and drop visual effects");
+                canvasGroup = gameObject.AddComponent<CanvasGroup>();
             }
         }
     }
@@ -403,6 +446,14 @@ public class Card : NetworkBehaviour
 
     public void OnMouseDown()
     {
+        // If CardDragDrop component is present, let it handle the input instead
+        CardDragDrop cardDragDrop = GetComponent<CardDragDrop>();
+        if (cardDragDrop != null)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - CardDragDrop component present, delegating input handling");
+            return;
+        }
+        
         Debug.Log($"Card {gameObject.name}: OnMouseDown called - Starting ownership validation");
         
         // Check the current game phase to determine container requirements

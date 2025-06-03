@@ -23,6 +23,20 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
 
     // Flag to track if we've already updated on this hover
     private bool hasUpdatedThisHover = false;
+    
+    // Override target for drag and drop
+    private NetworkEntity overrideTarget;
+    private bool hasOverrideTarget = false;
+    
+    // Drag state tracking
+    private bool isDragging = false;
+    private bool previewsActive = false;
+    
+    // Global drag state - static to track if ANY card is being dragged
+    private static bool isAnyCardBeingDragged = false;
+    
+    // Component references
+    private CardDragDrop cardDragDrop;
 
     public NetworkEntity SourceEntity => sourceEntity;
     public NetworkEntity TargetEntity => targetEntity;
@@ -32,6 +46,9 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
     {
         // Setup required references
         SetupRequiredReferences();
+        
+        // Get CardDragDrop component if it exists
+        cardDragDrop = GetComponent<CardDragDrop>();
     }
 
     private void SetupRequiredReferences()
@@ -128,8 +145,88 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         // Reset the flag when mouse exits so we can update again on the next hover
         hasUpdatedThisHover = false;
 
-        // Hide damage previews
+        // Only hide damage previews if we're not dragging
+        // If we're dragging, the previews should stay visible until drag ends
+        if (!isDragging)
+        {
+            HideDamagePreviews();
+        }
+        else
+        {
+            Debug.Log($"SourceAndTargetIdentifier: Skipping damage preview hide because card is being dragged");
+        }
+    }
+
+    /// <summary>
+    /// Called by CardDragDrop when drag starts - keeps damage previews visible
+    /// </summary>
+    public void OnDragStart()
+    {
+        isDragging = true;
+        isAnyCardBeingDragged = true; // Set global drag state
+        Debug.Log($"SourceAndTargetIdentifier: Drag started - damage previews will remain visible, global drag state set");
+    }
+    
+    /// <summary>
+    /// Called by CardDragDrop when drag ends - allows damage previews to be hidden
+    /// </summary>
+    public void OnDragEnd()
+    {
+        isDragging = false;
+        isAnyCardBeingDragged = false; // Clear global drag state
+        Debug.Log($"SourceAndTargetIdentifier: Drag ended - damage previews can now be hidden, global drag state cleared");
+        
+        // Hide previews since drag is over and mouse is likely not over card anymore
         HideDamagePreviews();
+    }
+    
+    /// <summary>
+    /// Called when the card is played/discarded to force cleanup of damage previews
+    /// </summary>
+    public void OnCardPlayedOrDiscarded()
+    {
+        Debug.Log($"SourceAndTargetIdentifier: Card played/discarded - forcing damage preview cleanup");
+        
+        // Force hide all previews regardless of drag state
+        HideDamagePreviews();
+        
+        // Reset all states
+        if (isDragging)
+        {
+            isAnyCardBeingDragged = false; // Clear global drag state if this card was being dragged
+        }
+        isDragging = false;
+        previewsActive = false;
+        hasUpdatedThisHover = false;
+    }
+
+    /// <summary>
+    /// Sets an override target for drag and drop functionality
+    /// </summary>
+    /// <param name="target">The entity to override as the target</param>
+    public void SetOverrideTarget(NetworkEntity target)
+    {
+        overrideTarget = target;
+        hasOverrideTarget = target != null;
+        
+        Debug.Log($"SourceAndTargetIdentifier: Override target set to {(target != null ? target.EntityName.Value : "null")}");
+        
+        // Update targeting with the override
+        if (hasOverrideTarget)
+        {
+            UpdateSourceAndTarget();
+        }
+    }
+    
+    /// <summary>
+    /// Clears the override target
+    /// </summary>
+    public void ClearOverrideTarget()
+    {
+        overrideTarget = null;
+        hasOverrideTarget = false;
+        
+        Debug.Log($"SourceAndTargetIdentifier: Override target cleared");
     }
 
     /// <summary>
@@ -167,12 +264,25 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
             Debug.Log($"SourceAndTargetIdentifier: Source entity for card {gameObject.name} is {sourceEntity.EntityName.Value}");
         }
         
-        // Get targets based on the card's target type
-        allTargets.Clear();
-        GetTargetEntities(allTargets);
-        
-        // Set primary target (first valid target or null)
-        targetEntity = allTargets.Count > 0 ? allTargets[0] : null;
+        // Check if we have an override target from drag and drop
+        if (hasOverrideTarget && overrideTarget != null)
+        {
+            Debug.Log($"SourceAndTargetIdentifier: Using override target {overrideTarget.EntityName.Value} for drag and drop");
+            
+            // Set the override target as the primary target
+            allTargets.Clear();
+            allTargets.Add(overrideTarget);
+            targetEntity = overrideTarget;
+        }
+        else
+        {
+            // Get targets based on the card's target type (normal behavior)
+            allTargets.Clear();
+            GetTargetEntities(allTargets);
+            
+            // Set primary target (first valid target or null)
+            targetEntity = allTargets.Count > 0 ? allTargets[0] : null;
+        }
         
         if (targetEntity == null)
         {
@@ -427,7 +537,18 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         if (sourceEntity == null || card?.CardData == null || allTargets.Count == 0)
             return;
 
+        // Don't show damage previews on other cards when any card is being dragged
+        // Only the card being dragged should keep its previews visible
+        if (isAnyCardBeingDragged && !isDragging)
+        {
+            Debug.Log($"SourceAndTargetIdentifier: Skipping damage preview show because another card is being dragged");
+            return;
+        }
+
         Debug.Log($"SourceAndTargetIdentifier: Showing damage previews for card {card.CardData.CardName}");
+        
+        // Mark previews as active
+        previewsActive = true;
 
         foreach (var target in allTargets)
         {
@@ -446,14 +567,44 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
     /// </summary>
     private void HideDamagePreviews()
     {
-        if (allTargets.Count == 0) return;
+        if (!previewsActive || allTargets.Count == 0) return;
 
         Debug.Log($"SourceAndTargetIdentifier: Hiding damage previews");
+        
+        // Mark previews as inactive
+        previewsActive = false;
 
         foreach (var target in allTargets)
         {
             if (target == null) continue;
             HidePreviewOnTarget(target);
+        }
+    }
+    
+    /// <summary>
+    /// Force cleanup on destruction to ensure damage previews are hidden
+    /// </summary>
+    private void OnDestroy()
+    {
+        // Force cleanup of any active damage previews when the card is destroyed
+        if (previewsActive && allTargets.Count > 0)
+        {
+            Debug.Log($"SourceAndTargetIdentifier: Card being destroyed - forcing damage preview cleanup");
+            
+            foreach (var target in allTargets)
+            {
+                if (target == null) continue;
+                HidePreviewOnTarget(target);
+            }
+            
+            previewsActive = false;
+        }
+        
+        // Clear global drag state if this card was being dragged when destroyed
+        if (isDragging)
+        {
+            isAnyCardBeingDragged = false;
+            Debug.Log($"SourceAndTargetIdentifier: Card being destroyed during drag - clearing global drag state");
         }
     }
 

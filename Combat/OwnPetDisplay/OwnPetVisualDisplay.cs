@@ -29,6 +29,14 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
     {
         ValidateComponents();
         SetupPlaceholderImage();
+        
+        // Add DropZone component for card drag and drop targeting
+        DropZone dropZone = GetComponent<DropZone>();
+        if (dropZone == null)
+        {
+            dropZone = gameObject.AddComponent<DropZone>();
+            LogDebug("Added DropZone component for card targeting");
+        }
     }
     
     private void ValidateComponents()
