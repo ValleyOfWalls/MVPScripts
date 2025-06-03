@@ -21,6 +21,9 @@ public class DraftManager : NetworkBehaviour
     // Track which players have completed the draft
     private readonly SyncDictionary<NetworkConnection, bool> playersReady = new SyncDictionary<NetworkConnection, bool>();
     
+    // Track the currently visible pack for each player (synchronized to clients)
+    private readonly SyncDictionary<int, int> currentVisiblePacksByPlayerId = new SyncDictionary<int, int>();
+    
     // Track pack circulation queue for each player
     private readonly Dictionary<NetworkEntity, Queue<DraftPack>> playerPackQueues = new Dictionary<NetworkEntity, Queue<DraftPack>>();
     
@@ -49,12 +52,30 @@ public class DraftManager : NetworkBehaviour
     {
         base.OnStartServer();
         playersReady.OnChange += OnPlayerReadyChanged;
+        currentVisiblePacksByPlayerId.OnChange += OnCurrentVisiblePackChanged;
+        Debug.Log("DraftManager: Server started, sync dictionary events registered");
+    }
+    
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        playersReady.OnChange += OnPlayerReadyChanged;
+        currentVisiblePacksByPlayerId.OnChange += OnCurrentVisiblePackChanged;
+        Debug.Log("DraftManager: Client started, sync dictionary events registered");
     }
     
     public override void OnStopServer()
     {
         base.OnStopServer();
         playersReady.OnChange -= OnPlayerReadyChanged;
+        currentVisiblePacksByPlayerId.OnChange -= OnCurrentVisiblePackChanged;
+    }
+    
+    public override void OnStopClient()
+    {
+        base.OnStopClient();
+        playersReady.OnChange -= OnPlayerReadyChanged;
+        currentVisiblePacksByPlayerId.OnChange -= OnCurrentVisiblePackChanged;
     }
     
     /// <summary>
@@ -115,6 +136,7 @@ public class DraftManager : NetworkBehaviour
     {
         playerPackQueues.Clear();
         currentVisiblePacks.Clear();
+        currentVisiblePacksByPlayerId.Clear();
         
         List<DraftPack> allPacks = draftPackSetup.GetAllActivePacks();
         
@@ -135,6 +157,7 @@ public class DraftManager : NetworkBehaviour
             {
                 playerPackQueues[player].Enqueue(playerPack);
                 currentVisiblePacks[player] = playerPack;
+                currentVisiblePacksByPlayerId[player.ObjectId] = playerPack.ObjectId;
             }
             else
             {
@@ -188,10 +211,15 @@ public class DraftManager : NetworkBehaviour
         if (!currentVisiblePacks.ContainsKey(player))
         {
             Debug.LogWarning($"DraftManager: No visible pack found for player {player.EntityName.Value}");
+            // Clear the synchronized visible pack if there's no visible pack
+            currentVisiblePacksByPlayerId[player.ObjectId] = -1;
             return;
         }
         
         DraftPack visiblePack = currentVisiblePacks[player];
+        
+        // Update the synchronized dictionary so clients know which pack should be visible
+        currentVisiblePacksByPlayerId[player.ObjectId] = visiblePack.ObjectId;
         
         // Notify the specific player about their visible pack
         RpcUpdatePackVisibility(player.Owner, visiblePack.ObjectId);
@@ -407,11 +435,13 @@ public class DraftManager : NetworkBehaviour
         }
         
         Queue<DraftPack> playerQueue = playerPackQueues[player];
+        Debug.Log($"DraftManager: MoveToNextPack called for {player.EntityName.Value} (queue count: {playerQueue.Count})");
         
         // Remove the current pack from the queue
         if (playerQueue.Count > 0)
         {
             DraftPack currentPack = playerQueue.Dequeue();
+            Debug.Log($"DraftManager: Removed pack {currentPack.name} from {player.EntityName.Value}'s queue");
             
             // Pass the pack to the next player
             PassPackToNextPlayer(currentPack, player);
@@ -423,15 +453,16 @@ public class DraftManager : NetworkBehaviour
             DraftPack nextPack = playerQueue.Peek();
             currentVisiblePacks[player] = nextPack;
             UpdatePackVisibilityForPlayer(player);
+            Debug.Log($"DraftManager: Next pack {nextPack.name} is now visible to {player.EntityName.Value}");
         }
         else
         {
             // No more packs for this player
             currentVisiblePacks.Remove(player);
+            // Clear the synchronized visible pack
+            currentVisiblePacksByPlayerId[player.ObjectId] = -1;
+            Debug.Log($"DraftManager: No more packs for {player.EntityName.Value}");
         }
-        
-        // Update draft pack visibility for all clients after pack circulation
-        RpcUpdateDraftPackVisibility();
     }
     
     /// <summary>
@@ -442,6 +473,7 @@ public class DraftManager : NetworkBehaviour
     {
         if (pack.IsEmpty)
         {
+            Debug.Log($"DraftManager: Not passing empty pack {pack.name} from {currentPlayer.EntityName.Value}");
             return;
         }
         
@@ -450,18 +482,39 @@ public class DraftManager : NetworkBehaviour
         int nextPlayerIndex = (currentPlayerIndex + 1) % allPlayers.Count;
         NetworkEntity nextPlayer = allPlayers[nextPlayerIndex];
         
+        Debug.Log($"DraftManager: Passing pack {pack.name} from {currentPlayer.EntityName.Value} to {nextPlayer.EntityName.Value}");
+        
         // Add the pack to the next player's queue
         if (playerPackQueues.ContainsKey(nextPlayer))
         {
             playerPackQueues[nextPlayer].Enqueue(pack);
             pack.SetCurrentOwner(nextPlayer);
             
-            // If the next player doesn't have a visible pack, make this one visible
+            Debug.Log($"DraftManager: Pack {pack.name} queued for {nextPlayer.EntityName.Value} (queue count: {playerPackQueues[nextPlayer].Count})");
+            
+            // If the next player doesn't have a visible pack, make this one visible immediately
             if (!currentVisiblePacks.ContainsKey(nextPlayer))
             {
                 currentVisiblePacks[nextPlayer] = pack;
                 UpdatePackVisibilityForPlayer(nextPlayer);
+                Debug.Log($"DraftManager: Pack {pack.name} immediately visible to {nextPlayer.EntityName.Value} (no current visible pack)");
             }
+            // If the next player has a visible pack but their queue only contains this new pack,
+            // it means they should see this pack next (their current visible pack is about to be finished)
+            else if (playerPackQueues[nextPlayer].Count == 1)
+            {
+                // The next player's current visible pack will be processed by MoveToNextPack
+                // This ensures proper sequencing
+                Debug.Log($"DraftManager: Pack {pack.name} queued for {nextPlayer.EntityName.Value} (will be visible after current pack)");
+            }
+            else
+            {
+                Debug.Log($"DraftManager: Pack {pack.name} queued for {nextPlayer.EntityName.Value} behind {playerPackQueues[nextPlayer].Count - 1} other packs");
+            }
+        }
+        else
+        {
+            Debug.LogError($"DraftManager: No pack queue found for next player {nextPlayer.EntityName.Value}");
         }
     }
     
@@ -515,6 +568,7 @@ public class DraftManager : NetworkBehaviour
     {
         if (!isDraftActive)
         {
+            Debug.Log($"DraftManager: IsCardSelectableByPlayer - Draft not active");
             return false;
         }
         
@@ -523,21 +577,70 @@ public class DraftManager : NetworkBehaviour
         {
             DraftPack visiblePack = currentVisiblePacks[player];
             List<GameObject> packCards = visiblePack.GetCards();
-            return packCards.Contains(cardObject);
+            bool result = packCards.Contains(cardObject);
+            Debug.Log($"DraftManager: IsCardSelectableByPlayer (Server) - Player {player.EntityName.Value}, Card {cardObject.name}, Pack {visiblePack.name}, Result: {result}");
+            return result;
         }
         
-        // On client, or if server doesn't have visible pack info, check pack ownership directly
+        // Declare allPacks once for use in client-side logic
         DraftPack[] allPacks = FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
         
+        Debug.Log($"DraftManager: IsCardSelectableByPlayer (Client) - Player {player.EntityName.Value} (ID: {player.ObjectId}), Card {cardObject.name}");
+        Debug.Log($"DraftManager: currentVisiblePacksByPlayerId contains player {player.ObjectId}: {currentVisiblePacksByPlayerId.ContainsKey(player.ObjectId)}");
+        Debug.Log($"DraftManager: currentVisiblePacksByPlayerId count: {currentVisiblePacksByPlayerId.Count}");
+        
+        // Log all entries in the sync dictionary for debugging
+        foreach (var kvp in currentVisiblePacksByPlayerId)
+        {
+            Debug.Log($"DraftManager: Sync dict entry - Player {kvp.Key}: Pack {kvp.Value}");
+        }
+        
+        // On client, use the synchronized currentVisiblePacksByPlayerId to determine the visible pack
+        if (currentVisiblePacksByPlayerId.ContainsKey(player.ObjectId))
+        {
+            int visiblePackId = currentVisiblePacksByPlayerId[player.ObjectId];
+            Debug.Log($"DraftManager: Visible pack ID for player {player.ObjectId}: {visiblePackId}");
+            
+            if (visiblePackId == -1)
+            {
+                // No visible pack for this player
+                Debug.Log($"DraftManager: No visible pack for player {player.ObjectId} (ID = -1)");
+                return false;
+            }
+            
+            // Find the pack with this ObjectId
+            foreach (DraftPack pack in allPacks)
+            {
+                Debug.Log($"DraftManager: Checking pack {pack.name} with ObjectId {pack.ObjectId} against visible pack ID {visiblePackId}");
+                if (pack.ObjectId == visiblePackId)
+                {
+                    List<GameObject> packCards = pack.GetCards();
+                    bool result = packCards.Contains(cardObject);
+                    Debug.Log($"DraftManager: Found matching pack {pack.name}, card {cardObject.name} selectable: {result}");
+                    return result;
+                }
+            }
+            Debug.Log($"DraftManager: No pack found with ObjectId {visiblePackId}");
+        }
+        else
+        {
+            Debug.Log($"DraftManager: currentVisiblePacksByPlayerId does not contain player {player.ObjectId}");
+        }
+        
+        // Fallback: check pack ownership directly (this was the old behavior)
+        Debug.Log($"DraftManager: Using fallback pack ownership check");
         foreach (DraftPack pack in allPacks)
         {
             if (pack.IsOwnedBy(player))
             {
                 List<GameObject> packCards = pack.GetCards();
-                return packCards.Contains(cardObject);
+                bool result = packCards.Contains(cardObject);
+                Debug.Log($"DraftManager: Fallback - Player owns pack {pack.name}, card {cardObject.name} selectable: {result}");
+                return result;
             }
         }
         
+        Debug.Log($"DraftManager: No selectable pack found for player {player.ObjectId}");
         return false;
     }
     
@@ -637,6 +740,7 @@ public class DraftManager : NetworkBehaviour
         // Clear pack queues and visibility
         playerPackQueues.Clear();
         currentVisiblePacks.Clear();
+        currentVisiblePacksByPlayerId.Clear();
         
         // Clear ready states
         playersReady.Clear();
@@ -763,6 +867,24 @@ public class DraftManager : NetworkBehaviour
     private void OnPlayerReadyChanged(SyncDictionaryOperation op, NetworkConnection key, bool value, bool asServer)
     {
         // Event handler for player ready state changes
+    }
+    
+    private void OnCurrentVisiblePackChanged(SyncDictionaryOperation op, int playerObjectId, int packObjectId, bool asServer)
+    {
+        // Event handler for current visible pack changes
+        // This can be used for client-side UI updates if needed
+        Debug.Log($"DraftManager: CurrentVisiblePack changed for player {playerObjectId} to pack {packObjectId} (operation: {op}, asServer: {asServer})");
+        
+        // On client, trigger visibility update when the sync data changes
+        if (!asServer && entityVisibilityManager != null)
+        {
+            Debug.Log($"DraftManager: Triggering visibility update on client due to sync dictionary change");
+            entityVisibilityManager.UpdateDraftPackVisibility();
+        }
+        else if (!asServer)
+        {
+            Debug.LogWarning($"DraftManager: Cannot trigger visibility update on client - entityVisibilityManager is null");
+        }
     }
     
     private List<NetworkEntity> GetAllPlayerEntities()
