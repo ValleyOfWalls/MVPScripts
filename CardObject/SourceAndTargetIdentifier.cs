@@ -11,6 +11,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
     [Header("References")]
     [SerializeField] private Card card;
     [SerializeField] private FightManager fightManager;
+    [SerializeField] private DamageCalculator damageCalculator;
 
     [Header("Debug Info (Read Only)")]
     [SerializeField, ReadOnly] private NetworkEntity sourceEntity;
@@ -54,6 +55,16 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
                 Debug.LogError($"SourceAndTargetIdentifier on {gameObject.name}: Could not find FightManager instance!");
             }
         }
+
+        // Find DamageCalculator if not already assigned
+        if (damageCalculator == null)
+        {
+            damageCalculator = FindDamageCalculator();
+            if (damageCalculator == null)
+            {
+                Debug.LogError($"SourceAndTargetIdentifier on {gameObject.name}: Could not find DamageCalculator instance!");
+            }
+        }
     }
 
     private FightManager FindFightManager()
@@ -71,6 +82,17 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         return fm;
     }
 
+    private DamageCalculator FindDamageCalculator()
+    {
+        // Try to find DamageCalculator in scene (usually on GameManager)
+        DamageCalculator dc = FindFirstObjectByType<DamageCalculator>();
+        if (dc != null)
+        {
+            Debug.Log($"SourceAndTargetIdentifier on {gameObject.name}: Found DamageCalculator via FindFirstObjectByType");
+        }
+        return dc;
+    }
+
     public void OnMouseEnter()
     {
         if (!IsOwner) return;
@@ -84,6 +106,9 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
             // Set the flag to true so we don't update again until mouse exit
             hasUpdatedThisHover = true;
         }
+
+        // Show damage previews
+        ShowDamagePreviews();
     }
     
     public void OnMouseDown()
@@ -102,6 +127,9 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
     {
         // Reset the flag when mouse exits so we can update again on the next hover
         hasUpdatedThisHover = false;
+
+        // Hide damage previews
+        HideDamagePreviews();
     }
 
     /// <summary>
@@ -389,5 +417,219 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         
         // Update debug info
         UpdateDebugInfo();
+    }
+
+    /// <summary>
+    /// Shows damage/heal previews on all target entities
+    /// </summary>
+    private void ShowDamagePreviews()
+    {
+        if (sourceEntity == null || card?.CardData == null || allTargets.Count == 0)
+            return;
+
+        Debug.Log($"SourceAndTargetIdentifier: Showing damage previews for card {card.CardData.CardName}");
+
+        foreach (var target in allTargets)
+        {
+            if (target == null) continue;
+
+            // Calculate damage/heal amounts for this target
+            var (damageAmount, healAmount) = CalculateCardEffectsOnTarget(target);
+
+            // Show preview on the target's UI
+            ShowPreviewOnTarget(target, damageAmount, healAmount);
+        }
+    }
+
+    /// <summary>
+    /// Hides damage/heal previews on all target entities
+    /// </summary>
+    private void HideDamagePreviews()
+    {
+        if (allTargets.Count == 0) return;
+
+        Debug.Log($"SourceAndTargetIdentifier: Hiding damage previews");
+
+        foreach (var target in allTargets)
+        {
+            if (target == null) continue;
+            HidePreviewOnTarget(target);
+        }
+    }
+
+    /// <summary>
+    /// Calculates damage and heal amounts this card would do to a specific target
+    /// </summary>
+    private (int damageAmount, int healAmount) CalculateCardEffectsOnTarget(NetworkEntity target)
+    {
+        int damageAmount = 0;
+        int healAmount = 0;
+
+        if (card?.CardData?.Effects == null) return (0, 0);
+
+        // Check if card has any damage effects
+        bool hasDamageEffects = false;
+        foreach (var effect in card.CardData.Effects)
+        {
+            if (effect.effectType == CardEffectType.Damage)
+            {
+                hasDamageEffects = true;
+                break;
+            }
+        }
+
+        // Calculate total damage using DamageCalculator if card has damage effects
+        if (hasDamageEffects && damageCalculator != null)
+        {
+            damageAmount = damageCalculator.CalculateDamage(sourceEntity, target, card.CardData);
+        }
+
+        // Calculate heal amounts by summing heal effects
+        foreach (var effect in card.CardData.Effects)
+        {
+            switch (effect.effectType)
+            {
+                case CardEffectType.Heal:
+                    healAmount += effect.amount;
+                    break;
+
+                case CardEffectType.RestoreEnergy:
+                    // Could show energy restore as green text too
+                    healAmount += effect.amount;
+                    break;
+            }
+        }
+
+        return (damageAmount, healAmount);
+    }
+
+    /// <summary>
+    /// Shows preview on a specific target's UI
+    /// </summary>
+    private void ShowPreviewOnTarget(NetworkEntity target, int damageAmount, int healAmount)
+    {
+        // Determine which value to show (prioritize damage over heal)
+        bool showDamage = damageAmount > 0;
+        int amountToShow = showDamage ? damageAmount : healAmount;
+
+        if (amountToShow <= 0) return; // Nothing to show
+
+        Debug.Log($"SourceAndTargetIdentifier: Attempting to show preview on {target.EntityName.Value} (Type: {target.EntityType})");
+
+        // Check if this is an ally pet (different from opponent pets)
+        bool isAllyPet = IsAllyPet(target);
+
+        if (isAllyPet)
+        {
+            // For ally pets, use OwnPetVisualDisplay
+            var petDisplay = FindPetDisplayForEntity(target);
+            if (petDisplay != null)
+            {
+                var petImage = petDisplay.GetPetImage();
+                if (petImage != null)
+                {
+                    petDisplay.ShowDamagePreview(amountToShow, showDamage);
+                    Debug.Log($"SourceAndTargetIdentifier: Showing preview over ally pet {target.EntityName.Value}'s image via OwnPetVisualDisplay");
+                }
+                else
+                {
+                    Debug.LogWarning($"SourceAndTargetIdentifier: No pet image found in OwnPetVisualDisplay for ally pet {target.EntityName.Value}");
+                    petDisplay.ShowDamagePreview(amountToShow, showDamage); // Show anyway
+                }
+            }
+            else
+            {
+                Debug.LogError($"SourceAndTargetIdentifier: No OwnPetVisualDisplay found for ally pet {target.EntityName.Value}");
+            }
+        }
+        else if (target.EntityType == EntityType.Player || target.EntityType == EntityType.Pet)
+        {
+            // Use NetworkEntityUI for main entities (players and opponent pets)
+            var entityUI = target.GetComponent<NetworkEntityUI>();
+            if (entityUI != null)
+            {
+                var entityImage = entityUI.GetEntityImage();
+                if (entityImage != null)
+                {
+                    entityUI.ShowDamagePreview(amountToShow, showDamage);
+                    Debug.Log($"SourceAndTargetIdentifier: Showing preview over {target.EntityName.Value}'s entity image");
+                }
+                else
+                {
+                    Debug.LogWarning($"SourceAndTargetIdentifier: No entity image found for {target.EntityName.Value} - preview may not position correctly");
+                    entityUI.ShowDamagePreview(amountToShow, showDamage); // Show anyway
+                }
+            }
+            else
+            {
+                Debug.LogError($"SourceAndTargetIdentifier: No NetworkEntityUI found on {target.EntityName.Value}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Determines if a target entity is an ally pet (vs opponent pet)
+    /// </summary>
+    private bool IsAllyPet(NetworkEntity target)
+    {
+        if (target.EntityType != EntityType.Pet || sourceEntity == null)
+            return false;
+
+        // Check if this pet is an ally of the source entity
+        var sourceRelationships = sourceEntity.GetComponent<RelationshipManager>();
+        if (sourceRelationships?.AllyEntity != null)
+        {
+            var allyEntity = sourceRelationships.AllyEntity.GetComponent<NetworkEntity>();
+            return allyEntity == target;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Hides preview on a specific target's UI
+    /// </summary>
+    private void HidePreviewOnTarget(NetworkEntity target)
+    {
+        // Check if this is an ally pet (different from opponent pets)
+        bool isAllyPet = IsAllyPet(target);
+
+        if (isAllyPet)
+        {
+            // For ally pets, use OwnPetVisualDisplay
+            var petDisplay = FindPetDisplayForEntity(target);
+            if (petDisplay != null)
+            {
+                petDisplay.HideDamagePreview();
+            }
+        }
+        else if (target.EntityType == EntityType.Player || target.EntityType == EntityType.Pet)
+        {
+            // Use NetworkEntityUI for main entities (players and opponent pets)
+            var entityUI = target.GetComponent<NetworkEntityUI>();
+            if (entityUI != null)
+            {
+                entityUI.HideDamagePreview();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Finds the OwnPetVisualDisplay component for an ally pet entity
+    /// </summary>
+    private OwnPetVisualDisplay FindPetDisplayForEntity(NetworkEntity petEntity)
+    {
+        // Find all OwnPetVisualDisplay components in the scene
+        var petDisplays = FindObjectsByType<OwnPetVisualDisplay>(FindObjectsSortMode.None);
+        
+        foreach (var display in petDisplays)
+        {
+            if (display.GetCurrentPet() == petEntity)
+            {
+                return display;
+            }
+        }
+
+        return null;
     }
 } 

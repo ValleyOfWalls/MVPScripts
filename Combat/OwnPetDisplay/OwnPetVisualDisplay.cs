@@ -12,6 +12,10 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
     [SerializeField] private Image petImage;
     [SerializeField] private TextMeshProUGUI petNameText;
     
+    [Header("Damage Preview UI")]
+    [SerializeField] private TextMeshProUGUI damagePreviewText;
+    [SerializeField] private GameObject damagePreviewContainer;
+    
     [Header("Placeholder Settings")]
     [SerializeField] private Color placeholderColor = Color.white;
     
@@ -171,6 +175,59 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
         {
             petImage.color = color;
         }
+    }
+    
+    /// <summary>
+    /// Shows a damage/heal preview over this pet
+    /// </summary>
+    /// <param name="amount">The damage (positive) or heal (negative) amount</param>
+    /// <param name="isDamage">True for damage, false for healing</param>
+    public void ShowDamagePreview(int amount, bool isDamage)
+    {
+        if (damagePreviewText == null) return;
+
+        // Set text color based on damage or heal
+        if (isDamage)
+        {
+            damagePreviewText.color = Color.red;
+            damagePreviewText.text = $"-{amount}";
+        }
+        else
+        {
+            damagePreviewText.color = Color.green;
+            damagePreviewText.text = $"+{amount}";
+        }
+
+        // Always keep the text component enabled, just show the container if it exists
+        if (damagePreviewContainer != null)
+            damagePreviewContainer.SetActive(true);
+
+        LogDebug($"Showing {(isDamage ? "damage" : "heal")} preview of {amount} on {currentPet?.EntityName.Value} over pet image");
+    }
+
+    /// <summary>
+    /// Hides the damage/heal preview
+    /// </summary>
+    public void HideDamagePreview()
+    {
+        if (damagePreviewText != null)
+        {
+            damagePreviewText.text = ""; // Clear text but keep component enabled
+        }
+
+        // Hide container if it exists, but keep text component itself enabled
+        if (damagePreviewContainer != null)
+            damagePreviewContainer.SetActive(false);
+
+        LogDebug($"Hiding damage preview on {currentPet?.EntityName.Value}");
+    }
+
+    /// <summary>
+    /// Gets the pet image component (for UI positioning purposes)
+    /// </summary>
+    public Image GetPetImage()
+    {
+        return petImage;
     }
     
     private void LogDebug(string message)

@@ -27,6 +27,11 @@ public class NetworkEntityUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private Image healthBar;
+    [SerializeField] private Image entityImage; // Main visual representation of the entity
+
+    [Header("Damage Preview UI")]
+    [SerializeField] private TextMeshProUGUI damagePreviewText;
+    [SerializeField] private GameObject damagePreviewContainer;
 
     [Header("Status Effects UI")]
     [SerializeField] private TextMeshProUGUI effectsText;
@@ -374,5 +379,58 @@ public class NetworkEntityUI : MonoBehaviour
             return null;
         }
         return discardTransform;
+    }
+
+    /// <summary>
+    /// Shows a damage/heal preview over this entity
+    /// </summary>
+    /// <param name="amount">The damage (positive) or heal (negative) amount</param>
+    /// <param name="isDamage">True for damage, false for healing</param>
+    public void ShowDamagePreview(int amount, bool isDamage)
+    {
+        if (damagePreviewText == null) return;
+
+        // Set text color based on damage or heal
+        if (isDamage)
+        {
+            damagePreviewText.color = Color.red;
+            damagePreviewText.text = $"-{amount}";
+        }
+        else
+        {
+            damagePreviewText.color = Color.green;
+            damagePreviewText.text = $"+{amount}";
+        }
+
+        // Always keep the text component enabled, just show the container if it exists
+        if (damagePreviewContainer != null)
+            damagePreviewContainer.SetActive(true);
+
+        Debug.Log($"NetworkEntityUI: Showing {(isDamage ? "damage" : "heal")} preview of {amount} on {entity?.EntityName.Value} over entity image");
+    }
+
+    /// <summary>
+    /// Hides the damage/heal preview
+    /// </summary>
+    public void HideDamagePreview()
+    {
+        if (damagePreviewText != null)
+        {
+            damagePreviewText.text = ""; // Clear text but keep component enabled
+        }
+
+        // Hide container if it exists, but keep text component itself enabled
+        if (damagePreviewContainer != null)
+            damagePreviewContainer.SetActive(false);
+
+        Debug.Log($"NetworkEntityUI: Hiding damage preview on {entity?.EntityName.Value}");
+    }
+
+    /// <summary>
+    /// Gets the main visual image for this entity (for UI positioning purposes)
+    /// </summary>
+    public Image GetEntityImage()
+    {
+        return entityImage;
     }
 } 
