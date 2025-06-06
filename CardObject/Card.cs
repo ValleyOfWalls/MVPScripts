@@ -278,6 +278,34 @@ public class Card : NetworkBehaviour
             costText.gameObject.SetActive(purchasable);
             if (purchasable) costText.text = cost.ToString();
         }
+        
+        // Add ShopCardSelection component when card becomes purchasable
+        if (purchasable)
+        {
+            ShopCardSelection shopSelection = GetComponent<ShopCardSelection>();
+            if (shopSelection == null)
+            {
+                shopSelection = gameObject.AddComponent<ShopCardSelection>();
+                Debug.Log($"Card {gameObject.name}: Added ShopCardSelection component (purchasable = {purchasable})");
+            }
+        }
+        else
+        {
+            // Remove ShopCardSelection component when card is no longer purchasable
+            ShopCardSelection shopSelection = GetComponent<ShopCardSelection>();
+            if (shopSelection != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(shopSelection);
+                }
+                else
+                {
+                    DestroyImmediate(shopSelection);
+                }
+                Debug.Log($"Card {gameObject.name}: Removed ShopCardSelection component (purchasable = {purchasable})");
+            }
+        }
     }
 
     /// <summary>
@@ -446,15 +474,7 @@ public class Card : NetworkBehaviour
 
     public void OnMouseDown()
     {
-        // If CardDragDrop component is present, let it handle the input instead
-        CardDragDrop cardDragDrop = GetComponent<CardDragDrop>();
-        if (cardDragDrop != null)
-        {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - CardDragDrop component present, delegating input handling");
-            return;
-        }
-        
-        Debug.Log($"Card {gameObject.name}: OnMouseDown called - Starting ownership validation");
+        Debug.Log($"Card {gameObject.name}: OnMouseDown called - Starting input handling");
         
         // Check the current game phase to determine container requirements
         GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
@@ -467,22 +487,30 @@ public class Card : NetworkBehaviour
         }
         Debug.Log($"Card {gameObject.name}: OnMouseDown - isDraftPhase: {isDraftPhase}");
         Debug.Log($"Card {gameObject.name}: OnMouseDown - IsDraftable: {IsDraftable}");
+        Debug.Log($"Card {gameObject.name}: OnMouseDown - IsPurchasable: {IsPurchasable}");
         Debug.Log($"Card {gameObject.name}: OnMouseDown - CurrentContainer: {CurrentContainer}");
         
-        // First check if card is in the correct container
-        // In draft phase, draftable cards can be clicked regardless of container
-        // In combat phase, cards must be in hand
-        if (!isDraftPhase && CurrentContainer != CardLocation.Hand) 
+        // Priority 1: Handle shop cards in draft phase
+        if (isDraftPhase && IsPurchasable)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. CurrentContainer: {CurrentContainer}. Expected Hand.");
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is purchasable. Delegating to ShopCardSelection.");
+            
+            // For shop cards, delegate to the ShopCardSelection component
+            ShopCardSelection shopSelection = GetComponent<ShopCardSelection>();
+            if (shopSelection != null)
+            {
+                Debug.Log($"Card {gameObject.name}: OnMouseDown - Calling ShopCardSelection.OnCardClicked()");
+                shopSelection.OnCardClicked();
+            }
+            else
+            {
+                Debug.LogError($"Card {gameObject.name}: OnMouseDown - Shop card but no ShopCardSelection component found!");
+            }
             return;
         }
-        else if (isDraftPhase && !IsDraftable)
-        {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot select in draft. Card is not draftable.");
-            return;
-        }
-        else if (isDraftPhase && IsDraftable)
+        
+        // Priority 2: Handle draft cards in draft phase
+        if (isDraftPhase && IsDraftable)
         {
             Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is draftable. Delegating to DraftCardSelection.");
             
@@ -497,6 +525,31 @@ public class Card : NetworkBehaviour
             {
                 Debug.LogError($"Card {gameObject.name}: OnMouseDown - Draft card but no DraftCardSelection component found!");
             }
+            return;
+        }
+        
+        // Priority 3: Handle cards with CardDragDrop component (normal gameplay)
+        CardDragDrop cardDragDrop = GetComponent<CardDragDrop>();
+        if (cardDragDrop != null)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - CardDragDrop component present, delegating input handling");
+            return;
+        }
+        
+        // Priority 4: Handle normal card play
+        Debug.Log($"Card {gameObject.name}: OnMouseDown - Continuing with normal ownership validation");
+        
+        // First check if card is in the correct container
+        // In draft phase, draftable cards can be clicked regardless of container
+        // In combat phase, cards must be in hand
+        if (!isDraftPhase && CurrentContainer != CardLocation.Hand) 
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. CurrentContainer: {CurrentContainer}. Expected Hand.");
+            return;
+        }
+        else if (isDraftPhase && !IsDraftable && !IsPurchasable)
+        {
+            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot select in draft. Card is neither draftable nor purchasable.");
             return;
         }
         

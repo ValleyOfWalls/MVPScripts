@@ -7,7 +7,7 @@ using System.Linq;
 using System.Collections;
 
 /// <summary>
-/// Manages the draft flow including pack circulation, card selection, and draft completion.
+/// Manages the draft flow including pack circulation, card selection, shop purchases, and draft completion.
 /// Attach to: A NetworkObject in the scene that coordinates the draft process.
 /// </summary>
 public class DraftManager : NetworkBehaviour
@@ -15,6 +15,7 @@ public class DraftManager : NetworkBehaviour
     [Header("References")]
     [SerializeField] private DraftCanvasManager draftCanvasManager;
     [SerializeField] private DraftPackSetup draftPackSetup;
+    [SerializeField] private ShopSetup shopSetup;
     [SerializeField] private EntityVisibilityManager entityVisibilityManager;
     [SerializeField] private GameManager gameManager;
     
@@ -44,6 +45,7 @@ public class DraftManager : NetworkBehaviour
     {
         if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
         if (draftPackSetup == null) draftPackSetup = FindFirstObjectByType<DraftPackSetup>();
+        if (shopSetup == null) shopSetup = FindFirstObjectByType<ShopSetup>();
         if (entityVisibilityManager == null) entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
         if (gameManager == null) gameManager = GameManager.Instance;
     }
@@ -932,5 +934,168 @@ public class DraftManager : NetworkBehaviour
         }
         
         return null;
+    }
+    
+    /// <summary>
+    /// Called when a shop card is clicked
+    /// </summary>
+    public void OnShopCardClicked(GameObject cardObject)
+    {
+        Debug.Log($"DraftManager: Shop card {cardObject.name} clicked");
+        
+        // Show card selection UI for shop card
+        if (draftCanvasManager != null)
+        {
+            draftCanvasManager.ShowCardSelectionUI(cardObject, true); // true indicates it's from shop
+        }
+    }
+    
+    /// <summary>
+    /// Handles shop card purchase on the client side
+    /// </summary>
+    public void PurchaseCard(GameObject cardObject, EntityType targetEntityType)
+    {
+        NetworkEntity localPlayer = GetLocalPlayer();
+        if (localPlayer == null)
+        {
+            Debug.LogError("DraftManager: Cannot find local player for card purchase");
+            return;
+        }
+        
+        Card cardComponent = cardObject.GetComponent<Card>();
+        if (cardComponent == null || cardComponent.CardData == null)
+        {
+            Debug.LogError("DraftManager: Selected card has no Card component or CardData");
+            return;
+        }
+        
+        // Check if player can afford the card
+        if (localPlayer.EntityType != EntityType.Player)
+        {
+            Debug.LogError("DraftManager: Only players can purchase cards");
+            return;
+        }
+        
+        if (localPlayer.Currency.Value < cardComponent.PurchaseCost)
+        {
+            Debug.LogWarning($"DraftManager: Player {localPlayer.EntityName.Value} cannot afford card (cost: {cardComponent.PurchaseCost}, currency: {localPlayer.Currency.Value})");
+            return;
+        }
+        
+        NetworkObject cardNetObj = cardObject.GetComponent<NetworkObject>();
+        if (cardNetObj == null)
+        {
+            Debug.LogError("DraftManager: Selected card has no NetworkObject component");
+            return;
+        }
+        
+        // Send purchase request to server using NetworkObject.ObjectId
+        ServerPurchaseCard(localPlayer.Owner, cardNetObj.ObjectId, targetEntityType);
+    }
+    
+    /// <summary>
+    /// Server-side card purchase handling
+    /// </summary>
+    [ServerRpc(RequireOwnership = false)]
+    private void ServerPurchaseCard(NetworkConnection playerConnection, int cardObjectId, EntityType targetEntityType)
+    {
+        if (!IsServerInitialized || !isDraftActive)
+        {
+            Debug.LogError("DraftManager: Cannot process card purchase - server not initialized or draft not active");
+            return;
+        }
+        
+        // Find the player entity
+        NetworkEntity player = GetPlayerEntityFromConnection(playerConnection);
+        if (player == null)
+        {
+            Debug.LogError($"DraftManager: Could not find player entity for connection {playerConnection.ClientId}");
+            return;
+        }
+        
+        // Find the card object by NetworkObject.ObjectId
+        GameObject cardObject = FindCardObjectByNetworkObjectId(cardObjectId);
+        if (cardObject == null)
+        {
+            Debug.LogError($"DraftManager: Could not find card object with NetworkObject.ObjectId {cardObjectId}");
+            return;
+        }
+        
+        // Process the card purchase
+        ProcessCardPurchase(player, cardObject, targetEntityType);
+    }
+    
+    /// <summary>
+    /// Processes a card purchase on the server
+    /// </summary>
+    [Server]
+    private void ProcessCardPurchase(NetworkEntity player, GameObject cardObject, EntityType targetEntityType)
+    {
+        // Ensure player is a Player entity (not pet)
+        if (player.EntityType != EntityType.Player)
+        {
+            Debug.LogError($"DraftManager: Only players can purchase cards, received {player.EntityType}");
+            return;
+        }
+        
+        // Find the shop and attempt purchase
+        ShopPack shop = shopSetup?.GetShop();
+        if (shop == null)
+        {
+            Debug.LogError("DraftManager: No shop available for purchase");
+            return;
+        }
+        
+        // Attempt to purchase the card from the shop
+        bool purchaseSuccessful = shop.PurchaseCard(cardObject, player);
+        if (!purchaseSuccessful)
+        {
+            Debug.LogWarning($"DraftManager: Failed to purchase card {cardObject.name} for player {player.EntityName.Value}");
+            return;
+        }
+        
+        // Find the target entity (player or their pet)
+        NetworkEntity targetEntity = GetTargetEntity(player, targetEntityType);
+        if (targetEntity == null)
+        {
+            Debug.LogError($"DraftManager: Could not find target entity of type {targetEntityType} for player {player.EntityName.Value}");
+            
+            // Refund the purchase since we can't complete the operation
+            Card cardComponent = cardObject.GetComponent<Card>();
+            if (cardComponent != null)
+            {
+                player.AddCurrency(cardComponent.PurchaseCost);
+                Debug.Log($"DraftManager: Refunded {cardComponent.PurchaseCost} currency to player {player.EntityName.Value}");
+            }
+            return;
+        }
+        
+        // Add card to target entity's deck
+        NetworkEntityDeck targetDeck = targetEntity.GetComponent<NetworkEntityDeck>();
+        if (targetDeck == null)
+        {
+            Debug.LogError($"DraftManager: Target entity {targetEntity.EntityName.Value} has no NetworkEntityDeck component");
+            
+            // Refund the purchase since we can't complete the operation
+            Card cardComponent = cardObject.GetComponent<Card>();
+            if (cardComponent != null)
+            {
+                player.AddCurrency(cardComponent.PurchaseCost);
+                Debug.Log($"DraftManager: Refunded {cardComponent.PurchaseCost} currency to player {player.EntityName.Value}");
+            }
+            return;
+        }
+        
+        Card purchasedCardComponent = cardObject.GetComponent<Card>();
+        targetDeck.AddCard(purchasedCardComponent.CardData.CardId);
+        
+        // Despawn the purchased card object
+        NetworkObject cardNetObj = cardObject.GetComponent<NetworkObject>();
+        if (cardNetObj != null && cardNetObj.IsSpawned)
+        {
+            FishNet.InstanceFinder.ServerManager.Despawn(cardNetObj);
+        }
+        
+        Debug.Log($"DraftManager: Player {player.EntityName.Value} successfully purchased {purchasedCardComponent.CardData.CardName} for {purchasedCardComponent.PurchaseCost} gold and added it to {targetEntity.EntityName.Value}'s deck");
     }
 } 

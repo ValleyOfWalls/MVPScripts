@@ -44,6 +44,8 @@ public class NetworkEntity : NetworkBehaviour
     public readonly SyncVar<string> CurrentStatuses = new SyncVar<string>();
 
     // Currency (only for players)
+    [Header("Currency")]
+    [SerializeField] private int _currency = 20;
     public readonly SyncVar<int> Currency = new SyncVar<int>();
     public event System.Action<int> OnCurrencyChanged;
 
@@ -94,6 +96,13 @@ public class NetworkEntity : NetworkBehaviour
         // Set defaults if needed
         if (MaxHealth.Value == 0) MaxHealth.Value = entityType == EntityType.Player ? 100 : 50;
         if (MaxEnergy.Value == 0) MaxEnergy.Value = entityType == EntityType.Player ? 3 : 2;
+
+        // Set initial currency for players
+        if (entityType == EntityType.Player)
+        {
+            Currency.Value = _currency; // Use the inspector value
+            Debug.Log($"NetworkEntity: Set initial currency for player {EntityName.Value} to {Currency.Value} gold");
+        }
 
         // Set name based on type and owner
         SetEntityName();
@@ -276,6 +285,7 @@ public class NetworkEntity : NetworkBehaviour
     {
         if (entityType != EntityType.Player) return;
         Currency.Value += amount;
+        _currency = Currency.Value;
         OnCurrencyChanged?.Invoke(Currency.Value);
     }
 
@@ -284,6 +294,7 @@ public class NetworkEntity : NetworkBehaviour
     {
         if (entityType != EntityType.Player) return;
         Currency.Value -= amount;
+        _currency = Currency.Value;
         OnCurrencyChanged?.Invoke(Currency.Value);
     }
 
@@ -292,6 +303,7 @@ public class NetworkEntity : NetworkBehaviour
     {
         if (entityType != EntityType.Player) return;
         Currency.Value = amount;
+        _currency = Currency.Value;
         OnCurrencyChanged?.Invoke(Currency.Value);
     }
 

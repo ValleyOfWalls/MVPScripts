@@ -38,6 +38,14 @@ public class GameManager : NetworkBehaviour
     [SerializeField, Tooltip("Number of cards in each draft pack")]
     private int draftPackSize = 4;
 
+    [Header("Shop Settings")]
+    [SerializeField, Tooltip("Number of cards available in the shop")]
+    private int shopSize = 6;
+    [SerializeField, Tooltip("Minimum cost for cards in the shop")]
+    private int shopMinCardCost = 1;
+    [SerializeField, Tooltip("Maximum cost for cards in the shop")]
+    private int shopMaxCardCost = 5;
+
     [Header("Damage Modifiers")]
     [SerializeField, Tooltip("If true, critical hits can occur during combat")]
     private bool criticalHitsEnabled = true;
@@ -71,6 +79,11 @@ public class GameManager : NetworkBehaviour
 
     // Draft settings SyncVars
     public readonly SyncVar<int> DraftPackSize = new SyncVar<int>();
+
+    // Shop settings SyncVars
+    public readonly SyncVar<int> ShopSize = new SyncVar<int>();
+    public readonly SyncVar<int> ShopMinCardCost = new SyncVar<int>();
+    public readonly SyncVar<int> ShopMaxCardCost = new SyncVar<int>();
 
     private void Awake()
     {
@@ -113,11 +126,17 @@ public class GameManager : NetworkBehaviour
         // Initialize draft settings SyncVars
         DraftPackSize.Value = draftPackSize;
         
+        // Initialize shop settings SyncVars
+        ShopSize.Value = shopSize;
+        ShopMinCardCost.Value = shopMinCardCost;
+        ShopMaxCardCost.Value = shopMaxCardCost;
+        
         Debug.Log("GameManager started on Server. Initializing game rules.");
         Debug.Log($"Player settings - Initial Draw: {PlayerDrawAmount.Value}, Target Hand: {PlayerTargetHandSize.Value}, Max Energy: {PlayerMaxEnergy.Value}, Max Health: {PlayerMaxHealth.Value}");
         Debug.Log($"Pet settings - Initial Draw: {PetDrawAmount.Value}, Target Hand: {PetTargetHandSize.Value}, Max Energy: {PetMaxEnergy.Value}, Max Health: {PetMaxHealth.Value}");
         Debug.Log($"Damage Modifiers - Crits Enabled: {CriticalHitsEnabled.Value}, Base Crit Chance: {BaseCriticalChance.Value}, Crit Multiplier: {CriticalHitModifier.Value}, Weak Modifier: {WeakStatusModifier.Value}, Break Modifier: {BreakStatusModifier.Value}");
         Debug.Log($"Draft Settings - Pack Size: {DraftPackSize.Value}");
+        Debug.Log($"Shop Settings - Size: {ShopSize.Value}, Cost Range: {ShopMinCardCost.Value}-{ShopMaxCardCost.Value}");
     }
 
     public override void OnStartClient()

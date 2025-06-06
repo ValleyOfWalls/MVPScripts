@@ -3,7 +3,7 @@ using FishNet.Object;
 using System.Collections;
 
 /// <summary>
-/// Coordinates the transition from combat to draft phase and initializes the draft system.
+/// Coordinates the transition from combat to draft phase and initializes the draft system including shop.
 /// Attach to: A NetworkObject in the scene that manages the draft setup process.
 /// </summary>
 public class DraftSetup : NetworkBehaviour
@@ -12,6 +12,7 @@ public class DraftSetup : NetworkBehaviour
     [SerializeField] private CombatCanvasManager combatCanvasManager;
     [SerializeField] private DraftCanvasManager draftCanvasManager;
     [SerializeField] private DraftPackSetup draftPackSetup;
+    [SerializeField] private ShopSetup shopSetup;
     [SerializeField] private DraftManager draftManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
     [SerializeField] private GameManager gameManager;
@@ -35,6 +36,7 @@ public class DraftSetup : NetworkBehaviour
         if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
         if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
         if (draftPackSetup == null) draftPackSetup = FindFirstObjectByType<DraftPackSetup>();
+        if (shopSetup == null) shopSetup = FindFirstObjectByType<ShopSetup>();
         if (draftManager == null) draftManager = FindFirstObjectByType<DraftManager>();
         if (gamePhaseManager == null) gamePhaseManager = GamePhaseManager.Instance;
         if (gameManager == null) gameManager = GameManager.Instance;
@@ -42,6 +44,7 @@ public class DraftSetup : NetworkBehaviour
         
         // Log what we found for debugging
         Debug.Log($"DraftSetup.ResolveReferences: DraftCanvasManager = {(draftCanvasManager != null ? "Found" : "NULL")}");
+        Debug.Log($"DraftSetup.ResolveReferences: ShopSetup = {(shopSetup != null ? "Found" : "NULL")}");
         Debug.Log($"DraftSetup.ResolveReferences: DraftCanvas GameObject = {(draftCanvas != null ? "Found" : "NULL")}");
     }
     
@@ -122,16 +125,20 @@ public class DraftSetup : NetworkBehaviour
         // Small delay to ensure UI is ready
         yield return new WaitForSeconds(0.2f);
         
-        // Step 5: Create draft packs
-        Debug.Log("DraftSetup: Step 5 - Creating draft packs");
+        // Step 5: Create shop
+        Debug.Log("DraftSetup: Step 5 - Creating shop");
+        CreateShop();
+        
+        // Step 6: Create draft packs
+        Debug.Log("DraftSetup: Step 6 - Creating draft packs");
         CreateDraftPacks();
         
-        // Step 6: Assign draft packs to players
-        Debug.Log("DraftSetup: Step 6 - Assigning draft packs to players");
+        // Step 7: Assign draft packs to players
+        Debug.Log("DraftSetup: Step 7 - Assigning draft packs to players");
         AssignDraftPacks();
         
-        // Step 7: Start the draft manager
-        Debug.Log("DraftSetup: Step 7 - Starting draft manager");
+        // Step 8: Start the draft manager
+        Debug.Log("DraftSetup: Step 8 - Starting draft manager");
         StartDraftManager();
         
         isSetupComplete = true;
@@ -200,6 +207,23 @@ public class DraftSetup : NetworkBehaviour
     }
     
     /// <summary>
+    /// Creates the shop using ShopSetup
+    /// </summary>
+    [Server]
+    private void CreateShop()
+    {
+        if (shopSetup != null)
+        {
+            shopSetup.CreateShop();
+            Debug.Log("DraftSetup: Shop created successfully");
+        }
+        else
+        {
+            Debug.LogError("DraftSetup: ShopSetup not found, cannot create shop");
+        }
+    }
+    
+    /// <summary>
     /// Creates draft packs using DraftPackSetup
     /// </summary>
     [Server]
@@ -257,6 +281,18 @@ public class DraftSetup : NetworkBehaviour
         
         // Reset the setup completion flag
         isSetupComplete = false;
+        
+        // Clear existing shop from previous round
+        if (shopSetup != null)
+        {
+            Debug.Log("DraftSetup: Clearing existing shop from previous round");
+            // The shop will be cleared when CreateShop is called, similar to draft packs
+            Debug.Log("DraftSetup: ShopSetup found, existing shop will be cleared when new shop is created");
+        }
+        else
+        {
+            Debug.LogWarning("DraftSetup: ShopSetup not found during reset");
+        }
         
         // Clear existing draft packs from previous round
         if (draftPackSetup != null)
