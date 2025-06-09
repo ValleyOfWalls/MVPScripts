@@ -101,13 +101,13 @@ public class StartScreenManager : MonoBehaviour
     /// </summary>
     private void TransitionToLobby()
     {
+        // Always transition the UI first
+        startScreenUIManager.TransitionToLobbyScreen();
+        
+        // Then set the game phase if manager exists
         if (gamePhaseManager != null)
         {
             gamePhaseManager.SetLobbyPhase();
-        }
-        else
-        {
-            startScreenUIManager.TransitionToLobbyScreen();
         }
     }
 } 

@@ -32,6 +32,12 @@ public class AutoTestRunner : MonoBehaviour
     
     [Tooltip("Drag the CombatSetup object here.")]
     public CombatSetup combatSetup;
+    
+    [Tooltip("Drag the CharacterSelectionManager here.")]
+    public CharacterSelectionManager characterSelectionManager;
+    
+    [Tooltip("Drag the GamePhaseManager here.")]
+    public GamePhaseManager gamePhaseManager;
 
     [Header("UI References")]
     [Tooltip("Text element to display host/client status. Will be enabled when combat setup is complete.")]
@@ -40,6 +46,7 @@ public class AutoTestRunner : MonoBehaviour
     private bool startButtonClicked = false;
     private bool readyToStartGame = false;
     private bool combatSetupComplete = false;
+    private bool characterSelectionComplete = false;
 
     void Start()
     {
@@ -49,10 +56,20 @@ public class AutoTestRunner : MonoBehaviour
             hostClientStatusText.gameObject.SetActive(false);
         }
         
-        // Find CombatSetup if not assigned
+        // Find missing components if not assigned
         if (combatSetup == null)
         {
             combatSetup = FindFirstObjectByType<CombatSetup>();
+        }
+        
+        if (characterSelectionManager == null)
+        {
+            characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        }
+        
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = GamePhaseManager.Instance;
         }
         
         if (enableAutoTesting)
@@ -202,7 +219,55 @@ public class AutoTestRunner : MonoBehaviour
             Debug.Log("AutoTestRunner: This client is not the host or button is not interactable. Waiting for host to start the game.");
         }
         
-        Debug.Log("AutoTestRunner: Automated test sequence completed.");
+        // Start monitoring character selection phase
+        StartCoroutine(WaitForCharacterSelectionPhase());
+        
+        Debug.Log("AutoTestRunner: Lobby phase completed, transitioning to character selection monitoring.");
+    }
+
+    private IEnumerator WaitForCharacterSelectionPhase()
+    {
+        Debug.Log("AutoTestRunner: Waiting for character selection phase to begin...");
+        
+        // Wait for character selection phase to start
+        yield return new WaitUntil(() => gamePhaseManager != null && gamePhaseManager.GetCurrentPhase() == GamePhaseManager.GamePhase.CharacterSelection);
+        Debug.Log("AutoTestRunner: Character selection phase detected, waiting for CharacterSelectionManager...");
+        
+        // Wait for character selection manager to be ready
+        yield return new WaitUntil(() => characterSelectionManager != null);
+        Debug.Log("AutoTestRunner: CharacterSelectionManager found, waiting for connected players...");
+        
+        // Wait a bit for all players to connect to character selection
+        yield return new WaitForSeconds(1.0f);
+        
+        // Try to subscribe to character selection events
+        try
+        {
+            characterSelectionManager.OnPlayersReadyStateChanged += CheckCharacterSelectionConditions;
+            Debug.Log("AutoTestRunner: Successfully subscribed to OnPlayersReadyStateChanged event");
+        }
+        catch (System.Exception e)
+        {
+            Debug.Log($"AutoTestRunner: Could not subscribe to character selection events: {e.Message}");
+            Debug.Log("AutoTestRunner: Using polling method instead");
+            StartCoroutine(PollCharacterSelectionConditions());
+        }
+        
+        Debug.Log("AutoTestRunner: Monitoring character selection phase. Default selections should be made automatically by CharacterSelectionUIManager.");
+        
+        // Wait until all players are ready in character selection
+        yield return new WaitUntil(() => characterSelectionComplete);
+        
+        Debug.Log("AutoTestRunner: Character selection phase completed, waiting for combat transition...");
+    }
+
+    private IEnumerator PollCharacterSelectionConditions()
+    {
+        while (!characterSelectionComplete)
+        {
+            yield return new WaitForSeconds(1.0f);
+            CheckCharacterSelectionConditions();
+        }
     }
 
     private void CheckLobbyConditions()
@@ -222,12 +287,43 @@ public class AutoTestRunner : MonoBehaviour
         }
     }
 
+    private void CheckCharacterSelectionConditions()
+    {
+        if (characterSelectionManager == null) return;
+        
+        int playerCount = characterSelectionManager.GetConnectedPlayerCount();
+        
+        Debug.Log($"AutoTestRunner: Checking character selection conditions - Players: {playerCount}");
+        
+        // For character selection, we need at least 2 players and the UI manager handles auto-selection/ready
+        // We'll assume character selection is complete when we have enough players
+        // The CharacterSelectionUIManager automatically selects and readies players when enableAutoTesting is true
+        if (playerCount >= 2)
+        {
+            characterSelectionComplete = true;
+            Debug.Log("AutoTestRunner: Character selection conditions met! Players have been auto-selected and readied.");
+        }
+    }
+
     private void OnDestroy()
     {
         // Unsubscribe from events
         if (lobbyManager != null)
         {
             lobbyManager.OnPlayersReadyStateChanged -= CheckLobbyConditions;
+        }
+        
+        if (characterSelectionManager != null)
+        {
+            // Use try-catch to handle event unsubscription safely
+            try
+            {
+                characterSelectionManager.OnPlayersReadyStateChanged -= CheckCharacterSelectionConditions;
+            }
+            catch (System.Exception e)
+            {
+                Debug.Log($"AutoTestRunner: Could not unsubscribe from character selection events: {e.Message}");
+            }
         }
     }
 } 

@@ -85,43 +85,64 @@ public class PlayerSpawner : MonoBehaviour
 
     public void SpawnPlayerForConnection(NetworkConnection conn)
     {
-        // Log connection info for debugging
-        bool isHostConnection = fishNetManager.IsHostStarted && conn.ClientId == 0;
-        Debug.Log($"PlayerSpawner: Attempting to spawn entities for client {conn.ClientId}. IsHost: {isHostConnection}");
+        // Entity spawning is now handled during character selection phase
+        // This method is kept for backwards compatibility but no longer spawns entities
+        Debug.Log($"PlayerSpawner: Connection registered for client {conn.ClientId}. Entities will be spawned during character selection phase.");
+    }
 
-        // Spawn player entity
-        NetworkEntity playerEntity = SpawnEntity(playerPrefab, conn);
+    /// <summary>
+    /// Spawns entities for a player based on their character selection data
+    /// </summary>
+    public SpawnedEntitiesData SpawnPlayerWithSelection(NetworkConnection conn, CharacterData characterData, PetData petData, string playerName, string petName)
+    {
+        if (characterData == null || petData == null)
+        {
+            Debug.LogError($"PlayerSpawner: Cannot spawn entities for client {conn.ClientId} - characterData or petData is null");
+            return null;
+        }
+
+        Debug.Log($"PlayerSpawner: Spawning entities for client {conn.ClientId} with character '{characterData.CharacterName}' and pet '{petData.PetName}'");
+
+        // Use generic prefabs - character/pet data provides visual configuration instead of separate prefabs
+        NetworkObject characterPrefabToSpawn = playerPrefab;
+        NetworkObject petPrefabToSpawn = petPrefab;
+
+        // Spawn player entity with character data
+        NetworkEntity playerEntity = SpawnEntity(characterPrefabToSpawn, conn);
         if (playerEntity == null)
         {
             Debug.LogError($"PlayerSpawner: Failed to spawn player entity for client {conn.ClientId}");
-            return;
+            return null;
         }
 
-        // Set player name
-        SetEntityName(playerEntity, conn);
+        // Apply character data to player entity
+        ApplyCharacterDataToEntity(playerEntity, characterData, playerName);
 
         // Spawn player hand entity
         NetworkEntity playerHandEntity = SpawnEntity(playerHandPrefab, conn);
         if (playerHandEntity == null)
         {
             Debug.LogError($"PlayerSpawner: Failed to spawn player hand entity for client {conn.ClientId}");
-            return;
+            return null;
         }
 
-        // Spawn pet entity
-        NetworkEntity petEntity = SpawnEntity(petPrefab, conn);
+        // Spawn pet entity with pet data
+        NetworkEntity petEntity = SpawnEntity(petPrefabToSpawn, conn);
         if (petEntity == null)
         {
             Debug.LogError($"PlayerSpawner: Failed to spawn pet entity for client {conn.ClientId}");
-            return;
+            return null;
         }
+
+        // Apply pet data to pet entity
+        ApplyPetDataToEntity(petEntity, petData, petName);
 
         // Spawn pet hand entity
         NetworkEntity petHandEntity = SpawnEntity(petHandPrefab, conn);
         if (petHandEntity == null)
         {
             Debug.LogError($"PlayerSpawner: Failed to spawn pet hand entity for client {conn.ClientId}");
-            return;
+            return null;
         }
 
         // Set up pet-player relationship
@@ -134,6 +155,152 @@ public class PlayerSpawner : MonoBehaviour
 
         // Set up hand relationships
         SetupHandRelationships(playerEntity, playerHandEntity, petEntity, petHandEntity);
+
+        // Set up starting decks
+        SetupStartingDecks(playerEntity, playerHandEntity, petEntity, petHandEntity, characterData, petData);
+
+        // Return spawned entities data
+        SpawnedEntitiesData entitiesData = new SpawnedEntitiesData
+        {
+            playerEntity = playerEntity,
+            petEntity = petEntity,
+            playerHandEntity = playerHandEntity,
+            petHandEntity = petHandEntity,
+            characterData = characterData,
+            petData = petData
+        };
+
+        Debug.Log($"PlayerSpawner: Successfully spawned and configured all entities for client {conn.ClientId}");
+        return entitiesData;
+    }
+
+    /// <summary>
+    /// Applies character data to a spawned player entity
+    /// </summary>
+    private void ApplyCharacterDataToEntity(NetworkEntity playerEntity, CharacterData characterData, string customName)
+    {
+        if (playerEntity == null || characterData == null) return;
+
+        // Set entity name
+        string entityName = !string.IsNullOrEmpty(customName) ? customName : characterData.CharacterName;
+        playerEntity.EntityName.Value = entityName;
+
+        // Apply base stats using reflection to set NetworkEntity's private fields
+        SetEntityBaseStats(playerEntity.gameObject, characterData.BaseHealth, characterData.BaseEnergy, characterData.StartingCurrency);
+
+        // Apply visual configuration
+        ConfigureEntityVisuals(playerEntity.gameObject, characterData.CharacterMaterial, characterData.CharacterMesh, 
+                              characterData.CharacterTint, characterData.CharacterAnimatorController);
+
+        // Set up deck with character's starter deck
+        EntityDeckSetup deckSetup = playerEntity.GetComponent<EntityDeckSetup>();
+        if (deckSetup != null && characterData.StarterDeck != null)
+        {
+            deckSetup.SetRuntimeDeckData(characterData.StarterDeck);
+            Debug.Log($"PlayerSpawner: Set player deck to '{characterData.StarterDeck.DeckName}' with {characterData.StarterDeck.CardsInDeck?.Count ?? 0} cards");
+        }
+
+        Debug.Log($"PlayerSpawner: Applied character data '{characterData.CharacterName}' to player entity");
+    }
+
+    /// <summary>
+    /// Applies pet data to a spawned pet entity
+    /// </summary>
+    private void ApplyPetDataToEntity(NetworkEntity petEntity, PetData petData, string customName)
+    {
+        if (petEntity == null || petData == null) return;
+
+        // Set entity name
+        string entityName = !string.IsNullOrEmpty(customName) ? customName : petData.PetName;
+        petEntity.EntityName.Value = entityName;
+
+        // Apply base stats using reflection to set NetworkEntity's private fields
+        SetEntityBaseStats(petEntity.gameObject, petData.BaseHealth, petData.BaseEnergy, 0); // Pets don't have currency
+
+        // Apply visual configuration
+        ConfigureEntityVisuals(petEntity.gameObject, petData.PetMaterial, petData.PetMesh, 
+                              petData.PetTint, petData.PetAnimatorController);
+
+        // Set up deck with pet's starter deck
+        EntityDeckSetup deckSetup = petEntity.GetComponent<EntityDeckSetup>();
+        if (deckSetup != null && petData.StarterDeck != null)
+        {
+            deckSetup.SetRuntimeDeckData(petData.StarterDeck);
+            Debug.Log($"PlayerSpawner: Set pet deck to '{petData.StarterDeck.DeckName}' with {petData.StarterDeck.CardsInDeck?.Count ?? 0} cards");
+        }
+
+        Debug.Log($"PlayerSpawner: Applied pet data '{petData.PetName}' to pet entity");
+    }
+
+    /// <summary>
+    /// Sets up starting decks for the spawned entities
+    /// NOTE: This is now handled in ApplyCharacterDataToEntity and ApplyPetDataToEntity via EntityDeckSetup
+    /// </summary>
+    private void SetupStartingDecks(NetworkEntity playerEntity, NetworkEntity playerHandEntity, NetworkEntity petEntity, NetworkEntity petHandEntity, CharacterData characterData, PetData petData)
+    {
+        Debug.Log($"PlayerSpawner: Starting deck setup handled by EntityDeckSetup components on main entities");
+    }
+
+    /// <summary>
+    /// Configures the visual appearance of an entity
+    /// </summary>
+    private void ConfigureEntityVisuals(GameObject entityObj, Material material, Mesh mesh, Color tint, RuntimeAnimatorController animatorController)
+    {
+        // Configure mesh renderer
+        MeshRenderer meshRenderer = entityObj.GetComponent<MeshRenderer>();
+        MeshFilter meshFilter = entityObj.GetComponent<MeshFilter>();
+        
+        if (meshRenderer != null && material != null)
+        {
+            meshRenderer.material = material;
+            meshRenderer.material.color = tint;
+        }
+        
+        if (meshFilter != null && mesh != null)
+        {
+            meshFilter.mesh = mesh;
+        }
+
+        // Configure animator
+        Animator animator = entityObj.GetComponent<Animator>();
+        if (animator != null && animatorController != null)
+        {
+            animator.runtimeAnimatorController = animatorController;
+        }
+
+        Debug.Log($"PlayerSpawner: Configured visual appearance for {entityObj.name}");
+    }
+
+    /// <summary>
+    /// Sets the base stats for an entity (will be applied during NetworkEntity initialization)
+    /// </summary>
+    private void SetEntityBaseStats(GameObject entityObj, int baseHealth, int baseEnergy, int startingCurrency)
+    {
+        // Use reflection to set private serialized fields that NetworkEntity reads during initialization
+        NetworkEntity networkEntity = entityObj.GetComponent<NetworkEntity>();
+        if (networkEntity != null)
+        {
+            // Set the serialized fields directly
+            var type = typeof(NetworkEntity);
+            
+            var healthField = type.GetField("_maxHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (healthField != null) healthField.SetValue(networkEntity, baseHealth);
+            
+            var energyField = type.GetField("_maxEnergy", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (energyField != null) energyField.SetValue(networkEntity, baseEnergy);
+            
+            var currencyField = type.GetField("_currency", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (currencyField != null) currencyField.SetValue(networkEntity, startingCurrency);
+            
+            // Also set current values
+            var currentHealthField = type.GetField("_currentHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (currentHealthField != null) currentHealthField.SetValue(networkEntity, baseHealth);
+            
+            var currentEnergyField = type.GetField("_currentEnergy", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (currentEnergyField != null) currentEnergyField.SetValue(networkEntity, baseEnergy);
+
+            Debug.Log($"PlayerSpawner: Set base stats - Health: {baseHealth}, Energy: {baseEnergy}, Currency: {startingCurrency}");
+        }
     }
 
     private NetworkEntity SpawnEntity(NetworkObject prefab, NetworkConnection conn)
@@ -238,4 +405,18 @@ public class PlayerSpawner : MonoBehaviour
         // FishNet handles despawning objects owned by the connection automatically
         Debug.Log($"PlayerSpawner: DespawnEntitiesForConnection called for {conn.ClientId}. FishNet will handle owned object despawn.");
     }
+}
+
+/// <summary>
+/// Data structure to hold information about spawned entities
+/// </summary>
+[System.Serializable]
+public class SpawnedEntitiesData
+{
+    public NetworkEntity playerEntity;
+    public NetworkEntity petEntity;
+    public NetworkEntity playerHandEntity;
+    public NetworkEntity petHandEntity;
+    public CharacterData characterData;
+    public PetData petData;
 } 

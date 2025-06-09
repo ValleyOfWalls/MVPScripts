@@ -20,6 +20,7 @@ public class EntityVisibilityManager : MonoBehaviour
     {
         Start,
         Lobby,
+        CharacterSelection,
         Draft,
         Combat
     }
@@ -113,6 +114,9 @@ public class EntityVisibilityManager : MonoBehaviour
             case GameState.Lobby:
                 UpdateVisibilityForLobby();
                 break;
+            case GameState.CharacterSelection:
+                UpdateVisibilityForCharacterSelection();
+                break;
             case GameState.Draft:
                 LogDebug("Updating visibility for Draft state");
                 UpdateVisibilityForDraft();
@@ -153,6 +157,24 @@ public class EntityVisibilityManager : MonoBehaviour
                 }
             }
         }
+    }
+    
+    private void UpdateVisibilityForCharacterSelection()
+    {
+        // During character selection phase, hide all network entities until they are spawned with selections
+        foreach (var entity in allEntities)
+        {
+            if (entity != null)
+            {
+                var entityUI = entity.GetComponent<NetworkEntityUI>();
+                if (entityUI != null)
+                {
+                    entityUI.SetVisible(false);
+                    LogDebug($"Hidden entity {entity.EntityName.Value} for character selection phase");
+                }
+            }
+        }
+        LogDebug("All entities hidden for character selection phase");
     }
     
     private void UpdateVisibilityForDraft()

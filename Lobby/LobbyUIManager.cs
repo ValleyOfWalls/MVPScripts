@@ -17,6 +17,9 @@ public class LobbyUIManager : MonoBehaviour
     [SerializeField] private LobbyManager lobbyManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
     [SerializeField] private CombatSetup combatSetup;
+    
+    // Flag to track if lobby should be shown (to handle timing issues)
+    private bool shouldShowLobby = false;
 
     private void Awake()
     {
@@ -53,10 +56,11 @@ public class LobbyUIManager : MonoBehaviour
 
     private void Start()
     {
-        // Ensure lobby canvas is not initially visible
+        // Set initial lobby canvas state based on whether lobby should be shown
         if (lobbyCanvas != null)
         {
-            lobbyCanvas.SetActive(false);
+            lobbyCanvas.SetActive(shouldShowLobby);
+            Debug.Log($"LobbyUIManager.Start: Set lobby canvas active = {shouldShowLobby}");
         }
     }
 
@@ -109,9 +113,11 @@ public class LobbyUIManager : MonoBehaviour
     /// </summary>
     public void HideLobbyUI()
     {
+        shouldShowLobby = false;
         if (lobbyCanvas != null)
         {
             lobbyCanvas.SetActive(false);
+            Debug.Log("LobbyUIManager: Lobby canvas set to inactive");
         }
     }
 
@@ -120,9 +126,11 @@ public class LobbyUIManager : MonoBehaviour
     /// </summary>
     public void ShowLobbyUI()
     {
+        shouldShowLobby = true;
         if (lobbyCanvas != null)
         {
             lobbyCanvas.SetActive(true);
+            Debug.Log("LobbyUIManager: Lobby canvas set to active");
         }
     }
 

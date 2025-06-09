@@ -36,6 +36,7 @@ public class DeckViewerManager : NetworkBehaviour
     private FightManager fightManager;
     private CombatCanvasManager combatCanvasManager;
     private EntityVisibilityManager entityVisibilityManager;
+    private GamePhaseManager gamePhaseManager;
     
     // Currently displayed cards
     private List<GameObject> spawnedViewCards = new List<GameObject>();
@@ -51,13 +52,27 @@ public class DeckViewerManager : NetworkBehaviour
         LogDebug("=== DeckViewerManager.Awake() START ===");
         FindManagerReferences();
         ValidateComponents();
+        
+        // Hide deck viewer buttons immediately in Awake to ensure they start hidden
+        LogDebug("Hiding deck viewer buttons in Awake() - before any other lifecycle methods");
+        SetDeckViewerButtonsVisible(false);
+        
         LogDebug("=== DeckViewerManager.Awake() END ===");
     }
 
     private void Start()
     {
         LogDebug("=== DeckViewerManager.Start() START ===");
-        // Don't setup UI here - wait for network initialization
+        LogDebug($"GameObject active in hierarchy: {gameObject.activeInHierarchy}");
+        LogDebug($"Component enabled: {enabled}");
+        
+        // Hide deck viewer buttons immediately (before network initialization)
+        // This ensures they start hidden regardless of their default state in the scene
+        LogDebug("Hiding deck viewer buttons in Start() - before network initialization");
+        SetDeckViewerButtonsVisible(false);
+        
+        // Don't setup full UI here - wait for network initialization
+        SubscribeToGamePhaseChanges();
         LogDebug("=== DeckViewerManager.Start() END - Waiting for network initialization ===");
     }
 
@@ -67,6 +82,7 @@ public class DeckViewerManager : NetworkBehaviour
         LogDebug("=== DeckViewerManager.OnStartClient() START ===");
         SetupUI();
         CacheEntityCardSpawners();
+        UpdateButtonVisibilityForCurrentPhase();
         LogDebug("=== DeckViewerManager.OnStartClient() END ===");
     }
 
@@ -83,6 +99,7 @@ public class DeckViewerManager : NetworkBehaviour
     {
         base.OnStopClient();
         LogDebug("=== DeckViewerManager.OnStopClient() ===");
+        UnsubscribeFromGamePhaseChanges();
         // Clean up any open deck views when network stops
         if (isDeckViewOpen)
         {
@@ -122,6 +139,12 @@ public class DeckViewerManager : NetworkBehaviour
         {
             entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
             LogDebug($"EntityVisibilityManager found: {entityVisibilityManager != null}");
+        }
+        
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            LogDebug($"GamePhaseManager found: {gamePhaseManager != null}");
         }
         
         LogDebug("Manager reference search completed");
@@ -169,12 +192,40 @@ public class DeckViewerManager : NetworkBehaviour
     {
         LogDebug("Setting up UI button listeners...");
         
-        // Initially hide the deck view panel
+        // ========================================================
+        // UI HIERARCHY CLARIFICATION:
+        // 
+        // 1. DECK VIEWER BUTTONS (viewMyDeckButton, viewOpponentDeckButton, viewAllyDeckButton):
+        //    - These are the trigger buttons that open the deck view
+        //    - Should remain ENABLED as GameObjects (so phase system can control visibility)
+        //    - Visibility controlled by SetDeckViewerButtonsVisible() based on game phase
+        //
+        // 2. DECK VIEW PANEL (deckViewPanel):
+        //    - This is the overlay that shows when viewing deck contents
+        //    - Should start DISABLED and only show when actively viewing a deck
+        //    - Contains: deckViewContainer, deckViewTitle, closeDeckViewButton, etc.
+        //
+        // 3. DECK VIEW CONTAINER (deckViewContainer):
+        //    - This is where spawned deck cards are placed for viewing
+        //    - Should remain ENABLED (as child of deckViewPanel)
+        //    - Gets populated when viewing a deck, cleared when closing
+        //
+        // SETUP RULE: Only disable deckViewPanel, keep buttons and container enabled
+        // ========================================================
+        
+        // Initially hide the deck view panel (the overlay), but keep buttons enabled for phase control
         if (deckViewPanel != null)
         {
             deckViewPanel.SetActive(false);
-            LogDebug("DeckViewPanel set to inactive");
+            LogDebug("DeckViewPanel set to inactive - deck view overlay hidden");
         }
+        
+        // Note: deckViewContainer should remain enabled (it's a child of deckViewPanel anyway)
+        // Note: Deck viewer buttons should remain enabled so phase system can control their visibility
+        
+        // Hide deck viewer buttons by default - phase system will show them when appropriate
+        LogDebug("Hiding deck viewer buttons by default - phase system will control visibility");
+        SetDeckViewerButtonsVisible(false);
         
         // Setup button listeners
         if (viewMyDeckButton != null)
@@ -878,6 +929,7 @@ public class DeckViewerManager : NetworkBehaviour
 
     private void OnDestroy()
     {
+        UnsubscribeFromGamePhaseChanges();
         CleanupSpawnedCards();
     }
 
@@ -1275,6 +1327,131 @@ public class DeckViewerManager : NetworkBehaviour
         }
         
         return "None";
+    }
+
+    #endregion
+
+    #region Game Phase Integration
+
+    /// <summary>
+    /// Subscribe to game phase changes to show/hide buttons appropriately
+    /// </summary>
+    private void SubscribeToGamePhaseChanges()
+    {
+        LogDebug("Subscribing to game phase changes...");
+        
+        if (gamePhaseManager != null)
+        {
+            gamePhaseManager.OnPhaseChanged += OnGamePhaseChanged;
+            LogDebug("Successfully subscribed to GamePhaseManager.OnPhaseChanged");
+        }
+        else
+        {
+            LogDebug("GamePhaseManager not found - cannot subscribe to phase changes");
+        }
+    }
+
+    /// <summary>
+    /// Unsubscribe from game phase changes
+    /// </summary>
+    private void UnsubscribeFromGamePhaseChanges()
+    {
+        LogDebug("Unsubscribing from game phase changes...");
+        
+        if (gamePhaseManager != null)
+        {
+            gamePhaseManager.OnPhaseChanged -= OnGamePhaseChanged;
+            LogDebug("Successfully unsubscribed from GamePhaseManager.OnPhaseChanged");
+        }
+    }
+
+    /// <summary>
+    /// Called when the game phase changes
+    /// </summary>
+    private void OnGamePhaseChanged(GamePhaseManager.GamePhase newPhase)
+    {
+        LogDebug($"Game phase changed to: {newPhase}");
+        UpdateButtonVisibilityForPhase(newPhase);
+    }
+
+    /// <summary>
+    /// Updates button visibility based on current game phase from GamePhaseManager
+    /// </summary>
+    private void UpdateButtonVisibilityForCurrentPhase()
+    {
+        if (gamePhaseManager != null)
+        {
+            GamePhaseManager.GamePhase currentPhase = gamePhaseManager.GetCurrentPhase();
+            LogDebug($"Updating button visibility for current phase: {currentPhase}");
+            UpdateButtonVisibilityForPhase(currentPhase);
+        }
+        else
+        {
+            LogDebug("GamePhaseManager not found - hiding deck viewer buttons by default");
+            SetDeckViewerButtonsVisible(false);
+        }
+    }
+
+    /// <summary>
+    /// Updates button visibility based on the specified game phase
+    /// </summary>
+    private void UpdateButtonVisibilityForPhase(GamePhaseManager.GamePhase phase)
+    {
+        bool shouldShowButtons = phase == GamePhaseManager.GamePhase.Combat || 
+                                phase == GamePhaseManager.GamePhase.Draft;
+        
+        LogDebug($"Phase {phase}: Setting deck viewer buttons visible = {shouldShowButtons}");
+        SetDeckViewerButtonsVisible(shouldShowButtons);
+        
+        // If we're hiding buttons and deck view is open, close it
+        if (!shouldShowButtons && isDeckViewOpen)
+        {
+            LogDebug("Phase changed to non-deck-viewing phase while deck view was open - closing deck view");
+            CloseDeckView();
+        }
+    }
+
+    /// <summary>
+    /// Sets the visibility of all deck viewer buttons
+    /// </summary>
+    private void SetDeckViewerButtonsVisible(bool visible)
+    {
+        LogDebug($"=== SetDeckViewerButtonsVisible({visible}) called ===");
+        
+        if (viewMyDeckButton != null)
+        {
+            LogDebug($"Setting viewMyDeckButton from {viewMyDeckButton.gameObject.activeInHierarchy} to {visible}");
+            viewMyDeckButton.gameObject.SetActive(visible);
+            LogDebug($"viewMyDeckButton visibility now: {viewMyDeckButton.gameObject.activeInHierarchy}");
+        }
+        else
+        {
+            LogDebug("viewMyDeckButton is null!");
+        }
+        
+        if (viewOpponentDeckButton != null)
+        {
+            LogDebug($"Setting viewOpponentDeckButton from {viewOpponentDeckButton.gameObject.activeInHierarchy} to {visible}");
+            viewOpponentDeckButton.gameObject.SetActive(visible);
+            LogDebug($"viewOpponentDeckButton visibility now: {viewOpponentDeckButton.gameObject.activeInHierarchy}");
+        }
+        else
+        {
+            LogDebug("viewOpponentDeckButton is null!");
+        }
+        
+        if (viewAllyDeckButton != null)
+        {
+            LogDebug($"Setting viewAllyDeckButton from {viewAllyDeckButton.gameObject.activeInHierarchy} to {visible}");
+            viewAllyDeckButton.gameObject.SetActive(visible);
+            LogDebug($"viewAllyDeckButton visibility now: {viewAllyDeckButton.gameObject.activeInHierarchy}");
+        }
+        else
+        {
+            LogDebug("viewAllyDeckButton is null!");
+        }
+        
+        LogDebug($"=== SetDeckViewerButtonsVisible({visible}) completed ===");
     }
 
     #endregion

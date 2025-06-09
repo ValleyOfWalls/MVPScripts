@@ -22,6 +22,9 @@ public class LobbyManager : NetworkBehaviour
 
     // Event that triggers when player ready states change
     public event Action OnPlayersReadyStateChanged;
+    
+    // Static event that fires when LobbyManager becomes available for clients
+    public static event System.Action<LobbyManager> OnLobbyManagerAvailable;
 
     private void Awake()
     {
@@ -59,6 +62,16 @@ public class LobbyManager : NetworkBehaviour
     public override void OnStartClient()
     {
         base.OnStartClient();
+        
+        // Ensure lobby UI is shown when client connects
+        if (uiManager != null)
+        {
+            uiManager.PrepareUIForLobbyJoin();
+        }
+        
+        // Notify that LobbyManager is now available
+        OnLobbyManagerAvailable?.Invoke(this);
+        Debug.Log("LobbyManager: OnStartClient called, notified subscribers that LobbyManager is available");
         
         string initialPlayerName = GetInitialPlayerName();
         CmdServerAddPlayer(LocalConnection, initialPlayerName);
@@ -225,24 +238,28 @@ public class LobbyManager : NetworkBehaviour
             uiManager.HideLobbyUI();
         }
         
-        // Use GamePhaseManager to transition to Combat phase
+        // Use GamePhaseManager to transition to CharacterSelection phase
         if (gamePhaseManager != null)
         {
-            gamePhaseManager.SetCombatPhase();
+            gamePhaseManager.SetCharacterSelectionPhase();
         }
         
-        // Find and initialize the combat setup
-        InitializeCombat();
+        // Find and initialize the character selection setup
+        InitializeCharacterSelection();
     }
     
-    private void InitializeCombat()
+    private void InitializeCharacterSelection()
     {
         if (!IsServerStarted) return;
         
-        CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
-        if (combatSetup != null)
+        CharacterSelectionSetup characterSelectionSetup = FindFirstObjectByType<CharacterSelectionSetup>();
+        if (characterSelectionSetup != null)
         {
-            combatSetup.InitializeCombat();
+            characterSelectionSetup.InitializeCharacterSelection();
+        }
+        else
+        {
+            Debug.LogError("LobbyManager: CharacterSelectionSetup not found, cannot initialize character selection");
         }
     }
 

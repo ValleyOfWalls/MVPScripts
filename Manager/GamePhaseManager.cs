@@ -17,6 +17,7 @@ public class GamePhaseManager : MonoBehaviour
     {
         Start,
         Lobby,
+        CharacterSelection,
         Draft,
         Combat
     }
@@ -24,6 +25,7 @@ public class GamePhaseManager : MonoBehaviour
     [Header("UI Canvas References")]
     [SerializeField] private GameObject startScreenCanvas;
     [SerializeField] private GameObject lobbyCanvas;
+    [SerializeField] private GameObject characterSelectionCanvas;
     [SerializeField] private GameObject draftCanvas;
     [SerializeField] private GameObject combatCanvas;
     
@@ -64,6 +66,8 @@ public class GamePhaseManager : MonoBehaviour
     public void SetStartPhase() => SetPhase(GamePhase.Start);
     
     public void SetLobbyPhase() => SetPhase(GamePhase.Lobby);
+    
+    public void SetCharacterSelectionPhase() => SetPhase(GamePhase.CharacterSelection);
     
     public void SetDraftPhase() => SetPhase(GamePhase.Draft);
     
@@ -131,6 +135,7 @@ public class GamePhaseManager : MonoBehaviour
     {
         if (startScreenCanvas != null) startScreenCanvas.SetActive(currentPhase == GamePhase.Start);
         if (lobbyCanvas != null) lobbyCanvas.SetActive(currentPhase == GamePhase.Lobby);
+        if (characterSelectionCanvas != null) characterSelectionCanvas.SetActive(currentPhase == GamePhase.CharacterSelection);
         if (draftCanvas != null) draftCanvas.SetActive(currentPhase == GamePhase.Draft);
         if (combatCanvas != null) combatCanvas.SetActive(currentPhase == GamePhase.Combat);
     }
@@ -149,6 +154,9 @@ public class GamePhaseManager : MonoBehaviour
                 break;
             case GamePhase.Lobby:
                 entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Lobby);
+                break;
+            case GamePhase.CharacterSelection:
+                entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.CharacterSelection);
                 break;
             case GamePhase.Draft:
                 entityVisibilityManager.SetGameState(EntityVisibilityManager.GameState.Draft);
@@ -180,6 +188,15 @@ public class GamePhaseManager : MonoBehaviour
         if (canvas != null) 
         {
             lobbyCanvas = canvas;
+            UpdateUIForCurrentPhase();
+        }
+    }
+    
+    public void SetCharacterSelectionCanvas(GameObject canvas)
+    {
+        if (canvas != null) 
+        {
+            characterSelectionCanvas = canvas;
             UpdateUIForCurrentPhase();
         }
     }
