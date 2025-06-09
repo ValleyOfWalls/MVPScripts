@@ -24,6 +24,7 @@ public class CombatManager : NetworkBehaviour
     [SerializeField] private CombatCanvasManager combatCanvasManager;
     [SerializeField] private FightManager fightManager;
     [SerializeField] private DraftSetup draftSetup;
+    [SerializeField] private FightConclusionManager fightConclusionManager;
 
     // Track round numbers for each fight independently
     private readonly SyncDictionary<NetworkEntity, int> fightRounds = new SyncDictionary<NetworkEntity, int>();
@@ -42,6 +43,7 @@ public class CombatManager : NetworkBehaviour
         if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
         if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
         if (draftSetup == null) draftSetup = FindFirstObjectByType<DraftSetup>();
+        if (fightConclusionManager == null) fightConclusionManager = FindFirstObjectByType<FightConclusionManager>();
     }
 
     [Server]
@@ -595,15 +597,15 @@ public class CombatManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Checks if all fights are complete and transitions to draft phase if so
+    /// Checks if all fights are complete and transitions to fight conclusion if so
     /// </summary>
     [Server]
     private void CheckAllFightsComplete()
     {
         if (activeFights.Count == 0)
         {
-            Debug.Log("CombatManager: All fights complete, transitioning to draft phase");
-            TransitionToDraftPhase();
+            Debug.Log("CombatManager: All fights complete, showing fight conclusion");
+            ShowFightConclusion();
         }
         else
         {
@@ -612,12 +614,33 @@ public class CombatManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Transitions from combat to draft phase
+    /// Shows the fight conclusion screen with all fight results
     /// </summary>
     [Server]
-    private void TransitionToDraftPhase()
+    private void ShowFightConclusion()
     {
-        Debug.Log("CombatManager: Starting transition to draft phase");
+        Debug.Log("CombatManager: Starting fight conclusion display");
+        
+        if (fightConclusionManager != null)
+        {
+            // Pass the fight results to the conclusion manager
+            fightConclusionManager.ShowFightConclusion(GetFightResults());
+            Debug.Log("CombatManager: Fight conclusion started successfully");
+        }
+        else
+        {
+            Debug.LogError("CombatManager: FightConclusionManager not found, falling back to direct draft transition");
+            TransitionToDraftPhaseDirectly();
+        }
+    }
+    
+    /// <summary>
+    /// Fallback method to transition directly to draft phase (used if conclusion manager is missing)
+    /// </summary>
+    [Server]
+    private void TransitionToDraftPhaseDirectly()
+    {
+        Debug.Log("CombatManager: Starting direct transition to draft phase");
         
         if (draftSetup != null)
         {

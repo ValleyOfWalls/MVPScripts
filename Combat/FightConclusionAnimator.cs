@@ -4,29 +4,30 @@ using System;
 using DG.Tweening;
 
 /// <summary>
-/// Handles all animation logic for the fight preview system.
+/// Handles all animation logic for the fight conclusion system.
 /// Separates animation concerns from UI management following Single Responsibility Principle.
-/// Attach to: Same GameObject as FightPreviewUIManager or reference from it.
+/// Attach to: Same GameObject as FightConclusionUIManager or reference from it.
 /// </summary>
-public class FightPreviewAnimator : MonoBehaviour
+public class FightConclusionAnimator : MonoBehaviour
 {
     [Header("Animation Settings")]
-    [SerializeField] private float fadeInDuration = 0.5f;
-    [SerializeField] private float fadeOutDuration = 0.5f;
-    [SerializeField] private float displayDuration = 3f;
+    [SerializeField] private float fadeInDuration = 0.8f;
+    [SerializeField] private float fadeOutDuration = 0.8f;
+    [SerializeField] private float displayDuration = 4f;
     
     [Header("DOTween Easing")]
-    [SerializeField] private Ease fadeInEase = Ease.OutCubic;
-    [SerializeField] private Ease fadeOutEase = Ease.InCubic;
+    [SerializeField] private Ease fadeInEase = Ease.OutBack;
+    [SerializeField] private Ease fadeOutEase = Ease.InBack;
     [SerializeField] private Ease scaleEase = Ease.OutBack;
     
     [Header("Optional Effects")]
-    [SerializeField] private bool useScaleAnimation = false;
-    [SerializeField] private Vector3 startScale = Vector3.one * 0.8f;
+    [SerializeField] private bool useScaleAnimation = true;
+    [SerializeField] private Vector3 startScale = Vector3.one * 0.9f;
     [SerializeField] private Vector3 endScale = Vector3.one;
-    [SerializeField] private bool usePunchEffect = true;
-    [SerializeField] private Vector3 punchStrength = Vector3.one * 0.1f;
-    [SerializeField] private float punchDuration = 0.3f;
+    [SerializeField] private bool useShakeEffect = true;
+    [SerializeField] private Vector3 shakeStrength = Vector3.one * 20f;
+    [SerializeField] private float shakeDuration = 0.5f;
+    [SerializeField] private int shakeVibrato = 20;
 
     // Events for animation lifecycle
     public event Action OnAnimationStarted;
@@ -43,26 +44,26 @@ public class FightPreviewAnimator : MonoBehaviour
     #region Public API
 
     /// <summary>
-    /// Starts the complete preview animation sequence
+    /// Starts the complete conclusion animation sequence
     /// </summary>
     /// <param name="canvasGroup">The CanvasGroup to animate</param>
     /// <param name="targetTransform">Optional transform for scale animation</param>
     /// <returns>DOTween Sequence reference for external control</returns>
-    public Sequence StartPreviewAnimation(CanvasGroup canvasGroup, Transform targetTransform = null)
+    public Sequence StartConclusionAnimation(CanvasGroup canvasGroup, Transform targetTransform = null)
     {
         if (canvasGroup == null)
         {
-            Debug.LogError("FightPreviewAnimator: CanvasGroup is null, cannot start animation");
+            Debug.LogError("FightConclusionAnimator: CanvasGroup is null, cannot start animation");
             return null;
         }
 
         if (isAnimating)
         {
-            Debug.LogWarning("FightPreviewAnimator: Animation already in progress, stopping current animation");
+            Debug.LogWarning("FightConclusionAnimator: Animation already in progress, stopping current animation");
             StopCurrentAnimation();
         }
 
-        currentAnimationSequence = CreatePreviewAnimationSequence(canvasGroup, targetTransform);
+        currentAnimationSequence = CreateConclusionAnimationSequence(canvasGroup, targetTransform);
         currentAnimationSequence.Play();
         return currentAnimationSequence;
     }
@@ -116,9 +117,9 @@ public class FightPreviewAnimator : MonoBehaviour
     #region DOTween Animation Methods
 
     /// <summary>
-    /// Creates the complete DOTween animation sequence
+    /// Creates the complete DOTween animation sequence for fight conclusion
     /// </summary>
-    private Sequence CreatePreviewAnimationSequence(CanvasGroup canvasGroup, Transform targetTransform)
+    private Sequence CreateConclusionAnimationSequence(CanvasGroup canvasGroup, Transform targetTransform)
     {
         // Set initial state
         canvasGroup.alpha = 0f;
@@ -136,7 +137,7 @@ public class FightPreviewAnimator : MonoBehaviour
             OnAnimationStarted?.Invoke();
         });
 
-        // Phase 1: Fade In
+        // Phase 1: Dramatic Fade In with scale
         sequence.Append(canvasGroup.DOFade(1f, fadeInDuration).SetEase(fadeInEase));
 
         // Add scale animation simultaneously if enabled
@@ -145,16 +146,16 @@ public class FightPreviewAnimator : MonoBehaviour
             sequence.Join(targetTransform.DOScale(endScale, fadeInDuration).SetEase(scaleEase));
         }
 
-        // Add punch effect if enabled and we have a transform
-        if (usePunchEffect && targetTransform != null)
+        // Add shake effect for dramatic impact if enabled
+        if (useShakeEffect && targetTransform != null)
         {
-            sequence.Append(targetTransform.DOPunchScale(punchStrength, punchDuration, 10, 1f));
+            sequence.Append(targetTransform.DOShakePosition(shakeDuration, shakeStrength, shakeVibrato, 90f, false, true));
         }
 
         // Phase 2: Display phase callback
         sequence.AppendCallback(() => OnDisplayPhaseStarted?.Invoke());
 
-        // Phase 3: Display duration
+        // Phase 3: Extended display duration for conclusion
         sequence.AppendInterval(displayDuration);
 
         // Phase 4: Fade Out
@@ -187,7 +188,7 @@ public class FightPreviewAnimator : MonoBehaviour
     {
         if (isAnimating)
         {
-            Debug.LogWarning("FightPreviewAnimator: Cannot change timing while animation is in progress");
+            Debug.LogWarning("FightConclusionAnimator: Cannot change timing while animation is in progress");
             return;
         }
 
@@ -215,13 +216,23 @@ public class FightPreviewAnimator : MonoBehaviour
     }
 
     /// <summary>
-    /// Sets punch effect parameters
+    /// Sets shake effect parameters
     /// </summary>
-    public void SetPunchEffect(bool enabled, Vector3 strength, float duration)
+    public void SetShakeEffect(bool enabled, Vector3 strength, float duration, int vibrato)
     {
-        usePunchEffect = enabled;
-        punchStrength = strength;
-        punchDuration = duration;
+        useShakeEffect = enabled;
+        shakeStrength = strength;
+        shakeDuration = duration;
+        shakeVibrato = vibrato;
+    }
+
+    /// <summary>
+    /// Sets custom scale animation values
+    /// </summary>
+    public void SetScaleValues(Vector3 newStartScale, Vector3 newEndScale)
+    {
+        startScale = newStartScale;
+        endScale = newEndScale;
     }
 
     #endregion
@@ -249,25 +260,31 @@ public class FightPreviewAnimator : MonoBehaviour
         
         if (fadeInDuration < 0f)
         {
-            Debug.LogError("FightPreviewAnimator: Fade in duration cannot be negative");
+            Debug.LogError("FightConclusionAnimator: Fade in duration cannot be negative");
             isValid = false;
         }
         
         if (fadeOutDuration < 0f)
         {
-            Debug.LogError("FightPreviewAnimator: Fade out duration cannot be negative");
+            Debug.LogError("FightConclusionAnimator: Fade out duration cannot be negative");
             isValid = false;
         }
         
         if (displayDuration < 0f)
         {
-            Debug.LogError("FightPreviewAnimator: Display duration cannot be negative");
+            Debug.LogError("FightConclusionAnimator: Display duration cannot be negative");
             isValid = false;
         }
         
-        if (punchDuration < 0f)
+        if (shakeDuration < 0f)
         {
-            Debug.LogError("FightPreviewAnimator: Punch duration cannot be negative");
+            Debug.LogError("FightConclusionAnimator: Shake duration cannot be negative");
+            isValid = false;
+        }
+        
+        if (shakeVibrato < 1)
+        {
+            Debug.LogError("FightConclusionAnimator: Shake vibrato must be at least 1");
             isValid = false;
         }
         
