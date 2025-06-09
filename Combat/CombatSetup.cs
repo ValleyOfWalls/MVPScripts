@@ -22,6 +22,7 @@ public class CombatSetup : NetworkBehaviour
     [SerializeField] private CombatCanvasManager combatCanvasManager;
     [SerializeField] private GameManager gameManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
+    [SerializeField] private FightPreviewManager fightPreviewManager;
     
     private SteamNetworkIntegration steamNetworkIntegration;
 
@@ -164,16 +165,33 @@ public class CombatSetup : NetworkBehaviour
             return;
         }
         
-        Debug.Log("CombatSetup: All clients ready, starting combat through CombatManager");
-        if (combatManager != null)
+        Debug.Log("CombatSetup: All clients ready, starting fight preview before combat");
+        
+        // Start the fight preview interstitial instead of going directly to combat
+        if (fightPreviewManager != null)
         {
-            isCombatActive = true; // Set combat as active when it actually starts
-            combatManager.StartCombat();
-            Debug.Log("CombatSetup: Combat is now active");
+            Debug.Log("CombatSetup: Starting fight preview sequence");
+            fightPreviewManager.StartFightPreview();
+            
+            // Note: The FightPreviewManager will handle calling combatManager.StartCombat() after the preview
+            // Set combat as active now since the preview is part of the combat flow
+            isCombatActive = true;
+            Debug.Log("CombatSetup: Fight preview started, combat will begin after preview completes");
         }
         else
         {
-            Debug.LogError("CombatSetup: Cannot start combat - CombatManager reference is missing");
+            // Fallback to direct combat start if preview manager is missing
+            Debug.LogWarning("CombatSetup: FightPreviewManager not found, starting combat directly");
+            if (combatManager != null)
+            {
+                isCombatActive = true;
+                combatManager.StartCombat();
+                Debug.Log("CombatSetup: Combat started directly (no preview)");
+            }
+            else
+            {
+                Debug.LogError("CombatSetup: Cannot start combat - both FightPreviewManager and CombatManager references are missing");
+            }
         }
     }
 
@@ -186,6 +204,7 @@ public class CombatSetup : NetworkBehaviour
         if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
         if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
         if (gamePhaseManager == null) gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        if (fightPreviewManager == null) fightPreviewManager = FindFirstObjectByType<FightPreviewManager>();
         
         RegisterCombatCanvasWithPhaseManager();
     }
@@ -253,7 +272,8 @@ public class CombatSetup : NetworkBehaviour
         return steamNetworkIntegration != null && 
                fightManager != null && 
                combatManager != null && 
-               gameManager != null;
+               gameManager != null &&
+               fightPreviewManager != null;
     }
     
     private void TransitionToPhase()
