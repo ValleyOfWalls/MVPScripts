@@ -34,7 +34,7 @@ public class GameManager : NetworkBehaviour
     [SerializeField, Tooltip("If true, players will automatically be set to ready when they join the lobby.")]
     public bool AutoReadyPlayersOnJoin = false;
     
-    [SerializeField, Tooltip("If true, enables VSync to synchronize frame rate with monitor refresh rate.")]
+    [SerializeField, Tooltip("If true, enables VSync to synchronize frame rate with monitor refresh rate. Note: VSync is automatically disabled when using frame rate limiting (maxFrameRate > 0).")]
     public bool enableVSync = false;
 
     [SerializeField, Tooltip("Maximum frame rate limit. Set to -1 for unlimited, 0 to use platform default, or any positive value.")]
@@ -93,31 +93,8 @@ public class GameManager : NetworkBehaviour
 
     private void Awake()
     {
-        // Apply VSync setting
-        QualitySettings.vSyncCount = enableVSync ? 1 : 0;
-        if (enableVSync)
-        {
-            Debug.Log("GameManager: VSync enabled");
-        }
-        else
-        {
-            Debug.Log("GameManager: VSync disabled");
-        }
-        
-        // Apply max frame rate setting
-        Application.targetFrameRate = maxFrameRate;
-        if (maxFrameRate == -1)
-        {
-            Debug.Log("GameManager: Frame rate set to unlimited");
-        }
-        else if (maxFrameRate == 0)
-        {
-            Debug.Log("GameManager: Frame rate set to platform default");
-        }
-        else
-        {
-            Debug.Log($"GameManager: Frame rate limited to {maxFrameRate} FPS");
-        }
+        // Apply frame rate and VSync settings
+        ApplyDisplaySettings();
         
         if (Instance == null)
         {
@@ -128,6 +105,94 @@ public class GameManager : NetworkBehaviour
         {
             Destroy(gameObject);
         }
+    }
+
+    private void Start()
+    {
+        // Reapply display settings in Start to ensure they take effect
+        // Sometimes Awake is too early and settings get overridden
+        Debug.Log("GameManager: Start() - Reapplying display settings to ensure they take effect");
+        ApplyDisplaySettings();
+    }
+
+    private void ApplyDisplaySettings()
+    {
+        Debug.Log($"GameManager: ApplyDisplaySettings called - maxFrameRate: {maxFrameRate}, enableVSync: {enableVSync}");
+        
+        // When using frame rate limiting, VSync must be disabled
+        if (maxFrameRate > 0)
+        {
+            // Disable VSync to allow frame rate limiting
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = maxFrameRate;
+            Debug.Log($"GameManager: Frame rate limited to {maxFrameRate} FPS (VSync disabled for frame rate limiting)");
+            
+            if (enableVSync)
+            {
+                Debug.LogWarning("GameManager: VSync was enabled but has been disabled to allow frame rate limiting. To use VSync, set maxFrameRate to -1 or 0.");
+            }
+        }
+        else if (maxFrameRate == -1)
+        {
+            // Unlimited frame rate
+            if (enableVSync)
+            {
+                // Use VSync for unlimited but synchronized frame rate
+                QualitySettings.vSyncCount = 1;
+                Application.targetFrameRate = -1;
+                Debug.Log("GameManager: VSync enabled with unlimited frame rate");
+            }
+            else
+            {
+                // True unlimited frame rate
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = -1;
+                Debug.Log("GameManager: Frame rate set to unlimited (VSync disabled)");
+            }
+        }
+        else // maxFrameRate == 0 (platform default)
+        {
+            if (enableVSync)
+            {
+                QualitySettings.vSyncCount = 1;
+                Application.targetFrameRate = 0;
+                Debug.Log("GameManager: VSync enabled with platform default frame rate");
+            }
+            else
+            {
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = 0;
+                Debug.Log("GameManager: Frame rate set to platform default (VSync disabled)");
+            }
+        }
+        
+        // Log final settings for debugging
+        Debug.Log($"GameManager: Final settings - VSync: {QualitySettings.vSyncCount}, TargetFrameRate: {Application.targetFrameRate}");
+        
+        // Force a frame to ensure settings take effect
+        Canvas.ForceUpdateCanvases();
+    }
+
+    // Public method to reapply display settings at runtime (for debugging)
+    [ContextMenu("Reapply Display Settings")]
+    public void ReapplyDisplaySettings()
+    {
+        Debug.Log("GameManager: Manually reapplying display settings...");
+        ApplyDisplaySettings();
+    }
+
+    // Public method to check current display settings (for debugging)
+    [ContextMenu("Log Current Display Settings")]
+    public void LogCurrentDisplaySettings()
+    {
+        Debug.Log($"GameManager: Current Runtime Settings:");
+        Debug.Log($"  - QualitySettings.vSyncCount: {QualitySettings.vSyncCount}");
+        Debug.Log($"  - Application.targetFrameRate: {Application.targetFrameRate}");
+        Debug.Log($"  - Time.deltaTime: {Time.deltaTime}");
+        Debug.Log($"  - Calculated FPS: {1.0f / Time.deltaTime:F1}");
+        Debug.Log($"GameManager: Inspector Settings:");
+        Debug.Log($"  - maxFrameRate: {maxFrameRate}");
+        Debug.Log($"  - enableVSync: {enableVSync}");
     }
 
     public override void OnStartServer()

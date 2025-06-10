@@ -204,9 +204,34 @@ public class AutoTestRunner : MonoBehaviour
         if (showFPS)
         {
             displayText += $" | FPS: {currentFPS:F1}";
+            
+            // Add frame rate settings for debugging (only log occasionally to avoid spam)
+            if (Time.frameCount % 300 == 0) // Log every ~5 seconds at 60fps
+            {
+                LogFrameRateSettings();
+            }
         }
         
         hostClientStatusText.text = displayText;
+    }
+
+    private void LogFrameRateSettings()
+    {
+        Debug.Log($"AutoTestRunner: Frame Rate Debug Info:");
+        Debug.Log($"  - Current FPS: {currentFPS:F1}");
+        Debug.Log($"  - Application.targetFrameRate: {Application.targetFrameRate}");
+        Debug.Log($"  - QualitySettings.vSyncCount: {QualitySettings.vSyncCount}");
+        Debug.Log($"  - Time.deltaTime: {Time.deltaTime:F4}");
+        
+        if (GameManager.Instance != null)
+        {
+            Debug.Log($"  - GameManager found, calling LogCurrentDisplaySettings...");
+            GameManager.Instance.LogCurrentDisplaySettings();
+        }
+        else
+        {
+            Debug.LogWarning($"  - GameManager.Instance is null!");
+        }
     }
 
     private IEnumerator WaitForStartScreenReadiness()
