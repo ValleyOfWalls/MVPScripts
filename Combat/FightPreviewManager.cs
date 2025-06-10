@@ -18,6 +18,7 @@ public class FightPreviewManager : NetworkBehaviour
     [SerializeField] private CombatManager combatManager;
     [SerializeField] private CombatCanvasManager combatCanvasManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
+    [SerializeField] private AutoTestRunner autoTestRunner;
 
     [Header("Timing Settings")]
     [SerializeField] private float additionalDelayBeforeCombat = 0.5f;
@@ -106,6 +107,11 @@ public class FightPreviewManager : NetworkBehaviour
         {
             gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         }
+
+        if (autoTestRunner == null)
+        {
+            autoTestRunner = FindFirstObjectByType<AutoTestRunner>();
+        }
     }
 
     private void SetupUIManagerEvents()
@@ -145,6 +151,14 @@ public class FightPreviewManager : NetworkBehaviour
         if (isPreviewActive.Value)
         {
             Debug.LogWarning("FightPreviewManager: Preview already active, skipping");
+            return;
+        }
+
+        // Check if preview should be skipped
+        if (autoTestRunner != null && autoTestRunner.ShouldSkipFightPreview)
+        {
+            Debug.Log("FightPreviewManager: Skipping fight preview, starting combat immediately");
+            StartActualCombat();
             return;
         }
 

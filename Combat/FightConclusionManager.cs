@@ -19,6 +19,7 @@ public class FightConclusionManager : NetworkBehaviour
     [SerializeField] private DraftSetup draftSetup;
     [SerializeField] private CombatCanvasManager combatCanvasManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
+    [SerializeField] private AutoTestRunner autoTestRunner;
 
     [Header("Timing Settings")]
     [SerializeField] private float additionalDelayBeforeDraft = 0.5f;
@@ -120,6 +121,11 @@ public class FightConclusionManager : NetworkBehaviour
         {
             gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         }
+
+        if (autoTestRunner == null)
+        {
+            autoTestRunner = FindFirstObjectByType<AutoTestRunner>();
+        }
     }
 
     private void SetupUIManagerEvents()
@@ -159,6 +165,16 @@ public class FightConclusionManager : NetworkBehaviour
         if (isConclusionActive.Value)
         {
             Debug.LogWarning("FightConclusionManager: Conclusion already active, skipping");
+            return;
+        }
+
+        // Check if conclusion should be skipped
+        if (autoTestRunner != null && autoTestRunner.ShouldSkipFightConclusion)
+        {
+            Debug.Log("FightConclusionManager: Skipping fight conclusion, starting draft immediately");
+            // Store the fight results for potential debugging/logging
+            fightResults = new Dictionary<NetworkEntity, bool>(completedFightResults);
+            StartDraftPhase();
             return;
         }
 

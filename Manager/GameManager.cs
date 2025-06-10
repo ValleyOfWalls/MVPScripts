@@ -33,6 +33,12 @@ public class GameManager : NetworkBehaviour
     [Header("Game Rules")]
     [SerializeField, Tooltip("If true, players will automatically be set to ready when they join the lobby.")]
     public bool AutoReadyPlayersOnJoin = false;
+    
+    [SerializeField, Tooltip("If true, enables VSync to synchronize frame rate with monitor refresh rate.")]
+    public bool enableVSync = false;
+
+    [SerializeField, Tooltip("Maximum frame rate limit. Set to -1 for unlimited, 0 to use platform default, or any positive value.")]
+    public int maxFrameRate = -1;
 
     [Header("Draft Settings")]
     [SerializeField, Tooltip("Number of cards in each draft pack")]
@@ -87,6 +93,32 @@ public class GameManager : NetworkBehaviour
 
     private void Awake()
     {
+        // Apply VSync setting
+        QualitySettings.vSyncCount = enableVSync ? 1 : 0;
+        if (enableVSync)
+        {
+            Debug.Log("GameManager: VSync enabled");
+        }
+        else
+        {
+            Debug.Log("GameManager: VSync disabled");
+        }
+        
+        // Apply max frame rate setting
+        Application.targetFrameRate = maxFrameRate;
+        if (maxFrameRate == -1)
+        {
+            Debug.Log("GameManager: Frame rate set to unlimited");
+        }
+        else if (maxFrameRate == 0)
+        {
+            Debug.Log("GameManager: Frame rate set to platform default");
+        }
+        else
+        {
+            Debug.Log($"GameManager: Frame rate limited to {maxFrameRate} FPS");
+        }
+        
         if (Instance == null)
         {
             Instance = this;

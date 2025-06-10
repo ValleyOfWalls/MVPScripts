@@ -13,6 +13,15 @@ public class AutoTestRunner : MonoBehaviour
     [Tooltip("Enable this flag to show host/client status text when combat setup is complete.")]
     public bool enableHostClientDisplay = false;
 
+    [Tooltip("Enable this flag to skip the fight preview interstitial screen and go straight from character select to combat.")]
+    public bool skipFightPreview = false;
+    
+    [Tooltip("Enable this flag to skip the fight conclusion interstitial screen and go straight from combat to draft.")]
+    public bool skipFightConclusion = false;
+
+    [Tooltip("Enable this flag to display current FPS alongside host/client status text.")]
+    public bool showFPS = false;
+
     [Header("Button References")]
     [Tooltip("Drag the 'Start Button' GameObject from the initial start screen here.")]
     public Button startScreenStartButton;
@@ -47,6 +56,10 @@ public class AutoTestRunner : MonoBehaviour
     private bool readyToStartGame = false;
     private bool combatSetupComplete = false;
     private bool characterSelectionComplete = false;
+
+    // FPS tracking
+    private float currentFPS = 0f;
+    private Coroutine fpsUpdateCoroutine;
 
     void Start()
     {
@@ -124,6 +137,24 @@ public class AutoTestRunner : MonoBehaviour
             return;
         }
         
+        string statusText = GetNetworkStatusText();
+        
+        // Update the display text
+        UpdateStatusDisplay(statusText);
+        
+        hostClientStatusText.gameObject.SetActive(true);
+        
+        // Start FPS updating if enabled and not already running
+        if (showFPS && fpsUpdateCoroutine == null)
+        {
+            fpsUpdateCoroutine = StartCoroutine(UpdateFPSDisplay());
+        }
+        
+        Debug.Log($"AutoTestRunner: Displaying status - {statusText}" + (showFPS ? $" with FPS tracking enabled" : ""));
+    }
+
+    private string GetNetworkStatusText()
+    {
         string statusText = "Unknown";
         
         // Use FishNet's network state instead of Steam host status for more accurate detection
@@ -161,10 +192,21 @@ public class AutoTestRunner : MonoBehaviour
             }
         }
         
-        hostClientStatusText.text = $"Status: {statusText}";
-        hostClientStatusText.gameObject.SetActive(true);
+        return statusText;
+    }
+
+    private void UpdateStatusDisplay(string statusText)
+    {
+        if (hostClientStatusText == null) return;
         
-        Debug.Log($"AutoTestRunner: Displaying status - {statusText}");
+        // Append FPS if enabled
+        string displayText = $"Status: {statusText}";
+        if (showFPS)
+        {
+            displayText += $" | FPS: {currentFPS:F1}";
+        }
+        
+        hostClientStatusText.text = displayText;
     }
 
     private IEnumerator WaitForStartScreenReadiness()
@@ -305,8 +347,36 @@ public class AutoTestRunner : MonoBehaviour
         }
     }
 
+    private IEnumerator UpdateFPSDisplay()
+    {
+        while (showFPS && hostClientStatusText != null && hostClientStatusText.gameObject.activeInHierarchy)
+        {
+            // Calculate FPS
+            currentFPS = 1.0f / Time.deltaTime;
+            
+            // Update only the display text directly, don't call DisplayHostClientStatus to avoid recursion
+            if (enableHostClientDisplay)
+            {
+                string statusText = GetNetworkStatusText();
+                UpdateStatusDisplay(statusText);
+            }
+            
+            // Update every 0.5 seconds to avoid too frequent updates
+            yield return new WaitForSeconds(0.5f);
+        }
+        
+        fpsUpdateCoroutine = null;
+    }
+
     private void OnDestroy()
     {
+        // Stop FPS update coroutine
+        if (fpsUpdateCoroutine != null)
+        {
+            StopCoroutine(fpsUpdateCoroutine);
+            fpsUpdateCoroutine = null;
+        }
+        
         // Unsubscribe from events
         if (lobbyManager != null)
         {
@@ -326,4 +396,14 @@ public class AutoTestRunner : MonoBehaviour
             }
         }
     }
+    
+    /// <summary>
+    /// Public getter to check if fight preview should be skipped
+    /// </summary>
+    public bool ShouldSkipFightPreview => skipFightPreview;
+    
+    /// <summary>
+    /// Public getter to check if fight conclusion should be skipped
+    /// </summary>
+    public bool ShouldSkipFightConclusion => skipFightConclusion;
 } 
