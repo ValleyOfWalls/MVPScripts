@@ -27,7 +27,11 @@ public class NetworkEntityUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private Image healthBar;
-    [SerializeField] private Image entityImage; // Main visual representation of the entity
+    [SerializeField] private Image entityImage; // Main visual representation of the entity (legacy 2D)
+    
+    [Header("3D Model")]
+    [SerializeField] private Transform entityModel; // 3D model representation of the entity
+    [SerializeField] private Vector3 uiOffset = Vector3.up * 2f; // Offset for UI relative to model
 
     [Header("Damage Preview UI")]
     [SerializeField] private TextMeshProUGUI damagePreviewText;
@@ -177,10 +181,58 @@ public class NetworkEntityUI : MonoBehaviour
         UpdateDeckDisplay();
         UpdateDiscardDisplay();
         UpdateEffectsDisplay();
+        // PositionUIRelativeToModel(); // Disabled: using prefab hierarchy positioning
+    }
+    
+    private void LateUpdate()
+    {
+        // Disabled: UI positioning is handled by prefab hierarchy
+        // If you need dynamic positioning, re-enable PositionUIRelativeToModel()
+        // PositionUIRelativeToModel();
+    }
+    
+    /// <summary>
+    /// Positions the UI canvas relative to the 3D model
+    /// </summary>
+    private void PositionUIRelativeToModel()
+    {
+        // Debug logging to identify the issue
+        if (entityModel == null)
+        {
+            Debug.LogWarning($"[POSITION_DEBUG] NetworkEntityUI on {gameObject.name}: entityModel is null! Position will not be updated.");
+            return;
+        }
+        
+        if (canvasGroup == null)
+        {
+            Debug.LogWarning($"[POSITION_DEBUG] NetworkEntityUI on {gameObject.name}: canvasGroup is null! Position will not be updated.");
+            return;
+        }
+        
+        // Check if this is a RectTransform to avoid positioning conflicts
+        RectTransform rectTransform = transform as RectTransform;
+        if (rectTransform != null)
+        {
+            // For RectTransform, don't set position directly to avoid UI conflicts
+            Debug.LogWarning($"[POSITION_DEBUG] NetworkEntityUI on {gameObject.name}: Root still has RectTransform. Consider using regular Transform for world space positioning.");
+            return;
+        }
+        
+        // Store old position for debugging
+        Vector3 oldPosition = transform.position;
+        Vector3 newPosition = entityModel.position + uiOffset;
+        
+        // Only update if position actually changed significantly
+        if (Vector3.Distance(oldPosition, newPosition) > 0.001f)
+        {
+            Debug.Log($"[POSITION_DEBUG] NetworkEntityUI on {gameObject.name}: Updating position from {oldPosition} to {newPosition}. Model at: {entityModel.position}");
+            transform.position = newPosition;
+        }
     }
 
     public void SetVisible(bool visible)
     {
+        // Control UI visibility
         if (canvasGroup != null)
         {
             canvasGroup.alpha = visible ? 1.0f : 0.0f;
@@ -191,6 +243,15 @@ public class NetworkEntityUI : MonoBehaviour
         {
             gameObject.SetActive(visible);
         }
+        
+        // Control 3D model visibility
+        if (entityModel != null)
+        {
+            entityModel.gameObject.SetActive(visible);
+            Debug.Log($"[POSITION_DEBUG] NetworkEntityUI: Set 3D model {entityModel.name} visibility to {visible} for entity {entity?.EntityName.Value}");
+        }
+        
+        Debug.Log($"[POSITION_DEBUG] NetworkEntityUI: Set visibility to {visible} for entity {entity?.EntityName.Value} (UI: {(canvasGroup != null ? "CanvasGroup" : "GameObject")}, Model: {(entityModel != null ? "Found" : "Not Found")})");
     }
 
     public void UpdateEntityUI()
@@ -440,5 +501,22 @@ public class NetworkEntityUI : MonoBehaviour
     public Image GetEntityImage()
     {
         return entityImage;
+    }
+    
+    /// <summary>
+    /// Gets the 3D model transform for this entity
+    /// </summary>
+    public Transform GetEntityModel()
+    {
+        return entityModel;
+    }
+    
+    /// <summary>
+    /// Sets the 3D model for this entity
+    /// </summary>
+    public void SetEntityModel(Transform model)
+    {
+        entityModel = model;
+        PositionUIRelativeToModel();
     }
 } 
