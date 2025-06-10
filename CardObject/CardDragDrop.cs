@@ -564,26 +564,26 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     
     private void CheckForDropZones(PointerEventData eventData)
     {
-        // Raycast for drop zones
+        // First try UI raycasting for backwards compatibility
         var raycastResults = new System.Collections.Generic.List<RaycastResult>();
         EventSystem.current.RaycastAll(eventData, raycastResults);
         
-        LogDebug($"Raycast found {raycastResults.Count} UI elements at {eventData.position}");
+        LogDebug($"UI Raycast found {raycastResults.Count} UI elements at {eventData.position}");
         
         DropZone newHoverZone = null;
         
-        // Debug: Show all raycast hits with detailed info
+        // Check UI elements first
         for (int i = 0; i < raycastResults.Count; i++)
         {
             var result = raycastResults[i];
-            LogDebug($"  Hit {i}: {result.gameObject.name} (parent: {(result.gameObject.transform.parent?.name ?? "none")})");
+            LogDebug($"  UI Hit {i}: {result.gameObject.name} (parent: {(result.gameObject.transform.parent?.name ?? "none")})");
             
             // Check for DropZone on this GameObject
             DropZone dropZone = result.gameObject.GetComponent<DropZone>();
             if (dropZone != null)
             {
                 newHoverZone = dropZone;
-                LogDebug($"  --> Found DropZone on {result.gameObject.name}!");
+                LogDebug($"  --> Found DropZone on UI element {result.gameObject.name}!");
                 break;
             }
             else
@@ -596,20 +596,13 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                     LogDebug($"  --> Found DropZone on parent {parentDropZone.gameObject.name} of {result.gameObject.name}!");
                     break;
                 }
-                else
-                {
-                    LogDebug($"  --> No DropZone on {result.gameObject.name} or its parents");
-                }
             }
         }
         
-        if (raycastResults.Count == 0)
+        // If no UI DropZone found, try 3D physics raycasting
+        if (newHoverZone == null)
         {
-            LogDebug("No UI elements hit by raycast");
-        }
-        else if (newHoverZone == null)
-        {
-            LogDebug("UI elements found but no DropZone components detected");
+            newHoverZone = CheckFor3DDropZones(eventData);
         }
         
         // Handle zone changes
@@ -627,13 +620,27 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             if (currentHoverZone != null)
             {
                 NetworkEntity targetEntity = currentHoverZone.GetTargetEntity();
+                LogDebug($"Found DropZone: {currentHoverZone.gameObject.name}");
+                LogDebug($"Target entity from DropZone: {targetEntity?.EntityName.Value ?? "null"}");
+                
                 bool canTarget = targetEntity != null && CanTargetEntity(targetEntity);
+                LogDebug($"Can target entity: {canTarget}");
+                
+                if (!canTarget && targetEntity != null)
+                {
+                    // Debug why targeting failed
+                    var validTargetTypes = card?.CardData?.GetValidTargetTypes();
+                    CardTargetType entityTargetType = GetEntityTargetType(targetEntity);
+                    LogDebug($"Card valid target types: {(validTargetTypes != null ? string.Join(", ", validTargetTypes) : "null")}");
+                    LogDebug($"Entity target type: {entityTargetType}");
+                }
                 
                 currentHoverZone.OnCardDragEnter(this, canTarget);
                 LogDebug($"Entered drop zone: {currentHoverZone.gameObject.name}, canTarget: {canTarget}");
                 
                 // Set as valid drop zone if we can target it
                 validDropZone = canTarget ? currentHoverZone : null;
+                LogDebug($"Valid drop zone set to: {(validDropZone != null ? validDropZone.gameObject.name : "null")}");
             }
             else
             {
@@ -641,6 +648,99 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 LogDebug("No drop zone under cursor");
             }
         }
+    }
+    
+    /// <summary>
+    /// Checks for 3D colliders with DropZone components using physics raycasting
+    /// </summary>
+    private DropZone CheckFor3DDropZones(PointerEventData eventData)
+    {
+        Camera camera = Camera.main;
+        if (camera == null)
+        {
+            // Try to find any camera if main camera is not available
+            camera = FindObjectOfType<Camera>();
+        }
+        
+        if (camera == null)
+        {
+            LogDebug("No camera found for 3D raycasting");
+            return null;
+        }
+        
+        // Convert screen position to world ray
+        Ray ray = camera.ScreenPointToRay(eventData.position);
+        
+        // Perform 3D raycast
+        RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity);
+        
+        LogDebug($"3D Raycast found {hits.Length} 3D colliders at {eventData.position}");
+        
+        // Sort hits by distance (closest first)
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        
+        // Check each hit for DropZone component
+        foreach (var hit in hits)
+        {
+            LogDebug($"  3D Hit: {hit.collider.gameObject.name} at distance {hit.distance:F2}");
+            LogDebug($"    Collider type: {hit.collider.GetType().Name}");
+            LogDebug($"    GameObject layer: {LayerMask.LayerToName(hit.collider.gameObject.layer)}");
+            LogDebug($"    GameObject tag: {hit.collider.gameObject.tag}");
+            
+            // List all components on the hit GameObject for debugging
+            Component[] components = hit.collider.GetComponents<Component>();
+            LogDebug($"    Components on {hit.collider.gameObject.name}: {string.Join(", ", System.Array.ConvertAll(components, c => c.GetType().Name))}");
+            
+            // Check for DropZone on the hit GameObject
+            DropZone dropZone = hit.collider.GetComponent<DropZone>();
+            if (dropZone != null)
+            {
+                LogDebug($"  --> Found DropZone component on 3D object {hit.collider.gameObject.name}!");
+                LogDebug($"      DropZone target entity: {dropZone.GetTargetEntity()?.EntityName.Value ?? "null"}");
+                return dropZone;
+            }
+            else
+            {
+                LogDebug($"    No DropZone component on {hit.collider.gameObject.name}");
+            }
+            
+            // Also check parent for DropZone
+            DropZone parentDropZone = hit.collider.GetComponentInParent<DropZone>();
+            if (parentDropZone != null)
+            {
+                LogDebug($"  --> Found DropZone on parent {parentDropZone.gameObject.name} of 3D object {hit.collider.gameObject.name}!");
+                LogDebug($"      Parent DropZone target entity: {parentDropZone.GetTargetEntity()?.EntityName.Value ?? "null"}");
+                return parentDropZone;
+            }
+            else
+            {
+                LogDebug($"    No DropZone component in parents of {hit.collider.gameObject.name}");
+            }
+            
+            // Also check children for DropZone (in case the collider is a child of the DropZone)
+            DropZone childDropZone = hit.collider.GetComponentInChildren<DropZone>();
+            if (childDropZone != null)
+            {
+                LogDebug($"  --> Found DropZone on child {childDropZone.gameObject.name} of 3D object {hit.collider.gameObject.name}!");
+                LogDebug($"      Child DropZone target entity: {childDropZone.GetTargetEntity()?.EntityName.Value ?? "null"}");
+                return childDropZone;
+            }
+            else
+            {
+                LogDebug($"    No DropZone component in children of {hit.collider.gameObject.name}");
+            }
+        }
+        
+        if (hits.Length == 0)
+        {
+            LogDebug("No 3D colliders hit by raycast");
+        }
+        else
+        {
+            LogDebug("3D colliders found but no DropZone components detected");
+        }
+        
+        return null;
     }
     
     private bool CanTargetEntity(NetworkEntity targetEntity)
