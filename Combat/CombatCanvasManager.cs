@@ -5,7 +5,7 @@ using TMPro;
 using System.Linq;
 using System.Collections;
 
-/// <summary>
+/// <summary>//
 /// Manages the UI elements for the combat phase, including turn indicators, and notifications.
 /// Attach to: The CombatCanvas GameObject that contains all combat UI elements.
 /// </summary>
@@ -102,32 +102,41 @@ public class CombatCanvasManager : NetworkBehaviour
 
     public void SetupCombatUI()
     {
+        Debug.Log("[COMBAT_UI_SETUP] SetupCombatUI called");
+        
         // Find managers if not already assigned
         if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
         if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
 
-        if (fightManager == null) Debug.LogError("FightManager not found by CombatCanvasManager.");
-        if (combatManager == null) Debug.LogError("CombatManager not found by CombatCanvasManager.");
+        if (fightManager == null) Debug.LogError("[COMBAT_UI_SETUP] FightManager not found by CombatCanvasManager.");
+        if (combatManager == null) Debug.LogError("[COMBAT_UI_SETUP] CombatManager not found by CombatCanvasManager.");
 
+        Debug.Log("[COMBAT_UI_SETUP] Attempting to find local player");
         // Try multiple approaches to find the local player
         FindLocalPlayer();
 
         if (localPlayer == null)
         {
+            Debug.LogError("[COMBAT_UI_SETUP] Local player not found");
             LogLocalPlayerError();
             return;
         }
 
+        Debug.Log($"[COMBAT_UI_SETUP] Local player found: {localPlayer.EntityName.Value} (ObjectId: {localPlayer.ObjectId}, IsOwner: {localPlayer.IsOwner})");
+
         // Find opponent
+        Debug.Log("[COMBAT_UI_SETUP] Finding opponent for local player");
         opponentPetForLocalPlayer = fightManager.GetOpponentForPlayer(localPlayer);
 
         if (opponentPetForLocalPlayer == null)
         {
+            Debug.LogWarning("[COMBAT_UI_SETUP] Opponent not found immediately, will retry");
             // Try to wait and retry if opponent isn't available yet
             StartCoroutine(RetryFindOpponent());
         }
         else
         {
+            Debug.Log($"[COMBAT_UI_SETUP] Opponent found: {opponentPetForLocalPlayer.EntityName.Value} (ObjectId: {opponentPetForLocalPlayer.ObjectId}, IsOwner: {opponentPetForLocalPlayer.IsOwner})");
             // Complete UI setup since we found opponent
             CompleteUISetup();
         }
@@ -175,24 +184,36 @@ public class CombatCanvasManager : NetworkBehaviour
 
     private void CompleteUISetup()
     {
+        Debug.Log("[COMBAT_UI_SETUP] CompleteUISetup called");
+        
         // Set up UI elements based on the local player and their opponent
         if (localPlayer != null && opponentPetForLocalPlayer != null)
         {
-            Debug.Log($"Setting up combat UI for {localPlayer.EntityName.Value} vs {opponentPetForLocalPlayer.EntityName.Value}");
+            Debug.Log($"[COMBAT_UI_SETUP] Setting up combat UI for {localPlayer.EntityName.Value} vs {opponentPetForLocalPlayer.EntityName.Value}");
             
             // Initialize button listeners
+            Debug.Log("[COMBAT_UI_SETUP] Initializing button listeners");
             InitializeButtonListeners();
             
             // Setup own pet view
+            Debug.Log("[COMBAT_UI_SETUP] Setting up own pet view");
             SetupOwnPetView();
             
             // Setup deck viewer
+            Debug.Log("[COMBAT_UI_SETUP] Setting up deck viewer");
             SetupDeckViewer();
             
-            // Position combat entities
-            PositionCombatEntities(localPlayer, opponentPetForLocalPlayer);
+            // Position combat entities for all fights
+            Debug.Log("[COMBAT_UI_SETUP] About to position combat entities for all fights");
+            PositionCombatEntitiesForAllFights();
+            Debug.Log("[COMBAT_UI_SETUP] Combat entity positioning completed for all fights");
             
+            Debug.Log("[COMBAT_UI_SETUP] CompleteUISetup finished successfully");
             // Additional UI setup code here
+        }
+        else
+        {
+            Debug.LogError($"[COMBAT_UI_SETUP] Cannot complete UI setup - localPlayer: {(localPlayer != null ? "found" : "null")}, opponentPet: {(opponentPetForLocalPlayer != null ? "found" : "null")}");
         }
     }
 
@@ -531,113 +552,218 @@ public class CombatCanvasManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Positions combat entities in their designated UI positions
+    /// Positions combat entities for all ongoing fights
+    /// Only positions entities owned by the local client to respect NetworkTransform ownership
     /// </summary>
-    public void PositionCombatEntities(NetworkEntity player, NetworkEntity opponentPet)
+    public void PositionCombatEntitiesForAllFights()
     {
-        Debug.Log($"CombatCanvasManager: PositionCombatEntities called - Player: {player?.EntityName.Value}, OpponentPet: {opponentPet?.EntityName.Value}");
+        Debug.Log("[COMBAT_POSITIONING] PositionCombatEntitiesForAllFights called");
+        
+        if (fightManager == null)
+        {
+            Debug.LogError("[COMBAT_POSITIONING] FightManager is null, cannot position entities for all fights");
+            return;
+        }
+        
+        // Get all fight assignments from the FightManager
+        var allFights = fightManager.GetAllFightAssignments();
+        Debug.Log($"[COMBAT_POSITIONING] Found {allFights.Count} total fights to process");
+        
+        foreach (var fightAssignment in allFights)
+        {
+            // Get the actual NetworkEntity objects from the IDs
+            NetworkEntity player = GetNetworkEntityByObjectId(fightAssignment.PlayerObjectId);
+            NetworkEntity opponentPet = GetNetworkEntityByObjectId(fightAssignment.PetObjectId);
+            
+            if (player == null || opponentPet == null)
+            {
+                Debug.LogWarning($"[COMBAT_POSITIONING] Cannot find entities for fight: Player ID {fightAssignment.PlayerObjectId}, Pet ID {fightAssignment.PetObjectId}");
+                continue;
+            }
+            
+            Debug.Log($"[COMBAT_POSITIONING] Processing fight: {player.EntityName.Value} vs {opponentPet.EntityName.Value}");
+            
+            // Position entities for this specific fight
+            PositionCombatEntitiesForSpecificFight(player, opponentPet);
+        }
+        
+        Debug.Log("[COMBAT_POSITIONING] PositionCombatEntitiesForAllFights completed");
+    }
+
+    /// <summary>
+    /// Helper method to get a NetworkEntity component from an ObjectId
+    /// </summary>
+    private NetworkEntity GetNetworkEntityByObjectId(uint objectId)
+    {
+        NetworkObject nob = null;
+        if (base.IsServerStarted)
+        {
+            FishNet.InstanceFinder.NetworkManager.ServerManager.Objects.Spawned.TryGetValue((int)objectId, out nob);
+        }
+        else if (base.IsClientStarted)
+        {
+            FishNet.InstanceFinder.NetworkManager.ClientManager.Objects.Spawned.TryGetValue((int)objectId, out nob);
+        }
+        
+        return nob != null ? nob.GetComponent<NetworkEntity>() : null;
+    }
+
+    /// <summary>
+    /// Positions combat entities for a specific fight
+    /// Only positions entities owned by the local client to respect NetworkTransform ownership
+    /// </summary>
+    public void PositionCombatEntitiesForSpecificFight(NetworkEntity player, NetworkEntity opponentPet)
+    {
+        Debug.Log($"[COMBAT_POSITIONING] PositionCombatEntitiesForSpecificFight called - Player: {player?.EntityName.Value} (IsOwner: {player?.IsOwner}), OpponentPet: {opponentPet?.EntityName.Value} (IsOwner: {opponentPet?.IsOwner})");
         
         if (player == null || opponentPet == null)
         {
-            Debug.LogWarning("CombatCanvasManager: Cannot position entities - player or opponent pet is null");
+            Debug.LogWarning("[COMBAT_POSITIONING] Cannot position entities - player or opponent pet is null");
             return;
         }
 
-        // Position player
-        if (playerPositionTransform != null)
-        {
-            Debug.Log($"CombatCanvasManager: Positioning player {player.EntityName.Value} from {player.transform.position} to {playerPositionTransform.position}");
-            player.transform.position = playerPositionTransform.position;
-            Debug.Log($"CombatCanvasManager: Player positioned at {player.transform.position}");
-        }
-        else
-        {
-            Debug.LogError("CombatCanvasManager: playerPositionTransform is null - cannot position player");
-        }
+        // Position player only if owned by local client (has NetworkTransform)
+        PositionEntityIfOwned(player, playerPositionTransform, "Player");
 
-        // Position opponent pet
-        if (opponentPetPositionTransform != null)
-        {
-            Debug.Log($"CombatCanvasManager: Positioning opponent pet {opponentPet.EntityName.Value} from {opponentPet.transform.position} to {opponentPetPositionTransform.position}");
-            opponentPet.transform.position = opponentPetPositionTransform.position;
-            Debug.Log($"CombatCanvasManager: Opponent pet positioned at {opponentPet.transform.position}");
-        }
-        else
-        {
-            Debug.LogError("CombatCanvasManager: opponentPetPositionTransform is null - cannot position opponent pet");
-        }
+        // Position opponent pet only if owned by local client (has NetworkTransform)
+        PositionEntityIfOwned(opponentPet, opponentPetPositionTransform, "Opponent Pet");
 
-        // Position player hand
-        var playerRelationship = player.GetComponent<RelationshipManager>();
-        if (playerRelationship != null)
-        {
-            if (playerRelationship.HandEntity != null)
-            {
-                if (playerHandPositionTransform != null)
-                {
-                    var playerHand = playerRelationship.HandEntity.GetComponent<NetworkEntity>();
-                    if (playerHand != null)
-                    {
-                        Debug.Log($"CombatCanvasManager: Positioning player hand from {playerHand.transform.position} to {playerHandPositionTransform.position}");
-                        playerHand.transform.position = playerHandPositionTransform.position;
-                        Debug.Log($"CombatCanvasManager: Player hand positioned at {playerHand.transform.position}");
-                    }
-                    else
-                    {
-                        Debug.LogError("CombatCanvasManager: Player hand entity found but missing NetworkEntity component");
-                    }
-                }
-                else
-                {
-                    Debug.LogError("CombatCanvasManager: playerHandPositionTransform is null - cannot position player hand");
-                }
-            }
-            else
-            {
-                Debug.LogWarning($"CombatCanvasManager: Player {player.EntityName.Value} has no hand entity - cannot position player hand");
-            }
-        }
-        else
-        {
-            Debug.LogError($"CombatCanvasManager: Player {player.EntityName.Value} missing RelationshipManager - cannot find hand");
-        }
-
-        // Position opponent pet hand
-        var petRelationship = opponentPet.GetComponent<RelationshipManager>();
-        if (petRelationship != null)
-        {
-            if (petRelationship.HandEntity != null)
-            {
-                if (opponentPetHandPositionTransform != null)
-                {
-                    var petHand = petRelationship.HandEntity.GetComponent<NetworkEntity>();
-                    if (petHand != null)
-                    {
-                        Debug.Log($"CombatCanvasManager: Positioning opponent pet hand from {petHand.transform.position} to {opponentPetHandPositionTransform.position}");
-                        petHand.transform.position = opponentPetHandPositionTransform.position;
-                        Debug.Log($"CombatCanvasManager: Opponent pet hand positioned at {petHand.transform.position}");
-                    }
-                    else
-                    {
-                        Debug.LogError("CombatCanvasManager: Opponent pet hand entity found but missing NetworkEntity component");
-                    }
-                }
-                else
-                {
-                    Debug.LogError("CombatCanvasManager: opponentPetHandPositionTransform is null - cannot position opponent pet hand");
-                }
-            }
-            else
-            {
-                Debug.LogWarning($"CombatCanvasManager: Opponent pet {opponentPet.EntityName.Value} has no hand entity - cannot position opponent pet hand");
-            }
-        }
-        else
-        {
-            Debug.LogError($"CombatCanvasManager: Opponent pet {opponentPet.EntityName.Value} missing RelationshipManager - cannot find hand");
-        }
+        // Position ALL hands locally since they don't have NetworkTransforms and are always in the same positions
+        PositionHandEntityAlways(player, playerHandPositionTransform, "Player Hand");
+        PositionHandEntityAlways(opponentPet, opponentPetHandPositionTransform, "Opponent Pet Hand");
         
-        Debug.Log("CombatCanvasManager: PositionCombatEntities completed");
+        Debug.Log($"[COMBAT_POSITIONING] PositionCombatEntitiesForSpecificFight completed for {player.EntityName.Value} vs {opponentPet.EntityName.Value}");
+    }
+
+    /// <summary>
+    /// Positions combat entities in their designated UI positions (legacy method for current viewed fight)
+    /// Only positions entities owned by the local client to respect NetworkTransform ownership
+    /// </summary>
+    public void PositionCombatEntities(NetworkEntity player, NetworkEntity opponentPet)
+    {
+        Debug.Log($"[COMBAT_POSITIONING] PositionCombatEntities (legacy) called - delegating to specific fight method");
+        PositionCombatEntitiesForSpecificFight(player, opponentPet);
+    }
+
+    /// <summary>
+    /// Positions an entity only if it's owned by the local client
+    /// </summary>
+    private void PositionEntityIfOwned(NetworkEntity entity, Transform targetPosition, string entityDescription)
+    {
+        if (entity == null || targetPosition == null)
+        {
+            if (entity == null)
+                Debug.LogError($"[COMBAT_POSITIONING] {entityDescription} entity is null");
+            if (targetPosition == null)
+                Debug.LogError($"[COMBAT_POSITIONING] {entityDescription} target position transform is null");
+            return;
+        }
+
+        Debug.Log($"[COMBAT_POSITIONING] Checking {entityDescription}: {entity.EntityName.Value} (ObjectId: {entity.ObjectId}, IsOwner: {entity.IsOwner}, Current Position: {entity.transform.position})");
+
+        if (entity.IsOwner)
+        {
+            Vector3 oldPosition = entity.transform.position;
+            entity.transform.position = targetPosition.position;
+            Debug.Log($"[COMBAT_POSITIONING] POSITIONED {entityDescription} {entity.EntityName.Value} from {oldPosition} to {entity.transform.position} (Target: {targetPosition.position})");
+        }
+        else
+        {
+            Debug.Log($"[COMBAT_POSITIONING] SKIPPING {entityDescription} {entity.EntityName.Value} - not owned by local client. Current position: {entity.transform.position}");
+        }
+    }
+
+    /// <summary>
+    /// Positions a hand entity regardless of ownership since hands don't have NetworkTransforms
+    /// and are always in the same positions locally
+    /// </summary>
+    private void PositionHandEntityAlways(NetworkEntity ownerEntity, Transform targetPosition, string handDescription)
+    {
+        if (ownerEntity == null || targetPosition == null)
+        {
+            if (ownerEntity == null)
+                Debug.LogError($"[COMBAT_POSITIONING] Owner entity for {handDescription} is null");
+            if (targetPosition == null)
+                Debug.LogError($"[COMBAT_POSITIONING] {handDescription} target position transform is null");
+            return;
+        }
+
+        var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
+        if (relationshipManager == null)
+        {
+            Debug.LogError($"[COMBAT_POSITIONING] {ownerEntity.EntityName.Value} missing RelationshipManager - cannot find {handDescription}");
+            return;
+        }
+
+        if (relationshipManager.HandEntity == null)
+        {
+            Debug.LogWarning($"[COMBAT_POSITIONING] {ownerEntity.EntityName.Value} has no hand entity - cannot position {handDescription}");
+            return;
+        }
+
+        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+        if (handEntity == null)
+        {
+            Debug.LogError($"[COMBAT_POSITIONING] {handDescription} entity found but missing NetworkEntity component");
+            return;
+        }
+
+        Debug.Log($"[COMBAT_POSITIONING] Positioning {handDescription}: {handEntity.EntityName.Value} (ObjectId: {handEntity.ObjectId}, IsOwner: {handEntity.IsOwner}, Owner Entity: {ownerEntity.EntityName.Value}, Current Position: {handEntity.transform.position})");
+
+        // Always position the hand locally since it doesn't have NetworkTransform
+        Vector3 oldPosition = handEntity.transform.position;
+        handEntity.transform.position = targetPosition.position;
+        Debug.Log($"[COMBAT_POSITIONING] POSITIONED {handDescription} {handEntity.EntityName.Value} from {oldPosition} to {handEntity.transform.position} (Target: {targetPosition.position}) - ALWAYS POSITIONED LOCALLY (no NetworkTransform)");
+    }
+
+    /// <summary>
+    /// Positions a hand entity only if the owning player/pet is owned by the local client (legacy method)
+    /// </summary>
+    private void PositionHandEntityIfPlayerOwned(NetworkEntity ownerEntity, Transform targetPosition, string handDescription)
+    {
+        if (ownerEntity == null || targetPosition == null)
+        {
+            if (ownerEntity == null)
+                Debug.LogError($"[COMBAT_POSITIONING] Owner entity for {handDescription} is null");
+            if (targetPosition == null)
+                Debug.LogError($"[COMBAT_POSITIONING] {handDescription} target position transform is null");
+            return;
+        }
+
+        var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
+        if (relationshipManager == null)
+        {
+            Debug.LogError($"[COMBAT_POSITIONING] {ownerEntity.EntityName.Value} missing RelationshipManager - cannot find {handDescription}");
+            return;
+        }
+
+        if (relationshipManager.HandEntity == null)
+        {
+            Debug.LogWarning($"[COMBAT_POSITIONING] {ownerEntity.EntityName.Value} has no hand entity - cannot position {handDescription}");
+            return;
+        }
+
+        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+        if (handEntity == null)
+        {
+            Debug.LogError($"[COMBAT_POSITIONING] {handDescription} entity found but missing NetworkEntity component");
+            return;
+        }
+
+        Debug.Log($"[COMBAT_POSITIONING] Checking {handDescription}: {handEntity.EntityName.Value} (ObjectId: {handEntity.ObjectId}, IsOwner: {handEntity.IsOwner}, Owner Entity IsOwner: {ownerEntity.IsOwner}, Current Position: {handEntity.transform.position})");
+
+        // Position the hand if the owner entity is owned by the local client
+        // This ensures that each client positions their own player's hand and their own pet's hand
+        if (ownerEntity.IsOwner)
+        {
+            Vector3 oldPosition = handEntity.transform.position;
+            handEntity.transform.position = targetPosition.position;
+            Debug.Log($"[COMBAT_POSITIONING] POSITIONED {handDescription} {handEntity.EntityName.Value} from {oldPosition} to {handEntity.transform.position} (Target: {targetPosition.position}) - Owner {ownerEntity.EntityName.Value} is local");
+        }
+        else
+        {
+            Debug.Log($"[COMBAT_POSITIONING] SKIPPING {handDescription} {handEntity.EntityName.Value} - owner {ownerEntity.EntityName.Value} not owned by local client. Current position: {handEntity.transform.position}");
+        }
     }
 
     private IEnumerator FindAndParentSpawnedOwnPetView()

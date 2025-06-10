@@ -200,9 +200,11 @@ public class EntityVisibilityManager : MonoBehaviour
     
     private void UpdateVisibilityForCombat()
     {
+        Debug.Log("[ENTITY_VISIBILITY] UpdateVisibilityForCombat called");
         TryFindFightManager();
         if (fightManager == null)
         {
+            Debug.LogError("[ENTITY_VISIBILITY] FightManager instance not found! Cannot update visibility for combat.");
             LogDebug("FightManager instance not found! Cannot update visibility for combat.");
             return;
         }
@@ -220,10 +222,12 @@ public class EntityVisibilityManager : MonoBehaviour
         {
             playerInFightId = (uint)viewedPlayer.ObjectId;
             petInFightId = (uint)viewedPet.ObjectId;
+            Debug.Log($"[ENTITY_VISIBILITY] Combat participants (viewed fight) - Player: {viewedPlayer.EntityName.Value} (ID: {playerInFightId}, IsOwner: {viewedPlayer.IsOwner}), Pet: {viewedPet.EntityName.Value} (ID: {petInFightId}, IsOwner: {viewedPet.IsOwner})");
             LogDebug($"Combat participants (viewed fight) - Player ID: {playerInFightId}, Pet ID: {petInFightId}");
         }
         else
         {
+            Debug.LogWarning("[ENTITY_VISIBILITY] No viewed fight found in FightManager");
             LogDebug("No viewed fight found in FightManager");
         }
         
@@ -235,32 +239,46 @@ public class EntityVisibilityManager : MonoBehaviour
     
     private void UpdateEntitiesVisibilityForCombat(uint visiblePlayerId, uint visiblePetId)
     {
+        Debug.Log($"[ENTITY_VISIBILITY] UpdateEntitiesVisibilityForCombat - Processing {allEntities.Count} entities for visibility. Visible Player ID: {visiblePlayerId}, Visible Pet ID: {visiblePetId}");
+        
         foreach (var entity in allEntities)
         {
             if (entity == null) continue;
             
             bool shouldBeVisible = false;
+            string visibilityReason = "";
+            
             if (entity.EntityType == EntityType.Player)
             {
                 shouldBeVisible = (uint)entity.ObjectId == visiblePlayerId;
+                visibilityReason = shouldBeVisible ? "is viewed player" : "not viewed player";
             }
             else if (entity.EntityType == EntityType.Pet)
             {
                 shouldBeVisible = (uint)entity.ObjectId == visiblePetId;
+                visibilityReason = shouldBeVisible ? "is viewed pet" : "not viewed pet";
             }
             else if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
             {
                 // Hand entities should be visible if their owner is in the viewed fight
                 shouldBeVisible = IsHandEntityInViewedFight(entity, visiblePlayerId, visiblePetId);
+                visibilityReason = shouldBeVisible ? "owner in viewed fight" : "owner not in viewed fight";
             }
             
             var entityUI = entity.GetComponent<NetworkEntityUI>();
             if (entityUI != null)
             {
                 entityUI.SetVisible(shouldBeVisible);
+                Debug.Log($"[ENTITY_VISIBILITY] {entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}, IsOwner: {entity.IsOwner}, Position: {entity.transform.position}): -> {(shouldBeVisible ? "Visible" : "Hidden")} ({visibilityReason})");
                 LogDebug($"{entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}): {(shouldBeVisible ? "Visible" : "Hidden")}");
             }
+            else
+            {
+                Debug.LogWarning($"[ENTITY_VISIBILITY] {entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}) missing NetworkEntityUI component");
+            }
         }
+        
+        Debug.Log($"[ENTITY_VISIBILITY] UpdateEntitiesVisibilityForCombat completed for {allEntities.Count} entities");
     }
     
     /// <summary>

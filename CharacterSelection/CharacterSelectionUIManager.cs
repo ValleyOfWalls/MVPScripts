@@ -4,6 +4,7 @@ using TMPro;
 using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
+using FishNet.Object;
 
 /// <summary>
 /// Manages the character selection UI interactions with Mario Kart-style shared selection grids.
@@ -207,105 +208,58 @@ public class CharacterSelectionUIManager : MonoBehaviour
 
     private GameObject CreateSelectionItem(Transform parent, string itemName, Sprite portrait, string description, bool isCharacter, int index)
     {
-        // Create basic item structure if no prefab
+        // Since prefab is provided, we should always use it
         if (selectionItemPrefab == null)
         {
-            return CreateBasicSelectionItem(parent, itemName, portrait, description, isCharacter, index);
+            Debug.LogError("CharacterSelectionUIManager: Selection Item Prefab is not assigned!");
+            return null;
         }
         
         GameObject item = Instantiate(selectionItemPrefab, parent);
         
-        // Set up the item data (assuming the prefab has the right structure)
+        // Set up the item data using the prefab structure
+        // Find the name text component
         TextMeshProUGUI nameText = item.GetComponentInChildren<TextMeshProUGUI>();
         if (nameText != null)
         {
             nameText.text = itemName;
         }
         
-        Image portraitImage = item.GetComponentInChildren<Image>();
+        // Find the portrait image component specifically (not the root image)
+        // Look for an Image component that's likely the portrait (not the background)
+        Image[] images = item.GetComponentsInChildren<Image>();
+        Image portraitImage = null;
+        
+        // Try to find portrait by name or component order
+        foreach (Image img in images)
+        {
+            // Look for portrait-specific naming or the second image (assuming first is background)
+            if (img.gameObject.name.ToLower().Contains("portrait") || 
+                img.gameObject.name.ToLower().Contains("image") ||
+                img != item.GetComponent<Image>()) // Not the root image
+            {
+                portraitImage = img;
+                break;
+            }
+        }
+        
+        // If no specific portrait found, use the second image component (skip root)
+        if (portraitImage == null && images.Length > 1)
+        {
+            portraitImage = images[1]; // Assume index 0 is root background
+        }
+        
+        // Set the portrait sprite
         if (portraitImage != null && portrait != null)
         {
             portraitImage.sprite = portrait;
         }
-        
-        // Add player indicators container
-        AddPlayerIndicatorsToItem(item);
-        
-        return item;
-    }
-
-    private GameObject CreateBasicSelectionItem(Transform parent, string itemName, Sprite portrait, string description, bool isCharacter, int index)
-    {
-        // Create basic UI structure programmatically
-        GameObject item = new GameObject(itemName + "_Item");
-        item.transform.SetParent(parent, false);
-        
-        RectTransform itemRect = item.AddComponent<RectTransform>();
-        itemRect.sizeDelta = new Vector2(200f, 250f);
-        
-        Image itemImage = item.AddComponent<Image>();
-        itemImage.color = unselectedColor;
-        
-        Button itemButton = item.AddComponent<Button>();
-        itemButton.targetGraphic = itemImage;
-        
-        // Create vertical layout
-        VerticalLayoutGroup layout = item.AddComponent<VerticalLayoutGroup>();
-        layout.spacing = 10f;
-        layout.padding = new RectOffset(10, 10, 10, 10);
-        layout.childAlignment = TextAnchor.UpperCenter;
-        layout.childControlWidth = true;
-        layout.childControlHeight = false;
-        
-        // Create portrait
-        if (portrait != null)
+        else if (portrait != null)
         {
-            GameObject portraitGO = new GameObject("Portrait");
-            portraitGO.transform.SetParent(item.transform, false);
-            
-            RectTransform portraitRect = portraitGO.AddComponent<RectTransform>();
-            portraitRect.sizeDelta = new Vector2(120f, 120f);
-            
-            Image portraitImage = portraitGO.AddComponent<Image>();
-            portraitImage.sprite = portrait;
-            portraitImage.preserveAspect = true;
+            Debug.LogWarning($"CharacterSelectionUIManager: Could not find portrait Image component in prefab for {itemName}");
         }
         
-        // Create name text
-        GameObject nameGO = new GameObject("Name");
-        nameGO.transform.SetParent(item.transform, false);
-        
-        RectTransform nameRect = nameGO.AddComponent<RectTransform>();
-        nameRect.sizeDelta = new Vector2(0, 30f);
-        
-        TextMeshProUGUI nameText = nameGO.AddComponent<TextMeshProUGUI>();
-        nameText.text = itemName;
-        nameText.fontSize = 16;
-        nameText.color = Color.white;
-        nameText.alignment = TextAlignmentOptions.Center;
-        nameText.fontStyle = FontStyles.Bold;
-        
-        // Add player indicators container
-        AddPlayerIndicatorsToItem(item);
-        
         return item;
-    }
-
-    private void AddPlayerIndicatorsToItem(GameObject item)
-    {
-        // Create container for player selection indicators
-        GameObject indicatorsContainer = new GameObject("PlayerIndicators");
-        indicatorsContainer.transform.SetParent(item.transform, false);
-        
-        RectTransform indicatorsRect = indicatorsContainer.AddComponent<RectTransform>();
-        indicatorsRect.anchorMin = new Vector2(0, 0);
-        indicatorsRect.anchorMax = new Vector2(1, 1);
-        indicatorsRect.sizeDelta = Vector2.zero;
-        indicatorsRect.anchoredPosition = Vector2.zero;
-        
-        // Add the PlayerSelectionIndicator component
-        PlayerSelectionIndicator indicator = indicatorsContainer.AddComponent<PlayerSelectionIndicator>();
-        indicator.Initialize();
     }
 
     private void MakeDefaultSelections()
@@ -487,9 +441,39 @@ public class CharacterSelectionUIManager : MonoBehaviour
             return;
         }
         
-        // Show deck preview panel
+        // Show deck preview panel and ensure parents are active
         if (deckPreviewPanel != null)
+        {
             deckPreviewPanel.SetActive(true);
+            Debug.Log($"CharacterSelectionUIManager: Activated deck preview panel");
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionUIManager: deckPreviewPanel is null!");
+        }
+        
+        // Ensure scroll view is active
+        if (deckPreviewScrollView != null)
+        {
+            deckPreviewScrollView.gameObject.SetActive(true);
+            Debug.Log($"CharacterSelectionUIManager: Activated deck preview scroll view");
+            
+            // Check scroll view properties
+            Debug.Log($"CharacterSelectionUIManager: ScrollView enabled: {deckPreviewScrollView.enabled}");
+            Debug.Log($"CharacterSelectionUIManager: ScrollView viewport: {deckPreviewScrollView.viewport?.name ?? "null"}");
+            Debug.Log($"CharacterSelectionUIManager: ScrollView content: {deckPreviewScrollView.content?.name ?? "null"}");
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionUIManager: deckPreviewScrollView is null!");
+        }
+        
+        // Ensure grid parent is active
+        if (deckPreviewGridParent != null)
+        {
+            deckPreviewGridParent.gameObject.SetActive(true);
+            Debug.Log($"CharacterSelectionUIManager: Activated deck preview grid parent");
+        }
         
         DeckData deckToShow = null;
         string deckTitle = "";
@@ -511,11 +495,13 @@ public class CharacterSelectionUIManager : MonoBehaviour
         if (deckPreviewTitle != null)
         {
             deckPreviewTitle.text = deckTitle;
+            Debug.Log($"CharacterSelectionUIManager: Set deck title to: {deckTitle}");
         }
         
         // Create preview items
         if (deckToShow != null && deckToShow.CardsInDeck != null)
         {
+            Debug.Log($"CharacterSelectionUIManager: Creating {deckToShow.CardsInDeck.Count} card previews");
             foreach (CardData card in deckToShow.CardsInDeck)
             {
                 if (card != null)
@@ -524,9 +510,15 @@ public class CharacterSelectionUIManager : MonoBehaviour
                     if (previewItem != null)
                     {
                         deckPreviewItems.Add(previewItem);
+                        Debug.Log($"CharacterSelectionUIManager: Created card preview for {card.CardName}, active: {previewItem.activeInHierarchy}");
                     }
                 }
             }
+            Debug.Log($"CharacterSelectionUIManager: Total deck preview items created: {deckPreviewItems.Count}");
+        }
+        else
+        {
+            Debug.LogWarning($"CharacterSelectionUIManager: No deck data to show - deckToShow: {deckToShow != null}, cards: {deckToShow?.CardsInDeck?.Count ?? 0}");
         }
     }
 
@@ -549,14 +541,81 @@ public class CharacterSelectionUIManager : MonoBehaviour
         
         GameObject item = Instantiate(deckCardPrefab, deckPreviewGridParent);
         
-        // Set up the item data (would need to be adjusted based on actual prefab)
-        TextMeshProUGUI nameText = item.GetComponentInChildren<TextMeshProUGUI>();
-        if (nameText != null)
+        // IMPORTANT: Remove NetworkObject to prevent network/visibility management interference
+        NetworkObject networkObject = item.GetComponent<NetworkObject>();
+        if (networkObject != null)
         {
-            nameText.text = cardData.CardName;
+            DestroyImmediate(networkObject);
+            Debug.Log($"CharacterSelectionUIManager: Removed NetworkObject from preview card {cardData.CardName}");
         }
         
+        // Initialize the Card component with the CardData
+        Card cardComponent = item.GetComponent<Card>();
+        if (cardComponent != null)
+        {
+            cardComponent.Initialize(cardData);
+            Debug.Log($"CharacterSelectionUIManager: Initialized card preview for {cardData.CardName}");
+        }
+        else
+        {
+            Debug.LogWarning($"CharacterSelectionUIManager: deckCardPrefab missing Card component for {cardData.CardName}");
+            
+            // Fallback: Try to set name text manually if no Card component
+            TextMeshProUGUI nameText = item.GetComponentInChildren<TextMeshProUGUI>();
+            if (nameText != null)
+            {
+                nameText.text = cardData.CardName;
+            }
+        }
+        
+        // Make sure the card is active and visible for deck preview
+        item.SetActive(true);
+        
+        // Force override any visibility management
+        StartCoroutine(ForceCardVisibilityNextFrame(item, cardData.CardName));
+        
+        // For deck preview, we might want to disable interaction components to prevent dragging/clicking
+        CardDragDrop dragDrop = item.GetComponent<CardDragDrop>();
+        if (dragDrop != null)
+        {
+            dragDrop.enabled = false;
+            Debug.Log($"  Disabled CardDragDrop component");
+        }
+        
+        // Disable any colliders to prevent unwanted interactions
+        Collider2D cardCollider = item.GetComponent<Collider2D>();
+        if (cardCollider != null)
+        {
+            cardCollider.enabled = false;
+            Debug.Log($"  Disabled Collider2D component");
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Created preview card {cardData.CardName}, active: {item.activeInHierarchy}");
+        
         return item;
+    }
+    
+    /// <summary>
+    /// Coroutine to force card visibility on the next frame, after any visibility management has run
+    /// </summary>
+    private System.Collections.IEnumerator ForceCardVisibilityNextFrame(GameObject card, string cardName)
+    {
+        yield return null; // Wait one frame
+        
+        if (card != null && !card.activeInHierarchy)
+        {
+            Debug.LogWarning($"CharacterSelectionUIManager: Card {cardName} was disabled by another system, forcing it back on");
+            card.SetActive(true);
+        }
+        
+        // Check again after a short delay
+        yield return new WaitForSeconds(0.1f);
+        
+        if (card != null && !card.activeInHierarchy)
+        {
+            Debug.LogWarning($"CharacterSelectionUIManager: Card {cardName} disabled again, forcing it back on (second attempt)");
+            card.SetActive(true);
+        }
     }
 
     private GameObject CreateBasicDeckPreviewItem(CardData cardData)

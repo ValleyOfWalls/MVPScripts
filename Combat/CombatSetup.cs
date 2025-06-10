@@ -483,17 +483,18 @@ public class CombatSetup : NetworkBehaviour
     private IEnumerator SetupCombatUIWithDelay()
     {
         yield return null;
-        Debug.Log("CombatSetup: Setting up combat UI after delay");
+        Debug.Log("[COMBAT_SETUP] Setting up combat UI after delay");
         
         // Ensure canvas is enabled before setting up UI
         if (combatCanvas != null && !combatCanvas.activeSelf)
         {
-            Debug.Log("CombatSetup: Re-enabling combat canvas before UI setup");
+            Debug.Log("[COMBAT_SETUP] Re-enabling combat canvas before UI setup");
             combatCanvas.SetActive(true);
         }
         
+        Debug.Log("[COMBAT_SETUP] About to call SetupCombatUI on CombatCanvasManager");
         combatCanvasManager.SetupCombatUI();
-        Debug.Log("CombatSetup: Combat UI setup completed");
+        Debug.Log("[COMBAT_SETUP] Combat UI setup completed");
     }
 
     /// <summary>

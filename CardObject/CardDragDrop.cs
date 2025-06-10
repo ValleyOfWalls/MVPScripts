@@ -479,46 +479,19 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             originalSortingOrder = originalCanvas.sortingOrder;
         }
         
-        // Move to drag canvas for proper rendering order
-        if (dragCanvas != null)
+        // UPDATED: Don't reparent - just use Canvas component for proper rendering order
+        LogDebug("Maintaining original parent during drag - using Canvas component for rendering order");
+        
+        // Add Canvas component to card for higher sorting order
+        Canvas cardCanvas = GetComponent<Canvas>();
+        if (cardCanvas == null)
         {
-            transform.SetParent(dragCanvas.transform, true);
-            
-            // Set higher sorting order
-            Canvas cardCanvas = GetComponent<Canvas>();
-            if (cardCanvas == null)
-            {
-                cardCanvas = gameObject.AddComponent<Canvas>();
-            }
-            cardCanvas.overrideSorting = true;
-            cardCanvas.sortingOrder = dragSortingOrder;
-            
-            LogDebug($"Moved to drag canvas: {dragCanvas.name}, sorting order: {dragSortingOrder}");
+            cardCanvas = gameObject.AddComponent<Canvas>();
         }
-        else
-        {
-            // Fallback: Stay in original parent but ensure higher sorting order
-            LogDebug("No drag canvas available - using fallback rendering strategy");
-            
-            Canvas cardCanvas = GetComponent<Canvas>();
-            if (cardCanvas == null)
-            {
-                cardCanvas = gameObject.AddComponent<Canvas>();
-            }
-            cardCanvas.overrideSorting = true;
-            cardCanvas.sortingOrder = dragSortingOrder;
-            
-            // Ensure the card is rendered on top by modifying the original canvas hierarchy
-            Canvas parentCanvas = GetComponentInParent<Canvas>();
-            if (parentCanvas != null)
-            {
-                LogDebug($"Using parent canvas: {parentCanvas.name}, setting card sorting order to {dragSortingOrder}");
-            }
-            else
-            {
-                LogDebug("WARNING: No parent canvas found - drag visibility may be affected");
-            }
-        }
+        cardCanvas.overrideSorting = true;
+        cardCanvas.sortingOrder = dragSortingOrder;
+        
+        LogDebug($"Added Canvas component with sorting order: {dragSortingOrder}, staying in parent: {originalParent.name}");
         
         // Apply drag visual effects
         transform.localScale = originalScale * dragScale;
@@ -555,13 +528,33 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         if (rectTransform != null)
         {
             Vector2 localPoint;
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                dragCanvas.transform as RectTransform, 
+            
+            // Use the appropriate parent transform for screen-to-local conversion
+            Transform referenceTransform = originalParent != null ? originalParent : transform.parent;
+            RectTransform referenceRect = referenceTransform as RectTransform;
+            
+            if (referenceRect != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                referenceRect, 
                 eventData.position, 
                 eventData.pressEventCamera, 
                 out localPoint))
             {
                 rectTransform.localPosition = localPoint;
+            }
+            else
+            {
+                // Fallback: try to use dragCanvas if available
+                if (dragCanvas != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    dragCanvas.transform as RectTransform, 
+                    eventData.position, 
+                    eventData.pressEventCamera, 
+                    out localPoint))
+                {
+                    // Convert from drag canvas local space to our parent's local space
+                    Vector3 worldPoint = dragCanvas.transform.TransformPoint(localPoint);
+                    localPoint = referenceRect.InverseTransformPoint(worldPoint);
+                    rectTransform.localPosition = localPoint;
+                }
             }
         }
         
@@ -833,29 +826,14 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         if (cardWasPlayed)
         {
             // Card was played - let the card system handle parent/position cleanup
-            // IMPORTANT: Don't move it back to original parent, HandManager needs to find it where it is
-            LogDebug("Card was played - visual drag state cleaned up, leaving in current location for HandManager");
+            // Since we maintained original parent during drag, no special handling needed
+            LogDebug("Card was played - visual drag state cleaned up, staying in original parent");
             return;
         }
         
-        // Return to original parent and position (only if card wasn't played)
-        if (originalParent != null)
-        {
-            // Check if we actually moved to a different parent during drag
-            if (transform.parent != originalParent)
-            {
-                transform.SetParent(originalParent, false);
-                LogDebug($"Returned to original parent: {originalParent.name}");
-            }
-            else
-            {
-                LogDebug("Card was already in original parent (fallback drag mode)");
-            }
-        }
-        else
-        {
-            LogDebug("WARNING: originalParent was null - cannot restore parent hierarchy");
-        }
+        // Since we maintained the original parent during drag, no reparenting needed
+        // Just reset position and visual state
+        LogDebug("Card not played - resetting position within original parent (no reparenting needed)");
         
         LogDebug($"Reset visual state - scale: {originalScale}, alpha: {originalAlpha}");
         

@@ -43,11 +43,11 @@ public class RelationshipManager : NetworkBehaviour
         UpdateConnectionInfo();
         allyEntity.OnChange += OnAllyChanged;
         handEntity.OnChange += OnHandChanged;
-        if (IsClientOnly && allyEntity.Value != null)
+        if (IsClientOnlyInitialized && allyEntity.Value != null)
         {
             inspectorAllyReference = allyEntity.Value;
         }
-        if (IsClientOnly && handEntity.Value != null)
+        if (IsClientOnlyInitialized && handEntity.Value != null)
         {
             inspectorHandReference = handEntity.Value;
         }
