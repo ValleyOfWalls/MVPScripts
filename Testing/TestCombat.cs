@@ -13,7 +13,7 @@ public class TestCombat : MonoBehaviour
 {
     [Header("Test Mode Settings")]
     [SerializeField] private bool enableReturnToHandMode = false;
-    [SerializeField] private bool showDebugLogs = true;
+    [SerializeField] private bool showDebugLogs = false;
     
     private static TestCombat instance;
     public static TestCombat Instance => instance;
@@ -93,7 +93,7 @@ public class TestCombat : MonoBehaviour
             if (tracker.IsServerInitialized)
             {
                 tracker.ResetForNewFight();
-                Debug.Log($"Reset EntityTracker for {tracker.gameObject.name}");
+                // Reset completed
             }
         }
     }
@@ -123,8 +123,7 @@ public class TestCombat : MonoBehaviour
             originalCardLocations[cardObject] = card.CurrentContainer;
         }
         
-        if (showDebugLogs)
-            Debug.Log($"TestCombat: Card {cardObject.name} will return to hand after play");
+        // Verbose logging disabled for performance
         
         return true;
     }
@@ -156,8 +155,6 @@ public class TestCombat : MonoBehaviour
             if (moveToHandMethod != null)
             {
                 moveToHandMethod.Invoke(handManager, new object[] { cardObject });
-                if (showDebugLogs)
-                    Debug.Log($"TestCombat: Returned {cardObject.name} to hand");
             }
         }
     }
@@ -204,7 +201,7 @@ public class TestCombat : MonoBehaviour
                 if (moveToHandMethod != null)
                 {
                     moveToHandMethod.Invoke(handManager, new object[] { spawnedCard });
-                    Debug.Log($"TestCombat: Spawned {cardData.CardName} in {targetEntity.EntityName.Value}'s hand");
+                    // Card spawned successfully
                 }
             }
         }
@@ -250,7 +247,7 @@ public class TestCombat : MonoBehaviour
         if (handManager != null && handManager.IsServerInitialized)
         {
             handManager.DiscardHand();
-            Debug.Log($"TestCombat: Cleared hand for {targetEntity.EntityName.Value}");
+            // Hand cleared
         }
     }
     
@@ -263,6 +260,8 @@ public class TestCombat : MonoBehaviour
     /// </summary>
     public void LogCombatState()
     {
+        if (!showDebugLogs) return;
+        
         Debug.Log("=== COMBAT STATE DEBUG ===");
         
         // Find all entities
@@ -276,17 +275,6 @@ public class TestCombat : MonoBehaviour
             }
         }
         
-        // Log combat manager state
-        CombatManager combatManager = FindFirstObjectByType<CombatManager>();
-        if (combatManager != null)
-        {
-            Debug.Log($"CombatManager found: {combatManager.gameObject.name}");
-        }
-        else
-        {
-            Debug.Log("CombatManager not found");
-        }
-        
         Debug.Log("=== END COMBAT STATE ===");
     }
     
@@ -295,25 +283,9 @@ public class TestCombat : MonoBehaviour
     /// </summary>
     private void LogEntityState(NetworkEntity entity)
     {
-        Debug.Log($"--- Entity: {entity.EntityName.Value} ({entity.EntityType}) ---");
-        Debug.Log($"Health: {entity.CurrentHealth.Value}/{entity.MaxHealth.Value}");
-        Debug.Log($"IsOwner: {entity.IsOwner}");
+        Debug.Log($"Entity: {entity.EntityName.Value} ({entity.EntityType}) - Health: {entity.CurrentHealth.Value}/{entity.MaxHealth.Value}");
         
-        // EntityTracker state
-        EntityTracker tracker = entity.GetComponent<EntityTracker>();
-        if (tracker != null)
-        {
-            var trackingData = tracker.GetTrackingDataForScaling();
-            Debug.Log($"Cards played this turn: {trackingData.cardsPlayedThisTurn}");
-            Debug.Log($"Cards played this fight: {trackingData.cardsPlayedThisFight}");
-            Debug.Log($"Zero cost cards this turn: {trackingData.zeroCostCardsThisTurn}");
-            Debug.Log($"Combo count: {trackingData.comboCount}");
-            Debug.Log($"Current stance: {tracker.CurrentStance}");
-            Debug.Log($"Strength stacks: {tracker.StrengthStacks}");
-            Debug.Log($"Is stunned: {tracker.IsStunned}");
-        }
-        
-        // Hand state
+        // Hand state summary only
         HandManager handManager = GetHandManagerForEntity(entity);
         if (handManager != null)
         {
@@ -321,33 +293,8 @@ public class TestCombat : MonoBehaviour
             List<GameObject> cardsInDeck = handManager.GetCardsInDeck();
             List<GameObject> cardsInDiscard = handManager.GetCardsInDiscard();
             
-            Debug.Log($"Cards in hand: {cardsInHand.Count}");
-            Debug.Log($"Cards in deck: {cardsInDeck.Count}");
-            Debug.Log($"Cards in discard: {cardsInDiscard.Count}");
-            
-            // Log card names in hand
-            if (cardsInHand.Count > 0)
-            {
-                string handCards = "Hand cards: ";
-                foreach (var cardObj in cardsInHand)
-                {
-                    Card card = cardObj.GetComponent<Card>();
-                    if (card?.CardData != null)
-                    {
-                        handCards += card.CardData.CardName + ", ";
-                    }
-                }
-                Debug.Log(handCards.TrimEnd(',', ' '));
-            }
+            Debug.Log($"Cards - Hand: {cardsInHand.Count}, Deck: {cardsInDeck.Count}, Discard: {cardsInDiscard.Count}");
         }
-        
-        // Energy state
-        if (entity.CurrentEnergy != null && entity.MaxEnergy != null)
-        {
-            Debug.Log($"Energy: {entity.CurrentEnergy.Value}/{entity.MaxEnergy.Value}");
-        }
-        
-        Debug.Log($"--- End {entity.EntityName.Value} ---");
     }
     
     #endregion

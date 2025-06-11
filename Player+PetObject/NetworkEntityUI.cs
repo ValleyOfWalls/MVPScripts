@@ -16,6 +16,7 @@ public class NetworkEntityUI : MonoBehaviour
     [SerializeField] private EffectHandler effectHandler;
     [SerializeField] private EntityTracker entityTracker;
     [SerializeField] private CanvasGroup canvasGroup;
+    [SerializeField] private NetworkEntityAnimator entityAnimator;
 
     [Header("UI Elements")]
     [SerializeField] private Transform handTransform;
@@ -57,6 +58,7 @@ public class NetworkEntityUI : MonoBehaviour
         if (effectHandler == null) effectHandler = GetComponent<EffectHandler>();
         if (entityTracker == null) entityTracker = GetComponent<EntityTracker>();
         if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
+        if (entityAnimator == null) entityAnimator = GetComponent<NetworkEntityAnimator>();
 
         // Add CanvasGroup if not present
         if (canvasGroup == null)
@@ -249,6 +251,13 @@ public class NetworkEntityUI : MonoBehaviour
         {
             entityModel.gameObject.SetActive(visible);
             Debug.Log($"[POSITION_DEBUG] NetworkEntityUI: Set 3D model {entityModel.name} visibility to {visible} for entity {entity?.EntityName.Value}");
+        }
+        
+        // Trigger animation when entity becomes visible
+        if (visible && entityAnimator != null)
+        {
+            Debug.Log($"NetworkEntityUI: Entity became visible, notifying animator for {entity?.EntityName.Value}");
+            entityAnimator.OnEntityBecameVisible();
         }
         
         Debug.Log($"[POSITION_DEBUG] NetworkEntityUI: Set visibility to {visible} for entity {entity?.EntityName.Value} (UI: {(canvasGroup != null ? "CanvasGroup" : "GameObject")}, Model: {(entityModel != null ? "Found" : "Not Found")})");

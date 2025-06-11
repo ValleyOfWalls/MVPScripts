@@ -19,7 +19,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     [SerializeField] private float dragAlpha = 0.8f; // Alpha during drag
     
     [Header("Debug")]
-    [SerializeField] private bool debugLogEnabled = true;
+    [SerializeField] private bool debugLogEnabled = false;
     
     // Components
     private Card card;
@@ -87,7 +87,6 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             if (raycaster != null)
             {
                 foundCanvas = currentCanvas;
-                LogDebug($"Found drag canvas via parent hierarchy: {foundCanvas.name}");
             }
             else
             {
@@ -105,7 +104,6 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 if (rootCanvas != currentCanvas && rootCanvas.GetComponent<GraphicRaycaster>() != null)
                 {
                     foundCanvas = rootCanvas;
-                    LogDebug($"Found drag canvas via root hierarchy: {foundCanvas.name}");
                 }
             }
         }
@@ -123,7 +121,6 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                     if (canvas != null && canvas.GetComponent<GraphicRaycaster>() != null)
                     {
                         foundCanvas = canvas;
-                        LogDebug($"Found drag canvas by name search: {foundCanvas.name}");
                         break;
                     }
                 }
@@ -141,7 +138,6 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 if (raycaster != null && (canvas.renderMode == RenderMode.ScreenSpaceOverlay || canvas.renderMode == RenderMode.WorldSpace))
                 {
                     foundCanvas = canvas;
-                    LogDebug($"Found drag canvas via search: {foundCanvas.name} (mode: {canvas.renderMode})");
                     break;
                 }
             }
@@ -154,17 +150,12 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             if (parentCanvas != null)
             {
                 foundCanvas = parentCanvas;
-                LogDebug($"Using parent canvas as fallback: {foundCanvas.name}");
             }
         }
         
         if (foundCanvas == null)
         {
-            LogDebug("ERROR: Could not find any suitable drag canvas!");
-        }
-        else
-        {
-            LogDebug($"Final drag canvas selected: {foundCanvas.name} (renderMode: {foundCanvas.renderMode})");
+            Debug.LogError("Could not find any suitable drag canvas!");
         }
         
         return foundCanvas;
@@ -195,14 +186,13 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         if (mouseCollider != null)
         {
             mouseCollider.enabled = true; // Keep enabled for OnMouseEnter/Exit damage previews
-            LogDebug("BoxCollider2D kept enabled for mouse hover effects");
         }
         
         // Ensure we're on a Canvas that can receive UI events
         Canvas parentCanvas = GetComponentInParent<Canvas>();
         if (parentCanvas == null)
         {
-            LogDebug("Warning: No parent Canvas found - UI events may not work properly");
+            Debug.LogWarning("No parent Canvas found - UI events may not work properly");
         }
         else
         {
@@ -373,7 +363,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             }
             else
             {
-                LogDebug("Error: Draft card but no DraftCardSelection component found!");
+                Debug.LogError("Draft card but no DraftCardSelection component found!");
             }
             return;
         }
@@ -990,9 +980,6 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     
     private void LogDebug(string message)
     {
-        if (debugLogEnabled)
-        {
-            Debug.Log($"[CardDragDrop] {card?.CardName ?? gameObject.name}: {message}");
-        }
+        // Verbose logging disabled for performance
     }
 } 

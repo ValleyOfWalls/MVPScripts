@@ -242,9 +242,6 @@ public class CombatSetup : NetworkBehaviour
         
         Debug.Log("CombatSetup: All required components available, proceeding with setup");
         
-        Debug.Log("CombatSetup: Transitioning to combat phase...");
-        TransitionToPhase();
-        
         Debug.Log("CombatSetup: Resetting entity health and energy...");
         ResetEntityHealthAndEnergy();
         
@@ -256,6 +253,9 @@ public class CombatSetup : NetworkBehaviour
         
         Debug.Log("CombatSetup: Ensuring players are observers...");
         EnsurePlayersAreObservers();
+        
+        Debug.Log("CombatSetup: Transitioning to combat phase (after fight assignments)...");
+        TransitionToPhase();
         
         Debug.Log("CombatSetup: Triggering combat canvas setup...");
         RpcTriggerCombatCanvasManagerSetup();

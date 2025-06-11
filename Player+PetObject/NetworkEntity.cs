@@ -51,6 +51,7 @@ public class NetworkEntity : NetworkBehaviour
 
     private GameManager gameManager;
     private RelationshipManager relationshipManager;
+    private NetworkEntityAnimator entityAnimator;
 
     private void Awake()
     {
@@ -60,6 +61,8 @@ public class NetworkEntity : NetworkBehaviour
             relationshipManager = gameObject.AddComponent<RelationshipManager>();
             Debug.Log($"Added RelationshipManager to {entityType} {gameObject.name}");
         }
+        
+        entityAnimator = GetComponent<NetworkEntityAnimator>();
     }
 
     public override void OnStartServer()
@@ -327,6 +330,42 @@ public class NetworkEntity : NetworkBehaviour
     {
         if (entityType != EntityType.Player) return;
         EntityName.Value = name;
+    }
+
+    #endregion
+
+    #region Animation
+
+    /// <summary>
+    /// Gets the NetworkEntityAnimator component for this entity
+    /// </summary>
+    public NetworkEntityAnimator GetAnimator()
+    {
+        return entityAnimator;
+    }
+
+    /// <summary>
+    /// Triggers idle animation if animator is available
+    /// </summary>
+    [Server]
+    public void TriggerIdleAnimation()
+    {
+        if (entityAnimator != null)
+        {
+            entityAnimator.StartIdleAnimation();
+        }
+    }
+
+    /// <summary>
+    /// Legacy method - now triggers idle animation for backwards compatibility
+    /// </summary>
+    [Server]
+    public void TriggerSpawnAnimation()
+    {
+        if (entityAnimator != null)
+        {
+            entityAnimator.StartIdleAnimation();
+        }
     }
 
     #endregion

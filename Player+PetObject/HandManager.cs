@@ -12,6 +12,9 @@ public class HandManager : NetworkBehaviour
 {
     [Header("References")]
     [SerializeField] private NetworkEntityUI entityUI;
+    
+    [Header("Debug")]
+    [SerializeField] private bool verboseLogging = false;
 
     private Transform handTransform;
     private Transform deckTransform;
@@ -52,7 +55,7 @@ public class HandManager : NetworkBehaviour
     public void DrawCards()
     {
         if (!IsServerInitialized) return;
-        Debug.Log($"HandManager: Drawing cards for {gameObject.name}");
+        if (verboseLogging) Debug.Log($"HandManager: Drawing cards for {gameObject.name}");
 
         // Check if transforms are available
         if (deckTransform == null || handTransform == null)
@@ -76,31 +79,23 @@ public class HandManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"HandManager DEBUG: GameManager found. PlayerDrawAmount: {GameManager.Instance.PlayerDrawAmount.Value}, PlayerTargetHandSize: {GameManager.Instance.PlayerTargetHandSize.Value}");
-        Debug.Log($"HandManager DEBUG: PetDrawAmount: {GameManager.Instance.PetDrawAmount.Value}, PetTargetHandSize: {GameManager.Instance.PetTargetHandSize.Value}");
-
         // Get current hand size to determine if this is initial draw
         List<GameObject> currentHand = GetCardsInTransform(handTransform);
         int currentHandSize = currentHand.Count;
-        Debug.Log($"HandManager: Current hand size for {gameObject.name} is {currentHandSize}");
 
         // FIXED: Use initial draw amount for first draw (empty hand), target hand size for subsequent draws
         int targetHandSize;
         bool isInitialDraw = (currentHandSize == 0);
-        
-        Debug.Log($"HandManager DEBUG: Entity type is {entity.EntityType}, isInitialDraw: {isInitialDraw}");
         
         if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.PlayerHand)
         {
             if (isInitialDraw)
             {
                 targetHandSize = GameManager.Instance.PlayerDrawAmount.Value; // Use initial draw amount
-                Debug.Log($"HandManager: Player initial draw - using PlayerDrawAmount.Value = {targetHandSize} cards");
             }
             else
             {
                 targetHandSize = GameManager.Instance.PlayerTargetHandSize.Value; // Use target hand size
-                Debug.Log($"HandManager: Player subsequent draw - using PlayerTargetHandSize.Value = {targetHandSize}");
             }
         }
         else if (entity.EntityType == EntityType.Pet || entity.EntityType == EntityType.PetHand)
@@ -108,12 +103,10 @@ public class HandManager : NetworkBehaviour
             if (isInitialDraw)
             {
                 targetHandSize = GameManager.Instance.PetDrawAmount.Value; // Use initial draw amount
-                Debug.Log($"HandManager: Pet initial draw - using PetDrawAmount.Value = {targetHandSize} cards");
             }
             else
             {
                 targetHandSize = GameManager.Instance.PetTargetHandSize.Value; // Use target hand size
-                Debug.Log($"HandManager: Pet subsequent draw - using PetTargetHandSize.Value = {targetHandSize}");
             }
         }
         else
@@ -122,17 +115,12 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"HandManager DEBUG: Final targetHandSize determined as: {targetHandSize}");
-
         // Calculate how many cards to draw
         int remainingCardsToDraw = targetHandSize - currentHandSize;
         if (remainingCardsToDraw <= 0)
         {
-            Debug.Log($"HandManager: No cards need to be drawn for {gameObject.name}, hand is already at or above target size");
             return;
         }
-
-        Debug.Log($"HandManager: Need to draw {remainingCardsToDraw} cards total");
 
         // First, check if we need to recycle before starting to draw
         List<GameObject> deckCards = GetCardsInTransform(deckTransform);
@@ -140,16 +128,13 @@ public class HandManager : NetworkBehaviour
         
         if (deckCards.Count < remainingCardsToDraw && discardCards.Count > 0)
         {
-            Debug.Log($"HandManager: Deck has insufficient cards ({deckCards.Count}) for remaining draw ({remainingCardsToDraw}). Recycling and shuffling {discardCards.Count} cards from discard pile.");
             RecycleAndShuffleDiscardPile();
             // Get updated deck cards after recycling
             deckCards = GetCardsInTransform(deckTransform);
-            Debug.Log($"HandManager: After recycling, deck now has {deckCards.Count} cards.");
         }
 
         // Now draw as many cards as we can
         int cardsToDrawThisTime = Mathf.Min(remainingCardsToDraw, deckCards.Count);
-        Debug.Log($"HandManager: Drawing {cardsToDrawThisTime} cards");
         
         for (int i = 0; i < cardsToDrawThisTime; i++)
         {
@@ -160,11 +145,8 @@ public class HandManager : NetworkBehaviour
                 continue;
             }
             
-            Debug.Log($"HandManager: Moving card {card.name} to hand for {gameObject.name}");
             MoveCardToHand(card);
         }
-        
-        Debug.Log($"HandManager: Finished drawing {cardsToDrawThisTime} cards for {gameObject.name}");
     }
 
     /// <summary>
@@ -174,8 +156,6 @@ public class HandManager : NetworkBehaviour
     public void DiscardHand()
     {
         if (!IsServerInitialized) return;
-        Debug.Log($"HandManager: Discarding hand for {gameObject.name}");
-
         // Check if transforms are available
         if (handTransform == null || discardTransform == null)
         {
@@ -185,11 +165,9 @@ public class HandManager : NetworkBehaviour
 
         // Get all card objects in hand transform
         List<GameObject> handCards = GetCardsInTransform(handTransform);
-        Debug.Log($"HandManager: Found {handCards.Count} cards in hand for {gameObject.name}");
         
         if (handCards.Count == 0)
         {
-            Debug.LogWarning($"HandManager: No cards found in hand to discard for {gameObject.name}");
             return;
         }
         
@@ -803,6 +781,14 @@ public class HandManager : NetworkBehaviour
         }
         
         Debug.Log($"HandManager: Finished despawning all cards for {gameObject.name}");
+    }
+    
+    private void LogVerbose(string message)
+    {
+        if (verboseLogging)
+        {
+            Debug.Log($"[HandManager] {message}");
+        }
     }
 }
 

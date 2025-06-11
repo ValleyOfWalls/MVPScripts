@@ -209,6 +209,10 @@ public class EntityVisibilityManager : MonoBehaviour
             return;
         }
         
+        // Get all fight assignments for debugging
+        var allFights = fightManager.GetAllFightAssignments();
+        Debug.Log($"[ENTITY_VISIBILITY] Total fight assignments: {allFights.Count}");
+        
         // Use the viewed combat references from FightManager instead of local player's fight
         // This allows spectating to work by changing what fight is being viewed
         NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
