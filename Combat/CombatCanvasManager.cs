@@ -526,89 +526,199 @@ public class CombatCanvasManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Positions a hand entity regardless of ownership since hands don't have NetworkTransforms
-    /// and are always in the same positions locally
+    /// Enhanced positioning method with better debugging
     /// </summary>
     private void PositionHandEntityAlways(NetworkEntity ownerEntity, Transform targetPosition, string handDescription)
     {
+        Debug.Log($"[POSITIONING_DEBUG] PositionHandEntityAlways called for {handDescription}");
+        
         if (ownerEntity == null || targetPosition == null)
         {
             if (ownerEntity == null)
-                Debug.LogError($"Owner entity for {handDescription} is null");
+                Debug.LogError($"[POSITIONING_DEBUG] Owner entity for {handDescription} is null");
             if (targetPosition == null)
-                Debug.LogError($"{handDescription} target position transform is null");
+                Debug.LogError($"[POSITIONING_DEBUG] Target position for {handDescription} is null");
             return;
         }
+
+        Debug.Log($"[POSITIONING_DEBUG] Owner entity: {ownerEntity.EntityName.Value}");
+        Debug.Log($"[POSITIONING_DEBUG] Target position: {targetPosition.name}");
 
         var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
         if (relationshipManager == null)
         {
-            Debug.LogError($"{ownerEntity.EntityName.Value} missing RelationshipManager - cannot find {handDescription}");
+            Debug.LogError($"[POSITIONING_DEBUG] {ownerEntity.EntityName.Value} missing RelationshipManager - cannot find {handDescription}");
             return;
         }
 
         if (relationshipManager.HandEntity == null)
         {
-            Debug.LogWarning($"{ownerEntity.EntityName.Value} has no hand entity - cannot position {handDescription}");
+            Debug.LogWarning($"[POSITIONING_DEBUG] {ownerEntity.EntityName.Value} has no hand entity - cannot position {handDescription}");
             return;
         }
 
         var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
         if (handEntity == null)
         {
-            Debug.LogError($"{handDescription} entity found but missing NetworkEntity component");
+            Debug.LogError($"[POSITIONING_DEBUG] {handDescription} entity found but missing NetworkEntity component");
             return;
         }
 
-        // Always position the hand locally since it doesn't have NetworkTransform
-        Vector3 oldPosition = handEntity.transform.position;
-        handEntity.transform.position = targetPosition.position;
-    }
+        Debug.Log($"[POSITIONING_DEBUG] Hand entity found: {handEntity.EntityName.Value}");
 
-    /// <summary>
-    /// Positions a hand entity only if the owning player/pet is owned by the local client (legacy method)
-    /// </summary>
-    private void PositionHandEntityIfPlayerOwned(NetworkEntity ownerEntity, Transform targetPosition, string handDescription)
-    {
-        if (ownerEntity == null || targetPosition == null)
+        // Check combat canvas availability
+        if (combatCanvas == null)
         {
-            if (ownerEntity == null)
-                Debug.LogError($"Owner entity for {handDescription} is null");
-            if (targetPosition == null)
-                Debug.LogError($"{handDescription} target position transform is null");
+            Debug.LogError($"[POSITIONING_DEBUG] Combat canvas is NULL! Cannot reparent {handDescription}");
             return;
         }
 
-        var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
-        if (relationshipManager == null)
+        Debug.Log($"[POSITIONING_DEBUG] Combat canvas available: {combatCanvas.name}");
+
+        // Hand entity should be a RectTransform, target position can be regular Transform (position marker)
+        RectTransform handRectTransform = handEntity.transform as RectTransform;
+        
+        if (handRectTransform == null)
         {
-            Debug.LogError($"{ownerEntity.EntityName.Value} missing RelationshipManager - cannot find {handDescription}");
+            Debug.LogError($"[POSITIONING_DEBUG] Hand entity {handEntity.EntityName.Value} does not have RectTransform! Hand entities must be UI elements.");
             return;
         }
 
-        if (relationshipManager.HandEntity == null)
+        Debug.Log($"[POSITIONING_DEBUG] Hand entity current parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL/ROOT")}");
+        Debug.Log($"[POSITIONING_DEBUG] Combat canvas transform: {combatCanvas.transform.name}");
+        
+        // Ensure the hand entity is a child of the main combat canvas if it isn't already
+        if (handRectTransform.parent != combatCanvas.transform)
         {
-            Debug.LogWarning($"{ownerEntity.EntityName.Value} has no hand entity - cannot position {handDescription}");
-            return;
-        }
-
-        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
-        if (handEntity == null)
-        {
-            Debug.LogError($"{handDescription} entity found but missing NetworkEntity component");
-            return;
-        }
-
-        // Position the hand if the owner entity is owned by the local client
-        // This ensures that each client positions their own player's hand and their own pet's hand
-        if (ownerEntity.IsOwner)
-        {
-            Vector3 oldPosition = handEntity.transform.position;
-            handEntity.transform.position = targetPosition.position;
+            Debug.Log($"[UI_HIERARCHY] {handDescription} {handEntity.EntityName.Value}: Moving to be child of combat canvas");
+            Debug.Log($"[UI_HIERARCHY] Before reparenting - Parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL")}");
+            
+            handRectTransform.SetParent(combatCanvas.transform, false);
+            
+            Debug.Log($"[UI_HIERARCHY] After reparenting - Parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL")}");
         }
         else
         {
-            Debug.Log($"SKIPPING {handDescription} {handEntity.EntityName.Value} - owner {ownerEntity.EntityName.Value} not owned by local client. Current position: {handEntity.transform.position}");
+            Debug.Log($"[UI_HIERARCHY] {handDescription} {handEntity.EntityName.Value}: Already child of combat canvas");
         }
+        
+        // Position the hand entity based on the target position
+        Vector2 oldAnchoredPosition = handRectTransform.anchoredPosition;
+        
+        // Check if target is a RectTransform (copy properties) or regular Transform (convert position)
+        RectTransform targetRectTransform = targetPosition as RectTransform;
+        
+        if (targetRectTransform != null)
+        {
+            // Target is also a RectTransform - copy its properties
+            handRectTransform.anchorMin = targetRectTransform.anchorMin;
+            handRectTransform.anchorMax = targetRectTransform.anchorMax;
+            handRectTransform.anchoredPosition = targetRectTransform.anchoredPosition;
+            handRectTransform.sizeDelta = targetRectTransform.sizeDelta;
+            handRectTransform.pivot = targetRectTransform.pivot;
+            
+            Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Copied RectTransform properties from target");
+        }
+        else
+        {
+            // Target is a regular Transform (position marker) - convert its local position to anchored position
+            Canvas parentCanvas = combatCanvas.GetComponent<Canvas>();
+            if (parentCanvas == null)
+            {
+                Debug.LogError($"[POSITIONING_DEBUG] Combat canvas missing Canvas component!");
+                return;
+            }
+            
+            // Convert the target position to local position relative to the canvas
+            Vector3 targetLocalPosition = combatCanvas.transform.InverseTransformPoint(targetPosition.position);
+            
+            // Use the target's local position as the anchored position
+            handRectTransform.anchoredPosition = new Vector2(targetLocalPosition.x, targetLocalPosition.y);
+            
+            // Set reasonable default anchoring (centered)
+            handRectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            handRectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            handRectTransform.pivot = new Vector2(0.5f, 0.5f);
+            
+            Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Converted Transform position {targetPosition.position} to anchored position {handRectTransform.anchoredPosition}");
+        }
+        
+        // Ensure proper layer ordering
+        handRectTransform.SetAsLastSibling();
+        
+        Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Positioned from {oldAnchoredPosition} to {handRectTransform.anchoredPosition}");
+    }
+
+    /// <summary>
+    /// Debug method to manually trigger positioning for testing
+    /// </summary>
+    [ContextMenu("Debug Manual Position Entities")]
+    public void DebugManualPositionEntities()
+    {
+        Debug.Log("=== DEBUG: Manual positioning trigger ===");
+        
+        if (combatCanvas == null)
+        {
+            Debug.LogError("DEBUG: Combat canvas is null!");
+            return;
+        }
+        
+        // Try to call the positioning method directly
+        PositionCombatEntitiesForAllFights();
+        
+        Debug.Log("=== DEBUG: Manual positioning complete ===");
+    }
+
+    /// <summary>
+    /// Debug method to manually check and fix hand entity parenting
+    /// Call this from the Unity Inspector or via code to test reparenting
+    /// </summary>
+    [ContextMenu("Debug Fix Hand Entity Parenting")]
+    public void DebugFixHandEntityParenting()
+    {
+        Debug.Log("=== DEBUG: Starting hand entity parenting check ===");
+        
+        // Check if combat canvas is available
+        if (combatCanvas == null)
+        {
+            Debug.LogError("DEBUG: combatCanvas is NULL! Cannot reparent hand entities.");
+            return;
+        }
+        
+        Debug.Log($"DEBUG: Combat canvas found: {combatCanvas.name}");
+        
+        // Find all hand entities in the scene
+        NetworkEntity[] allEntities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        
+        foreach (var entity in allEntities)
+        {
+            if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
+            {
+                Debug.Log($"DEBUG: Found hand entity: {entity.EntityName.Value} (Type: {entity.EntityType})");
+                Debug.Log($"DEBUG: Current parent: {(entity.transform.parent != null ? entity.transform.parent.name : "NULL/ROOT")}");
+                Debug.Log($"DEBUG: Current position: {entity.transform.position}");
+                
+                RectTransform handRectTransform = entity.transform as RectTransform;
+                if (handRectTransform == null)
+                {
+                    Debug.LogError($"DEBUG: Hand entity {entity.EntityName.Value} does not have RectTransform!");
+                    continue;
+                }
+                
+                // Force reparent to combat canvas
+                if (handRectTransform.parent != combatCanvas.transform)
+                {
+                    Debug.Log($"DEBUG: Reparenting {entity.EntityName.Value} to combat canvas");
+                    handRectTransform.SetParent(combatCanvas.transform, false);
+                    Debug.Log($"DEBUG: New parent: {handRectTransform.parent.name}");
+                }
+                else
+                {
+                    Debug.Log($"DEBUG: {entity.EntityName.Value} is already a child of combat canvas");
+                }
+            }
+        }
+        
+        Debug.Log("=== DEBUG: Hand entity parenting check complete ===");
     }
 } 
