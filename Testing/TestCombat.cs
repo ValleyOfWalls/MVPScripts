@@ -48,7 +48,6 @@ public class TestCombat : MonoBehaviour
         if (Instance != null)
         {
             Instance.enableReturnToHandMode = !Instance.enableReturnToHandMode;
-            Debug.Log($"Return to Hand Mode: {(Instance.enableReturnToHandMode ? "ENABLED" : "DISABLED")}");
         }
         else
         {
@@ -59,10 +58,16 @@ public class TestCombat : MonoBehaviour
     [MenuItem("Tools/Test Combat/Spawn Random Test Cards in Player Hand")]
     public static void SpawnRandomTestCards()
     {
-        NetworkEntity localPlayer = GetLocalPlayer();
-        if (localPlayer != null)
+        var localPlayer = GetLocalPlayer();
+        if (localPlayer == null)
         {
-            Instance?.SpawnRandomCardsInHand(localPlayer, 3);
+            Debug.LogWarning("No local player found");
+            return;
+        }
+
+        if (Instance != null)
+        {
+            Instance.SpawnRandomCardsInHand(localPlayer, 5);
         }
         else
         {
@@ -256,15 +261,13 @@ public class TestCombat : MonoBehaviour
     #region Debug Utilities
     
     /// <summary>
-    /// Logs comprehensive combat state information
+    /// Logs basic combat state for debugging
     /// </summary>
     public void LogCombatState()
     {
         if (!showDebugLogs) return;
         
-        Debug.Log("=== COMBAT STATE DEBUG ===");
-        
-        // Find all entities
+        // Simplified logging - remove verbose section markers
         NetworkEntity[] entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
         
         foreach (var entity in entities)
@@ -274,18 +277,14 @@ public class TestCombat : MonoBehaviour
                 LogEntityState(entity);
             }
         }
-        
-        Debug.Log("=== END COMBAT STATE ===");
     }
     
     /// <summary>
-    /// Logs detailed state for a specific entity
+    /// Logs basic state for a specific entity
     /// </summary>
     private void LogEntityState(NetworkEntity entity)
     {
-        Debug.Log($"Entity: {entity.EntityName.Value} ({entity.EntityType}) - Health: {entity.CurrentHealth.Value}/{entity.MaxHealth.Value}");
-        
-        // Hand state summary only
+        // Simplified entity logging
         HandManager handManager = GetHandManagerForEntity(entity);
         if (handManager != null)
         {
@@ -293,7 +292,12 @@ public class TestCombat : MonoBehaviour
             List<GameObject> cardsInDeck = handManager.GetCardsInDeck();
             List<GameObject> cardsInDiscard = handManager.GetCardsInDiscard();
             
-            Debug.Log($"Cards - Hand: {cardsInHand.Count}, Deck: {cardsInDeck.Count}, Discard: {cardsInDiscard.Count}");
+            // Condensed output format
+            Debug.Log($"{entity.EntityName.Value} ({entity.EntityType}) HP:{entity.CurrentHealth.Value}/{entity.MaxHealth.Value} Cards H:{cardsInHand.Count} D:{cardsInDeck.Count} Disc:{cardsInDiscard.Count}");
+        }
+        else
+        {
+            Debug.Log($"{entity.EntityName.Value} ({entity.EntityType}) HP:{entity.CurrentHealth.Value}/{entity.MaxHealth.Value}");
         }
     }
     

@@ -14,8 +14,6 @@ public static class TestCardDatabase
     [MenuItem("Tools/Test Cards/Create All Test Cards")]
     public static void CreateAllTestCards()
     {
-        Debug.Log("=== Creating Comprehensive Test Card Set ===");
-        
         // Basic Effect Tests
         CreateBasicEffectCards();
         
@@ -50,7 +48,7 @@ public static class TestCardDatabase
         CreateComplexCombinationCards();
         
         AssetDatabase.Refresh();
-        Debug.Log("=== All Test Cards Created ===");
+        Debug.Log("Test cards created successfully");
     }
     
     [MenuItem("Tools/Test Cards/Clear Test Cards")]
@@ -63,8 +61,6 @@ public static class TestCardDatabase
     
     private static void CreateBasicEffectCards()
     {
-        Debug.Log("Creating Basic Effect Cards...");
-        
         // Basic Damage
         CardFactory.CreateCard("Test_Damage_Basic", "Deal 3 damage", CardType.Attack, 2, TEST_CARD_PATH)
             .AddEffect(CardEffectType.Damage, 3, CardTargetType.Opponent);
@@ -92,8 +88,6 @@ public static class TestCardDatabase
     
     private static void CreateStatusEffectCards()
     {
-        Debug.Log("Creating Status Effect Cards...");
-        
         // Break Status
         CardFactory.CreateCard("Test_Break_Status", "Apply Break (reduce armor)", CardType.Skill, 1, TEST_CARD_PATH)
             .AddEffect(CardEffectType.ApplyBreak, 2, CardTargetType.Opponent, 3);
@@ -145,8 +139,6 @@ public static class TestCardDatabase
     
     private static void CreateTargetVariationCards()
     {
-        Debug.Log("Creating Target Variation Cards...");
-        
         // Self targeting
         CardFactory.CreateCard("Test_Target_Self", "Heal self for 4", CardType.Skill, 1, TEST_CARD_PATH)
             .AddEffect(CardEffectType.Heal, 4, CardTargetType.Self);
@@ -187,8 +179,6 @@ public static class TestCardDatabase
     
     private static void CreateScalingEffectCards()
     {
-        Debug.Log("Creating Scaling Effect Cards...");
-        
         // Zero Cost Scaling (Turn)
         CardFactory.CreateCard("Test_Scale_ZeroCost_Turn", "Deal 1 damage + 1 per zero-cost card this turn", CardType.Attack, 1, TEST_CARD_PATH)
             .AddScalingEffect(CardEffectType.Damage, 1, CardTargetType.Opponent, ScalingType.ZeroCostCardsThisTurn, 1.0f, 10);
@@ -224,8 +214,6 @@ public static class TestCardDatabase
     
     private static void CreateConditionalEffectCards()
     {
-        Debug.Log("Creating Conditional Effect Cards...");
-        
         // Original "OR" Logic Examples (Replace behavior)
         
         // Health-based conditional
@@ -281,8 +269,6 @@ public static class TestCardDatabase
     
     private static void CreateMultiEffectCards()
     {
-        Debug.Log("Creating Multi-Effect Cards...");
-        
         // Damage + Heal combo
         CardFactory.CreateCard("Test_Multi_Damage_Heal", "Damage enemy and heal self", CardType.Attack, 2, TEST_CARD_PATH)
             .AddEffect(CardEffectType.Damage, 4, CardTargetType.Opponent)
@@ -325,8 +311,6 @@ public static class TestCardDatabase
     
     private static void CreateStanceSystemCards()
     {
-        Debug.Log("Creating Stance System Cards...");
-        
         // Enter Aggressive Stance
         CardFactory.CreateCard("Test_Stance_Aggressive", "Enter Aggressive stance (+2 damage, -1 defense)", CardType.Stance, 1, TEST_CARD_PATH)
             .AddEffect(CardEffectType.EnterStance, (int)StanceType.Aggressive, CardTargetType.Self)
@@ -363,8 +347,6 @@ public static class TestCardDatabase
     
     private static void CreatePersistentEffectCards()
     {
-        Debug.Log("Creating Persistent Effect Cards...");
-        
         // Damage Aura
         CardFactory.CreateCard("Test_Persistent_Damage_Aura", "Deal 1 damage to all enemies each turn", CardType.Skill, 2, TEST_CARD_PATH)
             .AddEffect(CardEffectType.Damage, 0, CardTargetType.Self) // Minimal immediate effect
@@ -392,8 +374,6 @@ public static class TestCardDatabase
     
     private static void CreateSequencingCards()
     {
-        Debug.Log("Creating Sequencing Cards...");
-        
         // Basic Attack
         CardFactory.CreateCard("Test_Attack_Basic", "Basic attack card", CardType.Attack, 2, TEST_CARD_PATH)
             .AddEffect(CardEffectType.Damage, 3, CardTargetType.Opponent);
@@ -433,8 +413,6 @@ public static class TestCardDatabase
     
     private static void CreateElementalEffectCards()
     {
-        Debug.Log("Creating Elemental Effect Cards...");
-        
         // Fire Damage
         CardFactory.CreateCard("Test_Fire_Damage", "Fire damage with burn", CardType.Attack, 2, TEST_CARD_PATH)
             .AddEffect(CardEffectType.Damage, 3, CardTargetType.Opponent, 0, ElementalType.Fire)
@@ -462,8 +440,6 @@ public static class TestCardDatabase
     
     private static void CreateComplexCombinationCards()
     {
-        Debug.Log("Creating Complex Combination Cards...");
-        
         // Scaling + Conditional + Multi-effect
         CardFactory.CreateCard("Test_Complex_Scaling_Conditional", "Complex scaling with conditionals", CardType.Attack, 3, TEST_CARD_PATH)
             .AddScalingEffect(CardEffectType.Damage, 2, CardTargetType.Opponent, ScalingType.ComboCount, 1.5f, 12)

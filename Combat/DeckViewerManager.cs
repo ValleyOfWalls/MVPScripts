@@ -49,56 +49,41 @@ public class DeckViewerManager : NetworkBehaviour
 
     private void Awake()
     {
-        LogDebug("=== DeckViewerManager.Awake() START ===");
         FindManagerReferences();
         ValidateComponents();
         
         // Hide deck viewer buttons immediately in Awake to ensure they start hidden
-        LogDebug("Hiding deck viewer buttons in Awake() - before any other lifecycle methods");
         SetDeckViewerButtonsVisible(false);
-        
-        LogDebug("=== DeckViewerManager.Awake() END ===");
     }
 
     private void Start()
     {
-        LogDebug("=== DeckViewerManager.Start() START ===");
-        LogDebug($"GameObject active in hierarchy: {gameObject.activeInHierarchy}");
-        LogDebug($"Component enabled: {enabled}");
-        
         // Hide deck viewer buttons immediately (before network initialization)
         // This ensures they start hidden regardless of their default state in the scene
-        LogDebug("Hiding deck viewer buttons in Start() - before network initialization");
         SetDeckViewerButtonsVisible(false);
         
         // Don't setup full UI here - wait for network initialization
         SubscribeToGamePhaseChanges();
-        LogDebug("=== DeckViewerManager.Start() END - Waiting for network initialization ===");
     }
 
     public override void OnStartClient()
     {
         base.OnStartClient();
-        LogDebug("=== DeckViewerManager.OnStartClient() START ===");
         SetupUI();
         CacheEntityCardSpawners();
         UpdateButtonVisibilityForCurrentPhase();
-        LogDebug("=== DeckViewerManager.OnStartClient() END ===");
     }
 
     public override void OnStartServer()
     {
         base.OnStartServer();
-        LogDebug("=== DeckViewerManager.OnStartServer() START ===");
         // UI setup is handled in OnStartClient, but cache spawners here too for server
         CacheEntityCardSpawners();
-        LogDebug("=== DeckViewerManager.OnStartServer() END ===");
     }
 
     public override void OnStopClient()
     {
         base.OnStopClient();
-        LogDebug("=== DeckViewerManager.OnStopClient() ===");
         UnsubscribeFromGamePhaseChanges();
         // Clean up any open deck views when network stops
         if (isDeckViewOpen)
@@ -121,122 +106,61 @@ public class DeckViewerManager : NetworkBehaviour
 
     private void FindManagerReferences()
     {
-        LogDebug("Finding manager references...");
-        
         if (fightManager == null)
         {
             fightManager = FindFirstObjectByType<FightManager>();
-            LogDebug($"FightManager found: {fightManager != null}");
         }
         
         if (combatCanvasManager == null)
         {
             combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
-            LogDebug($"CombatCanvasManager found: {combatCanvasManager != null}");
         }
             
         if (entityVisibilityManager == null)
         {
             entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
-            LogDebug($"EntityVisibilityManager found: {entityVisibilityManager != null}");
         }
         
         if (gamePhaseManager == null)
         {
             gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-            LogDebug($"GamePhaseManager found: {gamePhaseManager != null}");
         }
-        
-        LogDebug("Manager reference search completed");
     }
 
     private void ValidateComponents()
     {
-        LogDebug("Validating UI component assignments...");
-        
         if (deckViewPanel == null)
         {
             Debug.LogError("DeckViewerManager: deckViewPanel is not assigned!");
-        }
-        else
-        {
-            LogDebug($"deckViewPanel assigned: {deckViewPanel.name}");
         }
         
         if (deckViewContainer == null)
         {
             Debug.LogError("DeckViewerManager: deckViewContainer is not assigned!");
         }
-        else
-        {
-            LogDebug($"deckViewContainer assigned: {deckViewContainer.name}");
-        }
         
         if (fightManager == null)
         {
             Debug.LogError("DeckViewerManager: Could not find FightManager!");
         }
-        
-        // Validate button assignments
-        LogDebug($"viewMyDeckButton assigned: {viewMyDeckButton != null}");
-        LogDebug($"viewOpponentDeckButton assigned: {viewOpponentDeckButton != null}");
-        LogDebug($"viewAllyDeckButton assigned: {viewAllyDeckButton != null}");
-        LogDebug($"closeDeckViewButton assigned: {closeDeckViewButton != null}");
-        LogDebug($"deckViewTitle assigned: {deckViewTitle != null}");
-        LogDebug($"deckViewScrollRect assigned: {deckViewScrollRect != null}");
-        
-        LogDebug("Component validation completed");
     }
 
     private void SetupUI()
     {
-        LogDebug("Setting up UI button listeners...");
-        
-        // ========================================================
-        // UI HIERARCHY CLARIFICATION:
-        // 
-        // 1. DECK VIEWER BUTTONS (viewMyDeckButton, viewOpponentDeckButton, viewAllyDeckButton):
-        //    - These are the trigger buttons that open the deck view
-        //    - Should remain ENABLED as GameObjects (so phase system can control visibility)
-        //    - Visibility controlled by SetDeckViewerButtonsVisible() based on game phase
-        //
-        // 2. DECK VIEW PANEL (deckViewPanel):
-        //    - This is the overlay that shows when viewing deck contents
-        //    - Should start DISABLED and only show when actively viewing a deck
-        //    - Contains: deckViewContainer, deckViewTitle, closeDeckViewButton, etc.
-        //
-        // 3. DECK VIEW CONTAINER (deckViewContainer):
-        //    - This is where spawned deck cards are placed for viewing
-        //    - Should remain ENABLED (as child of deckViewPanel)
-        //    - Gets populated when viewing a deck, cleared when closing
-        //
-        // SETUP RULE: Only disable deckViewPanel, keep buttons and container enabled
-        // ========================================================
-        
         // Initially hide the deck view panel (the overlay), but keep buttons enabled for phase control
         if (deckViewPanel != null)
         {
             deckViewPanel.SetActive(false);
-            LogDebug("DeckViewPanel set to inactive - deck view overlay hidden");
         }
         
-        // Note: deckViewContainer should remain enabled (it's a child of deckViewPanel anyway)
-        // Note: Deck viewer buttons should remain enabled so phase system can control their visibility
-        
         // Hide deck viewer buttons by default - phase system will show them when appropriate
-        LogDebug("Hiding deck viewer buttons by default - phase system will control visibility");
         SetDeckViewerButtonsVisible(false);
         
         // Setup button listeners
         if (viewMyDeckButton != null)
         {
-            LogDebug("Setting up viewMyDeckButton listener");
             viewMyDeckButton.onClick.RemoveAllListeners();
-            viewMyDeckButton.onClick.AddListener(() => {
-                LogDebug("*** viewMyDeckButton CLICKED! ***");
-                ViewDeck(DeckType.MyDeck);
-            });
-            LogDebug("viewMyDeckButton listener added successfully");
+            viewMyDeckButton.onClick.AddListener(() => ViewDeck(DeckType.MyDeck));
         }
         else
         {
@@ -245,13 +169,8 @@ public class DeckViewerManager : NetworkBehaviour
         
         if (viewOpponentDeckButton != null)
         {
-            LogDebug("Setting up viewOpponentDeckButton listener");
             viewOpponentDeckButton.onClick.RemoveAllListeners();
-            viewOpponentDeckButton.onClick.AddListener(() => {
-                LogDebug("*** viewOpponentDeckButton CLICKED! ***");
-                ViewDeck(DeckType.OpponentDeck);
-            });
-            LogDebug("viewOpponentDeckButton listener added successfully");
+            viewOpponentDeckButton.onClick.AddListener(() => ViewDeck(DeckType.OpponentDeck));
         }
         else
         {
@@ -260,13 +179,8 @@ public class DeckViewerManager : NetworkBehaviour
         
         if (viewAllyDeckButton != null)
         {
-            LogDebug("Setting up viewAllyDeckButton listener");
             viewAllyDeckButton.onClick.RemoveAllListeners();
-            viewAllyDeckButton.onClick.AddListener(() => {
-                LogDebug("*** viewAllyDeckButton CLICKED! ***");
-                ViewDeck(DeckType.AllyDeck);
-            });
-            LogDebug("viewAllyDeckButton listener added successfully");
+            viewAllyDeckButton.onClick.AddListener(() => ViewDeck(DeckType.AllyDeck));
         }
         else
         {
@@ -275,153 +189,48 @@ public class DeckViewerManager : NetworkBehaviour
         
         if (closeDeckViewButton != null)
         {
-            LogDebug("Setting up closeDeckViewButton listener");
             closeDeckViewButton.onClick.RemoveAllListeners();
-            closeDeckViewButton.onClick.AddListener(() => {
-                LogDebug("*** closeDeckViewButton CLICKED! ***");
-                CloseDeckView();
-            });
-            LogDebug("closeDeckViewButton listener added successfully");
+            closeDeckViewButton.onClick.AddListener(() => CloseDeckView());
         }
-        else
-        {
-            LogDebug("closeDeckViewButton is null - skipping (this is optional)");
-        }
-        
-        LogDebug("UI setup complete - checking final listener counts...");
-        
-        // Final verification of listener counts (Note: GetPersistentEventCount only shows Inspector listeners, not runtime ones)
-        if (viewMyDeckButton != null)
-        {
-            LogDebug($"FINAL CHECK - viewMyDeckButton persistent listeners: {viewMyDeckButton.onClick.GetPersistentEventCount()}");
-            LogDebug($"FINAL CHECK - viewMyDeckButton runtime listeners: Runtime listeners are present (can't count them directly)");
-        }
-        if (viewOpponentDeckButton != null)
-        {
-            LogDebug($"FINAL CHECK - viewOpponentDeckButton persistent listeners: {viewOpponentDeckButton.onClick.GetPersistentEventCount()}");
-            LogDebug($"FINAL CHECK - viewOpponentDeckButton runtime listeners: Runtime listeners are present (can't count them directly)");
-        }
-        if (viewAllyDeckButton != null)
-        {
-            LogDebug($"FINAL CHECK - viewAllyDeckButton persistent listeners: {viewAllyDeckButton.onClick.GetPersistentEventCount()}");
-            LogDebug($"FINAL CHECK - viewAllyDeckButton runtime listeners: Runtime listeners are present (can't count them directly)");
-        }
-        
-        LogDebug("=== UI SETUP COMPLETE - BUTTONS SHOULD BE CLICKABLE NOW ===");
     }
 
     private void CacheEntityCardSpawners()
     {
-        LogDebug("Caching entity card spawners...");
-        
         // Find all NetworkEntities and cache their CardSpawners
         NetworkEntity[] entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
-        LogDebug($"Found {entities.Length} NetworkEntities in scene");
         
         foreach (var entity in entities)
         {
-            LogDebug($"=== Processing entity: {entity.EntityName.Value} (Type: {entity.EntityType}) ===");
-            
             // For Player/Pet entities, we need to find their HandEntity which contains the CardSpawner
             if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet)
             {
-                LogDebug($"Entity {entity.EntityName.Value} is Player/Pet - looking for HandEntity...");
-                
                 RelationshipManager relationshipManager = entity.GetComponent<RelationshipManager>();
-                LogDebug($"RelationshipManager found: {relationshipManager != null}");
                 
-                if (relationshipManager != null)
+                if (relationshipManager != null && relationshipManager.HandEntity != null)
                 {
-                    LogDebug($"HandEntity reference: {(relationshipManager.HandEntity != null ? "SET" : "NULL")}");
-                    
-                    if (relationshipManager.HandEntity != null)
+                    NetworkEntity handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+                    if (handEntity != null)
                     {
-                        LogDebug($"HandEntity GameObject: {relationshipManager.HandEntity.name}");
-                        
-                        NetworkEntity handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
-                        LogDebug($"HandEntity NetworkEntity component: {(handEntity != null ? handEntity.EntityName.Value : "NULL")}");
-                        
-                        if (handEntity != null)
+                        CardSpawner spawner = handEntity.GetComponent<CardSpawner>();
+                        if (spawner != null)
                         {
-                            CardSpawner spawner = handEntity.GetComponent<CardSpawner>();
-                            LogDebug($"CardSpawner on HandEntity: {(spawner != null ? "FOUND" : "NOT FOUND")}");
-                            
-                            if (spawner != null)
-                            {
-                                // Cache the CardSpawner using the main entity as the key (Player/Pet),
-                                // but the spawner is actually on the HandEntity
-                                entityCardSpawners[entity] = spawner;
-                                LogDebug($"✓ CACHED CardSpawner for entity: {entity.EntityName.Value} (spawner on HandEntity: {handEntity.EntityName.Value})");
-                            }
-                            else
-                            {
-                                LogDebug($"✗ No CardSpawner found on HandEntity {handEntity.EntityName.Value} for: {entity.EntityName.Value}");
-                                
-                                // List all components on the HandEntity for debugging
-                                Component[] handComponents = handEntity.GetComponents<Component>();
-                                LogDebug($"HandEntity {handEntity.EntityName.Value} has {handComponents.Length} components:");
-                                foreach (var comp in handComponents)
-                                {
-                                    LogDebug($"  - {comp.GetType().Name}");
-                                }
-                            }
+                            // Cache the CardSpawner using the main entity as the key (Player/Pet),
+                            // but the spawner is actually on the HandEntity
+                            entityCardSpawners[entity] = spawner;
                         }
-                        else
-                        {
-                            LogDebug($"✗ HandEntity NetworkEntity component not found for: {entity.EntityName.Value}");
-                            LogDebug($"HandEntity GameObject components:");
-                            Component[] handObjComponents = relationshipManager.HandEntity.GetComponents<Component>();
-                            foreach (var comp in handObjComponents)
-                            {
-                                LogDebug($"  - {comp.GetType().Name}");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        LogDebug($"✗ HandEntity is NULL for entity: {entity.EntityName.Value}");
-                    }
-                }
-                else
-                {
-                    LogDebug($"✗ No RelationshipManager found for entity: {entity.EntityName.Value}");
-                    
-                    // List all components on this entity for debugging
-                    Component[] entityComponents = entity.GetComponents<Component>();
-                    LogDebug($"Entity {entity.EntityName.Value} has {entityComponents.Length} components:");
-                    foreach (var comp in entityComponents)
-                    {
-                        LogDebug($"  - {comp.GetType().Name}");
                     }
                 }
             }
             else
             {
-                LogDebug($"Entity {entity.EntityName.Value} is {entity.EntityType} - checking for direct CardSpawner...");
-                
                 // For other entity types (like Hand entities themselves), check if they have CardSpawner directly
                 CardSpawner spawner = entity.GetComponent<CardSpawner>();
                 if (spawner != null)
                 {
                     entityCardSpawners[entity] = spawner;
-                    LogDebug($"✓ CACHED CardSpawner directly on entity: {entity.EntityName.Value}");
-                }
-                else
-                {
-                    LogDebug($"No direct CardSpawner on {entity.EntityName.Value}");
                 }
             }
-            
-            LogDebug($"=== Finished processing {entity.EntityName.Value} ===");
         }
-        
-        LogDebug($"Cached {entityCardSpawners.Count} CardSpawners total");
-        LogDebug("=== FINAL CACHE CONTENTS ===");
-        foreach (var kvp in entityCardSpawners)
-        {
-            LogDebug($"Cached: {kvp.Key.EntityName.Value} -> CardSpawner on {kvp.Value.gameObject.name}");
-        }
-        LogDebug("=== END CACHE CONTENTS ===");
     }
 
     #endregion
@@ -440,18 +249,14 @@ public class DeckViewerManager : NetworkBehaviour
     /// </summary>
     public void ViewDeck(DeckType deckType)
     {
-        LogDebug($"=== ViewDeck({deckType}) called ===");
-        
         if (fightManager == null)
         {
-            LogDebug("Cannot view deck - FightManager is null");
             return;
         }
 
         // Check if we're clicking the same deck button when overlay is open - if so, close it
         if (isDeckViewOpen && currentlyViewedDeckType == deckType)
         {
-            LogDebug($"Closing deck view - same deck button ({deckType}) clicked while overlay is open");
             CloseDeckView();
             return;
         }
@@ -460,12 +265,8 @@ public class DeckViewerManager : NetworkBehaviour
         NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
         NetworkEntity viewedOpponentPet = fightManager.ViewedCombatOpponentPet;
         
-        LogDebug($"ViewedPlayer: {(viewedPlayer != null ? viewedPlayer.EntityName.Value : "null")}");
-        LogDebug($"ViewedOpponentPet: {(viewedOpponentPet != null ? viewedOpponentPet.EntityName.Value : "null")}");
-        
         if (viewedPlayer == null || viewedOpponentPet == null)
         {
-            LogDebug("Cannot view deck - viewed combat entities are null");
             return;
         }
 
@@ -477,17 +278,14 @@ public class DeckViewerManager : NetworkBehaviour
             case DeckType.MyDeck:
                 targetEntity = viewedPlayer;
                 deckTitle = $"{viewedPlayer.EntityName.Value}'s Deck";
-                LogDebug($"MyDeck selected - target: {targetEntity.EntityName.Value}");
                 break;
                 
             case DeckType.OpponentDeck:
                 targetEntity = viewedOpponentPet;
                 deckTitle = $"{viewedOpponentPet.EntityName.Value}'s Deck";
-                LogDebug($"OpponentDeck selected - target: {targetEntity.EntityName.Value}");
                 break;
                 
             case DeckType.AllyDeck:
-                LogDebug("AllyDeck selected - searching for ally...");
                 // Find the ally pet for the viewed player
                 RelationshipManager playerRelationship = viewedPlayer.GetComponent<RelationshipManager>();
                 if (playerRelationship != null && playerRelationship.AllyEntity != null)
@@ -496,21 +294,11 @@ public class DeckViewerManager : NetworkBehaviour
                     if (targetEntity != null)
                     {
                         deckTitle = $"{targetEntity.EntityName.Value}'s Deck (Ally)";
-                        LogDebug($"Ally found: {targetEntity.EntityName.Value}");
                     }
-                    else
-                    {
-                        LogDebug("AllyEntity found but could not get NetworkEntity component");
-                    }
-                }
-                else
-                {
-                    LogDebug("No RelationshipManager or AllyEntity found on viewed player");
                 }
                 
                 if (targetEntity == null)
                 {
-                    LogDebug("Cannot view ally deck - no ally found for viewed player");
                     return;
                 }
                 break;
@@ -518,17 +306,10 @@ public class DeckViewerManager : NetworkBehaviour
 
         if (targetEntity != null)
         {
-            LogDebug($"Proceeding to show deck contents for: {targetEntity.EntityName.Value}");
             // Store which deck type we're viewing
             currentlyViewedDeckType = deckType;
             ShowDeckContents(targetEntity, deckTitle);
         }
-        else
-        {
-            LogDebug("Cannot show deck - targetEntity is null");
-        }
-        
-        LogDebug($"=== ViewDeck({deckType}) completed ===");
     }
 
     /// <summary>
@@ -536,21 +317,16 @@ public class DeckViewerManager : NetworkBehaviour
     /// </summary>
     public void CloseDeckView()
     {
-        LogDebug("=== CloseDeckView() called ===");
-        
         CleanupSpawnedCards();
         
         if (deckViewPanel != null)
         {
             deckViewPanel.SetActive(false);
-            LogDebug("DeckViewPanel set to inactive");
         }
         
         isDeckViewOpen = false;
         currentViewedDeckOwner = null;
         currentlyViewedDeckType = null;
-        
-        LogDebug("Deck view closed");
     }
 
     /// <summary>
@@ -563,7 +339,6 @@ public class DeckViewerManager : NetworkBehaviour
     /// </summary>
     public void RefreshCardSpawnerCache()
     {
-        LogDebug("=== REFRESHING CardSpawner CACHE ===");
         entityCardSpawners.Clear();
         CacheEntityCardSpawners();
     }

@@ -87,12 +87,7 @@ public class AutoTestRunner : MonoBehaviour
         
         if (enableAutoTesting)
         {
-            Debug.Log("AutoTestRunner: Automated testing enabled. Starting sequence...");
             StartCoroutine(WaitForStartScreenReadiness());
-        }
-        else
-        {
-            Debug.Log("AutoTestRunner: Automated testing disabled.");
         }
         
         // Start monitoring combat setup regardless of auto testing
@@ -104,29 +99,16 @@ public class AutoTestRunner : MonoBehaviour
 
     private IEnumerator MonitorCombatSetup()
     {
-        Debug.Log("AutoTestRunner: Starting to monitor combat setup completion...");
-        
         // Wait until CombatSetup is available
         yield return new WaitUntil(() => combatSetup != null);
-        Debug.Log("AutoTestRunner: CombatSetup component found, now monitoring IsSetupComplete...");
         
-        // Add periodic logging to track the setup status
-        float checkInterval = 1.0f;
-        float lastCheckTime = 0f;
-        
+        // Wait for setup completion without verbose logging
         while (!combatSetup.IsSetupComplete)
         {
-            if (Time.time - lastCheckTime >= checkInterval)
-            {
-                Debug.Log($"AutoTestRunner: Combat setup status - IsSetupComplete: {combatSetup.IsSetupComplete}, IsCombatActive: {combatSetup.IsCombatActive}");
-                lastCheckTime = Time.time;
-            }
             yield return null;
         }
         
         combatSetupComplete = true;
-        Debug.Log("AutoTestRunner: Combat setup detected as complete! Displaying host/client status.");
-        
         DisplayHostClientStatus();
     }
 
@@ -149,8 +131,6 @@ public class AutoTestRunner : MonoBehaviour
         {
             fpsUpdateCoroutine = StartCoroutine(UpdateFPSDisplay());
         }
-        
-        Debug.Log($"AutoTestRunner: Displaying status - {statusText}" + (showFPS ? $" with FPS tracking enabled" : ""));
     }
 
     private string GetNetworkStatusText()
@@ -204,12 +184,6 @@ public class AutoTestRunner : MonoBehaviour
         if (showFPS)
         {
             displayText += $" | FPS: {currentFPS:F1}";
-            
-            // Add frame rate settings for debugging (only log occasionally to avoid spam)
-            if (Time.frameCount % 300 == 0) // Log every ~5 seconds at 60fps
-            {
-                LogFrameRateSettings();
-            }
         }
         
         hostClientStatusText.text = displayText;
@@ -217,32 +191,19 @@ public class AutoTestRunner : MonoBehaviour
 
     private void LogFrameRateSettings()
     {
-        Debug.Log($"AutoTestRunner: Frame Rate Debug Info:");
-        Debug.Log($"  - Current FPS: {currentFPS:F1}");
-        Debug.Log($"  - Application.targetFrameRate: {Application.targetFrameRate}");
-        Debug.Log($"  - QualitySettings.vSyncCount: {QualitySettings.vSyncCount}");
-        Debug.Log($"  - Time.deltaTime: {Time.deltaTime:F4}");
-        
+        // Simplified frame rate logging - only when needed
         if (GameManager.Instance != null)
         {
-            Debug.Log($"  - GameManager found, calling LogCurrentDisplaySettings...");
             GameManager.Instance.LogCurrentDisplaySettings();
-        }
-        else
-        {
-            Debug.LogWarning($"  - GameManager.Instance is null!");
         }
     }
 
     private IEnumerator WaitForStartScreenReadiness()
     {
-        Debug.Log("AutoTestRunner: Waiting for Steam to initialize and start button to be available...");
-        
         // Wait for Steam initialization
         if (steamNetworkIntegration != null)
         {
             yield return new WaitUntil(() => steamNetworkIntegration.IsSteamInitialized);
-            Debug.Log("AutoTestRunner: Steam initialized successfully.");
         }
         else
         {
@@ -251,12 +212,10 @@ public class AutoTestRunner : MonoBehaviour
         
         // Wait until the start button is available and interactable
         yield return new WaitUntil(() => startScreenStartButton != null && startScreenStartButton.gameObject.activeInHierarchy && startScreenStartButton.interactable);
-        Debug.Log("AutoTestRunner: Start Screen Button is now available and interactable.");
         
         // Click the start button
         startScreenStartButton.onClick.Invoke();
         startButtonClicked = true;
-        Debug.Log("AutoTestRunner: Start Screen Button clicked. Moving to lobby phase.");
         
         // Start monitoring lobby conditions
         StartCoroutine(WaitForLobbyReadiness());
@@ -264,8 +223,6 @@ public class AutoTestRunner : MonoBehaviour
 
     private IEnumerator WaitForLobbyReadiness()
     {
-        Debug.Log("AutoTestRunner: Waiting for lobby conditions to be met...");
-        
         // Wait until lobby manager is ready
         yield return new WaitUntil(() => lobbyManager != null && lobbyManager.gameObject.activeInHierarchy);
         
@@ -278,7 +235,6 @@ public class AutoTestRunner : MonoBehaviour
         // Only the host should click the start button
         if (steamNetworkIntegration != null && steamNetworkIntegration.IsUserSteamHost && lobbyStartGameButton != null && lobbyStartGameButton.interactable)
         {
-            Debug.Log("AutoTestRunner: This client is the host and lobby conditions are met. Clicking Start Game button.");
             lobbyStartGameButton.onClick.Invoke();
         }
         else
@@ -288,8 +244,6 @@ public class AutoTestRunner : MonoBehaviour
         
         // Start monitoring character selection phase
         StartCoroutine(WaitForCharacterSelectionPhase());
-        
-        Debug.Log("AutoTestRunner: Lobby phase completed, transitioning to character selection monitoring.");
     }
 
     private IEnumerator WaitForCharacterSelectionPhase()
