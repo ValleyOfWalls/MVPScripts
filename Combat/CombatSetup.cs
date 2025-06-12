@@ -23,6 +23,7 @@ public class CombatSetup : NetworkBehaviour
     [SerializeField] private GameManager gameManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
     [SerializeField] private FightPreviewManager fightPreviewManager;
+    [SerializeField] private LoadingScreenManager loadingScreenManager;
     
     private SteamNetworkIntegration steamNetworkIntegration;
 
@@ -205,6 +206,7 @@ public class CombatSetup : NetworkBehaviour
         if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
         if (gamePhaseManager == null) gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         if (fightPreviewManager == null) fightPreviewManager = FindFirstObjectByType<FightPreviewManager>();
+        if (loadingScreenManager == null) loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
         
         RegisterCombatCanvasWithPhaseManager();
     }
@@ -262,6 +264,13 @@ public class CombatSetup : NetworkBehaviour
         
         isSetupComplete.Value = true; // Mark setup as complete
         Debug.Log("CombatSetup: Setup completed successfully, waiting for client readiness checks");
+
+        // Notify loading screen that setup is complete
+        if (loadingScreenManager != null)
+        {
+            Debug.Log("CombatSetup: Notifying loading screen that setup is complete");
+            RpcNotifyLoadingScreenSetupComplete();
+        }
 
         // Instead of starting combat immediately, notify clients to check their setup
         RpcCheckClientSetup();
@@ -675,6 +684,32 @@ public class CombatSetup : NetworkBehaviour
             else
             {
                 Debug.LogError("CombatSetup: GamePhaseManager reference is missing and Instance is null");
+            }
+        }
+    }
+
+    [ObserversRpc]
+    private void RpcNotifyLoadingScreenSetupComplete()
+    {
+        Debug.Log("CombatSetup: RpcNotifyLoadingScreenSetupComplete called on client");
+        
+        if (loadingScreenManager != null)
+        {
+            Debug.Log("CombatSetup: Found LoadingScreenManager, hiding loading screen");
+            loadingScreenManager.HideLoadingScreen();
+        }
+        else
+        {
+            // Try to find LoadingScreenManager if reference is missing
+            loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
+            if (loadingScreenManager != null)
+            {
+                Debug.Log("CombatSetup: Found LoadingScreenManager via FindFirstObjectByType, hiding loading screen");
+                loadingScreenManager.HideLoadingScreen();
+            }
+            else
+            {
+                Debug.LogWarning("CombatSetup: LoadingScreenManager not found, cannot hide loading screen");
             }
         }
     }
