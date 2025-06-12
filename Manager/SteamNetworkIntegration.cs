@@ -28,7 +28,7 @@ public class SteamNetworkIntegration : MonoBehaviour
     // --- SteamManager Fields ---
     [Header("Steam Settings")]
     [SerializeField] private bool initializeSteamOnAwake = true;
-    [SerializeField] private uint appId = 480; // Default to Spacewar
+    [SerializeField] private uint appId = 3527170; // Your actual Steam App ID
 
     private bool m_steamInitialized = false;
     public bool IsSteamInitialized { get { return m_steamInitialized; } }
