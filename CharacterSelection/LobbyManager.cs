@@ -11,7 +11,7 @@ using System;
 /// </summary>
 public class LobbyManager : NetworkBehaviour
 {
-    [SerializeField] private LobbyUIManager uiManager;
+
     
     private NetworkManager fishNetManager;
     private GamePhaseManager gamePhaseManager;
@@ -55,7 +55,6 @@ public class LobbyManager : NetworkBehaviour
         gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         
         if (fishNetManager == null) Debug.LogError("LobbyManager: FishNet NetworkManager not found in scene.");
-        if (uiManager == null) Debug.LogError("LobbyManager: LobbyUIManager reference not assigned in the Inspector.");
         if (gamePhaseManager == null) Debug.LogError("LobbyManager: GamePhaseManager not found in scene.");
     }
 
@@ -198,10 +197,7 @@ public class LobbyManager : NetworkBehaviour
     [TargetRpc]
     private void TargetRpcUpdatePlayerListUI(NetworkConnection conn, List<string> displayNamesToShow)
     {
-        if (uiManager != null)
-        {
-            uiManager.UpdatePlayerListUI(displayNamesToShow);
-        }
+        // UI update removed - no longer using LobbyUIManager
     }
 
     // Checks if all players are ready and updates the start button state
@@ -233,10 +229,7 @@ public class LobbyManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcUpdateStartButtonState(bool interactable)
     {
-        if (uiManager != null)
-        {
-            uiManager.SetStartButtonInteractable(interactable);
-        }
+        // Start button update removed - no longer using LobbyUIManager
     }
     
     #endregion
@@ -259,10 +252,7 @@ public class LobbyManager : NetworkBehaviour
     private void RpcStartGame()
     {
         // Tell UI manager to hide lobby UI (if it exists)
-        if (uiManager != null)
-        {
-            uiManager.HideLobbyUI();
-        }
+        // Hide lobby UI removed - no longer using LobbyUIManager
         
         // Transition directly to character selection phase (which now includes lobby functionality)
         if (gamePhaseManager != null)
