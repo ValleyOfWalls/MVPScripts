@@ -88,7 +88,7 @@ public class StartScreenManager : MonoBehaviour
     {
         if (isSteamAvailable || allowOfflinePlay)
         {
-            TransitionToLobby();
+            TransitionToCharacterSelection();
         }
         else
         {
@@ -97,17 +97,22 @@ public class StartScreenManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Transition from start screen to lobby
+    /// Transition from start screen directly to character selection (skipping lobby)
     /// </summary>
-    private void TransitionToLobby()
+    private void TransitionToCharacterSelection()
     {
-        // Always transition the UI first
-        startScreenUIManager.TransitionToLobbyScreen();
+        // Always transition the UI first (this will hide start screen)
+        startScreenUIManager.TransitionToCharacterSelectionScreen();
         
-        // Then set the game phase if manager exists
+        // Set the game phase to character selection (skipping lobby)
         if (gamePhaseManager != null)
         {
-            gamePhaseManager.SetLobbyPhase();
+            gamePhaseManager.SetCharacterSelectionPhase();
+            Debug.Log("StartScreenManager: Transitioning directly to character selection phase");
+        }
+        else
+        {
+            Debug.LogError("StartScreenManager: GamePhaseManager not found, cannot transition phase");
         }
     }
 } 

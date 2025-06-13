@@ -12,7 +12,6 @@ public class CharacterSelectionSetup : NetworkBehaviour
     [SerializeField] private CharacterSelectionManager characterSelectionManager;
     [SerializeField] private CharacterSelectionUIManager characterSelectionUIManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
-    [SerializeField] private LobbyUIManager lobbyUIManager;
     [SerializeField] private EntityVisibilityManager entityVisibilityManager;
     
     [Header("Character Selection Canvas")]
@@ -33,7 +32,6 @@ public class CharacterSelectionSetup : NetworkBehaviour
         if (characterSelectionManager == null) characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
         if (characterSelectionUIManager == null) characterSelectionUIManager = FindFirstObjectByType<CharacterSelectionUIManager>();
         if (gamePhaseManager == null) gamePhaseManager = GamePhaseManager.Instance;
-        if (lobbyUIManager == null) lobbyUIManager = FindFirstObjectByType<LobbyUIManager>();
         if (entityVisibilityManager == null) entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
         
         // Log what we found for debugging
@@ -69,7 +67,7 @@ public class CharacterSelectionSetup : NetworkBehaviour
     }
     
     /// <summary>
-    /// Initiates the character selection phase setup
+    /// Initiates the character selection phase setup directly from start screen
     /// </summary>
     [Server]
     public void InitializeCharacterSelection()
@@ -86,19 +84,19 @@ public class CharacterSelectionSetup : NetworkBehaviour
             return;
         }
         
-        Debug.Log("CharacterSelectionSetup: Starting character selection phase initialization...");
+        Debug.Log("CharacterSelectionSetup: Starting combined lobby/character selection phase initialization...");
         
-        StartCoroutine(SetupCharacterSelectionPhase());
+        StartCoroutine(SetupCombinedCharacterSelectionPhase());
     }
     
     /// <summary>
-    /// Coroutine to handle the character selection setup process
+    /// Coroutine to handle the combined lobby/character selection setup process
     /// </summary>
     [Server]
-    private IEnumerator SetupCharacterSelectionPhase()
+    private IEnumerator SetupCombinedCharacterSelectionPhase()
     {
-        // Step 1: Hide lobby UI
-        Debug.Log("CharacterSelectionSetup: Step 1 - Hiding lobby UI");
+        // Step 1: Hide any existing lobby UI (if any)
+        Debug.Log("CharacterSelectionSetup: Step 1 - Ensuring lobby UI is hidden");
         HideLobbyUI();
         
         // Step 2: Hide all existing network entities (if any)
@@ -108,8 +106,8 @@ public class CharacterSelectionSetup : NetworkBehaviour
         // Small delay to ensure UI transitions are smooth
         yield return new WaitForSeconds(0.1f);
         
-        // Step 3: Update game phase to CharacterSelection
-        Debug.Log("CharacterSelectionSetup: Step 3 - Updating game phase to CharacterSelection");
+        // Step 3: Update game phase to CharacterSelection (this now includes lobby functionality)
+        Debug.Log("CharacterSelectionSetup: Step 3 - Updating game phase to CharacterSelection (with lobby functionality)");
         UpdateGamePhase();
         
         // Step 4: Enable character selection canvas
@@ -119,12 +117,12 @@ public class CharacterSelectionSetup : NetworkBehaviour
         // Small delay to ensure UI is ready
         yield return new WaitForSeconds(0.2f);
         
-        // Step 5: Initialize character selection manager
-        Debug.Log("CharacterSelectionSetup: Step 5 - Initializing character selection manager");
+        // Step 5: Initialize character selection manager (now handles lobby functionality too)
+        Debug.Log("CharacterSelectionSetup: Step 5 - Initializing character selection manager with lobby integration");
         InitializeCharacterSelectionManager();
         
         isSetupComplete = true;
-        Debug.Log("CharacterSelectionSetup: Character selection phase initialization complete!");
+        Debug.Log("CharacterSelectionSetup: Combined lobby/character selection phase initialization complete!");
     }
     
     /// <summary>
@@ -222,14 +220,14 @@ public class CharacterSelectionSetup : NetworkBehaviour
     {
         Debug.Log("CharacterSelectionSetup: RpcHideLobbyUI called on client");
         
-        if (lobbyUIManager != null)
+        if (characterSelectionUIManager != null)
         {
-            lobbyUIManager.HideLobbyUI();
+            characterSelectionUIManager.HideLobbyUI();
             Debug.Log("CharacterSelectionSetup: Lobby UI hidden on client");
         }
         else
         {
-            Debug.LogWarning("CharacterSelectionSetup: LobbyUIManager not found on client, cannot hide lobby UI");
+            Debug.LogWarning("CharacterSelectionSetup: CharacterSelectionUIManager not found on client, cannot hide lobby UI");
         }
     }
     

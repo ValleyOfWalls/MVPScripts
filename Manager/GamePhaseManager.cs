@@ -96,9 +96,11 @@ public class GamePhaseManager : MonoBehaviour
     /// </summary>
     private void ExecutePhaseSpecificLogic(GamePhase newPhase)
     {
-        if (newPhase == GamePhase.Lobby && SteamNetworkIntegration.Instance != null)
+        if (newPhase == GamePhase.CharacterSelection && SteamNetworkIntegration.Instance != null)
         {
+            // Start Steam lobby process when entering character selection (which now includes lobby functionality)
             SteamNetworkIntegration.Instance.RequestLobbiesList();
+            Debug.Log("GamePhaseManager: Started Steam lobby process for character selection phase");
         }
     }
     

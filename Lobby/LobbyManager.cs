@@ -63,15 +63,12 @@ public class LobbyManager : NetworkBehaviour
     {
         base.OnStartClient();
         
-        // Ensure lobby UI is shown when client connects
-        if (uiManager != null)
-        {
-            uiManager.PrepareUIForLobbyJoin();
-        }
+        // No longer show lobby UI - we go directly to character selection
+        // The character selection phase now includes lobby functionality
         
-        // Notify that LobbyManager is now available
+        // Notify that LobbyManager is now available (for any remaining dependencies)
         OnLobbyManagerAvailable?.Invoke(this);
-        Debug.Log("LobbyManager: OnStartClient called, notified subscribers that LobbyManager is available");
+        Debug.Log("LobbyManager: OnStartClient called, transitioning directly to character selection");
         
         string initialPlayerName = GetInitialPlayerName();
         CmdServerAddPlayer(LocalConnection, initialPlayerName);
@@ -112,11 +109,40 @@ public class LobbyManager : NetworkBehaviour
                 Debug.LogWarning("LobbyManager: GameManager.Instance not found. Defaulting player ready state to false.");
             }
             playerDisplayNames[conn] = playerName;
-            BroadcastFullPlayerList();
-            CheckAllPlayersReady();
             
-            // Notify about player ready state change
-            OnPlayersReadyStateChanged?.Invoke();
+            // Transition to character selection when first player joins
+            if (connectedPlayers.Count == 1)
+            {
+                Debug.Log("LobbyManager: First player joined, transitioning to character selection phase");
+                InitializeCharacterSelection();
+            }
+            else
+            {
+                // For subsequent players, notify the existing character selection manager
+                Debug.Log($"LobbyManager: Player {connectedPlayers.Count} joined, notifying character selection manager");
+                NotifyCharacterSelectionManagerOfNewPlayer(conn, playerName);
+            }
+            
+            Debug.Log($"LobbyManager: Added player {playerName} (total players: {connectedPlayers.Count})");
+        }
+    }
+    
+    /// <summary>
+    /// Notifies the CharacterSelectionManager about a new player joining during character selection phase
+    /// </summary>
+    [Server]
+    private void NotifyCharacterSelectionManagerOfNewPlayer(NetworkConnection conn, string playerName)
+    {
+        CharacterSelectionManager characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        if (characterSelectionManager != null)
+        {
+            // Manually add the player to the character selection manager
+            characterSelectionManager.ServerAddPlayerDirectly(conn, playerName);
+            Debug.Log($"LobbyManager: Notified CharacterSelectionManager about new player {playerName}");
+        }
+        else
+        {
+            Debug.LogWarning($"LobbyManager: CharacterSelectionManager not found, cannot add player {playerName} to character selection");
         }
     }
 
@@ -232,13 +258,13 @@ public class LobbyManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcStartGame()
     {
-        // Tell UI manager to hide lobby UI
+        // Tell UI manager to hide lobby UI (if it exists)
         if (uiManager != null)
         {
             uiManager.HideLobbyUI();
         }
         
-        // Use GamePhaseManager to transition to CharacterSelection phase
+        // Transition directly to character selection phase (which now includes lobby functionality)
         if (gamePhaseManager != null)
         {
             gamePhaseManager.SetCharacterSelectionPhase();
@@ -256,6 +282,7 @@ public class LobbyManager : NetworkBehaviour
         if (characterSelectionSetup != null)
         {
             characterSelectionSetup.InitializeCharacterSelection();
+            Debug.Log("LobbyManager: Initialized character selection setup (with integrated lobby functionality)");
         }
         else
         {

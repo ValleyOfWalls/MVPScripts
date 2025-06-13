@@ -475,6 +475,9 @@ public class SteamNetworkIntegration : MonoBehaviour
             Debug.Log("No lobbies found. Creating a new lobby automatically.");
             CreateLobby(); // Defaulting to public lobby
         }
+        
+        // After lobby operations, we'll transition directly to character selection
+        // This will be handled by the lobby connection callbacks
     }
 
     private void OnLobbyDataUpdatedCallback(LobbyDataUpdate_t param)

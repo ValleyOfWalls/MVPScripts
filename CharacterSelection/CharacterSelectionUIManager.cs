@@ -28,9 +28,19 @@ public class CharacterSelectionUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI statusText;
     [SerializeField] private TextMeshProUGUI readyCounterText;
     
+    [Header("Player List Panel")]
+    [SerializeField] private Button showPlayersButton;
+    [SerializeField] private Button leaveGameButton;
+    [SerializeField] private GameObject playerListPanel;
+    [SerializeField] private ScrollRect playerListScrollView;
+    [SerializeField] private Transform playerListContent;
+    [SerializeField] private Button playerListCloseButton;
+    [SerializeField] private TextMeshProUGUI playerListTitle;
+    
     [Header("Selection Item Prefab")]
     [SerializeField] private GameObject selectionItemPrefab;
     [SerializeField] private GameObject deckCardPrefab;
+    [SerializeField] private GameObject playerListItemPrefab;
     
     [Header("Styling")]
     [SerializeField] private Color selectedColor = new Color(0.3f, 0.6f, 1f, 1f);
@@ -68,15 +78,22 @@ public class CharacterSelectionUIManager : MonoBehaviour
     private List<GameObject> characterItems = new List<GameObject>();
     private List<GameObject> petItems = new List<GameObject>();
     private List<GameObject> deckPreviewItems = new List<GameObject>();
+    private List<GameObject> playerListItems = new List<GameObject>();
     
     // State
     private bool isReady = false;
     private bool hasValidSelection = false;
+    private bool isPlayerListVisible = false;
+    private float lastReadyButtonClickTime = 0f;
+    private const float READY_BUTTON_COOLDOWN = 0.2f; // 200ms cooldown
     
     // Player data for Mario Kart-style display
     private Dictionary<string, PlayerSelectionDisplayInfo> otherPlayersData = new Dictionary<string, PlayerSelectionDisplayInfo>();
     private Color myPlayerColor = Color.white;
     private string myPlayerID = "";
+    
+    // Store the latest player info for when panel becomes visible
+    private List<PlayerSelectionInfo> latestPlayerInfos = new List<PlayerSelectionInfo>();
 
     #region Initialization
 
@@ -122,15 +139,21 @@ public class CharacterSelectionUIManager : MonoBehaviour
         // Set up input field
         if (playerNameInputField != null)
         {
+            playerNameInputField.onValueChanged.RemoveAllListeners();
             playerNameInputField.onValueChanged.AddListener(OnPlayerNameChanged);
         }
         
         // Set up ready button
         if (readyButton != null)
         {
+            // Remove any existing listeners to prevent duplicates
+            readyButton.onClick.RemoveAllListeners();
             readyButton.onClick.AddListener(OnReadyButtonClicked);
             readyButton.interactable = false;
         }
+        
+        // Set up player list panel and buttons
+        SetupPlayerListPanel();
         
         // Initialize status text
         if (statusText != null)
@@ -140,6 +163,42 @@ public class CharacterSelectionUIManager : MonoBehaviour
         
         // Initialize ready counter
         UpdateReadyCounter(0, 1); // Start with 0/1 until we know player count
+    }
+    
+    private void SetupPlayerListPanel()
+    {
+        // Set up show players button
+        if (showPlayersButton != null)
+        {
+            showPlayersButton.onClick.RemoveAllListeners();
+            showPlayersButton.onClick.AddListener(OnShowPlayersButtonClicked);
+        }
+        
+        // Set up leave game button
+        if (leaveGameButton != null)
+        {
+            leaveGameButton.onClick.RemoveAllListeners();
+            leaveGameButton.onClick.AddListener(OnLeaveGameButtonClicked);
+        }
+        
+        // Set up player list close button
+        if (playerListCloseButton != null)
+        {
+            playerListCloseButton.onClick.RemoveAllListeners();
+            playerListCloseButton.onClick.AddListener(OnPlayerListCloseButtonClicked);
+        }
+        
+        // Initialize player list panel as hidden
+        if (playerListPanel != null)
+        {
+            playerListPanel.SetActive(false);
+        }
+        
+        // Set player list title
+        if (playerListTitle != null)
+        {
+            playerListTitle.text = "Players in Game";
+        }
     }
 
     private void CreateSelectionItems()
@@ -268,13 +327,23 @@ public class CharacterSelectionUIManager : MonoBehaviour
         if (availableCharacters.Count > 0)
         {
             OnCharacterSelected(0);
-            Debug.Log("CharacterSelectionUIManager: Auto-selected first character for default selection");
+            Debug.Log($"CharacterSelectionUIManager: Auto-selected first character: {availableCharacters[0].CharacterName}");
         }
         
         if (availablePets.Count > 0)
         {
             OnPetSelected(0);
-            Debug.Log("CharacterSelectionUIManager: Auto-selected first pet for default selection");
+            Debug.Log($"CharacterSelectionUIManager: Auto-selected first pet: {availablePets[0].PetName}");
+        }
+        
+        // Ensure the selection gets sent to server after both are selected
+        if (hasValidSelection)
+        {
+            Debug.Log("CharacterSelectionUIManager: Both character and pet selected, sending to server");
+            if (selectionManager != null)
+            {
+                selectionManager.RequestSelectionUpdate(selectedCharacterIndex, selectedPetIndex, customPlayerName, "");
+            }
         }
         
         // Check if auto-test runner wants us to auto-ready
@@ -419,7 +488,12 @@ public class CharacterSelectionUIManager : MonoBehaviour
         {
             if (selectionManager != null)
             {
+                Debug.Log($"CharacterSelectionUIManager: Sending selection to server - Character: {selectedCharacterIndex}, Pet: {selectedPetIndex}, CustomName: '{customPlayerName}'");
                 selectionManager.RequestSelectionUpdate(selectedCharacterIndex, selectedPetIndex, customPlayerName, "");
+            }
+            else
+            {
+                Debug.LogWarning("CharacterSelectionUIManager: Cannot send selection - selectionManager is null");
             }
         }
     }
@@ -663,24 +737,47 @@ public class CharacterSelectionUIManager : MonoBehaviour
     {
         if (!hasValidSelection) return;
         
-        isReady = !isReady;
+        // Prevent rapid button clicks with cooldown
+        float currentTime = Time.time;
+        if (currentTime - lastReadyButtonClickTime < READY_BUTTON_COOLDOWN)
+        {
+            Debug.Log($"CharacterSelectionUIManager: Ready button click ignored due to cooldown ({currentTime - lastReadyButtonClickTime:F2}s since last click)");
+            return;
+        }
         
-        // Hide/show deck preview based on ready state
-        if (isReady)
-        {
-            ClearDeckPreview();
-            if (deckPreviewPanel != null)
-                deckPreviewPanel.SetActive(false);
-        }
-        else
-        {
-            ShowIndividualDeckPreview();
-        }
+        lastReadyButtonClickTime = currentTime;
+        
+        // Don't change local isReady state immediately - let server be authoritative
+        // The server will broadcast the update back to us and we'll update then
         
         if (selectionManager != null)
         {
+            Debug.Log("CharacterSelectionUIManager: Sending ready toggle request to server");
             selectionManager.RequestReadyToggle();
         }
+    }
+    
+    private void OnShowPlayersButtonClicked()
+    {
+        if (isPlayerListVisible)
+        {
+            HidePlayerListPanel();
+        }
+        else
+        {
+            ShowPlayerListPanel();
+        }
+    }
+    
+    private void OnLeaveGameButtonClicked()
+    {
+        // Leave the game and return to start screen
+        LeaveGame();
+    }
+    
+    private void OnPlayerListCloseButtonClicked()
+    {
+        HidePlayerListPanel();
     }
 
     private void UpdateReadyButtonState()
@@ -720,7 +817,26 @@ public class CharacterSelectionUIManager : MonoBehaviour
         // Update visual indicators for each player
         foreach (PlayerSelectionInfo info in playerInfos)
         {
-            if (info.playerName == myPlayerID) continue; // Skip self
+            // Check if this is the local player and update ready state
+            if (info.playerName == myPlayerID)
+            {
+                // Update local ready state from server
+                isReady = info.isReady;
+                UpdateReadyButtonState();
+                
+                // Update deck preview based on ready state
+                if (isReady)
+                {
+                    ClearDeckPreview();
+                    if (deckPreviewPanel != null)
+                        deckPreviewPanel.SetActive(false);
+                }
+                else
+                {
+                    ShowIndividualDeckPreview();
+                }
+                continue; // Skip showing selection indicators for self
+            }
             
             Color playerColor = GetPlayerColor(info.playerName);
             
@@ -743,6 +859,15 @@ public class CharacterSelectionUIManager : MonoBehaviour
                     indicator.AddPlayerSelection(info.playerName, playerColor);
                 }
             }
+        }
+        
+        // Always store the latest player info for when panel becomes visible
+        latestPlayerInfos = new List<PlayerSelectionInfo>(playerInfos);
+        
+        // Update player list panel if visible
+        if (isPlayerListVisible)
+        {
+            UpdatePlayerListPanel(playerInfos);
         }
     }
 
@@ -785,6 +910,240 @@ public class CharacterSelectionUIManager : MonoBehaviour
     }
 
     #endregion
+    
+    #region Player List Panel
+    
+    private void ShowPlayerListPanel()
+    {
+        if (playerListPanel != null)
+        {
+            playerListPanel.SetActive(true);
+            isPlayerListVisible = true;
+            
+            // Update player list with current data when panel becomes visible
+            if (latestPlayerInfos != null && latestPlayerInfos.Count > 0)
+            {
+                UpdatePlayerListPanel(latestPlayerInfos);
+                Debug.Log($"CharacterSelectionUIManager: Player list panel shown with {latestPlayerInfos.Count} players");
+            }
+            else
+            {
+                Debug.Log("CharacterSelectionUIManager: Player list panel shown but no player data available yet");
+            }
+            
+            // Use simple position animation instead of Animator
+            RectTransform panelRect = playerListPanel.GetComponent<RectTransform>();
+            if (panelRect != null)
+            {
+                // Start from off-screen position and slide in
+                panelRect.anchoredPosition = new Vector2(-300, 0);
+                StartCoroutine(SlideInPanel(panelRect));
+            }
+        }
+    }
+    
+    private void HidePlayerListPanel()
+    {
+        if (playerListPanel != null)
+        {
+            RectTransform panelRect = playerListPanel.GetComponent<RectTransform>();
+            if (panelRect != null)
+            {
+                // Slide out to off-screen position
+                StartCoroutine(SlideOutPanel(panelRect));
+            }
+            else
+            {
+                playerListPanel.SetActive(false);
+            }
+            
+            isPlayerListVisible = false;
+            Debug.Log("CharacterSelectionUIManager: Player list panel hidden");
+        }
+    }
+    
+    private System.Collections.IEnumerator SlideInPanel(RectTransform panelRect)
+    {
+        Vector2 startPos = new Vector2(-300, 0);
+        Vector2 endPos = new Vector2(0, 0);
+        float duration = 0.3f;
+        float elapsed = 0f;
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            
+            // Use smooth ease-out curve
+            t = 1f - Mathf.Pow(1f - t, 3f);
+            
+            panelRect.anchoredPosition = Vector2.Lerp(startPos, endPos, t);
+            yield return null;
+        }
+        
+        panelRect.anchoredPosition = endPos;
+    }
+    
+    private System.Collections.IEnumerator SlideOutPanel(RectTransform panelRect)
+    {
+        Vector2 startPos = new Vector2(0, 0);
+        Vector2 endPos = new Vector2(-300, 0);
+        float duration = 0.3f;
+        float elapsed = 0f;
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            
+            // Use smooth ease-in curve
+            t = Mathf.Pow(t, 3f);
+            
+            panelRect.anchoredPosition = Vector2.Lerp(startPos, endPos, t);
+            yield return null;
+        }
+        
+        panelRect.anchoredPosition = endPos;
+        playerListPanel.SetActive(false);
+    }
+    
+    private System.Collections.IEnumerator DelayedPanelHide()
+    {
+        // This method is no longer needed since we handle hiding in SlideOutPanel
+        yield return null;
+    }
+    
+    private void UpdatePlayerListPanel(List<PlayerSelectionInfo> playerInfos)
+    {
+        // Clear existing player list items
+        ClearPlayerListItems();
+        
+        // Create new player list items
+        foreach (PlayerSelectionInfo info in playerInfos)
+        {
+            GameObject playerItem = CreatePlayerListItem(info);
+            if (playerItem != null)
+            {
+                playerListItems.Add(playerItem);
+            }
+        }
+    }
+    
+    private void ClearPlayerListItems()
+    {
+        foreach (GameObject item in playerListItems)
+        {
+            if (item != null) Destroy(item);
+        }
+        playerListItems.Clear();
+    }
+    
+    private GameObject CreatePlayerListItem(PlayerSelectionInfo info)
+    {
+        GameObject item = null;
+        
+        if (playerListItemPrefab != null)
+        {
+            item = Instantiate(playerListItemPrefab, playerListContent);
+        }
+        else
+        {
+            // Create basic player list item if no prefab
+            item = CreateBasicPlayerListItem(info);
+        }
+        
+        if (item != null)
+        {
+            UpdatePlayerListItemContent(item, info);
+        }
+        
+        return item;
+    }
+    
+    private GameObject CreateBasicPlayerListItem(PlayerSelectionInfo info)
+    {
+        GameObject item = new GameObject(info.playerName + "_ListItem");
+        item.transform.SetParent(playerListContent, false);
+        
+        RectTransform itemRect = item.AddComponent<RectTransform>();
+        itemRect.sizeDelta = new Vector2(300f, 60f);
+        
+        Image itemImage = item.AddComponent<Image>();
+        itemImage.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+        
+        // Create player info text
+        GameObject textGO = new GameObject("PlayerInfo");
+        textGO.transform.SetParent(item.transform, false);
+        
+        RectTransform textRect = textGO.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.sizeDelta = Vector2.zero;
+        textRect.anchoredPosition = Vector2.zero;
+        
+        TextMeshProUGUI infoText = textGO.AddComponent<TextMeshProUGUI>();
+        infoText.fontSize = 12;
+        infoText.color = Color.white;
+        infoText.alignment = TextAlignmentOptions.Left;
+        infoText.margin = new Vector4(10, 5, 10, 5);
+        
+        return item;
+    }
+    
+    private void UpdatePlayerListItemContent(GameObject item, PlayerSelectionInfo info)
+    {
+        Debug.Log($"CharacterSelectionUIManager: Updating player list item - Name: '{info.playerName}', HasSelection: {info.hasSelection}, IsReady: {info.isReady}, CharacterName: '{info.characterName}', PetName: '{info.petName}'");
+        
+        TextMeshProUGUI infoText = item.GetComponentInChildren<TextMeshProUGUI>();
+        if (infoText != null)
+        {
+            string readyStatus = info.isReady ? "<color=green>[Ready]</color>" : "<color=red>[Not Ready]</color>";
+            string selectionInfo = "";
+            
+            if (info.hasSelection)
+            {
+                selectionInfo = $"\nCharacter: {info.characterName}\nPet: {info.petName}";
+                infoText.color = Color.white;
+            }
+            else
+            {
+                selectionInfo = "\n<color=yellow>Selecting...</color>";
+                infoText.color = Color.gray;
+            }
+            
+            infoText.text = $"{info.playerName} {readyStatus}{selectionInfo}";
+        }
+        
+        // Set background color based on player
+        Image itemImage = item.GetComponent<Image>();
+        if (itemImage != null)
+        {
+            Color playerColor = GetPlayerColor(info.playerName);
+            itemImage.color = new Color(playerColor.r * 0.3f, playerColor.g * 0.3f, playerColor.b * 0.3f, 0.8f);
+        }
+    }
+    
+    private void LeaveGame()
+    {
+        Debug.Log("CharacterSelectionUIManager: Player requested to leave game");
+        
+        // Find the SteamNetworkIntegration to handle leaving
+        SteamNetworkIntegration steamNetwork = FindFirstObjectByType<SteamNetworkIntegration>();
+        if (steamNetwork != null)
+        {
+            steamNetwork.LeaveLobby();
+        }
+        
+        // Also disconnect from FishNet
+        FishNet.InstanceFinder.ClientManager?.StopConnection();
+        FishNet.InstanceFinder.ServerManager?.StopConnection(true);
+        
+        // Return to start screen
+        // This would typically be handled by a scene manager or game state manager
+        Debug.Log("CharacterSelectionUIManager: Returning to start screen");
+        }
+
+    #endregion
 
     #region External Interface
 
@@ -808,6 +1167,16 @@ public class CharacterSelectionUIManager : MonoBehaviour
         {
             characterSelectionCanvas.SetActive(false);
         }
+    }
+
+    /// <summary>
+    /// Hides any existing lobby UI (compatibility method for transition period)
+    /// </summary>
+    public void HideLobbyUI()
+    {
+        // This method exists for compatibility during the transition from separate lobby phase
+        // Since we no longer have a separate lobby UI, this method doesn't need to do anything
+        Debug.Log("CharacterSelectionUIManager: HideLobbyUI called (no action needed - lobby UI is integrated)");
     }
 
     #endregion

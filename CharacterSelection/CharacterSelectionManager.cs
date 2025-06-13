@@ -91,8 +91,23 @@ public class CharacterSelectionManager : NetworkBehaviour
     {
         base.OnStartClient();
         
-        // Don't auto-initialize here - wait for proper character selection phase
-        // The CharacterSelectionSetup will call InitializeForClient when appropriate
+        // Ensure we have the game phase manager reference
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        }
+        
+        // Check if we're joining during character selection phase
+        if (gamePhaseManager != null && gamePhaseManager.GetCurrentPhase() == GamePhaseManager.GamePhase.CharacterSelection)
+        {
+            Debug.Log("CharacterSelectionManager: Joining during character selection phase, initializing client");
+            InitializeForClient();
+        }
+        else
+        {
+            Debug.Log("CharacterSelectionManager: OnStartClient called, waiting for character selection phase to begin");
+            // The CharacterSelectionSetup will call InitializeForClient when appropriate, or the TargetRpc will handle it
+        }
     }
     
     /// <summary>
@@ -169,6 +184,34 @@ public class CharacterSelectionManager : NetworkBehaviour
             Debug.Log($"CharacterSelectionManager: Added player {playerName} to character selection");
         }
     }
+    
+    /// <summary>
+    /// Server method to directly add a player (called by LobbyManager for subsequent players)
+    /// </summary>
+    [Server]
+    public void ServerAddPlayerDirectly(NetworkConnection conn, string playerName)
+    {
+        Debug.Log($"CharacterSelectionManager: ServerAddPlayerDirectly called for {playerName}");
+        ServerAddPlayerLogic(conn, playerName);
+        
+        // Ensure the joining client gets their UI initialized
+        TargetRpcInitializeJoiningClient(conn);
+    }
+
+    /// <summary>
+    /// Target RPC to initialize a client that's joining during character selection
+    /// </summary>
+    [TargetRpc]
+    private void TargetRpcInitializeJoiningClient(NetworkConnection conn)
+    {
+        Debug.Log("CharacterSelectionManager: TargetRpcInitializeJoiningClient called");
+        
+        // If the client hasn't been initialized yet, do it now
+        if (uiManager == null || !uiManager.gameObject.activeInHierarchy)
+        {
+            InitializeForClient();
+        }
+    }
 
     [ServerRpc(RequireOwnership = false)]
     public void CmdUpdatePlayerSelection(NetworkConnection conn, int characterIndex, int petIndex, string customPlayerName, string customPetName)
@@ -213,7 +256,19 @@ public class CharacterSelectionManager : NetworkBehaviour
     [ServerRpc(RequireOwnership = false)]
     public void CmdTogglePlayerReadyState(NetworkConnection conn)
     {
-        if (conn == null) return;
+        Debug.Log($"CharacterSelectionManager: CmdTogglePlayerReadyState called for connection {conn?.ClientId} at {Time.time:F3}");
+        
+        if (conn == null)
+        {
+            Debug.LogWarning("CharacterSelectionManager: CmdTogglePlayerReadyState called with null connection");
+            return;
+        }
+
+        if (!connectedPlayers.Contains(conn))
+        {
+            Debug.LogWarning($"CharacterSelectionManager: Player {conn.ClientId} not in connected players list");
+            return;
+        }
 
         // Player can only be ready if they have made a selection
         if (!playerSelections.ContainsKey(conn) || !playerSelections[conn].hasSelection)
@@ -228,7 +283,7 @@ public class CharacterSelectionManager : NetworkBehaviour
         BroadcastPlayerUpdates();
         CheckAllPlayersReady();
         
-        Debug.Log($"CharacterSelectionManager: Player {playerDisplayNames[conn]} ready state: {playerReadyStates[conn]}");
+        Debug.Log($"CharacterSelectionManager: Player {playerDisplayNames[conn]} ({conn.ClientId}) ready state: {playerReadyStates[conn]}");
     }
 
     [Server]
@@ -283,29 +338,34 @@ public class CharacterSelectionManager : NetworkBehaviour
     {
         if (connectedPlayers.Count < 2)
         {
-            // Need at least 2 players
+            // Need at least 2 players - this enforces the minimum lobby requirement
+            Debug.Log($"CharacterSelectionManager: Not enough players ({connectedPlayers.Count}/2 minimum)");
             return;
         }
         
         bool allReady = true;
+        bool allHaveSelections = true;
+        
         foreach (NetworkConnection conn in connectedPlayers)
         {
+            // Check if player is ready
             if (!playerReadyStates.ContainsKey(conn) || !playerReadyStates[conn])
             {
                 allReady = false;
-                break;
             }
             
+            // Check if player has valid selection
             if (!playerSelections.ContainsKey(conn) || !playerSelections[conn].hasSelection)
             {
-                allReady = false;
-                break;
+                allHaveSelections = false;
             }
         }
         
-        if (allReady)
+        Debug.Log($"CharacterSelectionManager: Ready check - Players: {connectedPlayers.Count}, All Ready: {allReady}, All Have Selections: {allHaveSelections}");
+        
+        if (allReady && allHaveSelections)
         {
-            Debug.Log("CharacterSelectionManager: All players ready, starting entity spawning and combat transition");
+            Debug.Log("CharacterSelectionManager: All players ready with selections, starting entity spawning and combat transition");
             StartCoroutine(TransitionToCombat());
         }
     }
