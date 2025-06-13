@@ -267,16 +267,19 @@ public class CombatCanvasManager : NetworkBehaviour
                         
                         if (spawnedNetworkObject != null)
                         {
-                            // Spawn the NetworkObject first
-                            networkManager.ServerManager.Spawn(spawnedNetworkObject);
-                            
-                            // Then move to correct parent after spawning
-                            spawnedObject.transform.SetParent(ownPetViewContainer, false);
-                            
-                            // Ensure it's active
-                            spawnedObject.SetActive(true);
-                            
-                            ownPetViewController = spawnedObject.GetComponent<OwnPetViewController>();
+                                                    // Spawn the NetworkObject first
+                        networkManager.ServerManager.Spawn(spawnedNetworkObject);
+                        
+                        // Then move to correct parent after spawning
+                        spawnedObject.transform.SetParent(ownPetViewContainer, false);
+                        
+                        // Ensure it's active
+                        spawnedObject.SetActive(true);
+                        
+                        ownPetViewController = spawnedObject.GetComponent<OwnPetViewController>();
+                        
+                        // Notify clients to move the spawned object to correct parent
+                        RpcSetOwnPetViewParent(spawnedNetworkObject.ObjectId);
                         }
                     }
                 }
@@ -416,6 +419,56 @@ public class CombatCanvasManager : NetworkBehaviour
     public DeckViewerManager GetDeckViewerManager()
     {
         return deckViewerManager;
+    }
+    
+    /// <summary>
+    /// RPC to set the correct parent for the OwnPetView prefab on clients
+    /// </summary>
+    [ObserversRpc]
+    private void RpcSetOwnPetViewParent(int networkObjectId)
+    {
+        StartCoroutine(SetOwnPetViewParentWithRetry(networkObjectId));
+    }
+    
+    /// <summary>
+    /// Coroutine to handle client-side parenting with retry logic
+    /// </summary>
+    private System.Collections.IEnumerator SetOwnPetViewParentWithRetry(int networkObjectId)
+    {
+        NetworkObject spawnedNetworkObject = null;
+        int retryCount = 0;
+        int maxRetries = 10;
+        
+        // Wait for the NetworkObject to be spawned on the client
+        while (retryCount < maxRetries && spawnedNetworkObject == null)
+        {
+            yield return new WaitForSeconds(0.1f);
+            
+            var networkManager = FishNet.InstanceFinder.NetworkManager;
+            if (networkManager != null && networkManager.IsClientStarted)
+            {
+                networkManager.ClientManager.Objects.Spawned.TryGetValue(networkObjectId, out spawnedNetworkObject);
+            }
+            
+            retryCount++;
+        }
+        
+        if (spawnedNetworkObject != null && ownPetViewContainer != null)
+        {
+            Debug.Log($"CombatCanvasManager: Moving OwnPetView from root to container on client");
+            spawnedNetworkObject.transform.SetParent(ownPetViewContainer, false);
+            spawnedNetworkObject.gameObject.SetActive(true);
+            
+            // Update the reference
+            if (ownPetViewController == null)
+            {
+                ownPetViewController = spawnedNetworkObject.GetComponent<OwnPetViewController>();
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"CombatCanvasManager: Failed to find spawned OwnPetView NetworkObject with ID {networkObjectId} after {maxRetries} retries");
+        }
     }
 
     /// <summary>
