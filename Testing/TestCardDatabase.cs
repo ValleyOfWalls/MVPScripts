@@ -48,7 +48,7 @@ public static class TestCardDatabase
         CreateComplexCombinationCards();
         
         AssetDatabase.Refresh();
-        Debug.Log("Test cards created successfully");
+
     }
     
     [MenuItem("Tools/Test Cards/Clear Test Cards")]

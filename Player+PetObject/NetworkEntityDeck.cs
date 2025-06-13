@@ -76,7 +76,7 @@ public class NetworkEntityDeck : NetworkBehaviour
         if (!IsServerInitialized) return;
         
         cardIds.Add(cardId);
-        Debug.Log($"{gameObject.name} added card ID {cardId} to persistent deck. Total cards: {cardIds.Count}");
+
     }
     
     /// <summary>
@@ -94,7 +94,7 @@ public class NetworkEntityDeck : NetworkBehaviour
             if (cardIds[i] == cardId)
             {
                 cardIds.RemoveAt(i);
-                Debug.Log($"{gameObject.name} removed card ID {cardId} from persistent deck. Total cards: {cardIds.Count}");
+    
                 return true;
             }
         }
@@ -165,7 +165,7 @@ public class NetworkEntityDeck : NetworkBehaviour
         if (!IsServerInitialized) return;
         
         cardIds.Clear();
-        Debug.Log($"{gameObject.name} cleared persistent deck.");
+
     }
 
     /// <summary>
@@ -258,7 +258,7 @@ public class NetworkEntityDeck : NetworkBehaviour
     public void ForceRefreshInspectorView()
     {
         UpdateInspectorLists();
-        Debug.Log($"Card names refreshed for {gameObject.name}. Found {inspectorCardNames.Count} cards.");
+
     }
     
     // Call this method in the Unity Editor to manually refresh the inspector view

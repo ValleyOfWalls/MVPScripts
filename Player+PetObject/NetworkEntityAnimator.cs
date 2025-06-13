@@ -97,7 +97,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
         if (modelAnimator != null)
         {
             isAnimationInitialized = true;
-            Debug.Log($"NetworkEntityAnimator: Animation initialized for {networkEntity?.EntityName.Value}");
+    
         }
     }
 
@@ -123,7 +123,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
             Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Idle trigger '{idleAnimationTrigger}' not found in Animator Controller. Idle will play as entry state.");
         }
 
-        Debug.Log($"NetworkEntityAnimator: Validation complete for {networkEntity?.EntityName.Value} - Idle trigger available: {hasIdleTrigger}");
+
     }
 
     private bool HasAnimatorParameter(string paramName, AnimatorControllerParameterType paramType)
@@ -147,11 +147,11 @@ public class NetworkEntityAnimator : NetworkBehaviour
     {
         if (!IsServerStarted || hasStartedIdleAnimation || !isAnimationInitialized)
         {
-            Debug.Log($"NetworkEntityAnimator: Skipping idle animation start - Server: {IsServerStarted}, HasStarted: {hasStartedIdleAnimation}, Initialized: {isAnimationInitialized}");
+
             return;
         }
 
-        Debug.Log($"NetworkEntityAnimator: Starting idle animation for {networkEntity?.EntityName.Value}");
+
         
         currentAnimationState.Value = AnimationState.Idle;
         hasStartedIdleAnimation = true;
@@ -173,7 +173,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
         
         if (currentAnimationState.Value != AnimationState.Idle)
         {
-            Debug.Log($"NetworkEntityAnimator: Playing idle animation for {networkEntity?.EntityName.Value}");
+    
             currentAnimationState.Value = AnimationState.Idle;
         }
     }
@@ -189,7 +189,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
 
     private void OnAnimationStateChanged(AnimationState prev, AnimationState next, bool asServer)
     {
-        Debug.Log($"NetworkEntityAnimator: Animation state changed from {prev} to {next} for {networkEntity?.EntityName.Value} (Server: {asServer})");
+
         
         if (modelAnimator == null || !isAnimationInitialized)
         {

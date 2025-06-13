@@ -43,7 +43,7 @@ public static class CardFactory
         string assetPath = fullPath + cardName + ".asset";
         AssetDatabase.CreateAsset(cardData, assetPath);
         
-        Debug.Log($"Created card: {cardName} at {assetPath}");
+
         return new CardDataBuilder(cardData);
     }
     
@@ -68,7 +68,7 @@ public static class CardFactory
         {
             Directory.Delete(fullPath, true);
             AssetDatabase.Refresh();
-            Debug.Log($"Cleared cards in: {fullPath}");
+    
         }
     }
     

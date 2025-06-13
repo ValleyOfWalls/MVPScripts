@@ -43,7 +43,7 @@ public class PetCombatAI : NetworkBehaviour
     {
         if (!IsServerInitialized) yield break;
 
-        Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} starting turn");
+
         hasFinishedTurn = false;
 
         // Small delay before starting
@@ -67,12 +67,12 @@ public class PetCombatAI : NetworkBehaviour
         }
 
         List<GameObject> cardsInHand = GetCardsInHand(handTransform);
-        Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} has {cardsInHand.Count} cards in hand");
+
 
         // If no cards in hand, end turn
         if (cardsInHand.Count == 0)
         {
-            Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} has no cards to play");
+
             hasFinishedTurn = true;
             yield break;
         }
@@ -91,7 +91,7 @@ public class PetCombatAI : NetworkBehaviour
 
         // Play cards until out of energy or cards
         int remainingEnergy = petEntity.CurrentEnergy.Value;
-        Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} starting with {remainingEnergy} energy");
+
 
         foreach (GameObject cardObject in sortedCards)
         {
@@ -105,12 +105,12 @@ public class PetCombatAI : NetworkBehaviour
             // Check if we have enough energy to play this card
             if (card.CardData.EnergyCost > remainingEnergy)
             {
-                Debug.Log($"PetCombatAI: Not enough energy to play {card.CardData.CardName}. Cost: {card.CardData.EnergyCost}, Available: {remainingEnergy}");
+
                 continue;
             }
 
             // Play the card
-            Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} playing card {card.CardData.CardName}");
+
 
             // Prepare card for play by setting up source and target
             SourceAndTargetIdentifier sourceTarget = cardObject.GetComponent<SourceAndTargetIdentifier>();
@@ -124,7 +124,7 @@ public class PetCombatAI : NetworkBehaviour
                     sourceTarget.ForceUpdateSourceAndTarget(petEntity, correctTarget);
                     // FIXED: Use the actual effective target type instead of legacy TargetType property
                     CardTargetType effectiveTargetType = card.CardData.GetEffectiveTargetType();
-                    Debug.Log($"PetCombatAI: Set target for {card.CardData.CardName} to {correctTarget.EntityName.Value} (target type: {effectiveTargetType})");
+
                 }
                 else
                 {
@@ -149,7 +149,7 @@ public class PetCombatAI : NetworkBehaviour
                 
                 // Update remaining energy
                 remainingEnergy -= card.CardData.EnergyCost;
-                Debug.Log($"PetCombatAI: After playing card, {petEntity.EntityName.Value} has {remainingEnergy} energy left");
+
                 
                 // Add delay between card plays
                 yield return new WaitForSeconds(delayBetweenActions);
@@ -164,7 +164,7 @@ public class PetCombatAI : NetworkBehaviour
         // Final delay before ending turn
         yield return new WaitForSeconds(delayBetweenActions);
         
-        Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} finished turn");
+
         hasFinishedTurn = true;
     }
 

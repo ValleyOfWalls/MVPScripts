@@ -198,16 +198,8 @@ public class NetworkEntityUI : MonoBehaviour
     /// </summary>
     private void PositionUIRelativeToModel()
     {
-        // Debug logging to identify the issue
-        if (entityModel == null)
+        if (entityModel == null || canvasGroup == null)
         {
-            Debug.LogWarning($"[POSITION_DEBUG] NetworkEntityUI on {gameObject.name}: entityModel is null! Position will not be updated.");
-            return;
-        }
-        
-        if (canvasGroup == null)
-        {
-            Debug.LogWarning($"[POSITION_DEBUG] NetworkEntityUI on {gameObject.name}: canvasGroup is null! Position will not be updated.");
             return;
         }
         
@@ -215,19 +207,14 @@ public class NetworkEntityUI : MonoBehaviour
         RectTransform rectTransform = transform as RectTransform;
         if (rectTransform != null)
         {
-            // For RectTransform, don't set position directly to avoid UI conflicts
-            Debug.LogWarning($"[POSITION_DEBUG] NetworkEntityUI on {gameObject.name}: Root still has RectTransform. Consider using regular Transform for world space positioning.");
             return;
         }
         
-        // Store old position for debugging
-        Vector3 oldPosition = transform.position;
         Vector3 newPosition = entityModel.position + uiOffset;
         
         // Only update if position actually changed significantly
-        if (Vector3.Distance(oldPosition, newPosition) > 0.001f)
+        if (Vector3.Distance(transform.position, newPosition) > 0.001f)
         {
-            Debug.Log($"[POSITION_DEBUG] NetworkEntityUI on {gameObject.name}: Updating position from {oldPosition} to {newPosition}. Model at: {entityModel.position}");
             transform.position = newPosition;
         }
     }
@@ -250,17 +237,13 @@ public class NetworkEntityUI : MonoBehaviour
         if (entityModel != null)
         {
             entityModel.gameObject.SetActive(visible);
-            Debug.Log($"[POSITION_DEBUG] NetworkEntityUI: Set 3D model {entityModel.name} visibility to {visible} for entity {entity?.EntityName.Value}");
         }
         
         // Trigger animation when entity becomes visible
         if (visible && entityAnimator != null)
         {
-            Debug.Log($"NetworkEntityUI: Entity became visible, notifying animator for {entity?.EntityName.Value}");
             entityAnimator.OnEntityBecameVisible();
         }
-        
-        Debug.Log($"[POSITION_DEBUG] NetworkEntityUI: Set visibility to {visible} for entity {entity?.EntityName.Value} (UI: {(canvasGroup != null ? "CanvasGroup" : "GameObject")}, Model: {(entityModel != null ? "Found" : "Not Found")})");
     }
 
     public void UpdateEntityUI()
@@ -484,7 +467,7 @@ public class NetworkEntityUI : MonoBehaviour
         if (damagePreviewContainer != null)
             damagePreviewContainer.SetActive(true);
 
-        Debug.Log($"NetworkEntityUI: Showing {(isDamage ? "damage" : "heal")} preview of {amount} on {entity?.EntityName.Value} over entity image");
+
     }
 
     /// <summary>
@@ -501,7 +484,7 @@ public class NetworkEntityUI : MonoBehaviour
         if (damagePreviewContainer != null)
             damagePreviewContainer.SetActive(false);
 
-        Debug.Log($"NetworkEntityUI: Hiding damage preview on {entity?.EntityName.Value}");
+
     }
 
     /// <summary>

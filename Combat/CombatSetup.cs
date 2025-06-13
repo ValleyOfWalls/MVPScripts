@@ -108,7 +108,7 @@ public class CombatSetup : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"CombatSetup: Client {connection.ClientId} reported ready");
+
         readyClients[connection] = true;
         CheckAllClientsReady();
     }
@@ -119,7 +119,7 @@ public class CombatSetup : NetworkBehaviour
 
         // Get all connected client IDs
         var connectedClientIds = NetworkManager.ServerManager.Clients.Keys.ToList();
-        Debug.Log($"CombatSetup: Checking readiness for {connectedClientIds.Count} connected clients (IDs: {string.Join(", ", connectedClientIds)})");
+
 
         // Check if all connected clients are ready
         bool allReady = true;
@@ -128,7 +128,7 @@ public class CombatSetup : NetworkBehaviour
             if (NetworkManager.ServerManager.Clients.TryGetValue(clientId, out NetworkConnection clientConn))
             {
                 bool isClientReady = readyClients.ContainsKey(clientConn) && readyClients[clientConn];
-                Debug.Log($"CombatSetup: Client {clientConn.ClientId} ready status: {isClientReady}");
+    
                 if (!isClientReady)
                 {
                     allReady = false;

@@ -108,7 +108,7 @@ public class StartScreenManager : MonoBehaviour
         if (gamePhaseManager != null)
         {
             gamePhaseManager.SetCharacterSelectionPhase();
-            Debug.Log("StartScreenManager: Transitioning directly to character selection phase");
+    
         }
         else
         {

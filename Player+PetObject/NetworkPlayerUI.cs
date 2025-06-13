@@ -60,7 +60,7 @@ public class NetworkPlayerUI : MonoBehaviour
         if (deckTransform != null)
         {
             string path = GetTransformPath(deckTransform);
-            Debug.Log($"NetworkPlayerUI (ID: {objId}) - deckTransform path: {path}");
+    
         }
         else
         {
@@ -70,13 +70,13 @@ public class NetworkPlayerUI : MonoBehaviour
         if (playerHandTransform != null)
         {
             string path = GetTransformPath(playerHandTransform);
-            Debug.Log($"NetworkPlayerUI (ID: {objId}) - playerHandTransform path: {path}");
+    
         }
 
         if (discardTransform != null)
         {
             string path = GetTransformPath(discardTransform);
-            Debug.Log($"NetworkPlayerUI (ID: {objId}) - discardTransform path: {path}");
+    
         }
     }
 
@@ -134,7 +134,7 @@ public class NetworkPlayerUI : MonoBehaviour
             fallbackObj.transform.SetParent(transform);
             fallbackObj.transform.localPosition = Vector3.zero;
             deckTransform = fallbackObj.transform;
-            Debug.Log($"Created fallback deckTransform for {gameObject.name}");
+    
         }
         return deckTransform;
     }

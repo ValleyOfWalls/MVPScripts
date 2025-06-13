@@ -239,7 +239,7 @@ public class AutoTestRunner : MonoBehaviour
         }
         else
         {
-            Debug.Log("AutoTestRunner: This client is not the host or button is not interactable. Waiting for host to start the game.");
+
         }
         
         // Start monitoring character selection phase
@@ -248,15 +248,15 @@ public class AutoTestRunner : MonoBehaviour
 
     private IEnumerator WaitForCharacterSelectionPhase()
     {
-        Debug.Log("AutoTestRunner: Waiting for character selection phase to begin...");
+        
         
         // Wait for character selection phase to start
         yield return new WaitUntil(() => gamePhaseManager != null && gamePhaseManager.GetCurrentPhase() == GamePhaseManager.GamePhase.CharacterSelection);
-        Debug.Log("AutoTestRunner: Character selection phase detected, waiting for CharacterSelectionManager...");
+        
         
         // Wait for character selection manager to be ready
         yield return new WaitUntil(() => characterSelectionManager != null);
-        Debug.Log("AutoTestRunner: CharacterSelectionManager found, waiting for connected players...");
+        
         
         // Wait a bit for all players to connect to character selection
         yield return new WaitForSeconds(1.0f);
@@ -265,16 +265,15 @@ public class AutoTestRunner : MonoBehaviour
         try
         {
             characterSelectionManager.OnPlayersReadyStateChanged += CheckCharacterSelectionConditions;
-            Debug.Log("AutoTestRunner: Successfully subscribed to OnPlayersReadyStateChanged event");
+            
         }
         catch (System.Exception e)
         {
-            Debug.Log($"AutoTestRunner: Could not subscribe to character selection events: {e.Message}");
-            Debug.Log("AutoTestRunner: Using polling method instead");
+            // Using polling method instead
             StartCoroutine(PollCharacterSelectionConditions());
         }
         
-        Debug.Log("AutoTestRunner: Monitoring character selection phase. Default selections should be made automatically by CharacterSelectionUIManager.");
+
         
         // Wait until all players are ready in character selection
         yield return new WaitUntil(() => characterSelectionComplete);

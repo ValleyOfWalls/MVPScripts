@@ -60,7 +60,7 @@ public class NetworkPetUI : MonoBehaviour
         if (deckTransform != null)
         {
             string path = GetTransformPath(deckTransform);
-            Debug.Log($"NetworkPetUI (ID: {objId}) - deckTransform path: {path}");
+    
         }
         else
         {
@@ -70,13 +70,13 @@ public class NetworkPetUI : MonoBehaviour
         if (petHandTransform != null)
         {
             string path = GetTransformPath(petHandTransform);
-            Debug.Log($"NetworkPetUI (ID: {objId}) - petHandTransform path: {path}");
+    
         }
 
         if (discardTransform != null)
         {
             string path = GetTransformPath(discardTransform);
-            Debug.Log($"NetworkPetUI (ID: {objId}) - discardTransform path: {path}");
+    
         }
     }
 
@@ -134,7 +134,7 @@ public class NetworkPetUI : MonoBehaviour
             fallbackObj.transform.SetParent(transform);
             fallbackObj.transform.localPosition = Vector3.zero;
             deckTransform = fallbackObj.transform;
-            Debug.Log($"Created fallback deckTransform for {gameObject.name}");
+    
         }
         return deckTransform;
     }

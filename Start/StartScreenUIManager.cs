@@ -116,7 +116,7 @@ public class StartScreenUIManager : MonoBehaviour
             startScreenCanvas.SetActive(false);
         }
 
-        Debug.Log("StartScreenUIManager: Transitioning directly to character selection phase");
+
         
         // The character selection setup will handle showing the character selection UI
         // when the phase transitions occur
@@ -137,7 +137,7 @@ public class StartScreenUIManager : MonoBehaviour
     private void OnLobbyManagerBecameAvailable(LobbyManager lobbyManager)
     {
         // DEPRECATED: No longer used since we skip lobby phase
-        Debug.Log("StartScreenUIManager: LobbyManager available but skipping lobby phase");
+
     }
 
     /// <summary>

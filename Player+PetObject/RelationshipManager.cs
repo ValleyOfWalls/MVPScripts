@@ -94,7 +94,7 @@ public class RelationshipManager : NetworkBehaviour
         if (!asServer) // This means the change was received from the server for a client
         {
             inspectorAllyReference = newAlly; // Update client's inspector for debugging
-            Debug.Log($"Client (ID: {OwnerClientId}): AllyEntity updated from '{prevAlly?.name}' to '{newAlly?.name}'. IsOwnedByLocalPlayer: {IsOwnedByLocalPlayer}");
+    
         }
         // If asServer is true, this callback is also invoked on the server when it changes the value.
         // In that case, SetAlly already updated inspectorAllyReference.
@@ -108,7 +108,7 @@ public class RelationshipManager : NetworkBehaviour
         if (!asServer) // This means the change was received from the server for a client
         {
             inspectorHandReference = newHand; // Update client's inspector for debugging
-            Debug.Log($"Client (ID: {OwnerClientId}): HandEntity updated from '{prevHand?.name}' to '{newHand?.name}'. IsOwnedByLocalPlayer: {IsOwnedByLocalPlayer}");
+    
         }
         // If asServer is true, this callback is also invoked on the server when it changes the value.
         // In that case, SetHand already updated inspectorHandReference.
@@ -123,7 +123,7 @@ public class RelationshipManager : NetworkBehaviour
         if (!IsServerInitialized) return;
         allyEntity.Value = ally;
         inspectorAllyReference = ally; // Update the server's inspector reference
-        Debug.Log($"Server: SetAlly called for {gameObject.name}. New ally: {ally?.name}. Current allyEntity: {allyEntity.Value?.name}");
+
     }
     
     /// <summary>
@@ -135,7 +135,7 @@ public class RelationshipManager : NetworkBehaviour
         if (!IsServerInitialized) return;
         handEntity.Value = hand;
         inspectorHandReference = hand; // Update the server's inspector reference
-        Debug.Log($"Server: SetHand called for {gameObject.name}. New hand: {hand?.name}. Current handEntity: {handEntity.Value?.name}");
+
     }
 
     /// <summary>

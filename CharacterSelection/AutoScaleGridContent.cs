@@ -56,7 +56,6 @@ public class AutoScaleGridContent : MonoBehaviour
     
     private void Awake()
     {
-        Debug.Log($"AutoScaleGridContent: Awake called on {gameObject.name}");
         Initialize();
     }
     
@@ -118,7 +117,7 @@ public class AutoScaleGridContent : MonoBehaviour
             return;
         }
         
-        Debug.Log($"AutoScaleGridContent: Found {layoutType} layout group on {gameObject.name}");
+
         
         // Find UI manager for intelligent settings detection
         uiManager = FindFirstObjectByType<CharacterSelectionUIManager>();
@@ -131,10 +130,7 @@ public class AutoScaleGridContent : MonoBehaviour
         lastRectSize = rectTransform.rect.size;
         isInitialized = true;
         
-        if (enableDebugLogs)
-        {
-            Debug.Log($"AutoScaleGridContent: Initialized {layoutType} layout on {gameObject.name}");
-        }
+
     }
     
     private IEnumerator DelayedInitialScale()
@@ -160,10 +156,7 @@ public class AutoScaleGridContent : MonoBehaviour
             maxColumns = customMaxColumns;
             settingsDerived = true;
             
-            if (enableDebugLogs)
-            {
-                Debug.Log("AutoScaleGridContent: Using custom settings override");
-            }
+
             return;
         }
         
@@ -357,7 +350,7 @@ public class AutoScaleGridContent : MonoBehaviour
         {
             if (enableDebugLogs)
             {
-                Debug.Log($"AutoScaleGridContent: Child count changed from {lastChildCount} to {currentChildCount}");
+    
             }
             
             lastChildCount = currentChildCount;
@@ -376,7 +369,7 @@ public class AutoScaleGridContent : MonoBehaviour
         {
             if (enableDebugLogs)
             {
-                Debug.Log($"AutoScaleGridContent: Rect size changed from {lastRectSize} to {currentRectSize}");
+    
             }
             
             lastRectSize = currentRectSize;
@@ -402,17 +395,11 @@ public class AutoScaleGridContent : MonoBehaviour
         Vector2 availableSize = rectTransform.rect.size;
         int childCount = transform.childCount;
         
-        if (enableDebugLogs)
-        {
-            Debug.Log($"AutoScaleGridContent: Parent rect size: {availableSize}, Child count: {childCount}, Layout type: {layoutType}");
-        }
+
         
         if (availableSize.x <= 0 || availableSize.y <= 0)
         {
-            if (enableDebugLogs)
-            {
-                Debug.Log($"AutoScaleGridContent: Invalid rect size {availableSize}, skipping scale calculation");
-            }
+
             return;
         }
         
