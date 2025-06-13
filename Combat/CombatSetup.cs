@@ -601,60 +601,93 @@ public class CombatSetup : NetworkBehaviour
     {
         if (!IsClientStarted) return;
 
-        StartCoroutine(CheckClientSetupComplete());
+        StartCoroutine(MonitorClientSetupComplete());
     }
 
-    private IEnumerator CheckClientSetupComplete()
+    private IEnumerator MonitorClientSetupComplete()
     {
-        // Wait a short time to ensure all components are properly initialized
-        yield return new WaitForSeconds(0.5f);
-
-        bool setupComplete = true;
-        string setupStatus = "Client setup status for " + LocalConnection.ClientId + ":";
+        // Wait a short time to ensure all entities are spawned
+        yield return new WaitForSeconds(0.2f);
 
         var entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
         if (entities.Length == 0)
         {
-            setupStatus += "\n - No NetworkEntities found on client yet.";
-            // Decide if this means setup is not complete or if it's an expected state (e.g., before entities are spawned for this client)
-            // For now, let's assume if there are no entities, setup isn't verifiable / complete in the context of entities.
-            setupComplete = false; 
+            Debug.LogWarning($"Client {LocalConnection.ClientId}: No NetworkEntities found yet, waiting longer...");
+            yield return new WaitForSeconds(0.5f);
+            entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
         }
-        else
+
+        // Find all Player and Pet entities that need CombatDeckSetup
+        List<CombatDeckSetup> requiredSetups = new List<CombatDeckSetup>();
+        foreach (var entity in entities)
         {
-            foreach (var entity in entities)
+            if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet)
             {
                 var deckSetup = entity.GetComponent<CombatDeckSetup>();
                 if (deckSetup != null)
                 {
-                    bool entitySetupComplete = deckSetup.IsSetupComplete;
-                    setupStatus += $"\n - Entity '{entity.name}' (ID: {entity.ObjectId}, Owner: {entity.Owner.ClientId}): CombatDeckSetup.IsSetupComplete = {entitySetupComplete}";
-                    if (!entitySetupComplete)
-                    {
-                        setupComplete = false;
-                    }
+                    requiredSetups.Add(deckSetup);
                 }
                 else
                 {
-                    setupStatus += $"\n - Entity '{entity.name}' (ID: {entity.ObjectId}, Owner: {entity.Owner.ClientId}): Missing CombatDeckSetup component.";
-                    // If a NetworkEntity is expected to have CombatDeckSetup, this might imply setup is not complete.
-                    // For now, we only fail if CombatDeckSetup exists and IsSetupComplete is false.
+                    Debug.LogError($"Client {LocalConnection.ClientId}: Entity '{entity.name}' (ID: {entity.ObjectId}) is missing CombatDeckSetup component!");
+                    // Can't proceed without required components
+                    yield break;
                 }
             }
         }
 
-        Debug.Log(setupStatus);
-
-        if (setupComplete)
+        if (requiredSetups.Count == 0)
         {
-            Debug.Log($"Client {LocalConnection.ClientId} combat setup check passed. Notifying server.");
+            Debug.LogWarning($"Client {LocalConnection.ClientId}: No Player/Pet entities found with CombatDeckSetup components");
+            yield break;
+        }
+
+        Debug.Log($"Client {LocalConnection.ClientId}: Monitoring {requiredSetups.Count} CombatDeckSetup components for completion...");
+
+        // Monitor until all setups are complete
+        bool allComplete = false;
+        int maxWaitTime = 30; // Maximum 30 seconds
+        float startTime = Time.time;
+
+        while (!allComplete && (Time.time - startTime) < maxWaitTime)
+        {
+            allComplete = true;
+            string statusUpdate = $"Client {LocalConnection.ClientId} setup status:";
+
+            foreach (var setup in requiredSetups)
+            {
+                if (setup == null) continue; // Entity might have been destroyed
+
+                NetworkEntity entity = setup.GetComponent<NetworkEntity>();
+                bool isComplete = setup.IsSetupComplete;
+                statusUpdate += $"\n - Entity '{entity.name}' (ID: {entity.ObjectId}): IsSetupComplete = {isComplete}";
+
+                if (!isComplete)
+                {
+                    allComplete = false;
+                }
+            }
+
+            if (!allComplete)
+            {
+                // Log status every 2 seconds while waiting
+                if (Mathf.FloorToInt(Time.time - startTime) % 2 == 0 && Time.time - startTime > 1f)
+                {
+                    Debug.Log(statusUpdate);
+                }
+                yield return new WaitForSeconds(0.1f); // Check every 100ms
+            }
+        }
+
+        if (allComplete)
+        {
+            Debug.Log($"Client {LocalConnection.ClientId} combat setup check passed! All entities ready. Notifying server.");
             ServerSetClientReady(LocalConnection);
         }
         else
         {
-            Debug.LogWarning($"Client {LocalConnection.ClientId} combat setup check failed. Current status: {setupStatus}. Will retry or wait.");
-            // Optionally, re-schedule this check if it's expected to eventually pass without further server RPCs
-            // StartCoroutine(CheckClientSetupComplete()); // Example: retry after a delay
+            Debug.LogError($"Client {LocalConnection.ClientId} combat setup check timed out after {maxWaitTime} seconds. Some entities never completed setup.");
         }
     }
 
