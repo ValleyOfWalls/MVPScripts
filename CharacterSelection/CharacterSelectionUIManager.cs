@@ -74,6 +74,10 @@ public class CharacterSelectionUIManager : MonoBehaviour
     private List<GameObject> petItems = new List<GameObject>();
     private List<GameObject> playerListItems = new List<GameObject>();
     
+    // Entity selection controllers (for interfacing with prefab controllers)
+    private List<EntitySelectionController> characterControllers = new List<EntitySelectionController>();
+    private List<EntitySelectionController> petControllers = new List<EntitySelectionController>();
+    
     // Deck preview controller
     private DeckPreviewController deckPreviewController;
     
@@ -83,6 +87,9 @@ public class CharacterSelectionUIManager : MonoBehaviour
     private float lastReadyButtonClickTime = 0f;
     private const float READY_BUTTON_COOLDOWN = 0.2f; // 200ms cooldown
     private bool isInitialized = false; // Prevent multiple initializations
+    
+    // Public property for EntitySelectionController to check ready state
+    public bool IsPlayerReady => isReady;
     
     // UI Animator
     private CharacterSelectionUIAnimator uiAnimator;
@@ -360,12 +367,13 @@ public class CharacterSelectionUIManager : MonoBehaviour
 
     private void CreateCharacterItems()
     {
-        // Clear existing items
+        // Clear existing items and controllers
         foreach (GameObject item in characterItems)
         {
             if (item != null) Destroy(item);
         }
         characterItems.Clear();
+        characterControllers.Clear();
         
         // Create character selection items
         for (int i = 0; i < availableCharacters.Count; i++)
@@ -376,12 +384,15 @@ public class CharacterSelectionUIManager : MonoBehaviour
             GameObject item = CreateSelectionItem(characterGridParent, character.CharacterName, character.CharacterPortrait, character.CharacterDescription, true, i);
             if (item != null)
             {
-                int index = i; // Capture for closure
-                Button button = item.GetComponent<Button>();
-                if (button != null)
+                // Set up EntitySelectionController instead of direct button listener
+                EntitySelectionController controller = item.GetComponent<EntitySelectionController>();
+                if (controller == null)
                 {
-                    button.onClick.AddListener(() => OnCharacterSelected(index));
+                    controller = item.AddComponent<EntitySelectionController>();
                 }
+                
+                controller.InitializeWithCharacter(character, i, this, deckPreviewController, selectionManager);
+                characterControllers.Add(controller);
                 characterItems.Add(item);
             }
         }
@@ -389,12 +400,13 @@ public class CharacterSelectionUIManager : MonoBehaviour
 
     private void CreatePetItems()
     {
-        // Clear existing items
+        // Clear existing items and controllers
         foreach (GameObject item in petItems)
         {
             if (item != null) Destroy(item);
         }
         petItems.Clear();
+        petControllers.Clear();
         
         // Create pet selection items
         for (int i = 0; i < availablePets.Count; i++)
@@ -405,12 +417,15 @@ public class CharacterSelectionUIManager : MonoBehaviour
             GameObject item = CreateSelectionItem(petGridParent, pet.PetName, pet.PetPortrait, pet.PetDescription, false, i);
             if (item != null)
             {
-                int index = i; // Capture for closure
-                Button button = item.GetComponent<Button>();
-                if (button != null)
+                // Set up EntitySelectionController instead of direct button listener
+                EntitySelectionController controller = item.GetComponent<EntitySelectionController>();
+                if (controller == null)
                 {
-                    button.onClick.AddListener(() => OnPetSelected(index));
+                    controller = item.AddComponent<EntitySelectionController>();
                 }
+                
+                controller.InitializeWithPet(pet, i, this, deckPreviewController, selectionManager);
+                petControllers.Add(controller);
                 petItems.Add(item);
             }
         }
@@ -477,29 +492,52 @@ public class CharacterSelectionUIManager : MonoBehaviour
         Debug.Log($"CharacterSelectionUIManager: MakeDefaultSelections() called - availableCharacters: {availableCharacters.Count}, availablePets: {availablePets.Count}");
         
         // Auto-select first character and first pet if available
-        if (availableCharacters.Count > 0)
+        if (availableCharacters.Count > 0 && characterControllers.Count > 0)
         {
             Debug.Log($"CharacterSelectionUIManager: Auto-selecting first character: {availableCharacters[0].CharacterName}");
-            OnCharacterSelected(0);
-            Debug.Log($"CharacterSelectionUIManager: Auto-selected first character: {availableCharacters[0].CharacterName}");
-        }
-        
-        if (availablePets.Count > 0)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Auto-selecting first pet: {availablePets[0].PetName}");
-            OnPetSelected(0);
-            Debug.Log($"CharacterSelectionUIManager: Auto-selected first pet: {availablePets[0].PetName}");
-        }
-        
-        // Ensure the selection gets sent to server after both are selected
-        if (hasValidSelection)
-        {
-            Debug.Log("CharacterSelectionUIManager: Both character and pet selected, sending to server");
-            if (selectionManager != null)
+            
+            // Trigger selection through the first character controller
+            EntitySelectionController firstCharacterController = characterControllers[0];
+            if (firstCharacterController != null && firstCharacterController.IsInitialized())
             {
-                selectionManager.RequestSelectionUpdate(selectedCharacterIndex, selectedPetIndex, customPlayerName, "");
+                // Simulate the selection logic that would happen in EntitySelectionController
+                OnCharacterSelectionChanged(0);
+                
+                // Trigger deck preview
+                if (deckPreviewController != null)
+                {
+                    deckPreviewController.SetCurrentCharacterIndex(0);
+                    deckPreviewController.ShowCharacterDeck(0, isReady);
+                }
+                
+                Debug.Log($"CharacterSelectionUIManager: Auto-selected first character: {availableCharacters[0].CharacterName}");
             }
         }
+        
+        if (availablePets.Count > 0 && petControllers.Count > 0)
+        {
+            Debug.Log($"CharacterSelectionUIManager: Auto-selecting first pet: {availablePets[0].PetName}");
+            
+            // Trigger selection through the first pet controller
+            EntitySelectionController firstPetController = petControllers[0];
+            if (firstPetController != null && firstPetController.IsInitialized())
+            {
+                // Simulate the selection logic that would happen in EntitySelectionController
+                OnPetSelectionChanged(0);
+                
+                // Trigger deck preview
+                if (deckPreviewController != null)
+                {
+                    deckPreviewController.SetCurrentPetIndex(0);
+                    deckPreviewController.ShowPetDeck(0, isReady);
+                }
+                
+                Debug.Log($"CharacterSelectionUIManager: Auto-selected first pet: {availablePets[0].PetName}");
+            }
+        }
+        
+        // Update selection state and send to server
+        UpdateSelectionState();
         
         // Check if auto-test runner wants us to auto-ready
         AutoTestRunner autoTestRunner = FindFirstObjectByType<AutoTestRunner>();
@@ -526,14 +564,14 @@ public class CharacterSelectionUIManager : MonoBehaviour
 
     #region Selection Handling
 
-    private void OnCharacterSelected(int characterIndex)
+    /// <summary>
+    /// Called by EntitySelectionController when character selection changes
+    /// </summary>
+    public void OnCharacterSelectionChanged(int characterIndex)
     {
-        Debug.Log($"CharacterSelectionUIManager: OnCharacterSelected({characterIndex}) called - isReady: {isReady}");
+        Debug.Log($"CharacterSelectionUIManager: OnCharacterSelectionChanged({characterIndex}) called via EntitySelectionController");
         
         if (characterIndex < 0 || characterIndex >= availableCharacters.Count) return;
-        
-        // Check if this is a different selection than current
-        bool isSelectionChange = selectedCharacterIndex != characterIndex && selectedCharacterIndex >= 0;
         
         // Update selection
         selectedCharacterIndex = characterIndex;
@@ -541,27 +579,17 @@ public class CharacterSelectionUIManager : MonoBehaviour
         // Update visual selection
         UpdateMySelectionVisuals();
         
-        // Show character deck preview using deck preview controller
-        if (deckPreviewController != null)
-        {
-            deckPreviewController.SetCurrentCharacterIndex(characterIndex);
-            deckPreviewController.ShowCharacterDeck(characterIndex, isReady);
-        }
-        
-        // Update ready state
-        UpdateSelectionState();
-        
-        Debug.Log($"CharacterSelectionUIManager: Selected character {availableCharacters[characterIndex].CharacterName}");
+        Debug.Log($"CharacterSelectionUIManager: Character selection changed to {availableCharacters[characterIndex].CharacterName}");
     }
 
-    private void OnPetSelected(int petIndex)
+    /// <summary>
+    /// Called by EntitySelectionController when pet selection changes
+    /// </summary>
+    public void OnPetSelectionChanged(int petIndex)
     {
-        Debug.Log($"CharacterSelectionUIManager: OnPetSelected({petIndex}) called - isReady: {isReady}");
+        Debug.Log($"CharacterSelectionUIManager: OnPetSelectionChanged({petIndex}) called via EntitySelectionController");
         
         if (petIndex < 0 || petIndex >= availablePets.Count) return;
-        
-        // Check if this is a different selection than current
-        bool isSelectionChange = selectedPetIndex != petIndex && selectedPetIndex >= 0;
         
         // Update selection
         selectedPetIndex = petIndex;
@@ -569,57 +597,52 @@ public class CharacterSelectionUIManager : MonoBehaviour
         // Update visual selection
         UpdateMySelectionVisuals();
         
-        // Show pet deck preview using deck preview controller
-        if (deckPreviewController != null)
-        {
-            deckPreviewController.SetCurrentPetIndex(petIndex);
-            deckPreviewController.ShowPetDeck(petIndex, isReady);
-        }
+        Debug.Log($"CharacterSelectionUIManager: Pet selection changed to {availablePets[petIndex].PetName}");
+    }
+
+    /// <summary>
+    /// Called by EntitySelectionController to finalize selection and update server
+    /// </summary>
+    public void UpdateSelectionFromController(EntitySelectionController.EntityType entityType, int selectionIndex)
+    {
+        Debug.Log($"CharacterSelectionUIManager: UpdateSelectionFromController({entityType}, {selectionIndex}) called");
         
-        // Update ready state
+        // Update selection state
         UpdateSelectionState();
-        
-        Debug.Log($"CharacterSelectionUIManager: Selected pet {availablePets[petIndex].PetName}");
     }
 
     private void UpdateMySelectionVisuals()
     {
-        // Update character selection border
-        for (int i = 0; i < characterItems.Count; i++)
+        // Update character selection border using controllers
+        for (int i = 0; i < characterControllers.Count; i++)
         {
-            if (characterItems[i] != null)
+            EntitySelectionController controller = characterControllers[i];
+            if (controller != null)
             {
-                PlayerSelectionIndicator indicator = characterItems[i].GetComponentInChildren<PlayerSelectionIndicator>();
-                if (indicator != null)
+                if (i == selectedCharacterIndex)
                 {
-                    if (i == selectedCharacterIndex)
-                    {
-                        indicator.AddPlayerSelection(myPlayerID, myPlayerColor);
-                    }
-                    else
-                    {
-                        indicator.RemovePlayerSelection(myPlayerID);
-                    }
+                    controller.AddPlayerSelection(myPlayerID, myPlayerColor);
+                }
+                else
+                {
+                    controller.RemovePlayerSelection(myPlayerID);
                 }
             }
         }
         
-        // Update pet selection border
-        for (int i = 0; i < petItems.Count; i++)
+        // Update pet selection border using controllers
+        for (int i = 0; i < petControllers.Count; i++)
         {
-            if (petItems[i] != null)
+            EntitySelectionController controller = petControllers[i];
+            if (controller != null)
             {
-                PlayerSelectionIndicator indicator = petItems[i].GetComponentInChildren<PlayerSelectionIndicator>();
-                if (indicator != null)
+                if (i == selectedPetIndex)
                 {
-                    if (i == selectedPetIndex)
-                    {
-                        indicator.AddPlayerSelection(myPlayerID, myPlayerColor);
-                    }
-                    else
-                    {
-                        indicator.RemovePlayerSelection(myPlayerID);
-                    }
+                    controller.AddPlayerSelection(myPlayerID, myPlayerColor);
+                }
+                else
+                {
+                    controller.RemovePlayerSelection(myPlayerID);
                 }
             }
         }
@@ -786,23 +809,23 @@ public class CharacterSelectionUIManager : MonoBehaviour
             
             Color playerColor = GetPlayerColor(info.playerName);
             
-            // Show character selection
-            if (info.hasSelection && info.characterIndex >= 0 && info.characterIndex < characterItems.Count)
+            // Show character selection using controllers
+            if (info.hasSelection && info.characterIndex >= 0 && info.characterIndex < characterControllers.Count)
             {
-                PlayerSelectionIndicator indicator = characterItems[info.characterIndex].GetComponentInChildren<PlayerSelectionIndicator>();
-                if (indicator != null)
+                EntitySelectionController controller = characterControllers[info.characterIndex];
+                if (controller != null)
                 {
-                    indicator.AddPlayerSelection(info.playerName, playerColor);
+                    controller.AddPlayerSelection(info.playerName, playerColor);
                 }
             }
             
-            // Show pet selection
-            if (info.hasSelection && info.petIndex >= 0 && info.petIndex < petItems.Count)
+            // Show pet selection using controllers
+            if (info.hasSelection && info.petIndex >= 0 && info.petIndex < petControllers.Count)
             {
-                PlayerSelectionIndicator indicator = petItems[info.petIndex].GetComponentInChildren<PlayerSelectionIndicator>();
-                if (indicator != null)
+                EntitySelectionController controller = petControllers[info.petIndex];
+                if (controller != null)
                 {
-                    indicator.AddPlayerSelection(info.playerName, playerColor);
+                    controller.AddPlayerSelection(info.playerName, playerColor);
                 }
             }
         }
@@ -819,29 +842,21 @@ public class CharacterSelectionUIManager : MonoBehaviour
 
     private void ClearAllPlayerSelections()
     {
-        // Clear character selections
-        foreach (GameObject item in characterItems)
+        // Clear character selections using controllers
+        foreach (EntitySelectionController controller in characterControllers)
         {
-            if (item != null)
+            if (controller != null)
             {
-                PlayerSelectionIndicator indicator = item.GetComponentInChildren<PlayerSelectionIndicator>();
-                if (indicator != null)
-                {
-                    indicator.ClearAllExcept(myPlayerID);
-                }
+                controller.ClearAllPlayerSelectionsExcept(myPlayerID);
             }
         }
         
-        // Clear pet selections
-        foreach (GameObject item in petItems)
+        // Clear pet selections using controllers
+        foreach (EntitySelectionController controller in petControllers)
         {
-            if (item != null)
+            if (controller != null)
             {
-                PlayerSelectionIndicator indicator = item.GetComponentInChildren<PlayerSelectionIndicator>();
-                if (indicator != null)
-                {
-                    indicator.ClearAllExcept(myPlayerID);
-                }
+                controller.ClearAllPlayerSelectionsExcept(myPlayerID);
             }
         }
     }
