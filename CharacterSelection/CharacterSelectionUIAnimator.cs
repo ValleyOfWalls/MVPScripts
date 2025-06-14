@@ -15,9 +15,9 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     [SerializeField] private Ease slideInEase = Ease.OutCubic;
     [SerializeField] private Ease slideOutEase = Ease.InCubic;
     
-    [Header("Panel Slide Directions")]
-    [SerializeField] private Vector2 playerListHiddenOffset = new Vector2(-300, 0);
-    [SerializeField] private Vector2 deckPreviewHiddenOffset = new Vector2(0, -400); // Slide from below
+    [Header("Panel Slide Directions - Fallback Values")]
+    [SerializeField] private Vector2 playerListHiddenOffset = new Vector2(-300, 0); // Fallback if no OffscreenPanelSetup
+    [SerializeField] private Vector2 deckPreviewHiddenOffset = new Vector2(0, -400); // Fallback if no OffscreenPanelSetup
     
     // Panel references
     private GameObject playerListPanel;
@@ -96,42 +96,41 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     {
         Debug.Log("CharacterSelectionUIAnimator: SetupInitialPanelPositions() - Setting up initial panel positions");
         
-        if (playerListRect != null)
-        {
-            playerListRect.anchoredPosition = playerListHiddenOffset;
-            playerListPanel.SetActive(false);
-            Debug.Log("CharacterSelectionUIAnimator: Player list panel set to inactive during initial setup");
-        }
-        
-        // For deck panels, check if they have DeckPreviewPanelSetup components
-        SetupDeckPanel(characterDeckPanel, characterDeckRect);
-        SetupDeckPanel(petDeckPanel, petDeckRect);
+        // Set up all panels using the generic setup method (supports OffscreenPanelSetup)
+        SetupPanel(playerListPanel, playerListRect, playerListHiddenOffset);
+        SetupPanel(characterDeckPanel, characterDeckRect, deckPreviewHiddenOffset);
+        SetupPanel(petDeckPanel, petDeckRect, deckPreviewHiddenOffset);
     }
     
-    private void SetupDeckPanel(GameObject panel, RectTransform panelRect)
+    /// <summary>
+    /// Generic panel setup method that works with any panel and checks for OffscreenPanelSetup
+    /// </summary>
+    private void SetupPanel(GameObject panel, RectTransform panelRect, Vector2 fallbackHiddenOffset)
     {
         if (panel == null || panelRect == null) return;
         
-        Debug.Log($"CharacterSelectionUIAnimator: SetupDeckPanel() - Setting up {panel.name} panel");
+        Debug.Log($"CharacterSelectionUIAnimator: SetupPanel() - Setting up {panel.name} panel");
         
-        // Check if the panel has a DeckPreviewPanelSetup component
-        DeckPreviewPanelSetup panelSetup = panel.GetComponent<DeckPreviewPanelSetup>();
+        // Check if the panel has an OffscreenPanelSetup component
+        OffscreenPanelSetup panelSetup = panel.GetComponent<OffscreenPanelSetup>();
         if (panelSetup != null)
         {
             // Use the setup component's hidden position
             panelRect.anchoredPosition = panelSetup.HiddenPosition;
-            Debug.Log($"CharacterSelectionUIAnimator: Using DeckPreviewPanelSetup hidden position for {panel.name}: {panelSetup.HiddenPosition}");
+            Debug.Log($"CharacterSelectionUIAnimator: Using OffscreenPanelSetup hidden position for {panel.name}: {panelSetup.HiddenPosition}");
         }
         else
         {
-            // Fallback to default offset
-            panelRect.anchoredPosition = deckPreviewHiddenOffset;
-            Debug.Log($"CharacterSelectionUIAnimator: Using default hidden position for {panel.name}: {deckPreviewHiddenOffset}");
+            // Fallback to provided offset
+            panelRect.anchoredPosition = fallbackHiddenOffset;
+            Debug.Log($"CharacterSelectionUIAnimator: Using fallback hidden position for {panel.name}: {fallbackHiddenOffset}");
         }
         
         panel.SetActive(false);
         Debug.Log($"CharacterSelectionUIAnimator: {panel.name} panel set to INACTIVE during initial setup");
     }
+    
+
     
     #endregion
     
@@ -147,9 +146,13 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         playerListPanel.SetActive(true);
         isPlayerListVisible = true;
         
+        // Get positions from OffscreenPanelSetup if available
+        Vector2 hiddenPos = GetPlayerListHiddenPosition();
+        Vector2 targetPos = GetPlayerListTargetPosition();
+        
         // Set starting position and animate to target
-        playerListRect.anchoredPosition = playerListHiddenOffset;
-        playerListTween = playerListRect.DOAnchorPos(Vector2.zero, slideAnimationDuration)
+        playerListRect.anchoredPosition = hiddenPos;
+        playerListTween = playerListRect.DOAnchorPos(targetPos, slideAnimationDuration)
             .SetEase(slideInEase)
             .OnComplete(() => {
                 OnPlayerListVisibilityChanged?.Invoke(true);
@@ -167,7 +170,8 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         
         isPlayerListVisible = false;
         
-        playerListTween = playerListRect.DOAnchorPos(playerListHiddenOffset, slideAnimationDuration)
+        Vector2 hiddenPos = GetPlayerListHiddenPosition();
+        playerListTween = playerListRect.DOAnchorPos(hiddenPos, slideAnimationDuration)
             .SetEase(slideOutEase)
             .OnComplete(() => {
                 playerListPanel.SetActive(false);
@@ -583,11 +587,46 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     #region Helper Methods
     
+    private Vector2 GetPlayerListHiddenPosition()
+    {
+        if (playerListPanel == null) return playerListHiddenOffset;
+        
+        OffscreenPanelSetup panelSetup = playerListPanel.GetComponent<OffscreenPanelSetup>();
+        if (panelSetup != null)
+        {
+            return panelSetup.HiddenPosition;
+        }
+        
+        // Fallback to default
+        return playerListHiddenOffset;
+    }
+    
+    private Vector2 GetPlayerListTargetPosition()
+    {
+        if (playerListPanel == null || playerListRect == null) 
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: PlayerListPanel or its RectTransform is null!");
+            return Vector2.zero;
+        }
+        
+        OffscreenPanelSetup panelSetup = playerListPanel.GetComponent<OffscreenPanelSetup>();
+        if (panelSetup != null)
+        {
+            return panelSetup.TargetPosition;
+        }
+        
+        // If no OffscreenPanelSetup, this method shouldn't be called - log error
+        Debug.LogError($"CharacterSelectionUIAnimator: No OffscreenPanelSetup found on {playerListPanel.name}, but trying to get target position. This should not happen with the current setup.");
+        
+        // Return the panel's current position as emergency fallback
+        return playerListRect.anchoredPosition;
+    }
+    
     private Vector2 GetDeckPanelHiddenPosition(GameObject panel)
     {
         if (panel == null) return deckPreviewHiddenOffset;
         
-        DeckPreviewPanelSetup panelSetup = panel.GetComponent<DeckPreviewPanelSetup>();
+        OffscreenPanelSetup panelSetup = panel.GetComponent<OffscreenPanelSetup>();
         if (panelSetup != null)
         {
             return panelSetup.HiddenPosition;
@@ -599,16 +638,24 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     private Vector2 GetDeckPanelTargetPosition(GameObject panel)
     {
-        if (panel == null) return Vector2.zero;
+        if (panel == null) 
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: Panel is null in GetDeckPanelTargetPosition!");
+            return Vector2.zero;
+        }
         
-        DeckPreviewPanelSetup panelSetup = panel.GetComponent<DeckPreviewPanelSetup>();
+        OffscreenPanelSetup panelSetup = panel.GetComponent<OffscreenPanelSetup>();
         if (panelSetup != null)
         {
             return panelSetup.TargetPosition;
         }
         
-        // Fallback to zero (center)
-        return Vector2.zero;
+        // If no OffscreenPanelSetup, this method shouldn't be called - log error
+        Debug.LogError($"CharacterSelectionUIAnimator: No OffscreenPanelSetup found on {panel.name}, but trying to get target position. This should not happen with the current setup.");
+        
+        // Return the panel's current position as emergency fallback
+        RectTransform panelRect = panel.GetComponent<RectTransform>();
+        return panelRect != null ? panelRect.anchoredPosition : Vector2.zero;
     }
     
     private bool IsObjectInDeckPanel(GameObject obj)
