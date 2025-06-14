@@ -21,14 +21,7 @@ public class CharacterSelectionUIManager : MonoBehaviour
     [SerializeField] private Transform characterGridParent;
     [SerializeField] private ScrollRect petScrollView;
     [SerializeField] private Transform petGridParent;
-    [SerializeField] private GameObject characterDeckPanel;
-    [SerializeField] private ScrollRect characterDeckScrollView;
-    [SerializeField] private Transform characterDeckGridParent;
-    [SerializeField] private TextMeshProUGUI characterDeckTitle;
-    [SerializeField] private GameObject petDeckPanel;
-    [SerializeField] private ScrollRect petDeckScrollView;
-    [SerializeField] private Transform petDeckGridParent;
-    [SerializeField] private TextMeshProUGUI petDeckTitle;
+
     [SerializeField] private TextMeshProUGUI statusText;
     [SerializeField] private TextMeshProUGUI readyCounterText;
     
@@ -43,7 +36,6 @@ public class CharacterSelectionUIManager : MonoBehaviour
     
     [Header("Selection Item Prefab")]
     [SerializeField] private GameObject selectionItemPrefab;
-    [SerializeField] private GameObject deckCardPrefab;
     [SerializeField] private GameObject playerListItemPrefab;
     
     [Header("Styling")]
@@ -80,9 +72,10 @@ public class CharacterSelectionUIManager : MonoBehaviour
     // UI element lists
     private List<GameObject> characterItems = new List<GameObject>();
     private List<GameObject> petItems = new List<GameObject>();
-    private List<GameObject> characterDeckItems = new List<GameObject>();
-    private List<GameObject> petDeckItems = new List<GameObject>();
     private List<GameObject> playerListItems = new List<GameObject>();
+    
+    // Deck preview controller
+    private DeckPreviewController deckPreviewController;
     
     // State
     private bool isReady = false;
@@ -124,8 +117,17 @@ public class CharacterSelectionUIManager : MonoBehaviour
         myPlayerID = GetPlayerID();
         myPlayerColor = GetPlayerColor(myPlayerID);
         
-        Debug.Log("CharacterSelectionUIManager: Setting up UI...");
-        SetupUI();
+        Debug.Log("CharacterSelectionUIManager: Setting up UI (Part 1 - Core UI and Animator)...");
+        SetupCoreUI();
+        
+        Debug.Log("CharacterSelectionUIManager: Initializing deck preview controller...");
+        InitializeDeckPreviewController();
+        
+        Debug.Log("CharacterSelectionUIManager: Finalizing UI animator setup...");
+        FinalizeUIAnimatorSetup();
+        
+        Debug.Log("CharacterSelectionUIManager: Setting up UI (Part 2 - Panel setup)...");
+        FinishUISetup();
         
         Debug.Log("CharacterSelectionUIManager: Creating selection items...");
         CreateSelectionItems();
@@ -153,7 +155,7 @@ public class CharacterSelectionUIManager : MonoBehaviour
         return PLAYER_COLORS[colorIndex];
     }
     
-    private void SetupUI()
+    private void SetupCoreUI()
     {
         // Enable the canvas
         if (characterSelectionCanvas != null)
@@ -161,7 +163,7 @@ public class CharacterSelectionUIManager : MonoBehaviour
             characterSelectionCanvas.SetActive(true);
         }
         
-        // Set up UI animator
+        // Set up UI animator first (needed by deck preview controller)
         SetupUIAnimator();
         
         // Set up input field
@@ -179,7 +181,10 @@ public class CharacterSelectionUIManager : MonoBehaviour
             readyButton.onClick.AddListener(OnReadyButtonClicked);
             readyButton.interactable = false;
         }
-        
+    }
+    
+    private void FinishUISetup()
+    {
         // Set up player list panel and buttons
         SetupPlayerListPanel();
         
@@ -202,9 +207,6 @@ public class CharacterSelectionUIManager : MonoBehaviour
             uiAnimator = gameObject.AddComponent<CharacterSelectionUIAnimator>();
         }
         
-        // Initialize the animator with panel references
-        uiAnimator.Initialize(playerListPanel, characterDeckPanel, petDeckPanel);
-        
         // Subscribe to visibility change events
         uiAnimator.OnPlayerListVisibilityChanged += OnPlayerListVisibilityChanged;
         uiAnimator.OnCharacterDeckVisibilityChanged += OnCharacterDeckVisibilityChanged;
@@ -219,7 +221,32 @@ public class CharacterSelectionUIManager : MonoBehaviour
             petGridParent?.GetComponent<RectTransform>()
         );
         
-        Debug.Log("CharacterSelectionUIManager: UI Animator setup complete");
+        Debug.Log("CharacterSelectionUIManager: UI Animator created and basic setup complete");
+    }
+    
+    private void FinalizeUIAnimatorSetup()
+    {
+        // Initialize the animator with panel references (get deck panels from deck preview controller)
+        GameObject characterDeckPanel = deckPreviewController?.GetCharacterDeckPanel();
+        GameObject petDeckPanel = deckPreviewController?.GetPetDeckPanel();
+        uiAnimator.Initialize(playerListPanel, characterDeckPanel, petDeckPanel);
+        
+        Debug.Log("CharacterSelectionUIManager: UI Animator fully initialized with panel references");
+    }
+    
+    private void InitializeDeckPreviewController()
+    {
+        // Get or create the deck preview controller
+        deckPreviewController = GetComponent<DeckPreviewController>();
+        if (deckPreviewController == null)
+        {
+            deckPreviewController = gameObject.AddComponent<DeckPreviewController>();
+        }
+        
+        // Initialize the deck preview controller
+        deckPreviewController.Initialize(uiAnimator, availableCharacters, availablePets);
+        
+        Debug.Log("CharacterSelectionUIManager: Deck preview controller initialized");
     }
     
     private void ValidateGridParentReferences()
@@ -514,24 +541,11 @@ public class CharacterSelectionUIManager : MonoBehaviour
         // Update visual selection
         UpdateMySelectionVisuals();
         
-        // Show character deck preview
-        if (!isReady)
+        // Show character deck preview using deck preview controller
+        if (deckPreviewController != null)
         {
-            Debug.Log("CharacterSelectionUIManager: Player not ready, showing character deck");
-            if (isSelectionChange)
-            {
-                Debug.Log("CharacterSelectionUIManager: Character selection changed - refreshing deck with animation");
-                RefreshCharacterDeckWithAnimation();
-            }
-            else
-            {
-                Debug.Log("CharacterSelectionUIManager: First character selection - showing deck normally");
-                ShowCharacterDeck();
-            }
-        }
-        else
-        {
-            Debug.Log("CharacterSelectionUIManager: Player is ready, NOT showing character deck");
+            deckPreviewController.SetCurrentCharacterIndex(characterIndex);
+            deckPreviewController.ShowCharacterDeck(characterIndex, isReady);
         }
         
         // Update ready state
@@ -555,24 +569,11 @@ public class CharacterSelectionUIManager : MonoBehaviour
         // Update visual selection
         UpdateMySelectionVisuals();
         
-        // Show pet deck preview
-        if (!isReady)
+        // Show pet deck preview using deck preview controller
+        if (deckPreviewController != null)
         {
-            Debug.Log("CharacterSelectionUIManager: Player not ready, showing pet deck");
-            if (isSelectionChange)
-            {
-                Debug.Log("CharacterSelectionUIManager: Pet selection changed - refreshing deck with animation");
-                RefreshPetDeckWithAnimation();
-            }
-            else
-            {
-                Debug.Log("CharacterSelectionUIManager: First pet selection - showing deck normally");
-                ShowPetDeck();
-            }
-        }
-        else
-        {
-            Debug.Log("CharacterSelectionUIManager: Player is ready, NOT showing pet deck");
+            deckPreviewController.SetCurrentPetIndex(petIndex);
+            deckPreviewController.ShowPetDeck(petIndex, isReady);
         }
         
         // Update ready state
@@ -671,438 +672,9 @@ public class CharacterSelectionUIManager : MonoBehaviour
 
     #endregion
 
-    #region Deck Refresh Animation
-    
-    private void RefreshCharacterDeckWithAnimation()
-    {
-        if (uiAnimator == null) 
-        {
-            Debug.LogWarning("CharacterSelectionUIManager: No UI animator available for deck refresh animation");
-            ShowCharacterDeck();
-            return;
-        }
-        
-        // Hide the current character deck panel
-        uiAnimator.HideCharacterDeckPanel();
-        
-        // Wait a brief moment for hide animation, then update content and show
-        StartCoroutine(RefreshCharacterDeckCoroutine());
-    }
-    
-    private void RefreshPetDeckWithAnimation()
-    {
-        if (uiAnimator == null) 
-        {
-            Debug.LogWarning("CharacterSelectionUIManager: No UI animator available for deck refresh animation");
-            ShowPetDeck();
-            return;
-        }
-        
-        // Hide the current pet deck panel
-        uiAnimator.HidePetDeckPanel();
-        
-        // Wait a brief moment for hide animation, then update content and show
-        StartCoroutine(RefreshPetDeckCoroutine());
-    }
-    
-    private IEnumerator RefreshCharacterDeckCoroutine()
-    {
-        // Wait for hide animation to complete (adjust timing as needed)
-        yield return new WaitForSeconds(0.3f);
-        
-        // Update the deck content while hidden
-        PopulateCharacterDeckContent();
-        
-        // Show the deck panel with new content
-        uiAnimator.ShowCharacterDeckPanel();
-    }
-    
-    private IEnumerator RefreshPetDeckCoroutine()
-    {
-        // Wait for hide animation to complete (adjust timing as needed)
-        yield return new WaitForSeconds(0.3f);
-        
-        // Update the deck content while hidden
-        PopulatePetDeckContent();
-        
-        // Show the deck panel with new content
-        uiAnimator.ShowPetDeckPanel();
-    }
-    
-    private void PopulateCharacterDeckContent()
-    {
-        Debug.Log($"CharacterSelectionUIManager: PopulateCharacterDeckContent() called for character index {selectedCharacterIndex}");
-        
-        // Clear existing character deck preview
-        ClearCharacterDeckPreview();
-        
-        if (selectedCharacterIndex < 0 || selectedCharacterIndex >= availableCharacters.Count)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Invalid character index {selectedCharacterIndex}, cannot populate deck");
-            return;
-        }
-            
-        CharacterData character = availableCharacters[selectedCharacterIndex];
-        DeckData deckToShow = character.StarterDeck;
-        string deckTitle = $"Character Deck: {character.CharacterName}";
-        
-        // Update character deck title
-        if (characterDeckTitle != null)
-        {
-            characterDeckTitle.text = deckTitle;
-            Debug.Log($"CharacterSelectionUIManager: Set character deck title to: {deckTitle}");
-        }
-        
-        // Create character deck preview items
-        if (deckToShow != null && deckToShow.CardsInDeck != null)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Creating {deckToShow.CardsInDeck.Count} character card previews");
-            foreach (CardData card in deckToShow.CardsInDeck)
-            {
-                if (card != null)
-                {
-                    GameObject previewItem = CreateDeckPreviewItem(card, characterDeckGridParent);
-                    if (previewItem != null)
-                    {
-                        characterDeckItems.Add(previewItem);
-                        Debug.Log($"CharacterSelectionUIManager: Created character card preview for {card.CardName}");
-                    }
-                }
-            }
-            Debug.Log($"CharacterSelectionUIManager: Total character deck items created: {characterDeckItems.Count}");
-        }
-    }
-    
-    private void PopulatePetDeckContent()
-    {
-        Debug.Log($"CharacterSelectionUIManager: PopulatePetDeckContent() called for pet index {selectedPetIndex}");
-        
-        // Clear existing pet deck preview
-        ClearPetDeckPreview();
-        
-        if (selectedPetIndex < 0 || selectedPetIndex >= availablePets.Count)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Invalid pet index {selectedPetIndex}, cannot populate deck");
-            return;
-        }
-            
-        PetData pet = availablePets[selectedPetIndex];
-        DeckData deckToShow = pet.StarterDeck;
-        string deckTitle = $"Pet Deck: {pet.PetName}";
-        
-        // Update pet deck title
-        if (petDeckTitle != null)
-        {
-            petDeckTitle.text = deckTitle;
-            Debug.Log($"CharacterSelectionUIManager: Set pet deck title to: {deckTitle}");
-        }
-        
-        // Create pet deck preview items
-        if (deckToShow != null && deckToShow.CardsInDeck != null)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Creating {deckToShow.CardsInDeck.Count} pet card previews");
-            foreach (CardData card in deckToShow.CardsInDeck)
-            {
-                if (card != null)
-                {
-                    GameObject previewItem = CreateDeckPreviewItem(card, petDeckGridParent);
-                    if (previewItem != null)
-                    {
-                        petDeckItems.Add(previewItem);
-                        Debug.Log($"CharacterSelectionUIManager: Created pet card preview for {card.CardName}");
-                    }
-                }
-            }
-            Debug.Log($"CharacterSelectionUIManager: Total pet deck items created: {petDeckItems.Count}");
-        }
-    }
-    
-    #endregion
 
-    #region Deck Preview
 
-    private void ShowIndividualDeckPreview()
-    {
-        Debug.Log($"CharacterSelectionUIManager: ShowIndividualDeckPreview() called - isReady: {isReady}, selectedCharacterIndex: {selectedCharacterIndex}, selectedPetIndex: {selectedPetIndex}");
-        
-        if (isReady)
-        {
-            // Hide all deck previews when ready
-            Debug.Log("CharacterSelectionUIManager: Player is READY - HIDING ALL DECK PANELS in ShowIndividualDeckPreview()");
-            if (uiAnimator != null)
-            {
-                uiAnimator.HideAllDeckPanels();
-            }
-            return;
-        }
-        
-        // Show both decks if both are selected (allow simultaneous preview)
-        if (selectedCharacterIndex >= 0)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Showing character deck for index {selectedCharacterIndex}");
-            ShowCharacterDeck();
-        }
-        
-        if (selectedPetIndex >= 0)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Showing pet deck for index {selectedPetIndex}");
-            ShowPetDeck();
-        }
-    }
-    
-    private void ShowCharacterDeck()
-    {
-        Debug.Log($"CharacterSelectionUIManager: ShowCharacterDeck() called for character index {selectedCharacterIndex}");
-        
-        // Clear existing character deck preview
-        ClearCharacterDeckPreview();
-        
-        if (selectedCharacterIndex < 0 || selectedCharacterIndex >= availableCharacters.Count)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Invalid character index {selectedCharacterIndex}, cannot show deck");
-            return;
-        }
-            
-        CharacterData character = availableCharacters[selectedCharacterIndex];
-        DeckData deckToShow = character.StarterDeck;
-        string deckTitle = $"Character Deck: {character.CharacterName}";
-        
-        // Update character deck title
-        if (characterDeckTitle != null)
-        {
-            characterDeckTitle.text = deckTitle;
-            Debug.Log($"CharacterSelectionUIManager: Set character deck title to: {deckTitle}");
-        }
-        
-        // Create character deck preview items
-        if (deckToShow != null && deckToShow.CardsInDeck != null)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Creating {deckToShow.CardsInDeck.Count} character card previews");
-            foreach (CardData card in deckToShow.CardsInDeck)
-            {
-                if (card != null)
-                {
-                    GameObject previewItem = CreateDeckPreviewItem(card, characterDeckGridParent);
-                    if (previewItem != null)
-                    {
-                        characterDeckItems.Add(previewItem);
-                        Debug.Log($"CharacterSelectionUIManager: Created character card preview for {card.CardName}");
-                    }
-                }
-            }
-            Debug.Log($"CharacterSelectionUIManager: Total character deck items created: {characterDeckItems.Count}");
-        }
-        
-        // Show the character deck panel with animation
-        if (uiAnimator != null)
-        {
-            Debug.Log("CharacterSelectionUIManager: Calling uiAnimator.ShowCharacterDeckPanel()");
-            uiAnimator.ShowCharacterDeckPanel();
-        }
-        else
-        {
-            Debug.LogError("CharacterSelectionUIManager: uiAnimator is null, cannot show character deck panel");
-        }
-    }
-    
-    private void ShowPetDeck()
-    {
-        Debug.Log($"CharacterSelectionUIManager: ShowPetDeck() called for pet index {selectedPetIndex}");
-        
-        // Clear existing pet deck preview
-        ClearPetDeckPreview();
-        
-        if (selectedPetIndex < 0 || selectedPetIndex >= availablePets.Count)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Invalid pet index {selectedPetIndex}, cannot show deck");
-            return;
-        }
-            
-        PetData pet = availablePets[selectedPetIndex];
-        DeckData deckToShow = pet.StarterDeck;
-        string deckTitle = $"Pet Deck: {pet.PetName}";
-        
-        // Update pet deck title
-        if (petDeckTitle != null)
-        {
-            petDeckTitle.text = deckTitle;
-            Debug.Log($"CharacterSelectionUIManager: Set pet deck title to: {deckTitle}");
-        }
-        
-        // Create pet deck preview items
-        if (deckToShow != null && deckToShow.CardsInDeck != null)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Creating {deckToShow.CardsInDeck.Count} pet card previews");
-            foreach (CardData card in deckToShow.CardsInDeck)
-            {
-                if (card != null)
-                {
-                    GameObject previewItem = CreateDeckPreviewItem(card, petDeckGridParent);
-                    if (previewItem != null)
-                    {
-                        petDeckItems.Add(previewItem);
-                        Debug.Log($"CharacterSelectionUIManager: Created pet card preview for {card.CardName}");
-                    }
-                }
-            }
-            Debug.Log($"CharacterSelectionUIManager: Total pet deck items created: {petDeckItems.Count}");
-        }
-        
-        // Show the pet deck panel with animation
-        if (uiAnimator != null)
-        {
-            Debug.Log("CharacterSelectionUIManager: Calling uiAnimator.ShowPetDeckPanel()");
-            uiAnimator.ShowPetDeckPanel();
-        }
-        else
-        {
-            Debug.LogError("CharacterSelectionUIManager: uiAnimator is null, cannot show pet deck panel");
-        }
-    }
 
-    private void ClearCharacterDeckPreview()
-    {
-        foreach (GameObject item in characterDeckItems)
-        {
-            if (item != null) Destroy(item);
-        }
-        characterDeckItems.Clear();
-    }
-    
-    private void ClearPetDeckPreview()
-    {
-        foreach (GameObject item in petDeckItems)
-        {
-            if (item != null) Destroy(item);
-        }
-        petDeckItems.Clear();
-    }
-    
-    private void ClearAllDeckPreviews()
-    {
-        ClearCharacterDeckPreview();
-        ClearPetDeckPreview();
-    }
-
-    private GameObject CreateDeckPreviewItem(CardData cardData, Transform parentTransform)
-    {
-        // Create basic preview item if no prefab
-        if (deckCardPrefab == null)
-        {
-            return CreateBasicDeckPreviewItem(cardData, parentTransform);
-        }
-        
-        GameObject item = Instantiate(deckCardPrefab, parentTransform);
-        
-        // IMPORTANT: Remove NetworkObject to prevent network/visibility management interference
-        NetworkObject networkObject = item.GetComponent<NetworkObject>();
-        if (networkObject != null)
-        {
-            DestroyImmediate(networkObject);
-            Debug.Log($"CharacterSelectionUIManager: Removed NetworkObject from preview card {cardData.CardName}");
-        }
-        
-        // Initialize the Card component with the CardData
-        Card cardComponent = item.GetComponent<Card>();
-        if (cardComponent != null)
-        {
-            cardComponent.Initialize(cardData);
-            Debug.Log($"CharacterSelectionUIManager: Initialized card preview for {cardData.CardName}");
-        }
-        else
-        {
-            Debug.LogWarning($"CharacterSelectionUIManager: deckCardPrefab missing Card component for {cardData.CardName}");
-            
-            // Fallback: Try to set name text manually if no Card component
-            TextMeshProUGUI nameText = item.GetComponentInChildren<TextMeshProUGUI>();
-            if (nameText != null)
-            {
-                nameText.text = cardData.CardName;
-            }
-        }
-        
-        // Make sure the card is active and visible for deck preview
-        item.SetActive(true);
-        
-        // Force override any visibility management
-        StartCoroutine(ForceCardVisibilityNextFrame(item, cardData.CardName));
-        
-        // For deck preview, we might want to disable interaction components to prevent dragging/clicking
-        CardDragDrop dragDrop = item.GetComponent<CardDragDrop>();
-        if (dragDrop != null)
-        {
-            dragDrop.enabled = false;
-            Debug.Log($"  Disabled CardDragDrop component");
-        }
-        
-        // Disable any colliders to prevent unwanted interactions
-        Collider2D cardCollider = item.GetComponent<Collider2D>();
-        if (cardCollider != null)
-        {
-            cardCollider.enabled = false;
-            Debug.Log($"  Disabled Collider2D component");
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Created preview card {cardData.CardName}, active: {item.activeInHierarchy}");
-        
-        return item;
-    }
-    
-    /// <summary>
-    /// Coroutine to force card visibility on the next frame, after any visibility management has run
-    /// </summary>
-    private System.Collections.IEnumerator ForceCardVisibilityNextFrame(GameObject card, string cardName)
-    {
-        yield return null; // Wait one frame
-        
-        if (card != null && !card.activeInHierarchy)
-        {
-            Debug.LogWarning($"CharacterSelectionUIManager: Card {cardName} was disabled by another system, forcing it back on");
-            card.SetActive(true);
-        }
-        
-        // Check again after a short delay
-        yield return new WaitForSeconds(0.1f);
-        
-        if (card != null && !card.activeInHierarchy)
-        {
-            Debug.LogWarning($"CharacterSelectionUIManager: Card {cardName} disabled again, forcing it back on (second attempt)");
-            card.SetActive(true);
-        }
-    }
-
-    private GameObject CreateBasicDeckPreviewItem(CardData cardData, Transform parentTransform)
-    {
-        GameObject item = new GameObject(cardData.CardName + "_Preview");
-        item.transform.SetParent(parentTransform, false);
-        
-        RectTransform itemRect = item.AddComponent<RectTransform>();
-        itemRect.sizeDelta = new Vector2(100f, 140f);
-        
-        Image itemImage = item.AddComponent<Image>();
-        itemImage.color = new Color(0.3f, 0.3f, 0.3f, 0.8f);
-        
-        // Create card name text
-        GameObject nameGO = new GameObject("CardName");
-        nameGO.transform.SetParent(item.transform, false);
-        
-        RectTransform nameRect = nameGO.AddComponent<RectTransform>();
-        nameRect.anchorMin = new Vector2(0, 0);
-        nameRect.anchorMax = new Vector2(1, 0.3f);
-        nameRect.sizeDelta = Vector2.zero;
-        nameRect.anchoredPosition = Vector2.zero;
-        
-        TextMeshProUGUI nameText = nameGO.AddComponent<TextMeshProUGUI>();
-        nameText.text = cardData.CardName;
-        nameText.fontSize = 10;
-        nameText.color = Color.white;
-        nameText.alignment = TextAlignmentOptions.Center;
-        nameText.overflowMode = TextOverflowModes.Ellipsis;
-        
-        return item;
-    }
-
-    #endregion
 
     #region UI Event Handlers
 
@@ -1203,34 +775,11 @@ public class CharacterSelectionUIManager : MonoBehaviour
                 isReady = info.isReady;
                 UpdateReadyButtonState();
                 
-                // Only hide deck panels if player manually became ready (not from selection changes)
-                // We can detect this by checking if we have a valid selection - if we do and we became unready,
-                // it's likely due to a selection change on the server, not manual ready toggle
-                if (wasReady != isReady)
+                // Update deck preview controller with ready state
+                if (wasReady != isReady && deckPreviewController != null)
                 {
-                    if (isReady)
-                    {
-                        // Player became ready - always hide deck panels
-                        ClearAllDeckPreviews();
-                        if (uiAnimator != null)
-                            uiAnimator.HideAllDeckPanels();
-                        Debug.Log("CharacterSelectionUIManager: Player became ready - hiding deck panels");
-                    }
-                    else
-                    {
-                        // Player became unready - only show deck previews if they don't have a valid selection
-                        // If they have a valid selection but became unready, it's likely due to server auto-unreadying
-                        // on selection change, so we should keep existing deck previews open
-                        if (!hasValidSelection)
-                        {
-                            ShowIndividualDeckPreview();
-                            Debug.Log("CharacterSelectionUIManager: Player became not ready (no selection) - showing deck panels");
-                        }
-                        else
-                        {
-                            Debug.Log("CharacterSelectionUIManager: Player became not ready (has selection) - keeping existing deck panels");
-                        }
-                    }
+                    deckPreviewController.SetPlayerReadyState(isReady);
+                    Debug.Log($"CharacterSelectionUIManager: Player ready state changed to {isReady} - updated deck preview controller");
                 }
                 continue; // Skip showing selection indicators for self
             }
