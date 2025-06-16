@@ -29,6 +29,12 @@ public class NetworkEntity : NetworkBehaviour
     // Basic entity info
     public readonly SyncVar<string> EntityName = new SyncVar<string>();
     public readonly SyncVar<uint> OwnerEntityId = new SyncVar<uint>(); // For pets, this is their owner's ObjectId
+    
+    // Character Selection Data (synced from character selection phase)
+    public readonly SyncVar<int> SelectedCharacterIndex = new SyncVar<int>(-1);
+    public readonly SyncVar<int> SelectedPetIndex = new SyncVar<int>(-1);
+    public readonly SyncVar<string> CharacterPrefabPath = new SyncVar<string>("");
+    public readonly SyncVar<string> PetPrefabPath = new SyncVar<string>("");
 
     // Stats
     [Header("Health & Energy")]
@@ -330,6 +336,78 @@ public class NetworkEntity : NetworkBehaviour
     {
         if (entityType != EntityType.Player) return;
         EntityName.Value = name;
+    }
+
+    #endregion
+
+    #region Character Selection Data
+
+    /// <summary>
+    /// Sets the selected character data for this entity (Server only)
+    /// </summary>
+    [Server]
+    public void SetCharacterSelection(int characterIndex, string characterPrefabPath)
+    {
+        if (entityType != EntityType.Player)
+        {
+            Debug.LogWarning($"SetCharacterSelection called on {entityType} entity - should only be called on Player entities");
+            return;
+        }
+        
+        SelectedCharacterIndex.Value = characterIndex;
+        CharacterPrefabPath.Value = characterPrefabPath;
+        
+        Debug.Log($"NetworkEntity: Set character selection for {EntityName.Value} - Index: {characterIndex}, Path: {characterPrefabPath}");
+    }
+
+    /// <summary>
+    /// Sets the selected pet data for this entity (Server only)
+    /// </summary>
+    [Server]
+    public void SetPetSelection(int petIndex, string petPrefabPath)
+    {
+        if (entityType != EntityType.Pet)
+        {
+            Debug.LogWarning($"SetPetSelection called on {entityType} entity - should only be called on Pet entities");
+            return;
+        }
+        
+        SelectedPetIndex.Value = petIndex;
+        PetPrefabPath.Value = petPrefabPath;
+        
+        Debug.Log($"NetworkEntity: Set pet selection for {EntityName.Value} - Index: {petIndex}, Path: {petPrefabPath}");
+    }
+
+    /// <summary>
+    /// Gets the prefab path for this entity's selection
+    /// </summary>
+    public string GetSelectedPrefabPath()
+    {
+        return entityType == EntityType.Player ? CharacterPrefabPath.Value : PetPrefabPath.Value;
+    }
+
+    /// <summary>
+    /// Gets the selection index for this entity
+    /// </summary>
+    public int GetSelectedIndex()
+    {
+        return entityType == EntityType.Player ? SelectedCharacterIndex.Value : SelectedPetIndex.Value;
+    }
+
+    /// <summary>
+    /// Returns true if this entity has valid selection data
+    /// </summary>
+    public bool HasValidSelection()
+    {
+        if (entityType == EntityType.Player)
+        {
+            return SelectedCharacterIndex.Value >= 0 && !string.IsNullOrEmpty(CharacterPrefabPath.Value);
+        }
+        else if (entityType == EntityType.Pet)
+        {
+            return SelectedPetIndex.Value >= 0 && !string.IsNullOrEmpty(PetPrefabPath.Value);
+        }
+        return false;
     }
 
     #endregion

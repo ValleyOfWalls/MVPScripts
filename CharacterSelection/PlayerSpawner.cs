@@ -117,6 +117,9 @@ public class PlayerSpawner : MonoBehaviour
 
         // Apply character data to player entity
         ApplyCharacterDataToEntity(playerEntity, characterData, playerName);
+        
+        // Set character selection data for model loading
+        SetCharacterSelectionData(playerEntity, characterData, playerName);
 
         // Spawn player hand entity
         NetworkEntity playerHandEntity = SpawnEntity(playerHandPrefab, conn);
@@ -136,6 +139,9 @@ public class PlayerSpawner : MonoBehaviour
 
         // Apply pet data to pet entity
         ApplyPetDataToEntity(petEntity, petData, petName);
+        
+        // Set pet selection data for model loading
+        SetPetSelectionData(petEntity, petData, petName);
 
         // Spawn pet hand entity
         NetworkEntity petHandEntity = SpawnEntity(petHandPrefab, conn);
@@ -366,6 +372,90 @@ public class PlayerSpawner : MonoBehaviour
         {
             Debug.LogError("SetupPlayerPetRelationship: Missing RelationshipManager components");
         }
+    }
+
+    /// <summary>
+    /// Sets character selection data on the player entity for dynamic model loading
+    /// </summary>
+    private void SetCharacterSelectionData(NetworkEntity playerEntity, CharacterData characterData, string playerName)
+    {
+        if (playerEntity == null || characterData == null) return;
+        
+        // Find the character index in the selection manager
+        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        if (selectionManager == null)
+        {
+            Debug.LogError("PlayerSpawner: CharacterSelectionManager not found, cannot set character selection data");
+            return;
+        }
+        
+        var availableCharacters = selectionManager.GetAvailableCharacters();
+        int characterIndex = -1;
+        
+        for (int i = 0; i < availableCharacters.Count; i++)
+        {
+            if (availableCharacters[i] == characterData)
+            {
+                characterIndex = i;
+                break;
+            }
+        }
+        
+        if (characterIndex == -1)
+        {
+            Debug.LogError($"PlayerSpawner: Character '{characterData.CharacterName}' not found in available characters");
+            return;
+        }
+        
+        // Get the prefab path from the character data's game object
+        string prefabPath = characterData.gameObject.name; // This will be used to identify the prefab
+        
+        // Set the selection data
+        playerEntity.SetCharacterSelection(characterIndex, prefabPath);
+        
+        Debug.Log($"PlayerSpawner: Set character selection data for '{playerName}' - Index: {characterIndex}, Prefab: {prefabPath}");
+    }
+    
+    /// <summary>
+    /// Sets pet selection data on the pet entity for dynamic model loading
+    /// </summary>
+    private void SetPetSelectionData(NetworkEntity petEntity, PetData petData, string petName)
+    {
+        if (petEntity == null || petData == null) return;
+        
+        // Find the pet index in the selection manager
+        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        if (selectionManager == null)
+        {
+            Debug.LogError("PlayerSpawner: CharacterSelectionManager not found, cannot set pet selection data");
+            return;
+        }
+        
+        var availablePets = selectionManager.GetAvailablePets();
+        int petIndex = -1;
+        
+        for (int i = 0; i < availablePets.Count; i++)
+        {
+            if (availablePets[i] == petData)
+            {
+                petIndex = i;
+                break;
+            }
+        }
+        
+        if (petIndex == -1)
+        {
+            Debug.LogError($"PlayerSpawner: Pet '{petData.PetName}' not found in available pets");
+            return;
+        }
+        
+        // Get the prefab path from the pet data's game object
+        string prefabPath = petData.gameObject.name; // This will be used to identify the prefab
+        
+        // Set the selection data
+        petEntity.SetPetSelection(petIndex, prefabPath);
+        
+        Debug.Log($"PlayerSpawner: Set pet selection data for '{petName}' - Index: {petIndex}, Prefab: {prefabPath}");
     }
 
     private void SetupHandRelationships(NetworkEntity player, NetworkEntity playerHand, NetworkEntity pet, NetworkEntity petHand)

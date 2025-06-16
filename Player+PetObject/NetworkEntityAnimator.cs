@@ -187,6 +187,44 @@ public class NetworkEntityAnimator : NetworkBehaviour
         StartIdleAnimation();
     }
 
+    /// <summary>
+    /// Sets new model references (called by EntityModelManager)
+    /// </summary>
+    public void SetModelReferences(Transform newModelTransform, Animator newModelAnimator)
+    {
+        // Clear old references
+        modelTransform = newModelTransform;
+        modelAnimator = newModelAnimator;
+        
+        // Reset animation state
+        isAnimationInitialized = false;
+        hasStartedIdleAnimation = false;
+        
+        // Re-initialize with new model
+        if (IsServerStarted || IsClientStarted)
+        {
+            InitializeAnimation();
+        }
+        
+        Debug.Log($"NetworkEntityAnimator: Set new model references - Transform: {(newModelTransform != null ? newModelTransform.name : "None")}, Animator: {(newModelAnimator != null ? newModelAnimator.name : "None")}");
+    }
+
+    /// <summary>
+    /// Gets the current model transform
+    /// </summary>
+    public Transform GetModelTransform()
+    {
+        return modelTransform;
+    }
+
+    /// <summary>
+    /// Gets the current model animator
+    /// </summary>
+    public Animator GetModelAnimator()
+    {
+        return modelAnimator;
+    }
+
     private void OnAnimationStateChanged(AnimationState prev, AnimationState next, bool asServer)
     {
 
