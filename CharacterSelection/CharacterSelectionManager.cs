@@ -17,8 +17,12 @@ public class CharacterSelectionManager : NetworkBehaviour
     [SerializeField] private CharacterSelectionUIManager uiManager;
     
     [Header("Available Options")]
-    [SerializeField] private List<CharacterData> availableCharacters = new List<CharacterData>();
-    [SerializeField] private List<PetData> availablePets = new List<PetData>();
+    [SerializeField] private List<GameObject> availableCharacterPrefabs = new List<GameObject>();
+    [SerializeField] private List<GameObject> availablePetPrefabs = new List<GameObject>();
+    
+    // Cached data components from prefabs
+    private List<CharacterData> availableCharacters = new List<CharacterData>();
+    private List<PetData> availablePets = new List<PetData>();
     
     [Header("Phase Management")]
     [SerializeField] private GamePhaseManager gamePhaseManager;
@@ -38,6 +42,7 @@ public class CharacterSelectionManager : NetworkBehaviour
     private void Awake()
     {
         FindRequiredComponents();
+        ExtractDataFromPrefabs();
         ValidateConfiguration();
     }
     
@@ -55,12 +60,61 @@ public class CharacterSelectionManager : NetworkBehaviour
         if (uiManager == null) Debug.LogError("CharacterSelectionManager: CharacterSelectionUIManager not found on GameObject.");
     }
     
+    /// <summary>
+    /// Extracts CharacterData and PetData components from the assigned prefabs
+    /// </summary>
+    private void ExtractDataFromPrefabs()
+    {
+        // Clear existing data
+        availableCharacters.Clear();
+        availablePets.Clear();
+        
+        // Extract character data from prefabs
+        foreach (GameObject prefab in availableCharacterPrefabs)
+        {
+            if (prefab == null) continue;
+            
+            CharacterData characterData = prefab.GetComponent<CharacterData>();
+            if (characterData != null)
+            {
+                availableCharacters.Add(characterData);
+                Debug.Log($"CharacterSelectionManager: Found CharacterData component on prefab {prefab.name}");
+            }
+            else
+            {
+                Debug.LogError($"CharacterSelectionManager: Character prefab {prefab.name} is missing CharacterData component!");
+            }
+        }
+        
+        // Extract pet data from prefabs
+        foreach (GameObject prefab in availablePetPrefabs)
+        {
+            if (prefab == null) continue;
+            
+            PetData petData = prefab.GetComponent<PetData>();
+            if (petData != null)
+            {
+                availablePets.Add(petData);
+                Debug.Log($"CharacterSelectionManager: Found PetData component on prefab {prefab.name}");
+            }
+            else
+            {
+                Debug.LogError($"CharacterSelectionManager: Pet prefab {prefab.name} is missing PetData component!");
+            }
+        }
+    }
+
     private void ValidateConfiguration()
     {
+        if (availableCharacterPrefabs.Count == 0)
+            Debug.LogWarning("CharacterSelectionManager: No character prefabs configured. Please assign character prefabs with CharacterData components.");
+        if (availablePetPrefabs.Count == 0)
+            Debug.LogWarning("CharacterSelectionManager: No pet prefabs configured. Please assign pet prefabs with PetData components.");
+            
         if (availableCharacters.Count == 0)
-            Debug.LogWarning("CharacterSelectionManager: No character options configured. Please assign CharacterData assets.");
+            Debug.LogWarning("CharacterSelectionManager: No valid character data found. Check that prefabs have CharacterData components.");
         if (availablePets.Count == 0)
-            Debug.LogWarning("CharacterSelectionManager: No pet options configured. Please assign PetData assets.");
+            Debug.LogWarning("CharacterSelectionManager: No valid pet data found. Check that prefabs have PetData components.");
             
         // Validate each character/pet data
         foreach (var character in availableCharacters)
@@ -522,6 +576,23 @@ public class CharacterSelectionManager : NetworkBehaviour
 
     public List<CharacterData> GetAvailableCharacters() => availableCharacters;
     public List<PetData> GetAvailablePets() => availablePets;
+    
+    public List<GameObject> GetAvailableCharacterPrefabs() => availableCharacterPrefabs;
+    public List<GameObject> GetAvailablePetPrefabs() => availablePetPrefabs;
+    
+    public GameObject GetCharacterPrefabByIndex(int index)
+    {
+        if (index < 0 || index >= availableCharacterPrefabs.Count)
+            return null;
+        return availableCharacterPrefabs[index];
+    }
+    
+    public GameObject GetPetPrefabByIndex(int index)
+    {
+        if (index < 0 || index >= availablePetPrefabs.Count)
+            return null;
+        return availablePetPrefabs[index];
+    }
     
     public int GetConnectedPlayerCount() => connectedPlayers.Count;
     

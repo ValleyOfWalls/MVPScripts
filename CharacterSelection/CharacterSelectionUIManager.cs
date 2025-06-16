@@ -7,6 +7,15 @@ using System.Linq;
 using FishNet.Object;
 
 /// <summary>
+/// Positioning mode for 3D models in character selection
+/// </summary>
+public enum ModelPositioningMode
+{
+    Grid,   // Use grid-based positioning with automatic layout
+    Manual  // Use manually specified world coordinates
+}
+
+/// <summary>
 /// Manages the character selection UI interactions with Mario Kart-style shared selection grids.
 /// </summary>
 public class CharacterSelectionUIManager : MonoBehaviour
@@ -37,6 +46,29 @@ public class CharacterSelectionUIManager : MonoBehaviour
     [Header("Selection Item Prefab")]
     [SerializeField] private GameObject selectionItemPrefab;
     [SerializeField] private GameObject playerListItemPrefab;
+    
+    [Header("3D Model Positioning")]
+    [SerializeField] private bool use3DModelPositioning = false;
+    [SerializeField] private ModelPositioningMode positioningMode = ModelPositioningMode.Grid;
+    [SerializeField] private Transform characterModelsParent;
+    [SerializeField] private Transform petModelsParent;
+    [SerializeField] private Camera modelViewCamera; // Camera for viewing the 3D models
+    
+    [Header("Grid Positioning Settings")]
+    [Header("Character Grid (relative to characterModelsParent)")]
+    [SerializeField] private Vector3 characterModelSpacing = new Vector3(2f, 0f, 0f);
+    [SerializeField] private int characterModelsPerRow = 4;
+    [SerializeField] private Vector3 characterRowOffset = new Vector3(0f, 0f, -2f);
+    
+    [Header("Pet Grid (relative to petModelsParent)")]
+    [SerializeField] private Vector3 petModelSpacing = new Vector3(2f, 0f, 0f);
+    [SerializeField] private int petModelsPerRow = 3;
+    [SerializeField] private Vector3 petRowOffset = new Vector3(0f, 0f, -2f);
+    
+    [Header("Manual Positioning Settings")]
+    [SerializeField] private List<Vector3> characterPositions = new List<Vector3>();
+    [SerializeField] private List<Vector3> petPositions = new List<Vector3>();
+    [SerializeField] private bool autoGeneratePositions = true; // Generate positions if lists are empty
     
     [Header("Styling")]
     [SerializeField] private Color selectedColor = new Color(0.3f, 0.6f, 1f, 1f);
@@ -381,19 +413,51 @@ public class CharacterSelectionUIManager : MonoBehaviour
             CharacterData character = availableCharacters[i];
             if (character == null) continue;
             
-            GameObject item = CreateSelectionItem(characterGridParent, character.CharacterName, character.CharacterPortrait, character.CharacterDescription, true, i);
-            if (item != null)
+            GameObject item;
+            EntitySelectionController controller;
+            
+            if (use3DModelPositioning)
             {
-                // Set up EntitySelectionController instead of direct button listener
-                EntitySelectionController controller = item.GetComponent<EntitySelectionController>();
+                // Create 3D model-based selection item
+                item = Create3DSelectionItem(character, i, true);
+                controller = item.GetComponent<EntitySelectionController>();
                 if (controller == null)
                 {
                     controller = item.AddComponent<EntitySelectionController>();
                 }
                 
+                // Set to 3D model mode and configure
+                controller.SetSelectionMode(EntitySelectionController.SelectionMode.Model_3D);
+                
+                // Set the camera for raycast detection
+                if (modelViewCamera != null)
+                {
+                    // We'll need to add a method to set the camera in EntitySelectionController
+                    SetControllerCamera(controller, modelViewCamera);
+                }
+            }
+            else
+            {
+                // Create traditional UI-based selection item
+                item = CreateSelectionItem(characterGridParent, character.CharacterName, character.CharacterPortrait, character.CharacterDescription, true, i);
+                controller = item.GetComponent<EntitySelectionController>();
+                if (controller == null)
+                {
+                    controller = item.AddComponent<EntitySelectionController>();
+                }
+            }
+            
+            if (item != null && controller != null)
+            {
                 controller.InitializeWithCharacter(character, i, this, deckPreviewController, selectionManager);
                 characterControllers.Add(controller);
                 characterItems.Add(item);
+                
+                // Position 3D model if using 3D positioning
+                if (use3DModelPositioning)
+                {
+                    Position3DModel(item, i, true);
+                }
             }
         }
     }
@@ -414,19 +478,50 @@ public class CharacterSelectionUIManager : MonoBehaviour
             PetData pet = availablePets[i];
             if (pet == null) continue;
             
-            GameObject item = CreateSelectionItem(petGridParent, pet.PetName, pet.PetPortrait, pet.PetDescription, false, i);
-            if (item != null)
+            GameObject item;
+            EntitySelectionController controller;
+            
+            if (use3DModelPositioning)
             {
-                // Set up EntitySelectionController instead of direct button listener
-                EntitySelectionController controller = item.GetComponent<EntitySelectionController>();
+                // Create 3D model-based selection item
+                item = Create3DSelectionItem(pet, i, false);
+                controller = item.GetComponent<EntitySelectionController>();
                 if (controller == null)
                 {
                     controller = item.AddComponent<EntitySelectionController>();
                 }
                 
+                // Set to 3D model mode and configure
+                controller.SetSelectionMode(EntitySelectionController.SelectionMode.Model_3D);
+                
+                // Set the camera for raycast detection
+                if (modelViewCamera != null)
+                {
+                    SetControllerCamera(controller, modelViewCamera);
+                }
+            }
+            else
+            {
+                // Create traditional UI-based selection item
+                item = CreateSelectionItem(petGridParent, pet.PetName, pet.PetPortrait, pet.PetDescription, false, i);
+                controller = item.GetComponent<EntitySelectionController>();
+                if (controller == null)
+                {
+                    controller = item.AddComponent<EntitySelectionController>();
+                }
+            }
+            
+            if (item != null && controller != null)
+            {
                 controller.InitializeWithPet(pet, i, this, deckPreviewController, selectionManager);
                 petControllers.Add(controller);
                 petItems.Add(item);
+                
+                // Position 3D model if using 3D positioning
+                if (use3DModelPositioning)
+                {
+                    Position3DModel(item, i, false);
+                }
             }
         }
     }
@@ -485,6 +580,385 @@ public class CharacterSelectionUIManager : MonoBehaviour
         }
         
         return item;
+    }
+    
+    /// <summary>
+    /// Creates a 3D model-based selection item for characters or pets using prefabs
+    /// </summary>
+    private GameObject Create3DSelectionItem(object data, int index, bool isCharacter)
+    {
+        GameObject prefabToUse = null;
+        
+        // Get the appropriate prefab from the selection manager
+        if (isCharacter)
+        {
+            prefabToUse = selectionManager.GetCharacterPrefabByIndex(index);
+        }
+        else
+        {
+            prefabToUse = selectionManager.GetPetPrefabByIndex(index);
+        }
+        
+        if (prefabToUse == null)
+        {
+            Debug.LogError($"CharacterSelectionUIManager: No prefab found for {(isCharacter ? "character" : "pet")} at index {index}");
+            return null;
+        }
+        
+        // Set parent based on type
+        Transform parentTransform = isCharacter ? 
+            (characterModelsParent != null ? characterModelsParent : transform) : 
+            (petModelsParent != null ? petModelsParent : transform);
+        
+        // Instantiate the prefab
+        GameObject item = Instantiate(prefabToUse, parentTransform);
+        item.name = isCharacter ? $"Character_{index}_{prefabToUse.name}" : $"Pet_{index}_{prefabToUse.name}";
+        
+        // Ensure the item has an EntitySelectionController
+        EntitySelectionController controller = item.GetComponent<EntitySelectionController>();
+        if (controller == null)
+        {
+            controller = item.AddComponent<EntitySelectionController>();
+        }
+        
+        // Set the prefab's 3D model as the selection target
+        // The prefab itself contains the visual model, so we set it as the model3D
+        controller.SetModel3D(item);
+        
+        return item;
+    }
+    
+    /// <summary>
+    /// Positions a 3D model based on the current positioning mode
+    /// </summary>
+    private void Position3DModel(GameObject modelItem, int index, bool isCharacter)
+    {
+        if (modelItem == null) return;
+        
+        Vector3 position;
+        
+        switch (positioningMode)
+        {
+            case ModelPositioningMode.Grid:
+                position = CalculateGridPosition(index, isCharacter);
+                break;
+                
+            case ModelPositioningMode.Manual:
+                position = GetManualPosition(index, isCharacter);
+                break;
+                
+            default:
+                position = CalculateGridPosition(index, isCharacter);
+                break;
+        }
+        
+        // Set the position
+        modelItem.transform.position = position;
+        
+        Debug.Log($"CharacterSelectionUIManager: Positioned {(isCharacter ? "character" : "pet")} model {index} at {position} using {positioningMode} mode");
+    }
+    
+    /// <summary>
+    /// Calculates a grid-based position for a model
+    /// </summary>
+    private Vector3 CalculateGridPosition(int index, bool isCharacter)
+    {
+        if (isCharacter)
+        {
+            // Calculate character grid position relative to characterModelsParent
+            int row = index / characterModelsPerRow;
+            int col = index % characterModelsPerRow;
+            
+            // Calculate center offset - center the grid horizontally around the parent
+            float centerOffset = -(characterModelsPerRow - 1) * characterModelSpacing.x / 2f;
+            Vector3 gridStartOffset = new Vector3(centerOffset, 0f, 0f);
+            
+            Vector3 relativePosition = gridStartOffset + (col * characterModelSpacing) + (row * characterRowOffset);
+            
+            // Convert to world position using the parent transform
+            if (characterModelsParent != null)
+            {
+                return characterModelsParent.TransformPoint(relativePosition);
+            }
+            else
+            {
+                Debug.LogWarning("CharacterSelectionUIManager: characterModelsParent is null, using world coordinates");
+                return relativePosition;
+            }
+        }
+        else
+        {
+            // Calculate pet grid position relative to petModelsParent
+            int row = index / petModelsPerRow;
+            int col = index % petModelsPerRow;
+            
+            // Calculate center offset - center the grid horizontally around the parent
+            float centerOffset = -(petModelsPerRow - 1) * petModelSpacing.x / 2f;
+            Vector3 gridStartOffset = new Vector3(centerOffset, 0f, 0f);
+            
+            Vector3 relativePosition = gridStartOffset + (col * petModelSpacing) + (row * petRowOffset);
+            
+            // Convert to world position using the parent transform
+            if (petModelsParent != null)
+            {
+                return petModelsParent.TransformPoint(relativePosition);
+            }
+            else
+            {
+                Debug.LogWarning("CharacterSelectionUIManager: petModelsParent is null, using world coordinates");
+                return relativePosition;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Gets a manually specified position for a model
+    /// </summary>
+    private Vector3 GetManualPosition(int index, bool isCharacter)
+    {
+        List<Vector3> positions = isCharacter ? characterPositions : petPositions;
+        
+        // Check if we have enough positions defined
+        if (index < positions.Count)
+        {
+            return positions[index];
+        }
+        
+        // Handle missing positions
+        if (autoGeneratePositions)
+        {
+            // Generate a position based on grid layout as fallback
+            Vector3 generatedPosition = CalculateGridPosition(index, isCharacter);
+            
+            // Add missing positions to the list up to this index
+            while (positions.Count <= index)
+            {
+                Vector3 fallbackPosition = CalculateGridPosition(positions.Count, isCharacter);
+                positions.Add(fallbackPosition);
+                Debug.Log($"CharacterSelectionUIManager: Auto-generated {(isCharacter ? "character" : "pet")} position {positions.Count - 1}: {fallbackPosition}");
+            }
+            
+            return positions[index];
+        }
+        else
+        {
+            // Use grid position as fallback without modifying the lists
+            Debug.LogWarning($"CharacterSelectionUIManager: No manual position defined for {(isCharacter ? "character" : "pet")} {index}, using grid fallback");
+            return CalculateGridPosition(index, isCharacter);
+        }
+    }
+    
+    /// <summary>
+    /// Sets the raycast camera for an EntitySelectionController
+    /// </summary>
+    private void SetControllerCamera(EntitySelectionController controller, Camera camera)
+    {
+        if (controller != null)
+        {
+            controller.SetRaycastCamera(camera);
+        }
+    }
+    
+    /// <summary>
+    /// Updates the positioning of all 3D models
+    /// </summary>
+    public void RefreshModelPositioning()
+    {
+        if (!use3DModelPositioning) return;
+        
+        // Reposition character models
+        for (int i = 0; i < characterItems.Count; i++)
+        {
+            if (characterItems[i] != null)
+            {
+                Position3DModel(characterItems[i], i, true);
+            }
+        }
+        
+        // Reposition pet models
+        for (int i = 0; i < petItems.Count; i++)
+        {
+            if (petItems[i] != null)
+            {
+                Position3DModel(petItems[i], i, false);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Switches between UI and 3D model positioning modes
+    /// </summary>
+    public void SetUse3DModelPositioning(bool use3D)
+    {
+        if (use3DModelPositioning == use3D) return;
+        
+        use3DModelPositioning = use3D;
+        
+        // Recreate all selection items with new positioning mode
+        CreateSelectionItems();
+        MakeDefaultSelections();
+        
+        Debug.Log($"CharacterSelectionUIManager: Switched to {(use3D ? "3D model" : "UI")} positioning mode");
+    }
+    
+    /// <summary>
+    /// Sets the positioning mode for 3D models
+    /// </summary>
+    public void SetPositioningMode(ModelPositioningMode mode)
+    {
+        if (positioningMode == mode) return;
+        
+        positioningMode = mode;
+        
+        // Refresh positioning if using 3D models
+        if (use3DModelPositioning)
+        {
+            RefreshModelPositioning();
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Switched positioning mode to {mode}");
+    }
+    
+    /// <summary>
+    /// Sets character positions for manual positioning mode
+    /// </summary>
+    public void SetCharacterPositions(List<Vector3> positions)
+    {
+        characterPositions = new List<Vector3>(positions);
+        
+        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
+        {
+            RefreshModelPositioning();
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Set {positions.Count} character positions");
+    }
+    
+    /// <summary>
+    /// Sets pet positions for manual positioning mode
+    /// </summary>
+    public void SetPetPositions(List<Vector3> positions)
+    {
+        petPositions = new List<Vector3>(positions);
+        
+        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
+        {
+            RefreshModelPositioning();
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Set {positions.Count} pet positions");
+    }
+    
+    /// <summary>
+    /// Adds a character position to the manual positions list
+    /// </summary>
+    public void AddCharacterPosition(Vector3 position)
+    {
+        characterPositions.Add(position);
+        
+        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
+        {
+            RefreshModelPositioning();
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Added character position {characterPositions.Count - 1}: {position}");
+    }
+    
+    /// <summary>
+    /// Adds a pet position to the manual positions list
+    /// </summary>
+    public void AddPetPosition(Vector3 position)
+    {
+        petPositions.Add(position);
+        
+        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
+        {
+            RefreshModelPositioning();
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Added pet position {petPositions.Count - 1}: {position}");
+    }
+    
+    /// <summary>
+    /// Clears all manual positions and optionally regenerates them
+    /// </summary>
+    public void ClearManualPositions(bool regenerate = true)
+    {
+        characterPositions.Clear();
+        petPositions.Clear();
+        
+        if (regenerate && autoGeneratePositions && use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
+        {
+            RefreshModelPositioning();
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Cleared all manual positions{(regenerate ? " and regenerated" : "")}");
+    }
+    
+    /// <summary>
+    /// Gets a copy of the current character positions
+    /// </summary>
+    public List<Vector3> GetCharacterPositions()
+    {
+        return new List<Vector3>(characterPositions);
+    }
+    
+    /// <summary>
+    /// Gets a copy of the current pet positions
+    /// </summary>
+    public List<Vector3> GetPetPositions()
+    {
+        return new List<Vector3>(petPositions);
+    }
+    
+    /// <summary>
+    /// Configures the character grid layout (relative to characterModelsParent)
+    /// </summary>
+    public void SetCharacterGridLayout(Vector3 spacing, int modelsPerRow, Vector3 rowOffset)
+    {
+        characterModelSpacing = spacing;
+        characterModelsPerRow = modelsPerRow;
+        characterRowOffset = rowOffset;
+        
+        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Grid)
+        {
+            RefreshModelPositioning();
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Updated character grid - Spacing: {spacing}, Per Row: {modelsPerRow}, Row Offset: {rowOffset}");
+    }
+    
+    /// <summary>
+    /// Configures the pet grid layout (relative to petModelsParent)
+    /// </summary>
+    public void SetPetGridLayout(Vector3 spacing, int modelsPerRow, Vector3 rowOffset)
+    {
+        petModelSpacing = spacing;
+        petModelsPerRow = modelsPerRow;
+        petRowOffset = rowOffset;
+        
+        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Grid)
+        {
+            RefreshModelPositioning();
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Updated pet grid - Spacing: {spacing}, Per Row: {modelsPerRow}, Row Offset: {rowOffset}");
+    }
+    
+    /// <summary>
+    /// Gets the current character grid configuration
+    /// </summary>
+    public (Vector3 spacing, int modelsPerRow, Vector3 rowOffset) GetCharacterGridConfig()
+    {
+        return (characterModelSpacing, characterModelsPerRow, characterRowOffset);
+    }
+    
+    /// <summary>
+    /// Gets the current pet grid configuration
+    /// </summary>
+    public (Vector3 spacing, int modelsPerRow, Vector3 rowOffset) GetPetGridConfig()
+    {
+        return (petModelSpacing, petModelsPerRow, petRowOffset);
     }
 
     private void MakeDefaultSelections()
