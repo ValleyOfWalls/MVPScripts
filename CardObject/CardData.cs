@@ -549,6 +549,37 @@ public class CardEffect
         (int)ScalingType.HandSize)]
     [Tooltip("Maximum value this effect can scale to")]
     public int maxScaling = 10;
+    
+    [Header("═══ VISUAL EFFECTS (Optional) ═══")]
+    [Tooltip("How this effect's visual animation should behave")]
+    public EffectAnimationBehavior animationBehavior = EffectAnimationBehavior.Auto;
+    
+    [ShowIfAny("animationBehavior", 
+        (int)EffectAnimationBehavior.ProjectileFromSource,
+        (int)EffectAnimationBehavior.BeamToTarget,
+        (int)EffectAnimationBehavior.AreaEffect)]
+    [Tooltip("Name of custom effect from AttackEffectManager's database (overrides defaults)")]
+    public string customEffectName;
+    
+    [ConditionalField("animationBehavior", (int)EffectAnimationBehavior.ProjectileFromSource, false)]
+    [Tooltip("Type of attack effect to use (fallback if no custom prefab assigned)")]
+    public AttackEffectSource.AttackType fallbackAttackType = AttackEffectSource.AttackType.Default;
+    
+    [ShowIfAny("animationBehavior", 
+        (int)EffectAnimationBehavior.ProjectileFromSource,
+        (int)EffectAnimationBehavior.BeamToTarget,
+        (int)EffectAnimationBehavior.AreaEffect)]
+    [Tooltip("How long the effect takes to travel/play (0 = use manager default)")]
+    public float customDuration = 0f;
+    
+    [Tooltip("Delay before this effect's animation plays (useful for sequencing multiple effects)")]
+    public float animationDelay = 0f;
+    
+    [ShowIfAny("animationBehavior", 
+        (int)EffectAnimationBehavior.InstantOnTarget,
+        (int)EffectAnimationBehavior.OnSourceOnly)]
+    [Tooltip("Custom particle prefab for instant effects (plays directly on target/source)")]
+    public GameObject instantEffectPrefab;
 }
 
 /// <summary>
@@ -662,6 +693,37 @@ public class ConditionalEffect
     [Header("Scaling")]
     public bool useScaling;
     public ScalingEffect scalingEffect;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VISUAL EFFECT ENUMS
+// ═══════════════════════════════════════════════════════════════
+
+/// <summary>
+/// Defines how a card effect's visual animation should behave
+/// </summary>
+public enum EffectAnimationBehavior
+{
+    [Tooltip("Automatically determine based on effect type and card keywords")]
+    Auto,
+    
+    [Tooltip("No visual effect animation (silent effect)")]
+    None,
+    
+    [Tooltip("Effect plays instantly on target without projectile animation")]
+    InstantOnTarget,
+    
+    [Tooltip("Projectile/effect animates from source to target")]
+    ProjectileFromSource,
+    
+    [Tooltip("Effect plays on source entity only")]
+    OnSourceOnly,
+    
+    [Tooltip("Area effect that affects multiple targets simultaneously")]
+    AreaEffect,
+    
+    [Tooltip("Beam or continuous effect between source and target")]
+    BeamToTarget
 }
 
 /// <summary>

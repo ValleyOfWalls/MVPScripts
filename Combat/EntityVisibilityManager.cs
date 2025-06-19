@@ -36,6 +36,18 @@ public class EntityVisibilityManager : MonoBehaviour
     
     private void Awake()
     {
+        // Singleton pattern
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Debug.LogWarning("Multiple EntityVisibilityManager instances found! Destroying duplicate.");
+            Destroy(gameObject);
+            return;
+        }
+        
         TryFindFightManager();
     }
     
@@ -55,6 +67,14 @@ public class EntityVisibilityManager : MonoBehaviour
         if (currentGameState == GameState.Lobby)
         {
             UpdateVisibilityForLobby();
+        }
+    }
+    
+    private void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
         }
     }
     
@@ -1016,6 +1036,62 @@ public class EntityVisibilityManager : MonoBehaviour
         
         LogDebug($"Updated visibility for draft pack {pack.name}: {(shouldBeVisible ? "Visible" : "Hidden")}");
     }
+    
+    #endregion
+    
+    #region Visual Effects Visibility Management
+    
+    /// <summary>
+    /// Centralized method to check if visual effects should be shown for given entities
+    /// Used by both CardEffectResolver and AttackEffectManager
+    /// </summary>
+    public bool ShouldShowVisualEffectsForEntities(uint sourceEntityId, uint targetEntityId)
+    {
+        // During combat, use fight-based visibility
+        if (currentGameState == GameState.Combat)
+        {
+            return ShouldShowVisualEffectsInCombat(sourceEntityId, targetEntityId);
+        }
+        
+        // For other game states, allow effects to show
+        return true;
+    }
+    
+    /// <summary>
+    /// Determines if visual effects should be shown during combat based on fight assignments
+    /// </summary>
+    private bool ShouldShowVisualEffectsInCombat(uint sourceEntityId, uint targetEntityId)
+    {
+        // Get the fight manager to check current fights
+        TryFindFightManager();
+        if (fightManager == null)
+        {
+            Debug.Log("EntityVisibilityManager: No FightManager found for visual effects check, allowing effects to show");
+            return true;
+        }
+        
+        // Get the currently viewed fight entities from FightManager
+        var viewedEntities = fightManager.GetViewedFightEntities();
+        if (viewedEntities == null || viewedEntities.Count == 0)
+        {
+            Debug.Log("EntityVisibilityManager: No viewed fight entities for visual effects check, allowing effects to show");
+            return true;
+        }
+        
+        // Check if both source and target entities are in the viewed fight
+        bool sourceInViewedFight = viewedEntities.Any(e => e != null && (uint)e.ObjectId == sourceEntityId);
+        bool targetInViewedFight = viewedEntities.Any(e => e != null && (uint)e.ObjectId == targetEntityId);
+        bool shouldShow = sourceInViewedFight && targetInViewedFight;
+        
+        Debug.Log($"EntityVisibilityManager: Visual effects visibility check - Source entity (ID: {sourceEntityId}) in viewed fight: {sourceInViewedFight}, Target entity (ID: {targetEntityId}) in viewed fight: {targetInViewedFight}, Should show: {shouldShow}");
+        
+        return shouldShow;
+    }
+    
+    /// <summary>
+    /// Get the singleton instance of EntityVisibilityManager
+    /// </summary>
+    public static EntityVisibilityManager Instance { get; private set; }
     
     #endregion
     

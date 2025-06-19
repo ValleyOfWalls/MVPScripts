@@ -14,6 +14,9 @@ public class NetworkEntityAnimator : NetworkBehaviour
     
     [Header("Animation Settings")]
     [SerializeField] private string idleAnimationTrigger = "Idle";
+    [SerializeField] private string attackAnimationTrigger = "Attack";
+    [SerializeField] private string takeDamageAnimationTrigger = "TakeDamage";
+    [SerializeField] private string defeatedAnimationTrigger = "Defeated";
     
     // Networked animation state
     private readonly SyncVar<AnimationState> currentAnimationState = new SyncVar<AnimationState>(AnimationState.None);
@@ -115,12 +118,30 @@ public class NetworkEntityAnimator : NetworkBehaviour
             return;
         }
 
-        // Validate idle animation parameter exists
+        // Validate animation parameters exist
         bool hasIdleTrigger = HasAnimatorParameter(idleAnimationTrigger, AnimatorControllerParameterType.Trigger);
+        bool hasAttackTrigger = HasAnimatorParameter(attackAnimationTrigger, AnimatorControllerParameterType.Trigger);
+        bool hasTakeDamageTrigger = HasAnimatorParameter(takeDamageAnimationTrigger, AnimatorControllerParameterType.Trigger);
+        bool hasDefeatedTrigger = HasAnimatorParameter(defeatedAnimationTrigger, AnimatorControllerParameterType.Trigger);
 
         if (!hasIdleTrigger)
         {
             Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Idle trigger '{idleAnimationTrigger}' not found in Animator Controller. Idle will play as entry state.");
+        }
+        
+        if (!hasAttackTrigger)
+        {
+            Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Attack trigger '{attackAnimationTrigger}' not found in Animator Controller.");
+        }
+        
+        if (!hasTakeDamageTrigger)
+        {
+            Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Take damage trigger '{takeDamageAnimationTrigger}' not found in Animator Controller.");
+        }
+        
+        if (!hasDefeatedTrigger)
+        {
+            Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Defeated trigger '{defeatedAnimationTrigger}' not found in Animator Controller.");
         }
 
 
@@ -250,6 +271,36 @@ public class NetworkEntityAnimator : NetworkBehaviour
                     Debug.Log($"NetworkEntityAnimator: Idle animation playing automatically (entry state) for {networkEntity?.EntityName.Value}");
                 }
                 break;
+                
+            case AnimationState.Attacking:
+                if (HasAnimatorParameter(attackAnimationTrigger, AnimatorControllerParameterType.Trigger))
+                {
+                    modelAnimator.SetTrigger(attackAnimationTrigger);
+                    Debug.Log($"NetworkEntityAnimator: Triggered attack animation for {networkEntity?.EntityName.Value}");
+                    
+                    // Auto-return to idle after attack animation
+                    StartCoroutine(ReturnToIdleAfterDelay(1f));
+                }
+                break;
+                
+            case AnimationState.TakingDamage:
+                if (HasAnimatorParameter(takeDamageAnimationTrigger, AnimatorControllerParameterType.Trigger))
+                {
+                    modelAnimator.SetTrigger(takeDamageAnimationTrigger);
+                    Debug.Log($"NetworkEntityAnimator: Triggered take damage animation for {networkEntity?.EntityName.Value}");
+                    
+                    // Auto-return to idle after damage animation
+                    StartCoroutine(ReturnToIdleAfterDelay(0.5f));
+                }
+                break;
+                
+            case AnimationState.Defeated:
+                if (HasAnimatorParameter(defeatedAnimationTrigger, AnimatorControllerParameterType.Trigger))
+                {
+                    modelAnimator.SetTrigger(defeatedAnimationTrigger);
+                    Debug.Log($"NetworkEntityAnimator: Triggered defeated animation for {networkEntity?.EntityName.Value}");
+                }
+                break;
         }
     }
 
@@ -271,22 +322,36 @@ public class NetworkEntityAnimator : NetworkBehaviour
     }
 
     /// <summary>
-    /// For future use - additional animation methods
+    /// Animation control methods for combat
     /// </summary>
     [Server]
     public void PlayAttackAnimation()
     {
-        if (!IsServerStarted || !isAnimationInitialized) return;
+        Debug.Log($"NetworkEntityAnimator: PlayAttackAnimation called for {networkEntity?.EntityName.Value} - IsServer: {IsServerStarted}, IsInitialized: {isAnimationInitialized}");
+        
+        if (!IsServerStarted || !isAnimationInitialized) 
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Cannot play attack animation - IsServer: {IsServerStarted}, IsInitialized: {isAnimationInitialized}");
+            return;
+        }
+        
+        Debug.Log($"NetworkEntityAnimator: Setting animation state to Attacking for {networkEntity?.EntityName.Value}");
         currentAnimationState.Value = AnimationState.Attacking;
-        // Note: You'll need to add attack animation trigger to your Animator Controller
     }
 
     [Server]
     public void PlayTakeDamageAnimation()
     {
-        if (!IsServerStarted || !isAnimationInitialized) return;
+        Debug.Log($"NetworkEntityAnimator: PlayTakeDamageAnimation called for {networkEntity?.EntityName.Value} - IsServer: {IsServerStarted}, IsInitialized: {isAnimationInitialized}");
+        
+        if (!IsServerStarted || !isAnimationInitialized) 
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Cannot play take damage animation - IsServer: {IsServerStarted}, IsInitialized: {isAnimationInitialized}");
+            return;
+        }
+        
+        Debug.Log($"NetworkEntityAnimator: Setting animation state to TakingDamage for {networkEntity?.EntityName.Value}");
         currentAnimationState.Value = AnimationState.TakingDamage;
-        // Note: You'll need to add take damage animation trigger to your Animator Controller
     }
 
     [Server]
@@ -294,7 +359,19 @@ public class NetworkEntityAnimator : NetworkBehaviour
     {
         if (!IsServerStarted || !isAnimationInitialized) return;
         currentAnimationState.Value = AnimationState.Defeated;
-        // Note: You'll need to add defeated animation trigger to your Animator Controller
+    }
+    
+    /// <summary>
+    /// Coroutine to return to idle state after a delay
+    /// </summary>
+    private System.Collections.IEnumerator ReturnToIdleAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        
+        if (IsServerStarted && currentAnimationState.Value != AnimationState.Defeated)
+        {
+            PlayIdleAnimation();
+        }
     }
 
     #region Inspector Helpers

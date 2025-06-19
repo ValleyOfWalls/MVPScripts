@@ -152,6 +152,14 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
+        // TRIGGER VISUAL EFFECTS BEFORE PROCESSING CARD EFFECTS
+        if (targetEntities.Count > 0 && handleCardPlay != null)
+        {
+            Debug.Log($"CardEffectResolver: Triggering visual effects for card {cardData.CardName}");
+            // Use RPC to trigger visual effects on all clients
+            RpcTriggerVisualEffects(sourceEntity.ObjectId, targetEntities[0].ObjectId, cardData.CardId);
+        }
+        
         // Record card play in tracking systems
         RecordCardPlay(sourceEntity, cardData);
         
@@ -786,6 +794,73 @@ public class CardEffectResolver : NetworkBehaviour
         return netObj?.GetComponent<NetworkEntity>();
     }
     
+    /// <summary>
+    /// RPC to trigger visual effects on all clients
+    /// </summary>
+    [ObserversRpc]
+    private void RpcTriggerVisualEffects(int sourceEntityId, int targetEntityId, int cardDataId)
+    {
+        Debug.Log($"CardEffectResolver: RpcTriggerVisualEffects called - Source: {sourceEntityId}, Target: {targetEntityId}, Card: {cardDataId}");
+        
+        // Find entities
+        NetworkEntity sourceEntity = FindEntityById(sourceEntityId);
+        NetworkEntity targetEntity = FindEntityById(targetEntityId);
+        
+        if (sourceEntity == null || targetEntity == null)
+        {
+            Debug.LogError($"CardEffectResolver: Could not find entities for visual effects - Source: {sourceEntity != null}, Target: {targetEntity != null}");
+            return;
+        }
+        
+        // Check if these entities are in the currently viewed fight
+        if (!ShouldShowVisualEffectsForEntities(sourceEntity, targetEntity))
+        {
+            Debug.Log($"CardEffectResolver: Skipping visual effects - entities not in currently viewed fight");
+            return;
+        }
+        
+        // Get card data
+        CardData cardData = CardDatabase.Instance.GetCardById(cardDataId);
+        if (cardData == null)
+        {
+            Debug.LogError($"CardEffectResolver: Could not find card data for visual effects - ID: {cardDataId}");
+            return;
+        }
+        
+        // Trigger visual effects
+        if (handleCardPlay != null)
+        {
+            Debug.Log($"CardEffectResolver: Calling TriggerVisualEffects for card {cardData.CardName}");
+            handleCardPlay.TriggerVisualEffects(sourceEntity, targetEntity, cardData);
+        }
+        else
+        {
+            Debug.LogError($"CardEffectResolver: handleCardPlay is null, cannot trigger visual effects");
+        }
+    }
+    
+    /// <summary>
+    /// Checks if visual effects should be shown for the given entities using centralized EntityVisibilityManager
+    /// </summary>
+    private bool ShouldShowVisualEffectsForEntities(NetworkEntity sourceEntity, NetworkEntity targetEntity)
+    {
+        if (sourceEntity == null || targetEntity == null)
+        {
+            Debug.LogWarning($"CardEffectResolver: Source or target entity is null, skipping visual effects");
+            return false;
+        }
+        
+        // Use centralized visibility management from EntityVisibilityManager
+        EntityVisibilityManager visibilityManager = EntityVisibilityManager.Instance;
+        if (visibilityManager == null)
+        {
+            Debug.LogWarning($"CardEffectResolver: No EntityVisibilityManager instance found, allowing visual effects");
+            return true;
+        }
+        
+        return visibilityManager.ShouldShowVisualEffectsForEntities((uint)sourceEntity.ObjectId, (uint)targetEntity.ObjectId);
+    }
+
     /// <summary>
     /// Directly resolves card effects on the server for AI-controlled entities
     /// </summary>
