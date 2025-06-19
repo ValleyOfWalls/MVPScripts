@@ -466,6 +466,33 @@ public class EntityStatsUIController : NetworkBehaviour
     
     #endregion
     
+    #region Visibility Control
+    
+    /// <summary>
+    /// Controls the visibility of this stats UI panel
+    /// Called by EntityVisibilityManager during combat visibility updates
+    /// </summary>
+    public void SetVisible(bool visible)
+    {
+        gameObject.SetActive(visible);
+        
+        // Log visibility changes for debugging
+        if (statsEntity != null)
+        {
+            Debug.Log($"EntityStatsUIController: {statsEntity.EntityName.Value} visibility set to {visible}");
+        }
+    }
+    
+    /// <summary>
+    /// Gets the current visibility state of this stats UI panel
+    /// </summary>
+    public bool IsVisible()
+    {
+        return gameObject.activeInHierarchy;
+    }
+    
+    #endregion
+    
     #region Public Properties
     
     /// <summary>

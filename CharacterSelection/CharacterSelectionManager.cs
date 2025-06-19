@@ -485,6 +485,18 @@ public class CharacterSelectionManager : NetworkBehaviour
             }
         }
         
+        // Clean up character selection phase
+        CharacterSelectionSetup characterSelectionSetup = FindFirstObjectByType<CharacterSelectionSetup>();
+        if (characterSelectionSetup != null)
+        {
+            characterSelectionSetup.CleanupCharacterSelection();
+            Debug.Log("CharacterSelectionManager: Character selection cleanup initiated");
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionManager: CharacterSelectionSetup not found for cleanup");
+        }
+        
         // Initialize combat
         yield return new WaitForSeconds(0.5f); // Allow time for phase transition
         
@@ -549,6 +561,25 @@ public class CharacterSelectionManager : NetworkBehaviour
         if (uiManager != null)
         {
             uiManager.ShowTransitionMessage("All players ready! Spawning entities and starting combat...");
+            
+            // Start cleanup after a short delay to allow the transition message to be visible
+            StartCoroutine(CleanupCharacterSelectionAfterDelay());
+        }
+    }
+    
+    /// <summary>
+    /// Cleans up character selection UI and models after a short delay during combat transition
+    /// </summary>
+    private System.Collections.IEnumerator CleanupCharacterSelectionAfterDelay()
+    {
+        // Wait a moment to let players see the transition message
+        yield return new WaitForSeconds(1.0f);
+        
+        if (uiManager != null)
+        {
+            // Hide character selection UI and clean up models
+            uiManager.HideCharacterSelectionUI();
+            Debug.Log("CharacterSelectionManager: Character selection UI hidden and models cleaned up");
         }
     }
 

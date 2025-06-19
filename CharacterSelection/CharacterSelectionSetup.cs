@@ -311,4 +311,39 @@ public class CharacterSelectionSetup : NetworkBehaviour
         isSetupComplete = false;
         Debug.Log("CharacterSelectionSetup: Setup state reset");
     }
+    
+    /// <summary>
+    /// Cleans up character selection phase when transitioning to another phase
+    /// </summary>
+    [Server]
+    public void CleanupCharacterSelection()
+    {
+        Debug.Log("CharacterSelectionSetup: Starting character selection cleanup");
+        
+        // Notify clients to cleanup character selection
+        RpcCleanupCharacterSelection();
+        
+        // Reset setup state
+        ResetSetup();
+        
+        Debug.Log("CharacterSelectionSetup: Character selection cleanup complete");
+    }
+    
+    [ObserversRpc]
+    private void RpcCleanupCharacterSelection()
+    {
+        Debug.Log("CharacterSelectionSetup: RpcCleanupCharacterSelection called on client");
+        
+        // Clean up character selection UI and models
+        if (characterSelectionUIManager != null)
+        {
+            characterSelectionUIManager.CleanupSelectionModels();
+            characterSelectionUIManager.HideCharacterSelectionUI();
+            Debug.Log("CharacterSelectionSetup: Character selection UI cleaned up on client");
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionSetup: CharacterSelectionUIManager not found on client, cannot cleanup properly");
+        }
+    }
 } 

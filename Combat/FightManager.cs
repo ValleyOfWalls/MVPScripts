@@ -175,6 +175,9 @@ public class FightManager : NetworkBehaviour
             // Initially set viewed combat references to the local combat
             viewedCombatPlayer = clientCombatPlayer;
             viewedCombatOpponentPet = clientCombatOpponentPet;
+            
+            // Notify EntityVisibilityManager that combat references are ready
+            NotifyEntityVisibilityManagerReady();
         }
         else
         {
@@ -183,6 +186,37 @@ public class FightManager : NetworkBehaviour
             viewedCombatPlayer = null;
             viewedCombatOpponentPet = null;
         }
+    }
+
+    /// <summary>
+    /// Notifies the EntityVisibilityManager that fight assignments and combat references are ready
+    /// </summary>
+    private void NotifyEntityVisibilityManagerReady()
+    {
+        // Only notify if we have fight assignments and valid viewed combat references
+        if (fightAssignments.Count > 0 && viewedCombatPlayer != null && viewedCombatOpponentPet != null)
+        {
+            EntityVisibilityManager entityVisManager = FindEntityVisibilityManager();
+            if (entityVisManager != null)
+            {
+                Debug.Log("FightManager: Notifying EntityVisibilityManager that combat references are ready");
+                entityVisManager.OnFightManagerReady();
+            }
+            else
+            {
+                Debug.LogWarning("FightManager: Could not find EntityVisibilityManager to notify readiness");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Debug method to manually notify EntityVisibilityManager
+    /// </summary>
+    [ContextMenu("Force Notify EntityVisibilityManager")]
+    public void ForceNotifyEntityVisibilityManager()
+    {
+        Debug.Log($"FightManager: Force notifying EntityVisibilityManager. Fight assignments: {fightAssignments.Count}, ViewedPlayer: {(viewedCombatPlayer != null ? viewedCombatPlayer.EntityName.Value : "null")}, ViewedPet: {(viewedCombatOpponentPet != null ? viewedCombatOpponentPet.EntityName.Value : "null")}");
+        NotifyEntityVisibilityManagerReady();
     }
 
     #endregion
@@ -444,8 +478,8 @@ public class FightManager : NetworkBehaviour
         viewedCombatPlayer = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PlayerObjectId);
         viewedCombatOpponentPet = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PetObjectId);
         
-        // Update entity visibility for the new viewed fight
-        UpdateEntityVisibility();
+        // Notify EntityVisibilityManager that the viewed fight has changed
+        NotifyEntityVisibilityManagerReady();
         
         return true;
     }

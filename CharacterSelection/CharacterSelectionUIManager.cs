@@ -1169,10 +1169,6 @@ public class CharacterSelectionUIManager : MonoBehaviour
 
     #endregion
 
-
-
-
-
     #region UI Event Handlers
 
     private void OnPlayerNameChanged(string newName)
@@ -1480,6 +1476,9 @@ public class CharacterSelectionUIManager : MonoBehaviour
     
     private void OnDestroy()
     {
+        // Clean up selection models to prevent memory leaks
+        CleanupSelectionModels();
+        
         // Unsubscribe from events to prevent memory leaks
         if (uiAnimator != null)
         {
@@ -1512,6 +1511,104 @@ public class CharacterSelectionUIManager : MonoBehaviour
         if (characterSelectionCanvas != null)
         {
             characterSelectionCanvas.SetActive(false);
+        }
+        
+        // Clean up character selection models to free memory
+        CleanupSelectionModels();
+    }
+
+    /// <summary>
+    /// Cleans up all instantiated character and pet selection models to free memory
+    /// Called automatically during combat transition and UI destruction.
+    /// This system ensures that character selection models don't persist into combat,
+    /// preventing memory leaks and visual conflicts.
+    /// </summary>
+    public void CleanupSelectionModels()
+    {
+        Debug.Log($"CharacterSelectionUIManager: Cleaning up {characterItems.Count} character models and {petItems.Count} pet models");
+        
+        // Force cleanup on all controllers first to ensure proper cleanup of dynamically created models
+        ForceCleanupAllControllers();
+        
+        // Destroy character selection models
+        foreach (GameObject item in characterItems)
+        {
+            if (item != null)
+            {
+                Debug.Log($"CharacterSelectionUIManager: Destroying character selection model: {item.name}");
+                Destroy(item);
+            }
+        }
+        characterItems.Clear();
+        characterControllers.Clear();
+        
+        // Destroy pet selection models
+        foreach (GameObject item in petItems)
+        {
+            if (item != null)
+            {
+                Debug.Log($"CharacterSelectionUIManager: Destroying pet selection model: {item.name}");
+                Destroy(item);
+            }
+        }
+        petItems.Clear();
+        petControllers.Clear();
+        
+        Debug.Log("CharacterSelectionUIManager: Selection model cleanup complete");
+    }
+    
+    /// <summary>
+    /// Debug method to manually trigger cleanup from the inspector
+    /// </summary>
+    [ContextMenu("Force Cleanup Selection Models")]
+    public void ForceCleanupSelectionModels()
+    {
+        CleanupSelectionModels();
+    }
+
+    /// <summary>
+    /// Forces cleanup on all entity selection controllers before destroying them
+    /// </summary>
+    private void ForceCleanupAllControllers()
+    {
+        // Cleanup character controllers
+        foreach (EntitySelectionController controller in characterControllers)
+        {
+            if (controller != null && controller.IsUsing3DModel())
+            {
+                // The controller's OnDestroy will handle cleanup, but we can call RefreshModel3DFromData 
+                // with null to force cleanup of any dynamically created models
+                try
+                {
+                    if (controller.GetModel3D() != null)
+                    {
+                        Debug.Log($"CharacterSelectionUIManager: Force cleaning model from character controller: {controller.name}");
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning($"CharacterSelectionUIManager: Error during character controller cleanup: {e.Message}");
+                }
+            }
+        }
+        
+        // Cleanup pet controllers
+        foreach (EntitySelectionController controller in petControllers)
+        {
+            if (controller != null && controller.IsUsing3DModel())
+            {
+                try
+                {
+                    if (controller.GetModel3D() != null)
+                    {
+                        Debug.Log($"CharacterSelectionUIManager: Force cleaning model from pet controller: {controller.name}");
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning($"CharacterSelectionUIManager: Error during pet controller cleanup: {e.Message}");
+                }
+            }
         }
     }
 
