@@ -320,11 +320,53 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     private void Update()
     {
+        // Only process click detection if we're in the character selection phase
+        if (!IsCharacterSelectionPhaseActive())
+        {
+            return;
+        }
+        
         // Check for clicks outside of character/pet selections to hide deck previews
         if (enableClickOutsideDetection && (isCharacterDeckVisible || isPetDeckVisible) && Input.GetMouseButtonDown(0))
         {
             CheckClickOutsideSelections();
         }
+    }
+    
+    /// <summary>
+    /// Checks if we're currently in the character selection phase
+    /// </summary>
+    private bool IsCharacterSelectionPhaseActive()
+    {
+        // Try to get GamePhaseManager instance
+        GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
+        if (gamePhaseManager == null)
+        {
+            // Fallback: check if our parent canvas is active
+            Canvas parentCanvas = GetComponentInParent<Canvas>();
+            bool canvasActive = parentCanvas != null && parentCanvas.gameObject.activeInHierarchy;
+            
+            if (!canvasActive && enableClickOutsideDetection)
+            {
+                // If canvas is inactive but we still have click detection enabled, 
+                // this suggests we've transitioned away from character selection
+                Debug.Log("CharacterSelectionUIAnimator: Parent canvas inactive, disabling click detection");
+                enableClickOutsideDetection = false;
+            }
+            
+            return canvasActive;
+        }
+        
+        // Check if current phase is character selection
+        bool isCharacterSelectionPhase = gamePhaseManager.GetCurrentPhase() == GamePhaseManager.GamePhase.CharacterSelection;
+        
+        if (!isCharacterSelectionPhase && enableClickOutsideDetection)
+        {
+            Debug.Log($"CharacterSelectionUIAnimator: Game phase changed to {gamePhaseManager.GetCurrentPhase()}, disabling click detection");
+            enableClickOutsideDetection = false;
+        }
+        
+        return isCharacterSelectionPhase;
     }
     
     private void CheckClickOutsideSelections()

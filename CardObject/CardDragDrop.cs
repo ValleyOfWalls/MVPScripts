@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using System.Collections;
+using System.Linq;
 
 /// <summary>
 /// Handles drag and drop functionality for cards during combat.
@@ -10,7 +11,7 @@ using System.Collections;
 public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerDownHandler, IPointerUpHandler
 {
     [Header("Drag Settings")]
-    [SerializeField] private float dragThreshold = 15f; // Minimum distance to start drag (increased for more reliable detection)
+    [SerializeField] private float dragThreshold = 8f; // Minimum distance to start drag (reduced for better responsiveness)
     [SerializeField] private Canvas dragCanvas; // Canvas to parent card to during drag
     [SerializeField] private int dragSortingOrder = 1000; // Sorting order during drag
     
@@ -28,6 +29,9 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     private RectTransform rectTransform;
     private CanvasGroup canvasGroup;
     private Canvas originalCanvas;
+    private bool hadOriginalCanvas; // Track if card itself had a Canvas component before drag
+    private HandLayoutManager handLayoutManager;
+    private CardAnimator cardAnimator;
     
     // Drag state
     private bool isDragging = false;
@@ -66,6 +70,39 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         if (dragCanvas == null)
         {
             dragCanvas = FindSuitableDragCanvas();
+        }
+        
+        // Find HandLayoutManager in parent hierarchy
+        handLayoutManager = GetComponentInParent<HandLayoutManager>();
+        
+        // Find CardAnimator on this object
+        cardAnimator = GetComponent<CardAnimator>();
+        
+        if (handLayoutManager != null)
+        {
+            Debug.Log($"[CardDragDrop] Found HandLayoutManager in parent hierarchy: {handLayoutManager.gameObject.name}");
+        }
+        else
+        {
+            Debug.Log($"[CardDragDrop] No HandLayoutManager found in parent hierarchy for {gameObject.name}");
+            // Debug parent hierarchy
+            Transform current = transform.parent;
+            int depth = 0;
+            while (current != null && depth < 5)
+            {
+                Debug.Log($"[CardDragDrop] Parent {depth}: {current.name} (components: {string.Join(", ", current.GetComponents<Component>().Select(c => c.GetType().Name))})");
+                current = current.parent;
+                depth++;
+            }
+        }
+        
+        if (cardAnimator != null)
+        {
+            Debug.Log($"[CardDragDrop] Found CardAnimator on {gameObject.name}");
+        }
+        else
+        {
+            Debug.Log($"[CardDragDrop] No CardAnimator found on {gameObject.name} - animations will be skipped");
         }
         
         ValidateComponents();
@@ -225,38 +262,45 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
         if (gamePhaseManager != null && gamePhaseManager.GetCurrentPhase() == GamePhaseManager.GamePhase.Draft)
         {
-            LogDebug("Cannot drag card - in draft phase");
+            LogDebug($"Cannot drag {gameObject.name} - in draft phase");
             return false;
         }
         
         // Check if card is in hand
         if (card.CurrentContainer != CardLocation.Hand)
         {
-            LogDebug($"Cannot drag card - not in hand (current: {card.CurrentContainer})");
+            LogDebug($"Cannot drag {gameObject.name} - not in hand (current: {card.CurrentContainer})");
             return false;
         }
         
         // Check if card can be played by local player
-        if (!card.CanBePlayedByLocalPlayer())
+        bool canPlayByLocalPlayer = card.CanBePlayedByLocalPlayer();
+        if (!canPlayByLocalPlayer)
         {
-            LogDebug("Cannot drag card - cannot be played by local player");
+            LogDebug($"Cannot drag {gameObject.name} - cannot be played by local player");
             return false;
         }
         
         // Update source and target before checking play requirements (like Card.OnMouseDown does)
         if (sourceAndTargetIdentifier != null)
         {
-            LogDebug("Updating source and target before drag validation");
+            LogDebug($"Updating source and target before drag validation for {gameObject.name}");
             sourceAndTargetIdentifier.UpdateSourceAndTarget();
         }
         
         // Check if card meets basic play requirements (energy, stun, etc.)
-        if (handleCardPlay != null && !handleCardPlay.CanCardBePlayed())
+        if (handleCardPlay != null)
         {
-            LogDebug($"Cannot drag card - play requirements not met: {handleCardPlay.GetPlayBlockReason()}");
-            return false;
+            bool canBePlayed = handleCardPlay.CanCardBePlayed();
+            if (!canBePlayed)
+            {
+                string blockReason = handleCardPlay.GetPlayBlockReason();
+                LogDebug($"Cannot drag {gameObject.name} - play requirements not met: {blockReason}");
+                return false;
+            }
         }
         
+        LogDebug($"Can drag {gameObject.name} - all checks passed");
         return true;
     }
     
@@ -411,29 +455,30 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     
     public void OnBeginDrag(PointerEventData eventData)
     {
-        LogDebug($"OnBeginDrag called - eventHandled: {eventHandled}, isDragStarted: {isDragStarted}");
+        LogDebug($"OnBeginDrag called for {gameObject.name} - eventHandled: {eventHandled}, isDragStarted: {isDragStarted}");
         
         // Check if event was already handled or if this is too soon after pointer down
         if (eventHandled)
         {
-            LogDebug("Begin drag cancelled - event already handled");
+            LogDebug($"Begin drag cancelled - event already handled for {gameObject.name}");
             eventData.pointerDrag = null;
             return;
         }
         
-        if (!CanDragCard())
+        bool canDrag = CanDragCard();
+        if (!canDrag)
         {
-            LogDebug("Begin drag cancelled - cannot drag card");
+            LogDebug($"Begin drag cancelled - cannot drag card {gameObject.name}");
             eventData.pointerDrag = null;
             return;
         }
         
         Vector2 dragDistance = eventData.position - dragStartPosition;
-        LogDebug($"Begin drag check: distance={dragDistance.magnitude:F1}px, threshold={dragThreshold}px");
+        LogDebug($"Begin drag check for {gameObject.name}: distance={dragDistance.magnitude:F1}px, threshold={dragThreshold}px");
         
         if (dragDistance.magnitude < dragThreshold)
         {
-            LogDebug("Begin drag cancelled - below threshold distance");
+            LogDebug($"Begin drag cancelled - below threshold distance for {gameObject.name}");
             return; // Don't start drag until threshold is met
         }
         
@@ -443,6 +488,23 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         eventHandled = true; // Prevent click handling
         
         LogDebug("Begin drag - starting drag operation");
+        
+        // Re-check for HandLayoutManager in case it was added after Awake
+        if (handLayoutManager == null)
+        {
+            handLayoutManager = GetComponentInParent<HandLayoutManager>();
+        }
+        
+        // Notify HandLayoutManager that drag is starting
+        if (handLayoutManager != null)
+        {
+            Debug.Log($"[CardDragDrop] Notifying HandLayoutManager on {handLayoutManager.gameObject.name} that drag started for {gameObject.name}");
+            handLayoutManager.OnCardDragStart(rectTransform);
+        }
+        else
+        {
+            Debug.Log($"[CardDragDrop] HandLayoutManager is null - cannot notify drag start for {gameObject.name}");
+        }
         
         // Notify SourceAndTargetIdentifier that drag is starting to keep damage previews visible
         if (sourceAndTargetIdentifier != null)
@@ -462,9 +524,11 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         originalScale = transform.localScale;
         originalAlpha = canvasGroup.alpha;
         
-        // Get original canvas and sorting order
-        originalCanvas = GetComponentInParent<Canvas>();
-        if (originalCanvas != null)
+        // Track if card itself originally had a Canvas component
+        originalCanvas = GetComponent<Canvas>();
+        hadOriginalCanvas = originalCanvas != null;
+        
+        if (hadOriginalCanvas)
         {
             originalSortingOrder = originalCanvas.sortingOrder;
         }
@@ -472,7 +536,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         // UPDATED: Don't reparent - just use Canvas component for proper rendering order
         LogDebug("Maintaining original parent during drag - using Canvas component for rendering order");
         
-        // Add Canvas component to card for higher sorting order
+        // Add Canvas component to card for higher sorting order (or use existing one)
         Canvas cardCanvas = GetComponent<Canvas>();
         if (cardCanvas == null)
         {
@@ -481,7 +545,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         cardCanvas.overrideSorting = true;
         cardCanvas.sortingOrder = dragSortingOrder;
         
-        LogDebug($"Added Canvas component with sorting order: {dragSortingOrder}, staying in parent: {originalParent.name}");
+        LogDebug($"Added Canvas component with sorting order: {dragSortingOrder}, staying in parent: {originalParent.name}, hadOriginalCanvas: {hadOriginalCanvas}");
         
         // Apply drag visual effects
         transform.localScale = originalScale * dragScale;
@@ -832,6 +896,13 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                     handleCardPlay.OnCardPlayAttempt();
                     cardWasPlayed = true;
                     
+                    // Trigger successful play animation if available
+                    if (cardAnimator != null)
+                    {
+                        Debug.Log($"[CardDragDrop] Starting successful play animation for {gameObject.name}");
+                        cardAnimator.OnPlaySuccess();
+                    }
+                    
                     // Notify SourceAndTargetIdentifier that card was played for cleanup
                     if (sourceAndTargetIdentifier != null)
                     {
@@ -855,7 +926,102 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             LogDebug("No valid drop zone - card will return to hand");
         }
         
-        // Reset visual state and position
+        // Re-check for HandLayoutManager in case it was added after Awake
+        if (handLayoutManager == null)
+        {
+            handLayoutManager = GetComponentInParent<HandLayoutManager>();
+        }
+        
+        // Handle failed play animation if CardAnimator is available
+        if (!cardWasPlayed && cardAnimator != null)
+        {
+            // Get current drag position in local space
+            Vector3 currentLocalPosition = rectTransform.localPosition;
+            
+            // Get the complete layout data from HandLayoutManager
+            Vector3 handReturnPosition;
+            Vector3 handReturnScale;
+            Quaternion handReturnRotation;
+            
+            if (handLayoutManager != null)
+            {
+                // Get the complete calculated layout data for this card
+                bool hasLayoutData = handLayoutManager.GetCardLayoutData(rectTransform, out handReturnPosition, out handReturnScale, out handReturnRotation);
+                if (hasLayoutData)
+                {
+                    Debug.Log($"[CardDragDrop] Got complete layout data from HandLayoutManager - pos: {handReturnPosition}, scale: {handReturnScale}, rot: {handReturnRotation.eulerAngles}");
+                }
+                else
+                {
+                    // Fallback values
+                    handReturnPosition = Vector3.zero;
+                    handReturnScale = Vector3.one;
+                    handReturnRotation = Quaternion.identity;
+                    Debug.Log($"[CardDragDrop] Failed to get layout data, using fallback values");
+                }
+            }
+            else
+            {
+                // Fallback values
+                handReturnPosition = Vector3.zero;
+                handReturnScale = Vector3.one;
+                handReturnRotation = Quaternion.identity;
+                Debug.Log($"[CardDragDrop] No HandLayoutManager, using fallback values");
+            }
+            
+            Debug.Log($"[CardDragDrop] Starting failed play animation for {gameObject.name} from {currentLocalPosition} to complete layout");
+            
+            // Use CardAnimator for failed play animation - pass complete layout data
+            cardAnimator.AnimatePlayFailedComplete(currentLocalPosition, handReturnPosition, handReturnScale, handReturnRotation, () => {
+                // Animation complete - ensure card state is reset
+                Debug.Log($"[CardDragDrop] Failed play animation complete for {gameObject.name}");
+                
+                // Double-check layout update happened and force cleanup
+                if (handLayoutManager != null)
+                {
+                    Debug.Log($"[CardDragDrop] Final layout update triggered after animation complete");
+                    handLayoutManager.UpdateLayout();
+                }
+                
+                // Clean up drag canvas state
+                CleanupDragState();
+                
+                // Reset drag state
+                isDragging = false;
+                isDragStarted = false;
+                validDropZone = null;
+                eventHandled = false;
+                
+                // Clean up hover effects
+                if (currentHoverZone != null)
+                {
+                    currentHoverZone.OnCardDragExit();
+                    currentHoverZone = null;
+                }
+                
+                // Notify SourceAndTargetIdentifier that drag is ending
+                if (sourceAndTargetIdentifier != null)
+                {
+                    sourceAndTargetIdentifier.OnDragEnd();
+                }
+            });
+            
+            // Skip normal reset since animation will handle it
+            return;
+        }
+        
+        // Notify HandLayoutManager first, then reset visual state
+        if (handLayoutManager != null)
+        {
+            Debug.Log($"[CardDragDrop] Notifying HandLayoutManager on {handLayoutManager.gameObject.name} that drag ended for {gameObject.name}, cardWasPlayed: {cardWasPlayed}");
+            handLayoutManager.OnCardDragEnd(rectTransform, cardWasPlayed);
+        }
+        else
+        {
+            Debug.Log($"[CardDragDrop] HandLayoutManager is null - cannot notify drag end for {gameObject.name}");
+        }
+        
+        // Reset visual state after layout handling
         ResetCardState(cardWasPlayed);
         
         // Clean up hover effects
@@ -869,6 +1035,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         isDragging = false;
         isDragStarted = false;
         validDropZone = null;
+        eventHandled = false; // Reset event handled flag to allow future interactions
         
         // Notify SourceAndTargetIdentifier that drag is ending
         if (sourceAndTargetIdentifier != null)
@@ -876,7 +1043,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             sourceAndTargetIdentifier.OnDragEnd();
         }
         
-        LogDebug($"End drag complete - card was played: {cardWasPlayed}");
+        LogDebug($"End drag complete for {gameObject.name} - card was played: {cardWasPlayed}, eventHandled reset to false");
     }
     
     private void ResetCardState(bool cardWasPlayed)
@@ -893,14 +1060,19 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         Canvas cardCanvas = GetComponent<Canvas>();
         if (cardCanvas != null)
         {
-            if (originalCanvas != null)
+            if (hadOriginalCanvas)
             {
+                // Card originally had a Canvas - restore its original settings
                 cardCanvas.overrideSorting = false;
-                LogDebug("Reset canvas sorting override");
+                if (originalCanvas != null)
+                {
+                    cardCanvas.sortingOrder = originalSortingOrder;
+                }
+                LogDebug("Reset canvas to original settings");
             }
             else
             {
-                // If there was no original canvas, remove the one we added
+                // Card didn't originally have a Canvas - remove the one we added
                 if (Application.isPlaying)
                 {
                     Destroy(cardCanvas);
@@ -909,7 +1081,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 {
                     DestroyImmediate(cardCanvas);
                 }
-                LogDebug("Removed temporary canvas component");
+                LogDebug("Removed temporary canvas component that was added for drag");
             }
         }
         
@@ -927,11 +1099,20 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         
         LogDebug($"Reset visual state - scale: {originalScale}, alpha: {originalAlpha}");
         
-        // Reset position (the layout group should handle this)
-        if (rectTransform != null)
+        // Let HandLayoutManager handle positioning if available, otherwise reset position
+        if (handLayoutManager != null && !cardWasPlayed)
         {
+            // HandLayoutManager has already handled repositioning - don't interfere
+            LogDebug($"HandLayoutManager detected on {handLayoutManager.gameObject.name} - skipping position reset for {gameObject.name}");
+        }
+        else if (rectTransform != null)
+        {
+            // Fallback: reset to zero position for traditional layout groups
             rectTransform.anchoredPosition = Vector2.zero;
-            LogDebug("Reset anchored position to zero");
+            LogDebug("Reset anchored position to zero (fallback)");
+            
+            // Force a layout rebuild for traditional layout groups
+            UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(rectTransform);
         }
         
         // Ensure the card is interactable again
@@ -942,14 +1123,11 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             LogDebug("Ensured CanvasGroup is interactable and blocks raycasts");
         }
         
-        // Force a layout rebuild to ensure proper positioning
-        if (rectTransform != null)
+        // Re-enable UI event system only if HandLayoutManager isn't handling positioning
+        if (handLayoutManager == null || cardWasPlayed)
         {
-            UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(rectTransform);
+            EnsureUIEventSetup();
         }
-        
-        // Re-enable UI event system to ensure card remains interactable
-        EnsureUIEventSetup();
         
         LogDebug("Card state reset complete - returned to hand");
     }
@@ -978,8 +1156,50 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         }
     }
     
+    private void CleanupDragState()
+    {
+        // Clean up canvas state
+        Canvas cardCanvas = GetComponent<Canvas>();
+        if (cardCanvas != null)
+        {
+            if (hadOriginalCanvas)
+            {
+                // Card originally had a Canvas - restore its original settings
+                cardCanvas.overrideSorting = false;
+                if (originalCanvas != null)
+                {
+                    cardCanvas.sortingOrder = originalSortingOrder;
+                }
+                Debug.Log($"[CardDragDrop] Reset canvas to original settings for {gameObject.name}");
+            }
+            else
+            {
+                // Card didn't originally have a Canvas - remove the one we added
+                if (Application.isPlaying)
+                {
+                    Destroy(cardCanvas);
+                }
+                else
+                {
+                    DestroyImmediate(cardCanvas);
+                }
+                Debug.Log($"[CardDragDrop] Removed temporary canvas component for {gameObject.name}");
+            }
+        }
+        
+        // Ensure canvas group is interactive
+        if (canvasGroup != null)
+        {
+            canvasGroup.interactable = true;
+            canvasGroup.blocksRaycasts = true;
+        }
+        
+        Debug.Log($"[CardDragDrop] Drag state cleanup complete for {gameObject.name}");
+    }
+
     private void LogDebug(string message)
     {
         // Verbose logging disabled for performance
+        // Debug.Log($"[CardDragDrop] {message}");
     }
 } 

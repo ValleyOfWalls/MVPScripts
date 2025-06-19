@@ -90,7 +90,17 @@ public class CardParenter : NetworkBehaviour
         cardObject.transform.SetParent(parentTransform);
         cardObject.transform.localPosition = Vector3.zero;
         cardObject.transform.localRotation = Quaternion.identity;
-        cardObject.transform.localScale = Vector3.one;
+        
+        // Only reset scale if no HandLayoutManager is present to avoid interfering with custom layouts
+        HandLayoutManager handLayoutManager = parentTransform.GetComponent<HandLayoutManager>();
+        if (handLayoutManager == null)
+        {
+            cardObject.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            Debug.Log($"CardParenter: Skipped scale reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+        }
 
         // NOTE: Removed ServerManager.Spawn call - the card should already be spawned by CardSpawner
         // The CardSpawner.SpawnCardInternal method already handles network spawning
@@ -176,7 +186,17 @@ public class CardParenter : NetworkBehaviour
         cardObject.transform.SetParent(deckTransform, false); // worldPositionStays = false to correctly apply local transforms
         cardObject.transform.localPosition = Vector3.zero;
         cardObject.transform.localRotation = Quaternion.identity;
-        cardObject.transform.localScale = Vector3.one;
+        
+        // Only reset scale if no HandLayoutManager is present to avoid interfering with custom layouts
+        HandLayoutManager handLayoutManager = deckTransform.GetComponent<HandLayoutManager>();
+        if (handLayoutManager == null)
+        {
+            cardObject.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            Debug.Log($"CardParenter: Skipped scale reset for {cardName} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+        }
         
         // Use EntityVisibilityManager for proper visibility filtering
         EntityVisibilityManager entityVisManager = FindEntityVisibilityManager();
@@ -289,7 +309,18 @@ public class CardParenter : NetworkBehaviour
 
         // Set the card's parent to the target transform
         card.transform.SetParent(targetTransform);
-        card.transform.localPosition = Vector3.zero;
+        
+        // Only reset position and scale if no HandLayoutManager is present to avoid interfering with custom layouts
+        HandLayoutManager handLayoutManager = targetTransform.GetComponent<HandLayoutManager>();
+        if (handLayoutManager == null || targetTransform != handTransform)
+        {
+            card.transform.localPosition = Vector3.zero;
+            card.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            Debug.Log($"CardParenter: Skipped position and scale reset for {card.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+        }
 
         // Determine if this location should show cards (only hand shows cards)
         bool locationShouldBeVisible = targetTransform == handTransform;

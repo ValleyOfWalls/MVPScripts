@@ -326,7 +326,18 @@ public class HandManager : NetworkBehaviour
         Debug.Log($"HandManager (ServerDirect): Enabling card {card.name} and moving to hand for {gameObject.name}");
         card.SetActive(true);
         card.transform.SetParent(handTransform);
+        
+        // Only reset position if no HandLayoutManager is present to avoid interfering with custom layouts
+        HandLayoutManager handLayoutManager = handTransform.GetComponent<HandLayoutManager>();
+        if (handLayoutManager == null)
+        {
         card.transform.localPosition = Vector3.zero;
+            Debug.Log($"HandManager (ServerDirect): Reset {card.name} position to zero (no HandLayoutManager found)");
+        }
+        else
+        {
+            Debug.Log($"HandManager (ServerDirect): Skipped position reset for {card.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+        }
         
         // RPCs for clients only
         RpcSetCardEnabled(cardNetObj.ObjectId, true); 
@@ -640,7 +651,24 @@ public class HandManager : NetworkBehaviour
         GameObject cardObject = cardNetObj.gameObject;
         Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION PASSED - Setting card {cardObject.name} parent to {targetTransform.name} on {gameObject.name}");
         cardObject.transform.SetParent(targetTransform);
+        
+        // Only reset position if no HandLayoutManager is present to avoid interfering with custom layouts
+        HandLayoutManager handLayoutManager = targetTransform.GetComponent<HandLayoutManager>();
+        if (handLayoutManager == null && targetTransformName == "Hand")
+        {
+            cardObject.transform.localPosition = Vector3.zero;
+            Debug.Log($"HandManager (Client RPC): Reset {cardObject.name} position to zero (no HandLayoutManager found)");
+        }
+        else if (targetTransformName != "Hand")
+        {
+            // Always reset position for Deck and Discard (they don't use custom layouts)
         cardObject.transform.localPosition = Vector3.zero;
+            Debug.Log($"HandManager (Client RPC): Reset {cardObject.name} position to zero for {targetTransformName}");
+        }
+        else
+        {
+            Debug.Log($"HandManager (Client RPC): Skipped position reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+        }
     }
 
     private List<GameObject> GetCardsInTransform(Transform parent)

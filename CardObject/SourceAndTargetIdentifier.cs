@@ -1,12 +1,14 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 using FishNet.Object;
 using System.Collections.Generic;
 
 /// <summary>
 /// Identifies the source and target of a card play with enhanced targeting support.
 /// Attach to: Card prefabs alongside the Card component.
+/// Now controlled by UIHoverDetector for hover events.
 /// </summary>
-public class SourceAndTargetIdentifier : NetworkBehaviour
+public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSystems.IPointerDownHandler
 {
     [Header("References")]
     [SerializeField] private Card card;
@@ -110,7 +112,34 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         return dc;
     }
 
+    // Unity's built-in mouse events (for 3D colliders)
     public void OnMouseEnter()
+    {
+        Debug.Log($"SourceAndTargetIdentifier: OnMouseEnter (3D) called for {gameObject.name}");
+        HandlePointerEnter();
+    }
+    
+    public void OnMouseDown()
+    {
+        Debug.Log($"SourceAndTargetIdentifier: OnMouseDown (3D) called for {gameObject.name}");
+        HandlePointerDown();
+    }
+    
+    public void OnMouseExit()
+    {
+        Debug.Log($"SourceAndTargetIdentifier: OnMouseExit (3D) called for {gameObject.name}");
+        HandlePointerExit();
+    }
+
+    // UI event system interfaces (for UI elements)
+    public void OnPointerDown(UnityEngine.EventSystems.PointerEventData eventData)
+    {
+        Debug.Log($"SourceAndTargetIdentifier: OnPointerDown (UI) called for {gameObject.name}");
+        HandlePointerDown();
+    }
+
+    // Public methods for UIHoverDetector to call
+    public void HandlePointerEnter()
     {
         if (!IsOwner) return;
         
@@ -128,7 +157,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         ShowDamagePreviews();
     }
     
-    public void OnMouseDown()
+    private void HandlePointerDown()
     {
         if (!IsOwner) return;
         
@@ -140,7 +169,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour
         hasUpdatedThisHover = true;
     }
     
-    public void OnMouseExit()
+    public void HandlePointerExit()
     {
         // Reset the flag when mouse exits so we can update again on the next hover
         hasUpdatedThisHover = false;
