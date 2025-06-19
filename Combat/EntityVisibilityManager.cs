@@ -268,6 +268,12 @@ public class EntityVisibilityManager : MonoBehaviour
                 shouldBeVisible = IsHandEntityInViewedFight(entity, visiblePlayerId, visiblePetId);
                 visibilityReason = shouldBeVisible ? "owner in viewed fight" : "owner not in viewed fight";
             }
+            else if (entity.EntityType == EntityType.PlayerStatsUI || entity.EntityType == EntityType.PetStatsUI)
+            {
+                // Stats UI entities should be visible if their owner is in the viewed fight
+                shouldBeVisible = IsStatsUIEntityInViewedFight(entity, visiblePlayerId, visiblePetId);
+                visibilityReason = shouldBeVisible ? "owner in viewed fight" : "owner not in viewed fight";
+            }
             
             var entityUI = entity.GetComponent<NetworkEntityUI>();
             if (entityUI != null)
@@ -325,6 +331,11 @@ public class EntityVisibilityManager : MonoBehaviour
                     // Hand entities should be visible if their owner is in the viewed fight
                     shouldBeVisible = IsHandEntityInViewedFight(entity, (uint)viewedPlayer.ObjectId, (uint)viewedPet.ObjectId);
                 }
+                else if (entity.EntityType == EntityType.PlayerStatsUI || entity.EntityType == EntityType.PetStatsUI)
+                {
+                    // Stats UI entities should be visible if their owner is in the viewed fight
+                    shouldBeVisible = IsStatsUIEntityInViewedFight(entity, (uint)viewedPlayer.ObjectId, (uint)viewedPet.ObjectId);
+                }
                 entityUI.SetVisible(shouldBeVisible);
             }
             else
@@ -354,6 +365,35 @@ public class EntityVisibilityManager : MonoBehaviour
                 if (entityHand != null && (uint)entityHand.ObjectId == (uint)handEntity.ObjectId)
                 {
                     // This entity owns the hand, check if the entity is in the viewed fight
+                    uint entityId = (uint)entity.ObjectId;
+                    return entityId == visiblePlayerId || entityId == visiblePetId;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Determines if a stats UI entity should be visible based on whether its owner is in the viewed fight
+    /// </summary>
+    private bool IsStatsUIEntityInViewedFight(NetworkEntity statsUIEntity, uint visiblePlayerId, uint visiblePetId)
+    {
+        if (statsUIEntity == null) return false;
+        
+        // Find all entities to check for ownership relationships
+        foreach (var entity in allEntities)
+        {
+            if (entity == null) continue;
+            
+            // Check if this entity has a relationship to the stats UI
+            var relationshipManager = entity.GetComponent<RelationshipManager>();
+            if (relationshipManager != null && relationshipManager.StatsUIEntity != null)
+            {
+                var entityStatsUI = relationshipManager.StatsUIEntity.GetComponent<NetworkEntity>();
+                if (entityStatsUI != null && (uint)entityStatsUI.ObjectId == (uint)statsUIEntity.ObjectId)
+                {
+                    // This entity owns the stats UI, check if the entity is in the viewed fight
                     uint entityId = (uint)entity.ObjectId;
                     return entityId == visiblePlayerId || entityId == visiblePetId;
                 }

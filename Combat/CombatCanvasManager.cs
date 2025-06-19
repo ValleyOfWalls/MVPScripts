@@ -35,6 +35,10 @@ public class CombatCanvasManager : NetworkBehaviour
     [SerializeField] private Transform opponentPetPositionTransform;
     [SerializeField] private Transform playerHandPositionTransform;
     [SerializeField] private Transform opponentPetHandPositionTransform;
+    
+    [Header("Stats UI Positioning")]
+    [SerializeField] private Transform playerStatsUIPositionTransform;
+    [SerializeField] private Transform opponentPetStatsUIPositionTransform;
 
     private NetworkEntity localPlayer;
     private NetworkEntity opponentPetForLocalPlayer;
@@ -542,6 +546,10 @@ public class CombatCanvasManager : NetworkBehaviour
         // Position ALL hands locally since they don't have NetworkTransforms and are always in the same positions
         PositionHandEntityAlways(player, playerHandPositionTransform, "Player Hand");
         PositionHandEntityAlways(opponentPet, opponentPetHandPositionTransform, "Opponent Pet Hand");
+        
+        // Position ALL stats UI locally since they don't have NetworkTransforms
+        PositionStatsUIAlways(player, playerStatsUIPositionTransform, "Player Stats UI");
+        PositionStatsUIAlways(opponentPet, opponentPetStatsUIPositionTransform, "Opponent Pet Stats UI");
     }
 
     /// <summary>
@@ -700,6 +708,130 @@ public class CombatCanvasManager : NetworkBehaviour
         handRectTransform.SetAsLastSibling();
         
         Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Positioned from {oldAnchoredPosition} to {handRectTransform.anchoredPosition}");
+    }
+
+    /// <summary>
+    /// Enhanced positioning method for stats UI with better debugging
+    /// </summary>
+    private void PositionStatsUIAlways(NetworkEntity ownerEntity, Transform targetPosition, string statsUIDescription)
+    {
+        Debug.Log($"[POSITIONING_DEBUG] PositionStatsUIAlways called for {statsUIDescription}");
+        
+        if (ownerEntity == null || targetPosition == null)
+        {
+            if (ownerEntity == null)
+                Debug.LogError($"[POSITIONING_DEBUG] Owner entity for {statsUIDescription} is null");
+            if (targetPosition == null)
+                Debug.LogError($"[POSITIONING_DEBUG] Target position for {statsUIDescription} is null");
+            return;
+        }
+
+        Debug.Log($"[POSITIONING_DEBUG] Owner entity: {ownerEntity.EntityName.Value}");
+        Debug.Log($"[POSITIONING_DEBUG] Target position: {targetPosition.name}");
+
+        var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
+        if (relationshipManager == null)
+        {
+            Debug.LogError($"[POSITIONING_DEBUG] {ownerEntity.EntityName.Value} missing RelationshipManager - cannot find {statsUIDescription}");
+            return;
+        }
+
+        if (relationshipManager.StatsUIEntity == null)
+        {
+            Debug.LogWarning($"[POSITIONING_DEBUG] {ownerEntity.EntityName.Value} has no stats UI entity - cannot position {statsUIDescription}");
+            return;
+        }
+
+        var statsUIEntity = relationshipManager.StatsUIEntity.GetComponent<NetworkEntity>();
+        if (statsUIEntity == null)
+        {
+            Debug.LogError($"[POSITIONING_DEBUG] {statsUIDescription} entity found but missing NetworkEntity component");
+            return;
+        }
+
+        Debug.Log($"[POSITIONING_DEBUG] Stats UI entity found: {statsUIEntity.EntityName.Value}");
+
+        // Check combat canvas availability
+        if (combatCanvas == null)
+        {
+            Debug.LogError($"[POSITIONING_DEBUG] Combat canvas is NULL! Cannot reparent {statsUIDescription}");
+            return;
+        }
+
+        Debug.Log($"[POSITIONING_DEBUG] Combat canvas available: {combatCanvas.name}");
+
+        // Stats UI entity should be a RectTransform, target position can be regular Transform (position marker)
+        RectTransform statsUIRectTransform = statsUIEntity.transform as RectTransform;
+        
+        if (statsUIRectTransform == null)
+        {
+            Debug.LogError($"[POSITIONING_DEBUG] Stats UI entity {statsUIEntity.EntityName.Value} does not have RectTransform! Stats UI entities must be UI elements.");
+            return;
+        }
+
+        Debug.Log($"[POSITIONING_DEBUG] Stats UI entity current parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL/ROOT")}");
+        Debug.Log($"[POSITIONING_DEBUG] Combat canvas transform: {combatCanvas.transform.name}");
+        
+        // Ensure the stats UI entity is a child of the main combat canvas if it isn't already
+        if (statsUIRectTransform.parent != combatCanvas.transform)
+        {
+            Debug.Log($"[UI_HIERARCHY] {statsUIDescription} {statsUIEntity.EntityName.Value}: Moving to be child of combat canvas");
+            Debug.Log($"[UI_HIERARCHY] Before reparenting - Parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL")}");
+            
+            statsUIRectTransform.SetParent(combatCanvas.transform, false);
+            
+            Debug.Log($"[UI_HIERARCHY] After reparenting - Parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL")}");
+        }
+        else
+        {
+            Debug.Log($"[UI_HIERARCHY] {statsUIDescription} {statsUIEntity.EntityName.Value}: Already child of combat canvas");
+        }
+        
+        // Position the stats UI entity based on the target position
+        Vector2 oldAnchoredPosition = statsUIRectTransform.anchoredPosition;
+        
+        // Check if target is a RectTransform (copy properties) or regular Transform (convert position)
+        RectTransform targetRectTransform = targetPosition as RectTransform;
+        
+        if (targetRectTransform != null)
+        {
+            // Target is also a RectTransform - copy its properties
+            statsUIRectTransform.anchorMin = targetRectTransform.anchorMin;
+            statsUIRectTransform.anchorMax = targetRectTransform.anchorMax;
+            statsUIRectTransform.anchoredPosition = targetRectTransform.anchoredPosition;
+            statsUIRectTransform.sizeDelta = targetRectTransform.sizeDelta;
+            statsUIRectTransform.pivot = targetRectTransform.pivot;
+            
+            Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Copied RectTransform properties from target");
+        }
+        else
+        {
+            // Target is a regular Transform (position marker) - convert its local position to anchored position
+            Canvas parentCanvas = combatCanvas.GetComponent<Canvas>();
+            if (parentCanvas == null)
+            {
+                Debug.LogError($"[POSITIONING_DEBUG] Combat canvas missing Canvas component!");
+                return;
+            }
+            
+            // Convert the target position to local position relative to the canvas
+            Vector3 targetLocalPosition = combatCanvas.transform.InverseTransformPoint(targetPosition.position);
+            
+            // Use the target's local position as the anchored position
+            statsUIRectTransform.anchoredPosition = new Vector2(targetLocalPosition.x, targetLocalPosition.y);
+            
+            // Set reasonable default anchoring (centered)
+            statsUIRectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            statsUIRectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            statsUIRectTransform.pivot = new Vector2(0.5f, 0.5f);
+            
+            Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Converted Transform position {targetPosition.position} to anchored position {statsUIRectTransform.anchoredPosition}");
+        }
+        
+        // Ensure proper layer ordering
+        statsUIRectTransform.SetAsLastSibling();
+        
+        Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Positioned from {oldAnchoredPosition} to {statsUIRectTransform.anchoredPosition}");
     }
 
     /// <summary>

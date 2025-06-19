@@ -23,31 +23,15 @@ public class NetworkEntityUI : MonoBehaviour
     [SerializeField] private Transform deckTransform;
     [SerializeField] private Transform discardTransform;
 
-    [Header("Entity Stats UI")]
-    [SerializeField] private TextMeshProUGUI nameText;
-    [SerializeField] private TextMeshProUGUI healthText;
-    [SerializeField] private TextMeshProUGUI energyText;
-    [SerializeField] private Image healthBar;
+    [Header("Entity Visual Representation")]
     [SerializeField] private Image entityImage; // Main visual representation of the entity (legacy 2D)
     
     [Header("3D Model")]
     [SerializeField] private Transform entityModel; // 3D model representation of the entity
     [SerializeField] private Vector3 uiOffset = Vector3.up * 2f; // Offset for UI relative to model
 
-    [Header("Damage Preview UI")]
-    [SerializeField] private TextMeshProUGUI damagePreviewText;
-    [SerializeField] private GameObject damagePreviewContainer;
-
-    [Header("Status Effects UI")]
-    [SerializeField] private TextMeshProUGUI effectsText;
-    [SerializeField] private Transform effectsContainer; // Optional: for individual effect icons later
-
-    [Header("Player-Only UI")]
-    [SerializeField] private TextMeshProUGUI currencyText;
-
-    [Header("Card System UI")]
-    [SerializeField] private TextMeshProUGUI deckCountText;
-    [SerializeField] private TextMeshProUGUI discardCountText;
+    // Note: Stats UI (health, energy, effects, currency, etc.) are now handled by EntityStatsUIController
+    // This NetworkEntityUI now focuses on entity positioning, visibility, and card management only
 
     private void Awake()
     {
@@ -114,29 +98,18 @@ public class NetworkEntityUI : MonoBehaviour
 
         if (effectHandler != null)
         {
-            effectHandler.OnEffectsChanged += UpdateEffectsDisplay;
+            // Note: Effect display is now handled by EntityStatsUIController
+            // effectHandler.OnEffectsChanged += UpdateEffectsDisplay;
         }
 
         if (entityTracker != null)
         {
-            entityTracker.OnStanceChanged += OnStanceChanged;
+            // Note: Stance change handling is now done by EntityStatsUIController
+            // entityTracker.OnStanceChanged += OnStanceChanged;
         }
 
-        if (entity != null)
-        {
-            // Subscribe to entity stat changes
-            entity.EntityName.OnChange += OnEntityNameChanged;
-            entity.CurrentHealth.OnChange += OnCurrentHealthChanged;
-            entity.MaxHealth.OnChange += OnMaxHealthChanged;
-            entity.CurrentEnergy.OnChange += OnCurrentEnergyChanged;
-            entity.MaxEnergy.OnChange += OnMaxEnergyChanged;
-
-            // Subscribe to currency changes for players
-            if (entity.EntityType == EntityType.Player)
-            {
-                entity.OnCurrencyChanged += UpdateCurrencyDisplay;
-            }
-        }
+        // Note: Stats event subscriptions are now handled by EntityStatsUIController
+        // NetworkEntityUI only handles visibility and card management
     }
 
     private void OnDisable()
@@ -148,41 +121,24 @@ public class NetworkEntityUI : MonoBehaviour
 
         if (effectHandler != null)
         {
-            effectHandler.OnEffectsChanged -= UpdateEffectsDisplay;
+            // Note: Effect display is now handled by EntityStatsUIController
+            // effectHandler.OnEffectsChanged -= UpdateEffectsDisplay;
         }
 
         if (entityTracker != null)
         {
-            entityTracker.OnStanceChanged -= OnStanceChanged;
+            // Note: Stance change handling is now done by EntityStatsUIController
+            // entityTracker.OnStanceChanged -= OnStanceChanged;
         }
 
-        if (entity != null)
-        {
-            // Unsubscribe from entity stat changes
-            entity.EntityName.OnChange -= OnEntityNameChanged;
-            entity.CurrentHealth.OnChange -= OnCurrentHealthChanged;
-            entity.MaxHealth.OnChange -= OnMaxHealthChanged;
-            entity.CurrentEnergy.OnChange -= OnCurrentEnergyChanged;
-            entity.MaxEnergy.OnChange -= OnMaxEnergyChanged;
-
-            // Unsubscribe from currency changes for players
-            if (entity.EntityType == EntityType.Player)
-            {
-                entity.OnCurrencyChanged -= UpdateCurrencyDisplay;
-            }
-        }
+        // Note: Stats event unsubscriptions are now handled by EntityStatsUIController
     }
 
     private void Start()
     {
-        if (entity != null)
-        {
-            UpdateEntityUI();
-        }
-
         UpdateDeckDisplay();
         UpdateDiscardDisplay();
-        UpdateEffectsDisplay();
+        // Note: Entity stats UI updates are now handled by EntityStatsUIController
         // PositionUIRelativeToModel(); // Disabled: using prefab hierarchy positioning
     }
     
@@ -246,146 +202,23 @@ public class NetworkEntityUI : MonoBehaviour
         }
     }
 
-    public void UpdateEntityUI()
-    {
-        if (entity == null) return;
-
-        if (nameText != null) nameText.text = entity.EntityName.Value;
-        UpdateHealthUI();
-        UpdateEnergyUI();
-        if (entity.EntityType == EntityType.Player)
-        {
-            UpdateCurrencyDisplay(entity.Currency.Value);
-        }
-    }
-
-    private void OnEntityNameChanged(string prev, string next, bool asServer)
-    {
-        if (nameText != null)
-        {
-            nameText.text = next;
-        }
-    }
-
-    private void OnCurrentHealthChanged(int prev, int next, bool asServer)
-    {
-        UpdateHealthUI();
-    }
-
-    private void OnMaxHealthChanged(int prev, int next, bool asServer)
-    {
-        UpdateHealthUI();
-    }
-
-    /// <summary>
-    /// Updates the entity health UI
-    /// </summary>
-    public void UpdateHealthUI()
-    {
-        if (entity == null) return;
-
-        int current = entity.CurrentHealth.Value;
-        int max = entity.MaxHealth.Value;
-
-        if (healthText != null)
-        {
-            healthText.text = $"{current}/{max}";
-        }
-
-        if (healthBar != null)
-        {
-            healthBar.fillAmount = max > 0 ? (float)current / max : 0;
-        }
-    }
-
-    private void OnCurrentEnergyChanged(int prev, int next, bool asServer)
-    {
-        UpdateEnergyUI();
-    }
-
-    private void OnMaxEnergyChanged(int prev, int next, bool asServer)
-    {
-        UpdateEnergyUI();
-    }
-
-    /// <summary>
-    /// Updates the entity energy UI
-    /// </summary>
-    public void UpdateEnergyUI()
-    {
-        if (entity == null) return;
-
-        int current = entity.CurrentEnergy.Value;
-        int max = entity.MaxEnergy.Value;
-
-        if (energyText != null)
-        {
-            energyText.text = $"{current}/{max}";
-        }
-    }
+    // Note: All stat UI methods (UpdateEntityUI, UpdateHealthUI, UpdateEnergyUI, etc.) 
+    // have been moved to EntityStatsUIController
 
     private void UpdateDeckDisplay()
     {
-        if (deckCountText != null)
-        {
-            deckCountText.text = "0";
-        }
+        // Note: Deck/discard counts are now displayed by EntityStatsUIController
+        // NetworkEntityUI only manages card positioning, not display counts
     }
 
     private void UpdateDiscardDisplay()
     {
-        if (discardCountText != null)
-        {
-            discardCountText.text = "0";
-        }
+        // Note: Deck/discard counts are now displayed by EntityStatsUIController  
+        // NetworkEntityUI only manages card positioning, not display counts
     }
 
-    private void UpdateCurrencyDisplay(int newCurrency)
-    {
-        if (currencyText != null && entity.EntityType == EntityType.Player)
-        {
-            currencyText.text = newCurrency.ToString();
-        }
-    }
-
-    private void UpdateEffectsDisplay()
-    {
-        if (effectsText == null) return;
-        
-        List<string> displayItems = new List<string>();
-        
-        // Add current stance if not None
-        if (entityTracker != null && entityTracker.CurrentStance != StanceType.None)
-        {
-            int duration = entityTracker.StanceDuration;
-            string stanceDisplay = duration == 0 ? 
-                $"Stance: {entityTracker.CurrentStance}" : 
-                $"Stance: {entityTracker.CurrentStance} ({duration}/2)";
-            displayItems.Add(stanceDisplay);
-        }
-        
-        // Add status effects
-        if (effectHandler != null)
-        {
-            List<string> activeEffects = effectHandler.GetActiveEffects();
-            displayItems.AddRange(activeEffects);
-        }
-        
-        // Display everything or hide if empty
-        if (displayItems.Count == 0)
-        {
-            effectsText.text = ""; // Hide when no effects or stance
-        }
-        else
-        {
-            effectsText.text = string.Join(", ", displayItems);
-        }
-    }
-
-    private void OnStanceChanged(StanceType prev, StanceType next)
-    {
-        UpdateEffectsDisplay();
-    }
+    // Note: UpdateCurrencyDisplay, UpdateEffectsDisplay, and OnStanceChanged methods
+    // have been moved to EntityStatsUIController
 
     // Public getters for transforms
     public Transform GetHandTransform() 
@@ -442,50 +275,7 @@ public class NetworkEntityUI : MonoBehaviour
         return discardTransform;
     }
 
-    /// <summary>
-    /// Shows a damage/heal preview over this entity
-    /// </summary>
-    /// <param name="amount">The damage (positive) or heal (negative) amount</param>
-    /// <param name="isDamage">True for damage, false for healing</param>
-    public void ShowDamagePreview(int amount, bool isDamage)
-    {
-        if (damagePreviewText == null) return;
-
-        // Set text color based on damage or heal
-        if (isDamage)
-        {
-            damagePreviewText.color = Color.red;
-            damagePreviewText.text = $"-{amount}";
-        }
-        else
-        {
-            damagePreviewText.color = Color.green;
-            damagePreviewText.text = $"+{amount}";
-        }
-
-        // Always keep the text component enabled, just show the container if it exists
-        if (damagePreviewContainer != null)
-            damagePreviewContainer.SetActive(true);
-
-
-    }
-
-    /// <summary>
-    /// Hides the damage/heal preview
-    /// </summary>
-    public void HideDamagePreview()
-    {
-        if (damagePreviewText != null)
-        {
-            damagePreviewText.text = ""; // Clear text but keep component enabled
-        }
-
-        // Hide container if it exists, but keep text component itself enabled
-        if (damagePreviewContainer != null)
-            damagePreviewContainer.SetActive(false);
-
-
-    }
+    // Note: ShowDamagePreview and HideDamagePreview methods have been moved to EntityStatsUIController
 
     /// <summary>
     /// Gets the main visual image for this entity (for UI positioning purposes)

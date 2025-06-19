@@ -15,9 +15,13 @@ public class RelationshipManager : NetworkBehaviour
     // Networked reference to hand entity
     public readonly SyncVar<NetworkBehaviour> handEntity = new SyncVar<NetworkBehaviour>();
     
+    // Networked reference to stats UI entity
+    public readonly SyncVar<NetworkBehaviour> statsUIEntity = new SyncVar<NetworkBehaviour>();
+    
     // Inspector references for debugging
     [SerializeField] private NetworkBehaviour inspectorAllyReference;
     [SerializeField] private NetworkBehaviour inspectorHandReference;
+    [SerializeField] private NetworkBehaviour inspectorStatsUIReference;
     
     // Connection tracking
     private int ownerClientId = -1;
@@ -30,6 +34,7 @@ public class RelationshipManager : NetworkBehaviour
     
     public NetworkBehaviour AllyEntity => allyEntity.Value;
     public NetworkBehaviour HandEntity => handEntity.Value;
+    public NetworkBehaviour StatsUIEntity => statsUIEntity.Value;
 
     public override void OnStartServer()
     {
@@ -43,6 +48,7 @@ public class RelationshipManager : NetworkBehaviour
         UpdateConnectionInfo();
         allyEntity.OnChange += OnAllyChanged;
         handEntity.OnChange += OnHandChanged;
+        statsUIEntity.OnChange += OnStatsUIChanged;
         if (IsClientOnlyInitialized && allyEntity.Value != null)
         {
             inspectorAllyReference = allyEntity.Value;
@@ -50,6 +56,10 @@ public class RelationshipManager : NetworkBehaviour
         if (IsClientOnlyInitialized && handEntity.Value != null)
         {
             inspectorHandReference = handEntity.Value;
+        }
+        if (IsClientOnlyInitialized && statsUIEntity.Value != null)
+        {
+            inspectorStatsUIReference = statsUIEntity.Value;
         }
     }
 
@@ -72,9 +82,11 @@ public class RelationshipManager : NetworkBehaviour
         {
             allyEntity.Value = null;
             handEntity.Value = null;
+            statsUIEntity.Value = null;
         }
         inspectorAllyReference = null;
         inspectorHandReference = null;
+        inspectorStatsUIReference = null;
     }
 
     public override void OnStopClient()
@@ -82,8 +94,10 @@ public class RelationshipManager : NetworkBehaviour
         base.OnStopClient();
         allyEntity.OnChange -= OnAllyChanged;
         handEntity.OnChange -= OnHandChanged;
+        statsUIEntity.OnChange -= OnStatsUIChanged;
         inspectorAllyReference = null;
         inspectorHandReference = null;
+        inspectorStatsUIReference = null;
     }
 
     /// <summary>
@@ -115,6 +129,20 @@ public class RelationshipManager : NetworkBehaviour
     }
 
     /// <summary>
+    /// Called when the statsUIEntity SyncVar changes.
+    /// </summary>
+    private void OnStatsUIChanged(NetworkBehaviour prevStatsUI, NetworkBehaviour newStatsUI, bool asServer)
+    {
+        if (!asServer) // This means the change was received from the server for a client
+        {
+            inspectorStatsUIReference = newStatsUI; // Update client's inspector for debugging
+    
+        }
+        // If asServer is true, this callback is also invoked on the server when it changes the value.
+        // In that case, SetStatsUI already updated inspectorStatsUIReference.
+    }
+
+    /// <summary>
     /// Sets the ally entity for this entity
     /// </summary>
     [Server]
@@ -135,6 +163,18 @@ public class RelationshipManager : NetworkBehaviour
         if (!IsServerInitialized) return;
         handEntity.Value = hand;
         inspectorHandReference = hand; // Update the server's inspector reference
+
+    }
+    
+    /// <summary>
+    /// Sets the stats UI entity for this entity
+    /// </summary>
+    [Server]
+    public void SetStatsUI(NetworkBehaviour statsUI)
+    {
+        if (!IsServerInitialized) return;
+        statsUIEntity.Value = statsUI;
+        inspectorStatsUIReference = statsUI; // Update the server's inspector reference
 
     }
 

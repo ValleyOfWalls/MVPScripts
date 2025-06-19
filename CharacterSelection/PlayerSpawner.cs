@@ -16,6 +16,8 @@ public class PlayerSpawner : MonoBehaviour
     [SerializeField] private NetworkObject petPrefab;
     [SerializeField] private NetworkObject playerHandPrefab;
     [SerializeField] private NetworkObject petHandPrefab;
+    [SerializeField] private NetworkObject playerStatsUIPrefab;
+    [SerializeField] private NetworkObject petStatsUIPrefab;
 
     private NetworkManager fishNetManager;
     private SteamNetworkIntegration steamNetworkIntegration;
@@ -31,6 +33,8 @@ public class PlayerSpawner : MonoBehaviour
             petPrefab = steamNetworkIntegration.NetworkEntityPetPrefab?.GetComponent<NetworkObject>();
             playerHandPrefab = steamNetworkIntegration.NetworkEntityPlayerHandPrefab?.GetComponent<NetworkObject>();
             petHandPrefab = steamNetworkIntegration.NetworkEntityPetHandPrefab?.GetComponent<NetworkObject>();
+            playerStatsUIPrefab = steamNetworkIntegration.NetworkEntityPlayerStatsUIPrefab?.GetComponent<NetworkObject>();
+            petStatsUIPrefab = steamNetworkIntegration.NetworkEntityPetStatsUIPrefab?.GetComponent<NetworkObject>();
         }
 
         ValidatePrefabs();
@@ -81,6 +85,28 @@ public class PlayerSpawner : MonoBehaviour
         }
         else
             Debug.LogError("PlayerSpawner: Pet hand prefab is not assigned");
+
+        if (playerStatsUIPrefab != null)
+        {
+            var playerStatsUIEntity = playerStatsUIPrefab.GetComponent<NetworkEntity>();
+            if (playerStatsUIEntity == null)
+                Debug.LogError("PlayerSpawner: Player stats UI prefab is missing NetworkEntity component");
+            else if (playerStatsUIEntity.EntityType != EntityType.PlayerStatsUI)
+                Debug.LogError("PlayerSpawner: Player stats UI prefab's NetworkEntity type is not set to PlayerStatsUI");
+        }
+        else
+            Debug.LogError("PlayerSpawner: Player stats UI prefab is not assigned");
+
+        if (petStatsUIPrefab != null)
+        {
+            var petStatsUIEntity = petStatsUIPrefab.GetComponent<NetworkEntity>();
+            if (petStatsUIEntity == null)
+                Debug.LogError("PlayerSpawner: Pet stats UI prefab is missing NetworkEntity component");
+            else if (petStatsUIEntity.EntityType != EntityType.PetStatsUI)
+                Debug.LogError("PlayerSpawner: Pet stats UI prefab's NetworkEntity type is not set to PetStatsUI");
+        }
+        else
+            Debug.LogError("PlayerSpawner: Pet stats UI prefab is not assigned");
     }
 
     public void SpawnPlayerForConnection(NetworkConnection conn)
@@ -129,6 +155,14 @@ public class PlayerSpawner : MonoBehaviour
             return null;
         }
 
+        // Spawn player stats UI entity
+        NetworkEntity playerStatsUIEntity = SpawnEntity(playerStatsUIPrefab, conn);
+        if (playerStatsUIEntity == null)
+        {
+            Debug.LogError($"PlayerSpawner: Failed to spawn player stats UI entity for client {conn.ClientId}");
+            return null;
+        }
+
         // Spawn pet entity with pet data
         NetworkEntity petEntity = SpawnEntity(petPrefabToSpawn, conn);
         if (petEntity == null)
@@ -151,6 +185,14 @@ public class PlayerSpawner : MonoBehaviour
             return null;
         }
 
+        // Spawn pet stats UI entity
+        NetworkEntity petStatsUIEntity = SpawnEntity(petStatsUIPrefab, conn);
+        if (petStatsUIEntity == null)
+        {
+            Debug.LogError($"PlayerSpawner: Failed to spawn pet stats UI entity for client {conn.ClientId}");
+            return null;
+        }
+
         // Set up pet-player relationship
         if (petEntity != null && playerEntity != null)
         {
@@ -162,6 +204,9 @@ public class PlayerSpawner : MonoBehaviour
         // Set up hand relationships
         SetupHandRelationships(playerEntity, playerHandEntity, petEntity, petHandEntity);
 
+        // Set up stats UI relationships
+        SetupStatsUIRelationships(playerEntity, playerStatsUIEntity, petEntity, petStatsUIEntity);
+
         // Set up starting decks
         SetupStartingDecks(playerEntity, playerHandEntity, petEntity, petHandEntity, characterData, petData);
 
@@ -172,6 +217,8 @@ public class PlayerSpawner : MonoBehaviour
             petEntity = petEntity,
             playerHandEntity = playerHandEntity,
             petHandEntity = petHandEntity,
+            playerStatsUIEntity = playerStatsUIEntity,
+            petStatsUIEntity = petStatsUIEntity,
             characterData = characterData,
             petData = petData
         };
@@ -485,6 +532,55 @@ public class PlayerSpawner : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Sets up the relationships between main entities and their stats UI entities
+    /// </summary>
+    private void SetupStatsUIRelationships(NetworkEntity player, NetworkEntity playerStatsUI, NetworkEntity pet, NetworkEntity petStatsUI)
+    {
+        if (player == null || playerStatsUI == null || pet == null || petStatsUI == null)
+        {
+            Debug.LogError("SetupStatsUIRelationships: One or more entities are null");
+            return;
+        }
+
+        if (player.EntityType != EntityType.Player || playerStatsUI.EntityType != EntityType.PlayerStatsUI || 
+            pet.EntityType != EntityType.Pet || petStatsUI.EntityType != EntityType.PetStatsUI)
+        {
+            Debug.LogError("SetupStatsUIRelationships: Invalid entity types provided");
+            return;
+        }
+
+        // Get the RelationshipManager components for main entities
+        var playerRelationship = player.GetComponent<RelationshipManager>();
+        var petRelationship = pet.GetComponent<RelationshipManager>();
+
+        // Get the RelationshipManager components for stats UI entities
+        var playerStatsUIRelationship = playerStatsUI.GetComponent<RelationshipManager>();
+        var petStatsUIRelationship = petStatsUI.GetComponent<RelationshipManager>();
+
+        if (playerRelationship != null && petRelationship != null && 
+            playerStatsUIRelationship != null && petStatsUIRelationship != null)
+        {
+            // Link main entities to their stats UI
+            playerRelationship.SetStatsUI(playerStatsUI);
+            petRelationship.SetStatsUI(petStatsUI);
+            
+            // Link stats UI back to their main entities (use ally relationship)
+            playerStatsUIRelationship.SetAlly(player);
+            petStatsUIRelationship.SetAlly(pet);
+            
+            // Set stats UI entity names to reflect their purpose
+            playerStatsUI.EntityName.Value = $"Player Stats UI ({player.Owner?.ClientId ?? -1})";
+            petStatsUI.EntityName.Value = $"Pet Stats UI ({player.Owner?.ClientId ?? -1})";
+            
+            Debug.Log($"Set up stats UI relationships - Player (ID: {player.ObjectId}) -> Stats UI (ID: {playerStatsUI.ObjectId}), Pet (ID: {pet.ObjectId}) -> Stats UI (ID: {petStatsUI.ObjectId})");
+        }
+        else
+        {
+            Debug.LogError("SetupStatsUIRelationships: Missing RelationshipManager components");
+        }
+    }
+
     public void DespawnEntitiesForConnection(NetworkConnection conn)
     {
         if (fishNetManager == null || !fishNetManager.ServerManager.Started)
@@ -507,6 +603,8 @@ public class SpawnedEntitiesData
     public NetworkEntity petEntity;
     public NetworkEntity playerHandEntity;
     public NetworkEntity petHandEntity;
+    public NetworkEntity playerStatsUIEntity;
+    public NetworkEntity petStatsUIEntity;
     public CharacterData characterData;
     public PetData petData;
 } 

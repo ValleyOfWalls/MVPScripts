@@ -158,11 +158,8 @@ public class EnergyHandler : NetworkBehaviour
         // Invoke the event
         OnEnergySpent?.Invoke(amount, sourceEntity);
         
-        // Update UI via NetworkEntityUI
-        if (entityUI != null)
-        {
-            entityUI.UpdateEnergyUI();
-        }
+        // UI updates are now handled automatically by EntityStatsUIController
+        // through events and SyncVar changes - no manual UI update needed
         
         Debug.Log($"Client: {entity.EntityName.Value} spent {amount} energy");
     }
@@ -176,11 +173,8 @@ public class EnergyHandler : NetworkBehaviour
         // Invoke the event
         OnEnergyGained?.Invoke(amount, sourceEntity);
         
-        // Update UI via NetworkEntityUI
-        if (entityUI != null)
-        {
-            entityUI.UpdateEnergyUI();
-        }
+        // UI updates are now handled automatically by EntityStatsUIController
+        // through events and SyncVar changes - no manual UI update needed
         
         Debug.Log($"Client: {entity.EntityName.Value} gained {amount} energy");
     }
@@ -191,11 +185,8 @@ public class EnergyHandler : NetworkBehaviour
         // Invoke the event
         OnMaxEnergyChanged?.Invoke(newMaxEnergy);
         
-        // Update UI via NetworkEntityUI
-        if (entityUI != null)
-        {
-            entityUI.UpdateEnergyUI();
-        }
+        // UI updates are now handled automatically by EntityStatsUIController
+        // through events and SyncVar changes - no manual UI update needed
         
         Debug.Log($"Client: {entity.EntityName.Value} max energy changed to {newMaxEnergy}");
     }

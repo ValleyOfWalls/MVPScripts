@@ -10,7 +10,9 @@ public enum EntityType
     Player,
     Pet,
     PlayerHand,
-    PetHand
+    PetHand,
+    PlayerStatsUI,
+    PetStatsUI
 }
 
 /// <summary>

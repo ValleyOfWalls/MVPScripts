@@ -724,25 +724,24 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         }
         else if (target.EntityType == EntityType.Player || target.EntityType == EntityType.Pet)
         {
-            // Use NetworkEntityUI for main entities (players and opponent pets)
-            var entityUI = target.GetComponent<NetworkEntityUI>();
-            if (entityUI != null)
+            // Use EntityStatsUIController through RelationshipManager for main entities (players and opponent pets)
+            var relationshipManager = target.GetComponent<RelationshipManager>();
+            if (relationshipManager != null && relationshipManager.StatsUIEntity != null)
             {
-                var entityImage = entityUI.GetEntityImage();
-                if (entityImage != null)
+                var statsUIController = relationshipManager.StatsUIEntity.GetComponent<EntityStatsUIController>();
+                if (statsUIController != null)
                 {
-                    entityUI.ShowDamagePreview(amountToShow, showDamage);
-                    Debug.Log($"SourceAndTargetIdentifier: Showing preview over {target.EntityName.Value}'s entity image");
+                    statsUIController.ShowDamagePreview(amountToShow, showDamage);
+                    Debug.Log($"SourceAndTargetIdentifier: Showing preview over {target.EntityName.Value}'s stats UI");
                 }
                 else
                 {
-                    Debug.LogWarning($"SourceAndTargetIdentifier: No entity image found for {target.EntityName.Value} - preview may not position correctly");
-                    entityUI.ShowDamagePreview(amountToShow, showDamage); // Show anyway
+                    Debug.LogError($"SourceAndTargetIdentifier: No EntityStatsUIController found on stats UI for {target.EntityName.Value}");
                 }
             }
             else
             {
-                Debug.LogError($"SourceAndTargetIdentifier: No NetworkEntityUI found on {target.EntityName.Value}");
+                Debug.LogError($"SourceAndTargetIdentifier: No RelationshipManager or stats UI entity found for {target.EntityName.Value}");
             }
         }
     }
@@ -785,11 +784,15 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         }
         else if (target.EntityType == EntityType.Player || target.EntityType == EntityType.Pet)
         {
-            // Use NetworkEntityUI for main entities (players and opponent pets)
-            var entityUI = target.GetComponent<NetworkEntityUI>();
-            if (entityUI != null)
+            // Use EntityStatsUIController through RelationshipManager for main entities (players and opponent pets)
+            var relationshipManager = target.GetComponent<RelationshipManager>();
+            if (relationshipManager != null && relationshipManager.StatsUIEntity != null)
             {
-                entityUI.HideDamagePreview();
+                var statsUIController = relationshipManager.StatsUIEntity.GetComponent<EntityStatsUIController>();
+                if (statsUIController != null)
+                {
+                    statsUIController.HideDamagePreview();
+                }
             }
         }
     }

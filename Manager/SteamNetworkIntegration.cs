@@ -84,6 +84,8 @@ public class SteamNetworkIntegration : MonoBehaviour
     [SerializeField] public GameObject NetworkEntityPetPrefab;    // Assign in Inspector
     [SerializeField] public GameObject NetworkEntityPlayerHandPrefab; // Assign in Inspector
     [SerializeField] public GameObject NetworkEntityPetHandPrefab;    // Assign in Inspector
+    [SerializeField] public GameObject NetworkEntityPlayerStatsUIPrefab; // Assign in Inspector
+    [SerializeField] public GameObject NetworkEntityPetStatsUIPrefab;    // Assign in Inspector
 
     private PlayerSpawner playerSpawner; // Reference to component rather than instance
     private NetworkManager fishNetManager; // To cache NetworkManager instance

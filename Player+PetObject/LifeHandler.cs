@@ -138,11 +138,8 @@ public class LifeHandler : NetworkBehaviour
         // Invoke the event
         OnDamageTaken?.Invoke(amount, sourceEntity);
         
-        // Update UI via NetworkEntityUI
-        if (entityUI != null)
-        {
-            entityUI.UpdateHealthUI();
-        }
+        // UI updates are now handled automatically by EntityStatsUIController
+        // through events and SyncVar changes - no manual UI update needed
         
         Debug.Log($"Client: {entity.EntityName.Value} took {amount} damage");
     }
@@ -156,11 +153,8 @@ public class LifeHandler : NetworkBehaviour
         // Invoke the event
         OnHealingReceived?.Invoke(amount, sourceEntity);
         
-        // Update UI via NetworkEntityUI
-        if (entityUI != null)
-        {
-            entityUI.UpdateHealthUI();
-        }
+        // UI updates are now handled automatically by EntityStatsUIController
+        // through events and SyncVar changes - no manual UI update needed
         
         Debug.Log($"Client: {entity.EntityName.Value} healed for {amount}");
     }
@@ -174,11 +168,8 @@ public class LifeHandler : NetworkBehaviour
         // Invoke the event
         OnDeath?.Invoke(killerEntity);
         
-        // Update UI via NetworkEntityUI
-        if (entityUI != null)
-        {
-            entityUI.UpdateHealthUI();
-        }
+        // UI updates are now handled automatically by EntityStatsUIController
+        // through events and SyncVar changes - no manual UI update needed
         
         Debug.Log($"Client: {entity.EntityName.Value} has died");
     }
