@@ -313,6 +313,23 @@ public class CombatCanvasManager : NetworkBehaviour
         {
             deckViewerManager.UpdateButtonStates();
         }
+        
+        // Update entity positioning and facing for the new viewed combat
+        if (fightManager != null)
+        {
+            var viewedPlayer = fightManager.ViewedCombatPlayer;
+            var viewedOpponentPet = fightManager.ViewedCombatOpponentPet;
+            
+            if (viewedPlayer != null && viewedOpponentPet != null)
+            {
+                Debug.Log($"CombatCanvasManager: Updating entity positioning and facing for viewed combat - Player: {viewedPlayer.EntityName.Value}, Opponent Pet: {viewedOpponentPet.EntityName.Value}");
+                PositionCombatEntitiesForSpecificFight(viewedPlayer, viewedOpponentPet);
+            }
+            else
+            {
+                Debug.LogWarning("CombatCanvasManager: Cannot update entity positioning - viewed combat entities are null");
+            }
+        }
     }
 
     private void OnDestroy()
@@ -502,7 +519,7 @@ public class CombatCanvasManager : NetworkBehaviour
                 continue;
             }
             
-            // Position entities for this specific fight
+            // Position entities for this specific fight (includes facing setup)
             PositionCombatEntitiesForSpecificFight(player, opponentPet);
         }
     }
@@ -550,6 +567,168 @@ public class CombatCanvasManager : NetworkBehaviour
         // Position ALL stats UI locally since they don't have NetworkTransforms
         PositionStatsUIAlways(player, playerStatsUIPositionTransform, "Player Stats UI");
         PositionStatsUIAlways(opponentPet, opponentPetStatsUIPositionTransform, "Opponent Pet Stats UI");
+
+        // Make entities face each other after positioning (with delay to ensure positioning is complete)
+        StartCoroutine(SetupEntityFacingWithDelay(player, opponentPet));
+    }
+
+    /// <summary>
+    /// Sets up entity facing with a delay to ensure all positioning is complete first
+    /// </summary>
+    private IEnumerator SetupEntityFacingWithDelay(NetworkEntity player, NetworkEntity opponentPet)
+    {
+        // Wait a short time to ensure all positioning and spawning is complete
+        yield return new WaitForSeconds(0.2f);
+        
+        // Double-check that entities are still valid and positioned
+        if (player == null || opponentPet == null)
+        {
+            Debug.LogWarning("SetupEntityFacingWithDelay: Entities became null during delay");
+            yield break;
+        }
+        
+        // Verify entities have been properly positioned before setting up facing
+        bool entitiesReady = AreEntitiesReadyForFacing(player, opponentPet);
+        if (!entitiesReady)
+        {
+            Debug.LogWarning("SetupEntityFacingWithDelay: Entities not ready for facing, waiting longer");
+            yield return new WaitForSeconds(0.3f);
+            
+            // Try again
+            entitiesReady = AreEntitiesReadyForFacing(player, opponentPet);
+            if (!entitiesReady)
+            {
+                Debug.LogError("SetupEntityFacingWithDelay: Entities still not ready for facing after extended wait");
+                yield break;
+            }
+        }
+        
+        Debug.Log($"SetupEntityFacingWithDelay: Setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}");
+        SetupEntityFacing(player, opponentPet);
+    }
+
+    /// <summary>
+    /// Checks if entities are properly positioned and ready for facing setup
+    /// </summary>
+    private bool AreEntitiesReadyForFacing(NetworkEntity player, NetworkEntity opponentPet)
+    {
+        if (player == null || opponentPet == null)
+        {
+            return false;
+        }
+        
+        // Check if entities are active and positioned
+        if (!player.gameObject.activeInHierarchy || !opponentPet.gameObject.activeInHierarchy)
+        {
+            Debug.Log($"AreEntitiesReadyForFacing: Entities not active - Player: {player.gameObject.activeInHierarchy}, OpponentPet: {opponentPet.gameObject.activeInHierarchy}");
+            return false;
+        }
+        
+        // Check if entities have moved from default positions (indicating they've been positioned)
+        Vector3 playerPos = player.transform.position;
+        Vector3 opponentPos = opponentPet.transform.position;
+        
+        // If both entities are at origin or very close to each other, they might not be positioned yet
+        float distance = Vector3.Distance(playerPos, opponentPos);
+        if (distance < 0.1f)
+        {
+            Debug.Log($"AreEntitiesReadyForFacing: Entities too close together (distance: {distance:F3}), might not be positioned yet");
+            return false;
+        }
+        
+        Debug.Log($"AreEntitiesReadyForFacing: Entities ready - Player: {playerPos}, OpponentPet: {opponentPos}, Distance: {distance:F3}");
+        return true;
+    }
+
+    /// <summary>
+    /// Sets up facing between combat entities so they look at each other
+    /// Only rotates entities owned by the local client to respect NetworkTransform ownership
+    /// </summary>
+    private void SetupEntityFacing(NetworkEntity player, NetworkEntity opponentPet)
+    {
+        if (player == null || opponentPet == null)
+        {
+            Debug.LogWarning("Cannot setup entity facing - player or opponent pet is null");
+            return;
+        }
+
+        // Get the ally pet for the player
+        NetworkEntity allyPet = GetAllyPetForPlayer(player);
+
+        // Make player face opponent pet (only if owned by local client)
+        if (player.IsOwner)
+        {
+            SetEntityFacing(player, opponentPet, "Player");
+        }
+
+        // Make ally pet face opponent pet (only if owned by local client)
+        if (allyPet != null && allyPet.IsOwner)
+        {
+            SetEntityFacing(allyPet, opponentPet, "Ally Pet");
+        }
+
+        // Make opponent pet face player (only if owned by local client)
+        if (opponentPet.IsOwner)
+        {
+            // Choose the primary target (prefer player over ally pet)
+            NetworkEntity targetEntity = player;
+            SetEntityFacing(opponentPet, targetEntity, "Opponent Pet");
+        }
+    }
+
+    /// <summary>
+    /// Helper method to get the ally pet for a player
+    /// </summary>
+    private NetworkEntity GetAllyPetForPlayer(NetworkEntity player)
+    {
+        if (player == null) return null;
+
+        RelationshipManager relationshipManager = player.GetComponent<RelationshipManager>();
+        if (relationshipManager == null || relationshipManager.AllyEntity == null)
+        {
+            return null;
+        }
+
+        return relationshipManager.AllyEntity.GetComponent<NetworkEntity>();
+    }
+
+    /// <summary>
+    /// Makes one entity face another entity (Y rotation only)
+    /// </summary>
+    /// <param name="entity">The entity that will be rotated to face the target</param>
+    /// <param name="target">The entity to face towards</param>
+    /// <param name="entityDescription">Description for debugging</param>
+    private void SetEntityFacing(NetworkEntity entity, NetworkEntity target, string entityDescription)
+    {
+        if (entity == null || target == null)
+        {
+            Debug.LogWarning($"Cannot set facing for {entityDescription} - entity or target is null");
+            return;
+        }
+
+        // Calculate direction from entity to target
+        Vector3 directionToTarget = target.transform.position - entity.transform.position;
+        
+        // Remove Y component to only rotate around Y axis
+        directionToTarget.y = 0;
+
+        // Check if there's any horizontal distance
+        if (directionToTarget.magnitude < 0.01f)
+        {
+            Debug.LogWarning($"Entities {entity.EntityName.Value} and {target.EntityName.Value} are too close horizontally to determine facing direction");
+            return;
+        }
+
+        // Calculate the rotation needed to face the target
+        Quaternion targetRotation = Quaternion.LookRotation(directionToTarget);
+
+        // Store the old rotation for logging
+        Vector3 oldEulerAngles = entity.transform.rotation.eulerAngles;
+
+        // Apply the rotation
+        entity.transform.rotation = targetRotation;
+
+        Debug.Log($"[ENTITY_FACING] {entityDescription} {entity.EntityName.Value}: Rotated from Y={oldEulerAngles.y:F1}° to Y={targetRotation.eulerAngles.y:F1}° to face {target.EntityName.Value}");
     }
 
     /// <summary>
@@ -905,5 +1084,55 @@ public class CombatCanvasManager : NetworkBehaviour
         }
         
         Debug.Log("=== DEBUG: Hand entity parenting check complete ===");
+    }
+
+    /// <summary>
+    /// Debug method to manually test entity facing functionality
+    /// Call this from the Unity Inspector to test entity rotation
+    /// </summary>
+    [ContextMenu("Debug Test Entity Facing")]
+    public void DebugTestEntityFacing()
+    {
+        Debug.Log("=== DEBUG: Starting entity facing test ===");
+        
+        if (fightManager == null)
+        {
+            Debug.LogError("DEBUG: FightManager is null, cannot test entity facing");
+            return;
+        }
+        
+        // Get all fight assignments
+        var allFights = fightManager.GetAllFightAssignments();
+        
+        if (allFights.Count == 0)
+        {
+            Debug.LogWarning("DEBUG: No fight assignments found, cannot test entity facing");
+            return;
+        }
+        
+        Debug.Log($"DEBUG: Found {allFights.Count} fight assignments, testing facing for each");
+        
+        foreach (var fightAssignment in allFights)
+        {
+            NetworkEntity player = GetNetworkEntityByObjectId(fightAssignment.PlayerObjectId);
+            NetworkEntity opponentPet = GetNetworkEntityByObjectId(fightAssignment.PetObjectId);
+            
+            if (player == null || opponentPet == null)
+            {
+                Debug.LogWarning($"DEBUG: Could not find entities for fight - Player ID: {fightAssignment.PlayerObjectId}, Pet ID: {fightAssignment.PetObjectId}");
+                continue;
+            }
+            
+            Debug.Log($"DEBUG: Testing facing for fight - Player: {player.EntityName.Value}, Opponent Pet: {opponentPet.EntityName.Value}");
+            Debug.Log($"DEBUG: Player position: {player.transform.position}, rotation: {player.transform.rotation.eulerAngles}");
+            Debug.Log($"DEBUG: Opponent Pet position: {opponentPet.transform.position}, rotation: {opponentPet.transform.rotation.eulerAngles}");
+            
+            // Test the facing setup
+            SetupEntityFacing(player, opponentPet);
+            
+            Debug.Log($"DEBUG: After facing setup - Player rotation: {player.transform.rotation.eulerAngles}, Opponent Pet rotation: {opponentPet.transform.rotation.eulerAngles}");
+        }
+        
+        Debug.Log("=== DEBUG: Entity facing test complete ===");
     }
 } 

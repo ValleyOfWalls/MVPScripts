@@ -11,6 +11,10 @@ using System.Collections;
 /// </summary>
 public class HandLayoutManager : MonoBehaviour
 {
+    [Header("Real-time Preview")]
+    [SerializeField] private bool enableRealtimePreview = true; // Enable real-time preview in editor
+    [SerializeField] private bool previewInEditMode = true; // Preview even when not playing
+    
     [Header("Arc Layout Settings")]
     [SerializeField] private float arcRadius = 800f; // Radius of the arc
     [SerializeField] private float maxArcAngle = 45f; // Maximum arc angle in degrees
@@ -351,9 +355,12 @@ public class HandLayoutManager : MonoBehaviour
     {
         if (cardCount <= 1) return cardSpacing;
         
-        // Reduce spacing as more cards are added
+        // Use cardSpacing as the baseline, but clamp it between min and max
+        float baseSpacing = Mathf.Clamp(cardSpacing, minCardSpacing, maxCardSpacing);
+        
+        // Reduce spacing as more cards are added, starting from the base spacing
         float spacingReduction = Mathf.Clamp01((float)(cardCount - 1) / 10f);
-        return Mathf.Lerp(maxCardSpacing, minCardSpacing, spacingReduction);
+        return Mathf.Lerp(baseSpacing, minCardSpacing, spacingReduction);
     }
     
     /// <summary>
@@ -684,6 +691,91 @@ public class HandLayoutManager : MonoBehaviour
             }
         }
     }
+    
+    #endregion
+    
+    #region Editor Real-time Preview
+    
+#if UNITY_EDITOR
+    /// <summary>
+    /// Called when values change in the inspector - enables real-time preview
+    /// </summary>
+    private void OnValidate()
+    {
+        if (!enableRealtimePreview) return;
+        
+        // Ensure we have a rect transform
+        if (rectTransform == null)
+            rectTransform = GetComponent<RectTransform>();
+        
+        if (rectTransform == null) return;
+        
+        // Update layout in edit mode or play mode
+        if (previewInEditMode || Application.isPlaying)
+        {
+            // Use delayed call to avoid issues with inspector updates
+            UnityEditor.EditorApplication.delayCall += () =>
+            {
+                if (this != null && gameObject != null)
+                {
+                    PreviewLayout();
+                }
+            };
+        }
+    }
+    
+    /// <summary>
+    /// Preview layout without animation (for editor use)
+    /// </summary>
+    private void PreviewLayout()
+    {
+        if (!enableRealtimePreview) return;
+        
+        // Refresh card list
+        RefreshCardList();
+        
+        // Apply layout immediately (no animation in editor)
+        ApplyLayoutImmediate();
+        
+        // Mark scene as dirty so changes are visible
+        if (!Application.isPlaying)
+        {
+            UnityEditor.EditorUtility.SetDirty(this);
+        }
+    }
+    
+    /// <summary>
+    /// Context menu to manually trigger preview update
+    /// </summary>
+    [UnityEditor.MenuItem("CONTEXT/HandLayoutManager/Update Preview")]
+    private static void UpdatePreviewContextMenu(UnityEditor.MenuCommand command)
+    {
+        HandLayoutManager manager = (HandLayoutManager)command.context;
+        if (manager != null)
+        {
+            manager.PreviewLayout();
+        }
+    }
+    
+    /// <summary>
+    /// Context menu to toggle real-time preview
+    /// </summary>
+    [UnityEditor.MenuItem("CONTEXT/HandLayoutManager/Toggle Real-time Preview")]
+    private static void ToggleRealtimePreviewContextMenu(UnityEditor.MenuCommand command)
+    {
+        HandLayoutManager manager = (HandLayoutManager)command.context;
+        if (manager != null)
+        {
+            manager.enableRealtimePreview = !manager.enableRealtimePreview;
+            Debug.Log($"HandLayoutManager real-time preview: {(manager.enableRealtimePreview ? "Enabled" : "Disabled")}");
+            
+            if (manager.enableRealtimePreview)
+            {
+                manager.PreviewLayout();
+            }
+        }
+    }
+#endif
     
     #endregion
 } 

@@ -50,6 +50,7 @@ public class CardAnimator : MonoBehaviour
     private CanvasGroup canvasGroup;
     private Card card;
     private HandAnimator handAnimator;
+    private HandLayoutManager handLayoutManager;
     
     // Animation state
     private bool isAnimating = false;
@@ -76,6 +77,9 @@ public class CardAnimator : MonoBehaviour
         
         // Find HandAnimator in parent hierarchy
         handAnimator = GetComponentInParent<HandAnimator>();
+        
+        // Find HandLayoutManager in parent hierarchy
+        handLayoutManager = GetComponentInParent<HandLayoutManager>();
         
         // Determine if this is a player or pet hand
         DetermineHandType();
@@ -125,6 +129,9 @@ public class CardAnimator : MonoBehaviour
         
         if (handAnimator == null)
             LogDebug($"No HandAnimator found in parent hierarchy for {gameObject.name}");
+        
+        if (handLayoutManager == null)
+            LogDebug($"No HandLayoutManager found in parent hierarchy for {gameObject.name}");
     }
     
     #region Public Animation Methods
@@ -588,6 +595,36 @@ public class CardAnimator : MonoBehaviour
         return isPlayerHand ? baseAlpha : baseAlpha * petHandAlphaMultiplier;
     }
     
+    /// <summary>
+    /// Gets the current target scale from HandLayoutManager or falls back to stored original scale
+    /// </summary>
+    private Vector3 GetCurrentLayoutScale()
+    {
+        // If we have a HandLayoutManager, get the current target scale for this card
+        if (handLayoutManager != null && rectTransform != null)
+        {
+            if (handLayoutManager.GetCardLayoutData(rectTransform, out Vector3 targetPosition, out Vector3 targetScale, out Quaternion targetRotation))
+            {
+                LogDebug($"Got current layout scale from HandLayoutManager for {gameObject.name}: {targetScale}");
+                return targetScale;
+            }
+        }
+        
+        // Fallback to stored original scale
+        LogDebug($"Using stored original scale for {gameObject.name}: {originalScale}");
+        return originalScale;
+    }
+    
+    /// <summary>
+    /// Refreshes the HandLayoutManager reference and updates scale information
+    /// Call this if the card is moved to a different hand or if layout manager is added/changed
+    /// </summary>
+    public void RefreshLayoutManager()
+    {
+        handLayoutManager = GetComponentInParent<HandLayoutManager>();
+        LogDebug($"Refreshed HandLayoutManager reference for {gameObject.name}: {(handLayoutManager != null ? "Found" : "Not found")}");
+    }
+    
     #endregion
     
     #region Integration Methods
@@ -696,7 +733,36 @@ public class CardAnimator : MonoBehaviour
         }
     }
     
-        #endregion
+    [ContextMenu("Test Layout Scale Integration")]
+    public void TestLayoutScale()
+    {
+        if (Application.isPlaying)
+        {
+            LogDebug($"=== Layout Scale Test for {gameObject.name} ===");
+            LogDebug($"Current transform scale: {rectTransform.localScale}");
+            LogDebug($"Stored original scale: {originalScale}");
+            
+            Vector3 layoutScale = GetCurrentLayoutScale();
+            LogDebug($"Current layout scale: {layoutScale}");
+            
+            if (handLayoutManager != null)
+            {
+                LogDebug($"HandLayoutManager found: {handLayoutManager.gameObject.name}");
+            }
+            else
+            {
+                LogDebug("No HandLayoutManager found");
+            }
+        }
+    }
+    
+    [ContextMenu("Refresh Layout Manager")]
+    public void TestRefreshLayoutManager()
+    {
+        RefreshLayoutManager();
+    }
+    
+    #endregion
     
     #region Hover Animation Methods
     
@@ -719,14 +785,17 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        // Ensure we have valid original scale
-        if (originalScale == Vector3.zero)
+        // Get current layout scale instead of stored original scale
+        Vector3 currentLayoutScale = GetCurrentLayoutScale();
+        
+        // Ensure we have valid current scale
+        if (currentLayoutScale == Vector3.zero)
         {
-            LogDebug($"Original scale is zero for {gameObject.name} - storing current state");
-            StoreOriginalState();
+            LogDebug($"Current layout scale is zero for {gameObject.name} - using current transform scale");
+            currentLayoutScale = rectTransform.localScale;
         }
         
-        LogDebug($"Starting hover enter animation for {gameObject.name} - current scale: {rectTransform.localScale}, original scale: {originalScale}, target scale: {originalScale * hoverScaleMultiplier}");
+        LogDebug($"Starting hover enter animation for {gameObject.name} - current scale: {rectTransform.localScale}, layout scale: {currentLayoutScale}, target scale: {currentLayoutScale * hoverScaleMultiplier}");
         
         isHovered = true;
         
@@ -736,8 +805,8 @@ public class CardAnimator : MonoBehaviour
             hoverTween.Kill();
         }
         
-        // Scale up smoothly
-        Vector3 targetScale = originalScale * hoverScaleMultiplier;
+        // Scale up from current layout scale
+        Vector3 targetScale = currentLayoutScale * hoverScaleMultiplier;
         hoverTween = rectTransform.DOScale(targetScale, hoverAnimationDuration)
             .SetEase(hoverEase)
             .OnComplete(() => {
@@ -764,14 +833,17 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        // Ensure we have valid original scale
-        if (originalScale == Vector3.zero)
+        // Get current layout scale instead of stored original scale
+        Vector3 currentLayoutScale = GetCurrentLayoutScale();
+        
+        // Ensure we have valid current scale
+        if (currentLayoutScale == Vector3.zero)
         {
-            LogDebug($"Original scale is zero for {gameObject.name} - storing current state");
-            StoreOriginalState();
+            LogDebug($"Current layout scale is zero for {gameObject.name} - using current transform scale");
+            currentLayoutScale = rectTransform.localScale;
         }
         
-        LogDebug($"Starting hover exit animation for {gameObject.name} - current scale: {rectTransform.localScale}, original scale: {originalScale}");
+        LogDebug($"Starting hover exit animation for {gameObject.name} - current scale: {rectTransform.localScale}, target layout scale: {currentLayoutScale}");
         
         isHovered = false;
         
@@ -781,8 +853,8 @@ public class CardAnimator : MonoBehaviour
             hoverTween.Kill();
         }
         
-        // Scale back to original size
-        hoverTween = rectTransform.DOScale(originalScale, hoverAnimationDuration)
+        // Scale back to current layout scale
+        hoverTween = rectTransform.DOScale(currentLayoutScale, hoverAnimationDuration)
             .SetEase(hoverEase)
             .OnComplete(() => {
                 LogDebug($"Hover exit animation completed for {gameObject.name} - final scale: {rectTransform.localScale}");

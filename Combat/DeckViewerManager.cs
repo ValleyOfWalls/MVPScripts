@@ -29,6 +29,9 @@ public class DeckViewerManager : NetworkBehaviour
     [SerializeField] private float cardScale = 0.8f;
     [SerializeField] private int cardsPerRow = 6;
     
+    [Header("Overlay Settings")]
+    [SerializeField] private int deckOverlaySortingOrder = 5000; // High value to ensure it displays above all other UI
+    
     [Header("Debug")]
     [SerializeField] private bool debugLogEnabled = true;
     
@@ -46,6 +49,11 @@ public class DeckViewerManager : NetworkBehaviour
     
     // Card spawning
     private Dictionary<NetworkEntity, CardSpawner> entityCardSpawners = new Dictionary<NetworkEntity, CardSpawner>();
+
+    // Overlay Canvas management
+    private Canvas deckOverlayCanvas;
+    private int originalSortingOrder;
+    private bool hadOriginalCanvas;
 
     private void Awake()
     {
@@ -90,6 +98,8 @@ public class DeckViewerManager : NetworkBehaviour
         {
             CloseDeckView();
         }
+        // Clear Canvas reference completely during network stop
+        ForceCleanupCanvas();
     }
 
     private void Update()
@@ -257,8 +267,16 @@ public class DeckViewerManager : NetworkBehaviour
         // Check if we're clicking the same deck button when overlay is open - if so, close it
         if (isDeckViewOpen && currentlyViewedDeckType == deckType)
         {
+            LogDebug($"Same deck type ({deckType}) clicked while open - closing deck view");
             CloseDeckView();
             return;
+        }
+
+        // If a different deck view is open, close it first before opening the new one
+        if (isDeckViewOpen && currentlyViewedDeckType != deckType)
+        {
+            LogDebug($"Different deck type requested ({deckType}) while {currentlyViewedDeckType} is open - switching decks");
+            CloseDeckView();
         }
 
         // Get the entities from the currently viewed combat
@@ -318,6 +336,9 @@ public class DeckViewerManager : NetworkBehaviour
     public void CloseDeckView()
     {
         CleanupSpawnedCards();
+        
+        // Restore the overlay Canvas to its original state
+        RestoreDeckOverlayCanvas();
         
         if (deckViewPanel != null)
         {
@@ -449,6 +470,9 @@ public class DeckViewerManager : NetworkBehaviour
             LogDebug("DeckViewPanel set to active");
         }
 
+        // Set up Canvas for high sorting order to display above all other UI
+        SetupDeckOverlayCanvas();
+
         // Spawn and display cards
         LogDebug("Starting card spawn coroutine");
         StartCoroutine(SpawnDeckCardsCoroutine(entity, cardIds));
@@ -466,6 +490,9 @@ public class DeckViewerManager : NetworkBehaviour
         
         if (deckViewPanel != null)
             deckViewPanel.SetActive(true);
+        
+        // Set up Canvas for high sorting order to display above all other UI
+        SetupDeckOverlayCanvas();
         
         isDeckViewOpen = true;
         
@@ -706,12 +733,16 @@ public class DeckViewerManager : NetworkBehaviour
     {
         UnsubscribeFromGamePhaseChanges();
         CleanupSpawnedCards();
+        // Clear Canvas reference completely during destruction
+        ForceCleanupCanvas();
     }
 
     public override void OnStopServer()
     {
         base.OnStopServer();
         CleanupSpawnedCards();
+        // Clear Canvas reference completely during network stop
+        ForceCleanupCanvas();
     }
 
     #endregion
@@ -1024,6 +1055,93 @@ public class DeckViewerManager : NetworkBehaviour
         RefreshCardSpawnerCache();
     }
 
+    /// <summary>
+    /// Debug method to test overlay Canvas setup
+    /// </summary>
+    [ContextMenu("Test Overlay Canvas Setup")]
+    public void TestOverlayCanvasSetup()
+    {
+        LogDebug("=== TESTING OVERLAY CANVAS SETUP ===");
+        
+        if (deckViewPanel == null)
+        {
+            LogDebug("ERROR: deckViewPanel is null!");
+            return;
+        }
+        
+        LogDebug($"deckViewPanel: {deckViewPanel.name}");
+        
+        Canvas existingCanvas = deckViewPanel.GetComponent<Canvas>();
+        LogDebug($"Existing Canvas: {(existingCanvas != null ? "FOUND" : "NOT FOUND")}");
+        if (existingCanvas != null)
+        {
+            LogDebug($"  - Current sorting order: {existingCanvas.sortingOrder}");
+            LogDebug($"  - Override sorting: {existingCanvas.overrideSorting}");
+        }
+        
+        LogDebug("Setting up overlay canvas...");
+        SetupDeckOverlayCanvas();
+        
+        existingCanvas = deckViewPanel.GetComponent<Canvas>();
+        if (existingCanvas != null)
+        {
+            LogDebug($"After setup - sorting order: {existingCanvas.sortingOrder}");
+            LogDebug($"After setup - override sorting: {existingCanvas.overrideSorting}");
+        }
+        
+        LogDebug("Restoring overlay canvas...");
+        RestoreDeckOverlayCanvas();
+        
+        existingCanvas = deckViewPanel.GetComponent<Canvas>();
+        if (existingCanvas != null)
+        {
+            LogDebug($"After restore - sorting order: {existingCanvas.sortingOrder}");
+            LogDebug($"After restore - override sorting: {existingCanvas.overrideSorting}");
+        }
+        else
+        {
+            LogDebug("Canvas was removed after restore");
+        }
+        
+        LogDebug("=== OVERLAY CANVAS TEST COMPLETE ===");
+    }
+
+    /// <summary>
+    /// Debug method to test deck switching functionality
+    /// </summary>
+    [ContextMenu("Test Deck Switching")]
+    public void TestDeckSwitching()
+    {
+        LogDebug("=== TESTING DECK SWITCHING ===");
+        
+        LogDebug("Opening My Deck...");
+        ViewDeck(DeckType.MyDeck);
+        
+        LogDebug($"Deck view open: {isDeckViewOpen}, Current type: {currentlyViewedDeckType}");
+        
+        LogDebug("Switching to Opponent Deck...");
+        ViewDeck(DeckType.OpponentDeck);
+        
+        LogDebug($"Deck view open: {isDeckViewOpen}, Current type: {currentlyViewedDeckType}");
+        
+        LogDebug("Switching back to My Deck...");
+        ViewDeck(DeckType.MyDeck);
+        
+        LogDebug($"Deck view open: {isDeckViewOpen}, Current type: {currentlyViewedDeckType}");
+        
+        LogDebug("Closing deck view...");
+        CloseDeckView();
+        
+        LogDebug($"Deck view open: {isDeckViewOpen}, Current type: {currentlyViewedDeckType}");
+        
+        LogDebug("Reopening My Deck...");
+        ViewDeck(DeckType.MyDeck);
+        
+        LogDebug($"Deck view open: {isDeckViewOpen}, Current type: {currentlyViewedDeckType}");
+        
+        LogDebug("=== DECK SWITCHING TEST COMPLETE ===");
+    }
+
     #endregion
 
     #region Button State Management
@@ -1227,6 +1345,127 @@ public class DeckViewerManager : NetworkBehaviour
         }
         
         LogDebug($"=== SetDeckViewerButtonsVisible({visible}) completed ===");
+    }
+
+    #endregion
+
+    #region Overlay Canvas Management
+
+    /// <summary>
+    /// Sets up the deck overlay to display above all other UI elements
+    /// </summary>
+    private void SetupDeckOverlayCanvas()
+    {
+        if (deckViewPanel == null)
+        {
+            LogDebug("Cannot setup deck overlay canvas - deckViewPanel is null");
+            return;
+        }
+
+        // Check if we already have a cached Canvas reference
+        if (deckOverlayCanvas == null)
+        {
+            // Get or add Canvas component to the deck view panel
+            deckOverlayCanvas = deckViewPanel.GetComponent<Canvas>();
+            if (deckOverlayCanvas == null)
+            {
+                deckOverlayCanvas = deckViewPanel.AddComponent<Canvas>();
+                hadOriginalCanvas = false;
+                LogDebug("Added Canvas component to deckViewPanel");
+            }
+            else
+            {
+                // Store original sorting order if this is the first time we're modifying it
+                originalSortingOrder = deckOverlayCanvas.sortingOrder;
+                hadOriginalCanvas = true;
+                LogDebug($"Stored original Canvas sorting order: {originalSortingOrder}");
+            }
+        }
+        else
+        {
+            LogDebug("Reusing cached Canvas reference for deck overlay");
+        }
+
+        // Ensure the Canvas is configured for proper overlay behavior
+        deckOverlayCanvas.overrideSorting = true;
+        deckOverlayCanvas.sortingOrder = deckOverlaySortingOrder;
+        
+        // Ensure there's a GraphicRaycaster for interaction
+        if (deckOverlayCanvas.GetComponent<GraphicRaycaster>() == null)
+        {
+            deckOverlayCanvas.gameObject.AddComponent<GraphicRaycaster>();
+            LogDebug("Added GraphicRaycaster to deck overlay canvas");
+        }
+
+        LogDebug($"Deck overlay canvas setup complete - sorting order: {deckOverlaySortingOrder}");
+    }
+
+    /// <summary>
+    /// Restores the deck overlay Canvas to its original state
+    /// </summary>
+    private void RestoreDeckOverlayCanvas()
+    {
+        if (deckOverlayCanvas == null)
+        {
+            return;
+        }
+
+        if (hadOriginalCanvas)
+        {
+            // Restore original sorting order but don't completely disable overrideSorting
+            // This ensures the Canvas can still be used for future deck views
+            deckOverlayCanvas.sortingOrder = originalSortingOrder;
+            deckOverlayCanvas.overrideSorting = false; // Reset to false since we're restoring
+            LogDebug($"Restored Canvas sorting order to: {originalSortingOrder}");
+        }
+        else
+        {
+            // Canvas was added by us - just reset it to default values instead of removing it
+            // This prevents issues with re-opening the deck view
+            deckOverlayCanvas.overrideSorting = false;
+            deckOverlayCanvas.sortingOrder = 0;
+            LogDebug("Reset Canvas component that was added for deck overlay to default values");
+        }
+
+        // Don't set deckOverlayCanvas to null or reset hadOriginalCanvas
+        // This allows us to reuse the Canvas for future deck views
+        LogDebug("Canvas restoration complete - ready for reuse");
+    }
+
+    /// <summary>
+    /// Forces complete cleanup of Canvas reference and state (used during destruction)
+    /// </summary>
+    private void ForceCleanupCanvas()
+    {
+        if (deckOverlayCanvas != null)
+        {
+            if (!hadOriginalCanvas)
+            {
+                // Canvas was added by us - remove it completely
+                if (Application.isPlaying)
+                {
+                    Destroy(deckOverlayCanvas);
+                }
+                else
+                {
+                    DestroyImmediate(deckOverlayCanvas);
+                }
+                LogDebug("Destroyed Canvas component during force cleanup");
+            }
+            else
+            {
+                // Canvas existed before - just restore it
+                deckOverlayCanvas.overrideSorting = false;
+                deckOverlayCanvas.sortingOrder = originalSortingOrder;
+                LogDebug($"Restored Canvas to original state during force cleanup: {originalSortingOrder}");
+            }
+        }
+
+        // Clear all references and state
+        deckOverlayCanvas = null;
+        hadOriginalCanvas = false;
+        originalSortingOrder = 0;
+        LogDebug("Force Canvas cleanup complete");
     }
 
     #endregion

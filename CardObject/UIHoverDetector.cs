@@ -145,6 +145,12 @@ public class UIHoverDetector : MonoBehaviour, IPointerEnterHandler, IPointerExit
             return;
         }
         
+        // Ensure CardAnimator has up-to-date HandLayoutManager reference
+        if (cardAnimator != null)
+        {
+            cardAnimator.RefreshLayoutManager();
+        }
+        
         // Delegate to HandAnimator for card layering (bring to front) - now using Canvas sorting order
         HandAnimator currentHandAnimator = FindHandAnimator();
         if (currentHandAnimator != null && cardAnimator != null)
