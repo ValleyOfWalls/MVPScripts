@@ -4,7 +4,9 @@ using TMPro;
 using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using FishNet.Object;
+using FishNet.Connection;
 
 /// <summary>
 /// Positioning mode for 3D models in character selection
@@ -18,7 +20,7 @@ public enum ModelPositioningMode
 /// <summary>
 /// Manages the character selection UI interactions with Mario Kart-style shared selection grids.
 /// </summary>
-public class CharacterSelectionUIManager : MonoBehaviour
+public class CharacterSelectionUIManager : NetworkBehaviour
 {
     [Header("UI References - Set by CharacterSelectionCanvasSetup")]
     [SerializeField] private GameObject characterSelectionCanvas;
@@ -179,6 +181,52 @@ public class CharacterSelectionUIManager : MonoBehaviour
         
         isInitialized = true;
         Debug.Log($"CharacterSelectionUIManager: Initialized - Player ID: {myPlayerID}, Color: {myPlayerColor}");
+    }
+    
+    /// <summary>
+    /// Called when this NetworkBehaviour starts on the server
+    /// </summary>
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        Debug.Log("CharacterSelectionUIManager: Started on server");
+        
+        // Server initialization happens through the normal Initialize() -> CreateSelectionItems() flow
+        // No need for additional spawning here since Initialize() handles it
+    }
+    
+    /// <summary>
+    /// Server method to ensure selection objects are spawned (called when new clients join)
+    /// </summary>
+    [Server]
+    public void ServerEnsureSelectionObjectsSpawned()
+    {
+        if (!isInitialized)
+        {
+            Debug.LogWarning("CharacterSelectionUIManager: Cannot spawn objects - not initialized yet");
+            return;
+        }
+        
+        // Check if objects are already spawned
+        if (characterItems.Count > 0 || petItems.Count > 0)
+        {
+            Debug.Log($"CharacterSelectionUIManager: Selection objects already in lists - Characters: {characterItems.Count}, Pets: {petItems.Count}");
+            return;
+        }
+        
+        // Check if objects exist in the scene but aren't in our lists
+        SelectionNetworkObject[] existingObjects = FindObjectsOfType<SelectionNetworkObject>();
+        if (existingObjects.Length > 0)
+        {
+            Debug.Log($"CharacterSelectionUIManager: Found {existingObjects.Length} existing selection objects, registering them");
+            DiscoverAndRegisterSpawnedObjects(existingObjects);
+            return;
+        }
+        
+        // No objects exist, spawn them
+        Debug.Log("CharacterSelectionUIManager: Server spawning selection objects for new client");
+        CreateCharacterItems();
+        CreatePetItems();
     }
     
     private string GetPlayerID()
@@ -393,8 +441,36 @@ public class CharacterSelectionUIManager : MonoBehaviour
 
     private void CreateSelectionItems()
     {
-        CreateCharacterItems();
-        CreatePetItems();
+        // Check if network is ready, if not wait for it
+        if (!IsNetworkManagerReady())
+        {
+            Debug.Log("CharacterSelectionUIManager: Network not ready, waiting...");
+            StartCoroutine(WaitForNetworkAndCreateItems());
+            return;
+        }
+        
+        // First, check if there are already spawned selection objects (for late-joining clients)
+        SelectionNetworkObject[] existingObjects = FindObjectsOfType<SelectionNetworkObject>();
+        if (existingObjects.Length > 0)
+        {
+            Debug.Log($"CharacterSelectionUIManager: Found {existingObjects.Length} existing spawned selection objects, registering them");
+            DiscoverAndRegisterSpawnedObjects(existingObjects);
+            return;
+        }
+        
+        // If we're the server (or host) and no objects exist, spawn them
+        if (FishNet.InstanceFinder.IsServerStarted)
+        {
+            Debug.Log("CharacterSelectionUIManager: Server spawning new selection objects");
+            CreateCharacterItems();
+            CreatePetItems();
+        }
+        else
+        {
+            // We're a client and no objects exist yet, wait for them
+            Debug.Log("CharacterSelectionUIManager: Client waiting for server to spawn selection objects");
+            StartCoroutine(WaitForServerSpawnedObjects());
+        }
     }
 
     private void CreateCharacterItems()
@@ -610,9 +686,28 @@ public class CharacterSelectionUIManager : MonoBehaviour
             (characterModelsParent != null ? characterModelsParent : transform) : 
             (petModelsParent != null ? petModelsParent : transform);
         
-        // Instantiate the prefab
-        GameObject item = Instantiate(prefabToUse, parentTransform);
-        item.name = isCharacter ? $"Character_{index}_{prefabToUse.name}" : $"Pet_{index}_{prefabToUse.name}";
+        GameObject item;
+        
+        // Check if the prefab has a NetworkObject component
+        NetworkObject networkObjectComponent = prefabToUse.GetComponent<NetworkObject>();
+        if (networkObjectComponent != null)
+        {
+            // Since we're in a networked context, spawn the NetworkObject properly
+            Debug.Log($"CharacterSelectionUIManager: Detected NetworkObject on {prefabToUse.name}, spawning through network system for character selection");
+            item = SpawnNetworkObjectForSelection(prefabToUse, parentTransform, index, isCharacter);
+        }
+        else
+        {
+            // Instantiate normally if no NetworkObject
+            item = Instantiate(prefabToUse, parentTransform);
+            item.name = isCharacter ? $"Character_{index}_{prefabToUse.name}" : $"Pet_{index}_{prefabToUse.name}";
+        }
+        
+        if (item == null)
+        {
+            Debug.LogError($"CharacterSelectionUIManager: Failed to create selection item for {(isCharacter ? "character" : "pet")} at index {index}");
+            return null;
+        }
         
         // Ensure the item has an EntitySelectionController
         EntitySelectionController controller = item.GetComponent<EntitySelectionController>();
@@ -626,6 +721,316 @@ public class CharacterSelectionUIManager : MonoBehaviour
         controller.SetModel3D(item);
         
         return item;
+    }
+    
+    /// <summary>
+    /// Spawns a NetworkObject prefab for character selection using the network system
+    /// </summary>
+    private GameObject SpawnNetworkObjectForSelection(GameObject networkPrefab, Transform parent, int index, bool isCharacter)
+    {
+        // Only the server should spawn NetworkObjects
+        if (!FishNet.InstanceFinder.IsServerStarted)
+        {
+            Debug.LogWarning($"CharacterSelectionUIManager: Client cannot spawn NetworkObjects. Server should handle character selection spawning. Skipping {networkPrefab.name}");
+            return null;
+        }
+        
+        // Check if we have a valid network manager
+        if (!IsNetworkManagerReady())
+        {
+            Debug.LogError($"CharacterSelectionUIManager: Network manager not ready, cannot spawn NetworkObject for selection");
+            return null;
+        }
+        
+        try
+        {
+            // Spawn the NetworkObject at root level first (FishNet default behavior)
+            GameObject spawnedObject = Instantiate(networkPrefab);
+            spawnedObject.name = isCharacter ? $"Character_{index}_{networkPrefab.name}" : $"Pet_{index}_{networkPrefab.name}";
+            
+            // Get the NetworkObject component
+            NetworkObject networkObject = spawnedObject.GetComponent<NetworkObject>();
+            if (networkObject == null)
+            {
+                Debug.LogError($"CharacterSelectionUIManager: NetworkObject component missing on {spawnedObject.name}");
+                Destroy(spawnedObject);
+                return null;
+            }
+            
+            // Spawn the object on the network for all clients to see
+            FishNet.InstanceFinder.ServerManager.Spawn(networkObject);
+            Debug.Log($"CharacterSelectionUIManager: Server spawned NetworkObject {spawnedObject.name} for character selection");
+            
+            // Mark this as a selection object with desired parent info
+            SelectionNetworkObject selectionMarker = spawnedObject.AddComponent<SelectionNetworkObject>();
+            selectionMarker.isCharacterSelectionObject = true;
+            selectionMarker.selectionIndex = index;
+            selectionMarker.isCharacter = isCharacter;
+            selectionMarker.SetDesiredParent(parent);
+            
+            // Use a coroutine to handle parenting after the object is fully spawned and synchronized
+            StartCoroutine(ParentNetworkObjectAfterSpawn(spawnedObject, parent, index, isCharacter));
+            
+            return spawnedObject;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"CharacterSelectionUIManager: Error spawning NetworkObject for selection: {ex.Message}");
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Parents a NetworkObject after it has been spawned and synchronized
+    /// </summary>
+    private System.Collections.IEnumerator ParentNetworkObjectAfterSpawn(GameObject spawnedObject, Transform parent, int index, bool isCharacter)
+    {
+        // Wait a frame to ensure the object is fully spawned
+        yield return null;
+        
+        if (spawnedObject != null && parent != null)
+        {
+            // Move to desired position in hierarchy
+            spawnedObject.transform.SetParent(parent, false);
+            
+            // Position the object correctly
+            Position3DModel(spawnedObject, index, isCharacter);
+            
+            Debug.Log($"CharacterSelectionUIManager: Successfully parented NetworkObject {spawnedObject.name} to {parent.name}");
+        }
+    }
+    
+    /// <summary>
+    /// Checks if the network manager is ready for spawning
+    /// </summary>
+    private bool IsNetworkManagerReady()
+    {
+        if (FishNet.InstanceFinder.NetworkManager == null)
+        {
+            Debug.LogWarning("CharacterSelectionUIManager: NetworkManager not found");
+            return false;
+        }
+        
+        if (!FishNet.InstanceFinder.NetworkManager.IsServerStarted && !FishNet.InstanceFinder.NetworkManager.IsClientStarted)
+        {
+            Debug.LogWarning("CharacterSelectionUIManager: Network not started");
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// Waits for the network to be ready before creating selection items
+    /// </summary>
+    private System.Collections.IEnumerator WaitForNetworkAndCreateItems()
+    {
+        Debug.Log("CharacterSelectionUIManager: Waiting for network to be ready...");
+        
+        // Wait for network manager to be available
+        while (FishNet.InstanceFinder.NetworkManager == null)
+        {
+            yield return new WaitForSeconds(0.1f);
+        }
+        
+        // Wait for server or client to start
+        while (!FishNet.InstanceFinder.NetworkManager.IsServerStarted && !FishNet.InstanceFinder.NetworkManager.IsClientStarted)
+        {
+            yield return new WaitForSeconds(0.1f);
+        }
+        
+        // Additional wait to ensure everything is properly initialized
+        yield return new WaitForSeconds(0.5f);
+        
+        Debug.Log("CharacterSelectionUIManager: Network ready, creating selection items");
+        
+        // Now create the selection items
+        CreateSelectionItems();
+    }
+    
+    /// <summary>
+    /// Client waits for server to spawn selection objects and discovers them
+    /// </summary>
+    private System.Collections.IEnumerator WaitForServerSpawnedObjects()
+    {
+        Debug.Log("CharacterSelectionUIManager: Client waiting for server-spawned selection objects...");
+        
+        float timeout = 5f; // 5 second timeout
+        float elapsed = 0f;
+        
+        while (elapsed < timeout)
+        {
+            // First look for existing SelectionNetworkObject components
+            SelectionNetworkObject[] existingSelectionObjects = FindObjectsOfType<SelectionNetworkObject>();
+            
+            if (existingSelectionObjects.Length > 0)
+            {
+                Debug.Log($"CharacterSelectionUIManager: Client found {existingSelectionObjects.Length} existing SelectionNetworkObject components");
+                DiscoverAndRegisterSpawnedObjects(existingSelectionObjects);
+                yield break;
+            }
+            
+            // If no SelectionNetworkObject components found, look for NetworkObjects that match our prefabs
+            FishNet.Object.NetworkObject[] allNetworkObjects = FindObjectsOfType<FishNet.Object.NetworkObject>();
+            List<SelectionNetworkObject> discoveredObjects = new List<SelectionNetworkObject>();
+            
+            foreach (var networkObj in allNetworkObjects)
+            {
+                GameObject obj = networkObj.gameObject;
+                
+                // Skip if this already has a SelectionNetworkObject component
+                if (obj.GetComponent<SelectionNetworkObject>() != null)
+                    continue;
+                
+                // Check if this object matches any of our character or pet prefabs by name
+                bool isCharacterPrefab = false;
+                bool isPetPrefab = false;
+                int prefabIndex = -1;
+                
+                // Check against character prefabs
+                for (int i = 0; i < selectionManager.GetAvailableCharacterPrefabs().Count; i++)
+                {
+                    GameObject prefab = selectionManager.GetAvailableCharacterPrefabs()[i];
+                    if (prefab != null && obj.name.Contains(prefab.name.Replace("(Clone)", "")))
+                    {
+                        isCharacterPrefab = true;
+                        prefabIndex = i;
+                        break;
+                    }
+                }
+                
+                // Check against pet prefabs if not a character
+                if (!isCharacterPrefab)
+                {
+                    for (int i = 0; i < selectionManager.GetAvailablePetPrefabs().Count; i++)
+                    {
+                        GameObject prefab = selectionManager.GetAvailablePetPrefabs()[i];
+                        if (prefab != null && obj.name.Contains(prefab.name.Replace("(Clone)", "")))
+                        {
+                            isPetPrefab = true;
+                            prefabIndex = i;
+                            break;
+                        }
+                    }
+                }
+                
+                // If we found a matching prefab, add SelectionNetworkObject component and configure it
+                if (isCharacterPrefab || isPetPrefab)
+                {
+                    SelectionNetworkObject selectionComponent = obj.AddComponent<SelectionNetworkObject>();
+                    selectionComponent.isCharacterSelectionObject = true;
+                    selectionComponent.selectionIndex = prefabIndex;
+                    selectionComponent.isCharacter = isCharacterPrefab;
+                    
+                    discoveredObjects.Add(selectionComponent);
+                    Debug.Log($"CharacterSelectionUIManager: Discovered and tagged NetworkObject {obj.name} as {(isCharacterPrefab ? "character" : "pet")} at index {prefabIndex}");
+                }
+            }
+            
+            // If we discovered enough objects, use them
+            int expectedCount = (availableCharacters?.Count ?? 0) + (availablePets?.Count ?? 0);
+            if (discoveredObjects.Count >= expectedCount)
+            {
+                Debug.Log($"CharacterSelectionUIManager: Client discovered {discoveredObjects.Count} NetworkObjects matching our prefabs");
+                DiscoverAndRegisterSpawnedObjects(discoveredObjects.ToArray());
+                yield break;
+            }
+            
+            if (expectedCount > 0)
+            {
+                Debug.Log($"CharacterSelectionUIManager: Still waiting... Expected {expectedCount} objects, found {discoveredObjects.Count} NetworkObjects");
+            }
+            
+            elapsed += 0.5f;
+            yield return new WaitForSeconds(0.5f);
+        }
+        
+        Debug.LogWarning("CharacterSelectionUIManager: Client timed out waiting for server-spawned selection objects. Creating local fallback objects.");
+        // Fallback to creating local objects (non-NetworkObject versions)
+        CreateCharacterItems();
+        CreatePetItems();
+    }
+    
+    /// <summary>
+    /// Discovers and registers server-spawned selection objects on the client
+    /// </summary>
+    private void DiscoverAndRegisterSpawnedObjects(SelectionNetworkObject[] spawnedObjects)
+    {
+        Debug.Log($"CharacterSelectionUIManager: Client registering {spawnedObjects.Length} discovered selection objects");
+        
+        // Clear any existing items
+        characterItems.Clear();
+        petItems.Clear();
+        characterControllers.Clear();
+        petControllers.Clear();
+        
+        // Sort objects by type and index
+        System.Array.Sort(spawnedObjects, (a, b) => 
+        {
+            if (a.isCharacter != b.isCharacter)
+                return a.isCharacter ? -1 : 1;
+            return a.selectionIndex.CompareTo(b.selectionIndex);
+        });
+        
+        foreach (SelectionNetworkObject selectionObj in spawnedObjects)
+        {
+            GameObject item = selectionObj.gameObject;
+            
+            // CRITICAL: Set the correct parent for this object on the client
+            Transform targetParent = selectionObj.isCharacter ? 
+                (characterModelsParent != null ? characterModelsParent : transform) : 
+                (petModelsParent != null ? petModelsParent : transform);
+            
+            if (targetParent != null && item.transform.parent != targetParent)
+            {
+                // Parent the object to the correct UI hierarchy position
+                item.transform.SetParent(targetParent, false);
+                Debug.Log($"CharacterSelectionUIManager: Parented {item.name} to {targetParent.name}");
+            }
+            
+            // Ensure the item has an EntitySelectionController
+            EntitySelectionController controller = item.GetComponent<EntitySelectionController>();
+            if (controller == null)
+            {
+                controller = item.AddComponent<EntitySelectionController>();
+            }
+            
+            // Set the prefab's 3D model as the selection target
+            controller.SetModel3D(item);
+            
+            if (selectionObj.isCharacter)
+            {
+                // Initialize as character controller
+                if (selectionObj.selectionIndex < availableCharacters.Count)
+                {
+                    controller.InitializeWithCharacter(availableCharacters[selectionObj.selectionIndex], 
+                                                     selectionObj.selectionIndex, this, deckPreviewController, selectionManager);
+                }
+                characterItems.Add(item);
+                characterControllers.Add(controller);
+                
+                // Position the model correctly
+                Position3DModel(item, selectionObj.selectionIndex, true);
+            }
+            else
+            {
+                // Initialize as pet controller
+                if (selectionObj.selectionIndex < availablePets.Count)
+                {
+                    controller.InitializeWithPet(availablePets[selectionObj.selectionIndex], 
+                                                selectionObj.selectionIndex, this, deckPreviewController, selectionManager);
+                }
+                petItems.Add(item);
+                petControllers.Add(controller);
+                
+                // Position the model correctly
+                Position3DModel(item, selectionObj.selectionIndex, false);
+            }
+            
+            Debug.Log($"CharacterSelectionUIManager: Client registered {(selectionObj.isCharacter ? "character" : "pet")} selection object at index {selectionObj.selectionIndex}");
+        }
+        
+        Debug.Log($"CharacterSelectionUIManager: Client registration complete - {characterItems.Count} characters, {petItems.Count} pets");
     }
     
     /// <summary>
@@ -1530,31 +1935,52 @@ public class CharacterSelectionUIManager : MonoBehaviour
         // Force cleanup on all controllers first to ensure proper cleanup of dynamically created models
         ForceCleanupAllControllers();
         
-        // Destroy character selection models
+        // Cleanup character selection models (including NetworkObjects)
         foreach (GameObject item in characterItems)
         {
             if (item != null)
             {
-                Debug.Log($"CharacterSelectionUIManager: Destroying character selection model: {item.name}");
-                Destroy(item);
+                Debug.Log($"CharacterSelectionUIManager: Cleaning up character selection model: {item.name}");
+                CleanupSelectionItem(item);
             }
         }
         characterItems.Clear();
         characterControllers.Clear();
         
-        // Destroy pet selection models
+        // Cleanup pet selection models (including NetworkObjects)
         foreach (GameObject item in petItems)
         {
             if (item != null)
             {
-                Debug.Log($"CharacterSelectionUIManager: Destroying pet selection model: {item.name}");
-                Destroy(item);
+                Debug.Log($"CharacterSelectionUIManager: Cleaning up pet selection model: {item.name}");
+                CleanupSelectionItem(item);
             }
         }
         petItems.Clear();
         petControllers.Clear();
         
         Debug.Log("CharacterSelectionUIManager: Selection model cleanup complete");
+    }
+    
+    /// <summary>
+    /// Properly cleans up a selection item, handling both regular GameObjects and NetworkObjects
+    /// </summary>
+    private void CleanupSelectionItem(GameObject item)
+    {
+        if (item == null) return;
+        
+        // Check if this is a selection NetworkObject
+        SelectionNetworkObject selectionMarker = item.GetComponent<SelectionNetworkObject>();
+        if (selectionMarker != null)
+        {
+            // Use the proper cleanup method for NetworkObjects
+            selectionMarker.CleanupSelectionObject();
+        }
+        else
+        {
+            // Regular GameObject cleanup
+            Destroy(item);
+        }
     }
     
     /// <summary>

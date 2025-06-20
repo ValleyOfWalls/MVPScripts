@@ -838,4 +838,299 @@ public class EntitySelectionController : MonoBehaviour
     }
     
     #endregion
+
+    #region Editor Functions
+
+    [ContextMenu("Auto-Assign References")]
+    public void AutoAssignReferences()
+    {
+        bool changesWereMade = false;
+
+        // Try to find and assign CharacterData
+        if (characterDataReference == null)
+        {
+            CharacterData characterData = GetComponent<CharacterData>();
+            if (characterData != null)
+            {
+                characterDataReference = characterData;
+                changesWereMade = true;
+                Debug.Log($"EntitySelectionController: Auto-assigned CharacterData from {gameObject.name}");
+            }
+        }
+
+        // Try to find and assign PetData
+        if (petDataReference == null)
+        {
+            PetData petData = GetComponent<PetData>();
+            if (petData != null)
+            {
+                petDataReference = petData;
+                changesWereMade = true;
+                Debug.Log($"EntitySelectionController: Auto-assigned PetData from {gameObject.name}");
+            }
+        }
+
+        // Try to find and assign Button
+        if (selectionButton == null)
+        {
+            Button foundButton = GetComponent<Button>();
+            if (foundButton == null)
+            {
+                foundButton = GetComponentInChildren<Button>();
+            }
+            if (foundButton != null)
+            {
+                selectionButton = foundButton;
+                changesWereMade = true;
+                Debug.Log($"EntitySelectionController: Auto-assigned Button from {foundButton.gameObject.name}");
+            }
+        }
+
+        // Try to find and assign PlayerSelectionIndicator
+        if (selectionIndicator == null)
+        {
+            PlayerSelectionIndicator indicator = GetComponent<PlayerSelectionIndicator>();
+            if (indicator == null)
+            {
+                indicator = GetComponentInChildren<PlayerSelectionIndicator>();
+            }
+            if (indicator != null)
+            {
+                selectionIndicator = indicator;
+                changesWereMade = true;
+                Debug.Log($"EntitySelectionController: Auto-assigned PlayerSelectionIndicator from {indicator.gameObject.name}");
+            }
+        }
+
+        // Try to find and assign model components
+        if (model3D == null)
+        {
+            // Look for a child object that might be the 3D model
+            // Check for objects with MeshRenderer or SkinnedMeshRenderer
+            MeshRenderer meshRenderer = GetComponentInChildren<MeshRenderer>();
+            SkinnedMeshRenderer skinnedMeshRenderer = GetComponentInChildren<SkinnedMeshRenderer>();
+            
+            if (meshRenderer != null && meshRenderer.gameObject != gameObject)
+            {
+                model3D = meshRenderer.gameObject;
+                changesWereMade = true;
+                Debug.Log($"EntitySelectionController: Auto-assigned 3D model from {model3D.name} (MeshRenderer)");
+            }
+            else if (skinnedMeshRenderer != null && skinnedMeshRenderer.gameObject != gameObject)
+            {
+                model3D = skinnedMeshRenderer.gameObject;
+                changesWereMade = true;
+                Debug.Log($"EntitySelectionController: Auto-assigned 3D model from {model3D.name} (SkinnedMeshRenderer)");
+            }
+        }
+
+        // If we found a 3D model, try to assign related components
+        if (model3D != null)
+        {
+            if (modelCollider == null)
+            {
+                Collider collider = model3D.GetComponent<Collider>();
+                if (collider == null)
+                {
+                    collider = model3D.GetComponentInChildren<Collider>();
+                }
+                if (collider != null)
+                {
+                    modelCollider = collider;
+                    changesWereMade = true;
+                    Debug.Log($"EntitySelectionController: Auto-assigned model Collider from {collider.gameObject.name}");
+                }
+            }
+
+            if (modelRenderer == null)
+            {
+                MeshRenderer renderer = model3D.GetComponent<MeshRenderer>();
+                if (renderer == null)
+                {
+                    renderer = model3D.GetComponentInChildren<MeshRenderer>();
+                }
+                if (renderer != null)
+                {
+                    modelRenderer = renderer;
+                    changesWereMade = true;
+                    Debug.Log($"EntitySelectionController: Auto-assigned MeshRenderer from {renderer.gameObject.name}");
+                }
+            }
+
+            if (modelMeshFilter == null)
+            {
+                MeshFilter meshFilter = model3D.GetComponent<MeshFilter>();
+                if (meshFilter == null)
+                {
+                    meshFilter = model3D.GetComponentInChildren<MeshFilter>();
+                }
+                if (meshFilter != null)
+                {
+                    modelMeshFilter = meshFilter;
+                    changesWereMade = true;
+                    Debug.Log($"EntitySelectionController: Auto-assigned MeshFilter from {meshFilter.gameObject.name}");
+                }
+            }
+        }
+
+        // Try to find raycast camera (use Camera.main as fallback)
+        if (raycastCamera == null)
+        {
+            Camera mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                raycastCamera = mainCamera;
+                changesWereMade = true;
+                Debug.Log($"EntitySelectionController: Auto-assigned raycast camera from Camera.main ({mainCamera.gameObject.name})");
+            }
+        }
+
+        // Set entity type based on found data
+        if (characterDataReference != null && entityType != EntityType.Character)
+        {
+            entityType = EntityType.Character;
+            changesWereMade = true;
+            Debug.Log($"EntitySelectionController: Set entity type to Character");
+        }
+        else if (petDataReference != null && entityType != EntityType.Pet)
+        {
+            entityType = EntityType.Pet;
+            changesWereMade = true;
+            Debug.Log($"EntitySelectionController: Set entity type to Pet");
+        }
+
+        // Set appropriate selection mode based on found components
+        if (model3D != null && selectionButton != null && selectionMode != SelectionMode.Both)
+        {
+            selectionMode = SelectionMode.Both;
+            changesWereMade = true;
+            Debug.Log($"EntitySelectionController: Set selection mode to Both (3D model and button found)");
+        }
+        else if (model3D != null && selectionButton == null && selectionMode != SelectionMode.Model_3D)
+        {
+            selectionMode = SelectionMode.Model_3D;
+            changesWereMade = true;
+            Debug.Log($"EntitySelectionController: Set selection mode to Model_3D");
+        }
+        else if (selectionButton != null && model3D == null && selectionMode != SelectionMode.UI_Button)
+        {
+            selectionMode = SelectionMode.UI_Button;
+            changesWereMade = true;
+            Debug.Log($"EntitySelectionController: Set selection mode to UI_Button");
+        }
+
+        if (changesWereMade)
+        {
+            Debug.Log($"EntitySelectionController: Auto-assignment complete for {gameObject.name}");
+            
+            #if UNITY_EDITOR
+            // Mark the object as dirty so changes are saved
+            UnityEditor.EditorUtility.SetDirty(this);
+            #endif
+        }
+        else
+        {
+            Debug.Log($"EntitySelectionController: No auto-assignment needed for {gameObject.name} - all references already assigned");
+        }
+    }
+
+    [ContextMenu("Clear All References")]
+    public void ClearAllReferences()
+    {
+        characterDataReference = null;
+        petDataReference = null;
+        selectionButton = null;
+        selectionIndicator = null;
+        model3D = null;
+        modelCollider = null;
+        modelRenderer = null;
+        modelMeshFilter = null;
+        raycastCamera = null;
+        entityType = EntityType.Character;
+        selectionMode = SelectionMode.UI_Button;
+
+        Debug.Log($"EntitySelectionController: Cleared all references for {gameObject.name}");
+        
+        #if UNITY_EDITOR
+        UnityEditor.EditorUtility.SetDirty(this);
+        #endif
+    }
+
+    [ContextMenu("Validate Setup")]
+    public void ValidateSetupEditor()
+    {
+        Debug.Log($"=== EntitySelectionController Validation for {gameObject.name} ===");
+        
+        // Check entity type and data consistency
+        if (entityType == EntityType.Character)
+        {
+            if (characterDataReference != null)
+            {
+                Debug.Log($"✓ Character data assigned: {characterDataReference.name}");
+            }
+            else
+            {
+                Debug.LogWarning($"⚠ Character entity type but no CharacterData assigned");
+            }
+        }
+        else if (entityType == EntityType.Pet)
+        {
+            if (petDataReference != null)
+            {
+                Debug.Log($"✓ Pet data assigned: {petDataReference.name}");
+            }
+            else
+            {
+                Debug.LogWarning($"⚠ Pet entity type but no PetData assigned");
+            }
+        }
+
+        // Check selection mode and components
+        if (selectionMode == SelectionMode.UI_Button || selectionMode == SelectionMode.Both)
+        {
+            if (selectionButton != null)
+            {
+                Debug.Log($"✓ Button component assigned for UI selection");
+            }
+            else
+            {
+                Debug.LogWarning($"⚠ UI_Button mode selected but no Button component assigned");
+            }
+        }
+
+        if (selectionMode == SelectionMode.Model_3D || selectionMode == SelectionMode.Both)
+        {
+            if (model3D != null)
+            {
+                Debug.Log($"✓ 3D model assigned: {model3D.name}");
+                
+                if (modelCollider != null)
+                {
+                    Debug.Log($"✓ Model collider assigned for click detection");
+                }
+                else
+                {
+                    Debug.LogWarning($"⚠ 3D model assigned but no collider for click detection");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"⚠ Model_3D mode selected but no 3D model assigned");
+            }
+        }
+
+        // Check camera for raycast detection
+        if (useRaycastDetection && raycastCamera != null)
+        {
+            Debug.Log($"✓ Raycast camera assigned: {raycastCamera.gameObject.name}");
+        }
+        else if (useRaycastDetection)
+        {
+            Debug.LogWarning($"⚠ Raycast detection enabled but no camera assigned (will use Camera.main)");
+        }
+
+        Debug.Log($"=== Validation Complete ===");
+    }
+
+    #endregion
 } 

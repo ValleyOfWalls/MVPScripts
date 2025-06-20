@@ -7,6 +7,7 @@ using DG.Tweening;
 
 /// <summary>
 /// Handles sliding animations for UI panels in the character selection screen
+/// Supports both UI button-based selection and 3D model-based selection
 /// </summary>
 public class CharacterSelectionUIAnimator : MonoBehaviour
 {
@@ -392,6 +393,105 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     private bool IsClickOnCharacterOrPetSelection()
     {
+        // First, check for 3D model clicks using Physics raycasting
+        bool found3DClick = Check3DModelClick();
+        if (found3DClick) return true;
+        
+        // Then check for UI clicks using EventSystem raycasting
+        bool foundUIClick = CheckUIElementClick();
+        if (foundUIClick) return true;
+        
+        Debug.Log("CharacterSelectionUIAnimator: No valid selection items found in any raycast results");
+        return false;
+    }
+    
+    private bool Check3DModelClick()
+    {
+        // Get the main camera for 3D raycasting
+        Camera mainCamera = Camera.main;
+        if (mainCamera == null)
+        {
+            mainCamera = FindFirstObjectByType<Camera>();
+        }
+        
+        if (mainCamera == null)
+        {
+            Debug.Log("CharacterSelectionUIAnimator: No camera found for 3D model click detection");
+            return false;
+        }
+        
+        // Cast a ray from the camera through the mouse position
+        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+        
+        if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity))
+        {
+            GameObject hitObject = hit.collider.gameObject;
+            Debug.Log($"CharacterSelectionUIAnimator: 3D Physics raycast hit: {hitObject.name}");
+            
+            // Check if this is a character or pet selection model
+            if (Is3DSelectionModel(hitObject))
+            {
+                Debug.Log($"CharacterSelectionUIAnimator: 3D model selection detected on {hitObject.name}");
+                return true;
+            }
+            
+            // Also check if the hit object is a child of a selection model
+            Transform current = hitObject.transform;
+            int depth = 0;
+            while (current != null && depth < 10) // Prevent infinite loops
+            {
+                if (Is3DSelectionModel(current.gameObject))
+                {
+                    Debug.Log($"CharacterSelectionUIAnimator: 3D model selection detected on parent {current.name}");
+                    return true;
+                }
+                current = current.parent;
+                depth++;
+            }
+        }
+        
+        Debug.Log("CharacterSelectionUIAnimator: No 3D model selection detected");
+        return false;
+    }
+    
+    private bool Is3DSelectionModel(GameObject obj)
+    {
+        if (obj == null) return false;
+        
+        // Check if this object has an EntitySelectionController component
+        EntitySelectionController controller = obj.GetComponent<EntitySelectionController>();
+        if (controller != null)
+        {
+            Debug.Log($"CharacterSelectionUIAnimator: Found EntitySelectionController on {obj.name}");
+            return true;
+        }
+        
+        // Check if this object is a child of something with an EntitySelectionController
+        controller = obj.GetComponentInParent<EntitySelectionController>();
+        if (controller != null)
+        {
+            Debug.Log($"CharacterSelectionUIAnimator: Found EntitySelectionController in parent hierarchy of {obj.name}");
+            return true;
+        }
+        
+        // Check if this object is a child of the character or pet grid parents
+        if (characterGridParentRect != null && obj.transform.IsChildOf(characterGridParentRect.transform))
+        {
+            Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of character grid parent");
+            return true;
+        }
+        
+        if (petGridParentRect != null && obj.transform.IsChildOf(petGridParentRect.transform))
+        {
+            Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of pet grid parent");
+            return true;
+        }
+        
+        return false;
+    }
+    
+    private bool CheckUIElementClick()
+    {
         // Use EventSystem to raycast and see what UI elements we hit
         PointerEventData pointerData = new PointerEventData(EventSystem.current)
         {
@@ -432,7 +532,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             }
         }
         
-        Debug.Log("CharacterSelectionUIAnimator: No valid selection items found in any canvas raycast results");
+        Debug.Log("CharacterSelectionUIAnimator: No valid UI selection items found in canvas raycast results");
         return false;
     }
     

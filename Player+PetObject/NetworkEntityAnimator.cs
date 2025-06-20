@@ -1,9 +1,10 @@
 using UnityEngine;
 using FishNet.Object;
-using FishNet.Object.Synchronizing;
+using System.Collections;
 
 /// <summary>
-/// Handles animations for NetworkEntity 3D models - simplified version that just handles idle animations
+/// Simplified animation controller that directly triggers animations on 3D models
+/// Network synchronization is handled by FishNet's NetworkAnimator component on the model
 /// Attach to: The same GameObject as NetworkEntity (the parent, not the 3D model itself)
 /// </summary>
 public class NetworkEntityAnimator : NetworkBehaviour
@@ -18,97 +19,73 @@ public class NetworkEntityAnimator : NetworkBehaviour
     [SerializeField] private string takeDamageAnimationTrigger = "TakeDamage";
     [SerializeField] private string defeatedAnimationTrigger = "Defeated";
     
-    // Networked animation state
-    private readonly SyncVar<AnimationState> currentAnimationState = new SyncVar<AnimationState>(AnimationState.None);
-    
     // References
     private NetworkEntity networkEntity;
-    private NetworkEntityUI entityUI;
-    
-    // Animation state tracking
-    private bool hasStartedIdleAnimation = false;
     private bool isAnimationInitialized = false;
-
-    public enum AnimationState
-    {
-        None,
-        Idle,
-        Moving,
-        Attacking,
-        TakingDamage,
-        Defeated
-    }
-
-    public AnimationState CurrentState => currentAnimationState.Value;
-    public bool IsIdleAnimationStarted => hasStartedIdleAnimation;
+    
+    // Animation state management
+    private bool isPlayingAttackAnimation = false;
+    private bool isPlayingDamageAnimation = false;
+    private Coroutine attackReturnToIdleCoroutine;
+    private Coroutine damageReturnToIdleCoroutine;
+    
+    // Cooldown system for rapid animation triggers
+    private float lastAttackTime = 0f;
+    private float lastDamageTime = 0f;
+    private const float ANIMATION_COOLDOWN = 1.0f; // Increased cooldown to prevent rapid triggers
 
     private void Awake()
     {
-        // Get required components
+        // Get references
         networkEntity = GetComponent<NetworkEntity>();
-        entityUI = GetComponent<NetworkEntityUI>();
         
-        // If modelTransform isn't set, try to get it from NetworkEntityUI
-        if (modelTransform == null && entityUI != null)
+        if (networkEntity == null)
         {
-            modelTransform = entityUI.GetEntityModel();
+            Debug.LogError($"NetworkEntityAnimator on {gameObject.name}: No NetworkEntity component found. Please add a NetworkEntity component.");
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Clean up coroutines
+        if (attackReturnToIdleCoroutine != null)
+        {
+            StopCoroutine(attackReturnToIdleCoroutine);
+            attackReturnToIdleCoroutine = null;
         }
         
-        // Find the Animator on the model
-        if (modelTransform != null && modelAnimator == null)
+        if (damageReturnToIdleCoroutine != null)
         {
-            modelAnimator = modelTransform.GetComponent<Animator>();
-            if (modelAnimator == null)
-            {
-                modelAnimator = modelTransform.GetComponentInChildren<Animator>();
-            }
+            StopCoroutine(damageReturnToIdleCoroutine);
+            damageReturnToIdleCoroutine = null;
         }
     }
 
     public override void OnStartServer()
     {
-        base.OnStartServer();
-        currentAnimationState.OnChange += OnAnimationStateChanged;
         InitializeAnimation();
     }
 
     public override void OnStartClient()
     {
-        base.OnStartClient();
-        currentAnimationState.OnChange += OnAnimationStateChanged;
         InitializeAnimation();
-    }
-
-    public override void OnStopClient()
-    {
-        base.OnStopClient();
-        currentAnimationState.OnChange -= OnAnimationStateChanged;
-    }
-
-    public override void OnStopServer()
-    {
-        base.OnStopServer();
-        currentAnimationState.OnChange -= OnAnimationStateChanged;
     }
 
     private void InitializeAnimation()
     {
         if (isAnimationInitialized) return;
-        
+
         ValidateAnimationSetup();
+        isAnimationInitialized = true;
         
-        if (modelAnimator != null)
-        {
-            isAnimationInitialized = true;
-    
-        }
+        Debug.Log($"NetworkEntityAnimator: Initialized for {networkEntity?.EntityName.Value}");
     }
 
     private void ValidateAnimationSetup()
     {
         if (modelAnimator == null)
         {
-            Debug.LogError($"NetworkEntityAnimator on {gameObject.name}: No Animator found on model. Please add an Animator component to the 3D model.");
+            Debug.LogError($"NetworkEntityAnimator on {gameObject.name}: No Animator found on model. Please add an Animator component to the 3D model and assign it to modelAnimator field.");
             return;
         }
 
@@ -126,7 +103,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
 
         if (!hasIdleTrigger)
         {
-            Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Idle trigger '{idleAnimationTrigger}' not found in Animator Controller. Idle will play as entry state.");
+            Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Idle trigger '{idleAnimationTrigger}' not found in Animator Controller. Idle should play as entry state.");
         }
         
         if (!hasAttackTrigger)
@@ -144,14 +121,14 @@ public class NetworkEntityAnimator : NetworkBehaviour
             Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Defeated trigger '{defeatedAnimationTrigger}' not found in Animator Controller.");
         }
 
-
+        Debug.Log($"NetworkEntityAnimator: Animation setup validated for {networkEntity?.EntityName.Value}");
     }
 
     private bool HasAnimatorParameter(string paramName, AnimatorControllerParameterType paramType)
     {
         if (modelAnimator == null || modelAnimator.runtimeAnimatorController == null)
             return false;
-
+            
         foreach (AnimatorControllerParameter param in modelAnimator.parameters)
         {
             if (param.name == paramName && param.type == paramType)
@@ -161,51 +138,191 @@ public class NetworkEntityAnimator : NetworkBehaviour
     }
 
     /// <summary>
-    /// Starts the idle animation when the entity becomes visible
+    /// Animation control methods for combat - these directly trigger animations
+    /// Network synchronization is handled by FishNet's NetworkAnimator on the model
     /// </summary>
-    [Server]
-    public void StartIdleAnimation()
+    public void PlayAttackAnimation()
     {
-        if (!IsServerStarted || hasStartedIdleAnimation || !isAnimationInitialized)
+        Debug.Log($"NetworkEntityAnimator: PlayAttackAnimation called for {networkEntity?.EntityName.Value}");
+        
+        if (!isAnimationInitialized || modelAnimator == null) 
         {
-
+            Debug.LogWarning($"NetworkEntityAnimator: Cannot play attack animation - not initialized or missing animator");
             return;
         }
-
-
         
-        currentAnimationState.Value = AnimationState.Idle;
-        hasStartedIdleAnimation = true;
-        
-        // Ensure the animator is enabled
-        if (modelAnimator != null)
+        // Cooldown protection for rapid card plays
+        if (Time.time - lastAttackTime < ANIMATION_COOLDOWN)
         {
-            modelAnimator.enabled = true;
+            Debug.LogWarning($"NetworkEntityAnimator: Attack animation on cooldown for {networkEntity?.EntityName.Value} (last played {Time.time - lastAttackTime:F2}s ago)");
+            return;
+        }
+        
+        // Additional protection: don't trigger if already playing attack animation
+        if (isPlayingAttackAnimation)
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Attack animation already playing for {networkEntity?.EntityName.Value}, ignoring new request");
+            return;
+        }
+        
+        if (HasAnimatorParameter(attackAnimationTrigger, AnimatorControllerParameterType.Trigger))
+        {
+            Debug.Log($"NetworkEntityAnimator: Triggering attack animation '{attackAnimationTrigger}' for {networkEntity?.EntityName.Value}");
+            
+            // Cancel any existing return-to-idle coroutine
+            if (attackReturnToIdleCoroutine != null)
+            {
+                StopCoroutine(attackReturnToIdleCoroutine);
+                attackReturnToIdleCoroutine = null;
+            }
+            
+            // Update state tracking
+            isPlayingAttackAnimation = true;
+            lastAttackTime = Time.time;
+            
+            // Trigger the animation
+            modelAnimator.SetTrigger(attackAnimationTrigger);
+            
+            // Log current state for debugging
+            LogAnimatorState("Attack");
+            
+            // Start coroutine to return to idle after animation duration
+            attackReturnToIdleCoroutine = StartCoroutine(ReturnToIdleAfterAttack());
+        }
+        else
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Attack trigger '{attackAnimationTrigger}' not found for {networkEntity?.EntityName.Value}");
         }
     }
 
-    /// <summary>
-    /// Plays the idle animation (can be called multiple times)
-    /// </summary>
-    [Server]
+    public void PlayTakeDamageAnimation()
+    {
+        Debug.Log($"NetworkEntityAnimator: PlayTakeDamageAnimation called for {networkEntity?.EntityName.Value}");
+        
+        if (!isAnimationInitialized || modelAnimator == null) 
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Cannot play take damage animation - not initialized or missing animator");
+            return;
+        }
+        
+        // Cooldown protection for rapid damage animations
+        if (Time.time - lastDamageTime < ANIMATION_COOLDOWN)
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Damage animation on cooldown for {networkEntity?.EntityName.Value} (last played {Time.time - lastDamageTime:F2}s ago)");
+            return;
+        }
+        
+        // Additional protection: don't trigger if already playing damage animation
+        if (isPlayingDamageAnimation)
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Damage animation already playing for {networkEntity?.EntityName.Value}, ignoring new request");
+            return;
+        }
+        
+        if (HasAnimatorParameter(takeDamageAnimationTrigger, AnimatorControllerParameterType.Trigger))
+        {
+            Debug.Log($"NetworkEntityAnimator: Triggering take damage animation '{takeDamageAnimationTrigger}' for {networkEntity?.EntityName.Value}");
+            
+            // Cancel any existing return-to-idle coroutine
+            if (damageReturnToIdleCoroutine != null)
+            {
+                StopCoroutine(damageReturnToIdleCoroutine);
+                damageReturnToIdleCoroutine = null;
+            }
+            
+            // Update state tracking
+            isPlayingDamageAnimation = true;
+            lastDamageTime = Time.time;
+            
+            // Trigger the animation
+            modelAnimator.SetTrigger(takeDamageAnimationTrigger);
+            
+            // Log current state for debugging
+            LogAnimatorState("TakeDamage");
+            
+            // Start coroutine to return to idle after animation duration
+            damageReturnToIdleCoroutine = StartCoroutine(ReturnToIdleAfterDamage());
+        }
+        else
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Take damage trigger '{takeDamageAnimationTrigger}' not found for {networkEntity?.EntityName.Value}");
+        }
+    }
+
     public void PlayIdleAnimation()
     {
-        if (!IsServerStarted || !isAnimationInitialized) return;
+        Debug.Log($"NetworkEntityAnimator: PlayIdleAnimation called for {networkEntity?.EntityName.Value}");
         
-        if (currentAnimationState.Value != AnimationState.Idle)
+        if (!isAnimationInitialized || modelAnimator == null) 
         {
-    
-            currentAnimationState.Value = AnimationState.Idle;
+            Debug.LogWarning($"NetworkEntityAnimator: Cannot play idle animation - not initialized or missing animator");
+            return;
+        }
+        
+        if (HasAnimatorParameter(idleAnimationTrigger, AnimatorControllerParameterType.Trigger))
+        {
+            Debug.Log($"NetworkEntityAnimator: Triggering idle animation '{idleAnimationTrigger}' for {networkEntity?.EntityName.Value}");
+            modelAnimator.SetTrigger(idleAnimationTrigger);
+        }
+        else
+        {
+            Debug.Log($"NetworkEntityAnimator: Idle animation should play automatically (entry state) for {networkEntity?.EntityName.Value}");
+        }
+    }
+
+    public void PlayDefeatedAnimation()
+    {
+        Debug.Log($"NetworkEntityAnimator: PlayDefeatedAnimation called for {networkEntity?.EntityName.Value}");
+        
+        if (!isAnimationInitialized || modelAnimator == null) 
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Cannot play defeated animation - not initialized or missing animator");
+            return;
+        }
+        
+        if (HasAnimatorParameter(defeatedAnimationTrigger, AnimatorControllerParameterType.Trigger))
+        {
+            Debug.Log($"NetworkEntityAnimator: Triggering defeated animation '{defeatedAnimationTrigger}' for {networkEntity?.EntityName.Value}");
+            modelAnimator.SetTrigger(defeatedAnimationTrigger);
+        }
+        else
+        {
+            Debug.LogWarning($"NetworkEntityAnimator: Defeated trigger '{defeatedAnimationTrigger}' not found for {networkEntity?.EntityName.Value}");
         }
     }
 
     /// <summary>
-    /// ServerRpc to start idle animation from client
+    /// Logs current animator state information for debugging
     /// </summary>
-    [ServerRpc(RequireOwnership = false)]
-    public void ServerStartIdleAnimation()
+    private void LogAnimatorState(string context)
     {
-        StartIdleAnimation();
+        if (modelAnimator == null || modelAnimator.layerCount == 0) return;
+        
+        AnimatorStateInfo stateInfo = modelAnimator.GetCurrentAnimatorStateInfo(0);
+        
+        // Try to get the actual state name for better debugging
+        string stateName = "Unknown";
+        AnimatorClipInfo[] clipInfos = modelAnimator.GetCurrentAnimatorClipInfo(0);
+        if (clipInfos.Length > 0)
+        {
+            stateName = clipInfos[0].clip.name;
+        }
+        
+        Debug.Log($"NetworkEntityAnimator [{context}]: Current clip: '{stateName}', State Hash: {stateInfo.fullPathHash}, NormalizedTime: {stateInfo.normalizedTime:F2}");
+        Debug.Log($"NetworkEntityAnimator [{context}]: Length: {stateInfo.length}s, Speed: {stateInfo.speed}, Loop: {stateInfo.loop}");
+        
+        // Check for transition issues
+        if (modelAnimator.IsInTransition(0))
+        {
+            AnimatorTransitionInfo transitionInfo = modelAnimator.GetAnimatorTransitionInfo(0);
+            Debug.Log($"NetworkEntityAnimator [{context}]: In transition - Duration: {transitionInfo.duration}s, Progress: {transitionInfo.normalizedTime:F2}");
+        }
+        
+        // Warn about potential issues
+        if (stateInfo.normalizedTime > 5f)
+        {
+            Debug.LogWarning($"NetworkEntityAnimator [{context}]: High normalizedTime ({stateInfo.normalizedTime:F2}) suggests animation might not be transitioning properly");
+        }
     }
 
     /// <summary>
@@ -213,13 +330,11 @@ public class NetworkEntityAnimator : NetworkBehaviour
     /// </summary>
     public void SetModelReferences(Transform newModelTransform, Animator newModelAnimator)
     {
-        // Clear old references
         modelTransform = newModelTransform;
         modelAnimator = newModelAnimator;
         
         // Reset animation state
         isAnimationInitialized = false;
-        hasStartedIdleAnimation = false;
         
         // Re-initialize with new model
         if (IsServerStarted || IsClientStarted)
@@ -246,193 +361,141 @@ public class NetworkEntityAnimator : NetworkBehaviour
         return modelAnimator;
     }
 
-    private void OnAnimationStateChanged(AnimationState prev, AnimationState next, bool asServer)
-    {
-
-        
-        if (modelAnimator == null || !isAnimationInitialized)
-        {
-            Debug.LogWarning($"NetworkEntityAnimator: Cannot play animation - Animator not ready for {networkEntity?.EntityName.Value}");
-            return;
-        }
-
-        // Play the appropriate animation based on state
-        switch (next)
-        {
-            case AnimationState.Idle:
-                // Try to trigger idle animation, but if no trigger exists, it should already be playing as entry state
-                if (HasAnimatorParameter(idleAnimationTrigger, AnimatorControllerParameterType.Trigger))
-                {
-                    modelAnimator.SetTrigger(idleAnimationTrigger);
-                    Debug.Log($"NetworkEntityAnimator: Triggered idle animation for {networkEntity?.EntityName.Value}");
-                }
-                else
-                {
-                    Debug.Log($"NetworkEntityAnimator: Idle animation playing automatically (entry state) for {networkEntity?.EntityName.Value}");
-                }
-                break;
-                
-            case AnimationState.Attacking:
-                if (HasAnimatorParameter(attackAnimationTrigger, AnimatorControllerParameterType.Trigger))
-                {
-                    modelAnimator.SetTrigger(attackAnimationTrigger);
-                    Debug.Log($"NetworkEntityAnimator: Triggered attack animation for {networkEntity?.EntityName.Value}");
-                    
-                    // Auto-return to idle after attack animation
-                    StartCoroutine(ReturnToIdleAfterDelay(1f));
-                }
-                break;
-                
-            case AnimationState.TakingDamage:
-                if (HasAnimatorParameter(takeDamageAnimationTrigger, AnimatorControllerParameterType.Trigger))
-                {
-                    modelAnimator.SetTrigger(takeDamageAnimationTrigger);
-                    Debug.Log($"NetworkEntityAnimator: Triggered take damage animation for {networkEntity?.EntityName.Value}");
-                    
-                    // Auto-return to idle after damage animation
-                    StartCoroutine(ReturnToIdleAfterDelay(0.5f));
-                }
-                break;
-                
-            case AnimationState.Defeated:
-                if (HasAnimatorParameter(defeatedAnimationTrigger, AnimatorControllerParameterType.Trigger))
-                {
-                    modelAnimator.SetTrigger(defeatedAnimationTrigger);
-                    Debug.Log($"NetworkEntityAnimator: Triggered defeated animation for {networkEntity?.EntityName.Value}");
-                }
-                break;
-        }
-    }
-
     /// <summary>
-    /// Called when the entity becomes visible during combat setup
+    /// Called when the entity becomes visible during combat setup (backwards compatibility)
     /// </summary>
     public void OnEntityBecameVisible()
     {
-        if (!hasStartedIdleAnimation && IsServerStarted)
-        {
-            Debug.Log($"NetworkEntityAnimator: Entity became visible, starting idle animation for {networkEntity?.EntityName.Value}");
-            StartIdleAnimation();
-        }
-        else if (hasStartedIdleAnimation && IsServerStarted)
-        {
-            Debug.Log($"NetworkEntityAnimator: Entity became visible, ensuring idle animation is playing for {networkEntity?.EntityName.Value}");
-            PlayIdleAnimation();
-        }
+        Debug.Log($"NetworkEntityAnimator: Entity became visible, playing idle animation for {networkEntity?.EntityName.Value}");
+        PlayIdleAnimation();
     }
 
     /// <summary>
-    /// Animation control methods for combat
+    /// Starts idle animation (backwards compatibility method)
     /// </summary>
-    [Server]
-    public void PlayAttackAnimation()
+    public void StartIdleAnimation()
     {
-        Debug.Log($"NetworkEntityAnimator: PlayAttackAnimation called for {networkEntity?.EntityName.Value} - IsServer: {IsServerStarted}, IsInitialized: {isAnimationInitialized}");
-        
-        if (!IsServerStarted || !isAnimationInitialized) 
-        {
-            Debug.LogWarning($"NetworkEntityAnimator: Cannot play attack animation - IsServer: {IsServerStarted}, IsInitialized: {isAnimationInitialized}");
-            return;
-        }
-        
-        Debug.Log($"NetworkEntityAnimator: Setting animation state to Attacking for {networkEntity?.EntityName.Value}");
-        currentAnimationState.Value = AnimationState.Attacking;
+        Debug.Log($"NetworkEntityAnimator: StartIdleAnimation called for {networkEntity?.EntityName.Value}");
+        PlayIdleAnimation();
     }
 
-    [Server]
-    public void PlayTakeDamageAnimation()
+    /// <summary>
+    /// Coroutines for automatic return to idle
+    /// </summary>
+    private IEnumerator ReturnToIdleAfterAttack()
     {
-        Debug.Log($"NetworkEntityAnimator: PlayTakeDamageAnimation called for {networkEntity?.EntityName.Value} - IsServer: {IsServerStarted}, IsInitialized: {isAnimationInitialized}");
+        // Wait for the attack animation to complete
+        // We'll wait a bit longer than the expected animation duration to ensure it completes
+        yield return new WaitForSeconds(1.2f);
         
-        if (!IsServerStarted || !isAnimationInitialized) 
+        if (isPlayingAttackAnimation)
         {
-            Debug.LogWarning($"NetworkEntityAnimator: Cannot play take damage animation - IsServer: {IsServerStarted}, IsInitialized: {isAnimationInitialized}");
-            return;
+            Debug.Log($"NetworkEntityAnimator: Attack animation completed, returning to idle for {networkEntity?.EntityName.Value}");
+            isPlayingAttackAnimation = false;
+            PlayIdleAnimation();
         }
         
-        Debug.Log($"NetworkEntityAnimator: Setting animation state to TakingDamage for {networkEntity?.EntityName.Value}");
-        currentAnimationState.Value = AnimationState.TakingDamage;
-    }
-
-    [Server]
-    public void PlayDefeatedAnimation()
-    {
-        if (!IsServerStarted || !isAnimationInitialized) return;
-        currentAnimationState.Value = AnimationState.Defeated;
+        attackReturnToIdleCoroutine = null;
     }
     
-    /// <summary>
-    /// Coroutine to return to idle state after a delay
-    /// </summary>
-    private System.Collections.IEnumerator ReturnToIdleAfterDelay(float delay)
+    private IEnumerator ReturnToIdleAfterDamage()
     {
-        yield return new WaitForSeconds(delay);
+        // Wait for the damage animation to complete
+        // Damage animations are typically shorter
+        yield return new WaitForSeconds(0.8f);
         
-        if (IsServerStarted && currentAnimationState.Value != AnimationState.Defeated)
+        if (isPlayingDamageAnimation)
         {
+            Debug.Log($"NetworkEntityAnimator: Damage animation completed, returning to idle for {networkEntity?.EntityName.Value}");
+            isPlayingDamageAnimation = false;
             PlayIdleAnimation();
         }
+        
+        damageReturnToIdleCoroutine = null;
     }
 
-    #region Inspector Helpers
+    #region Debug Methods
 
     [Header("Debug")]
     [SerializeField] private bool debugMode = false;
 
-    [ContextMenu("Test Start Idle Animation")]
-    private void TestStartIdleAnimation()
+    [ContextMenu("Test Attack Animation")]
+    private void TestAttackAnimation()
     {
-        if (Application.isPlaying && IsServerStarted)
+        if (Application.isPlaying)
         {
-            hasStartedIdleAnimation = false; // Reset for testing
-            StartIdleAnimation();
+            PlayAttackAnimation();
         }
     }
 
-    [ContextMenu("Test Play Idle Animation")]
-    private void TestPlayIdleAnimation()
+    [ContextMenu("Test Take Damage Animation")]
+    private void TestTakeDamageAnimation()
     {
-        if (Application.isPlaying && IsServerStarted)
+        if (Application.isPlaying)
+        {
+            PlayTakeDamageAnimation();
+        }
+    }
+
+    [ContextMenu("Test Idle Animation")]
+    private void TestIdleAnimation()
+    {
+        if (Application.isPlaying)
         {
             PlayIdleAnimation();
         }
     }
 
-    [ContextMenu("Validate Animation Setup")]
-    private void TestValidateSetup()
+    [ContextMenu("Diagnose Animator Setup")]
+    public void DiagnoseAnimatorSetup()
     {
-        ValidateAnimationSetup();
-    }
-
-    #endregion
-
-    #region Legacy Methods (for backwards compatibility)
-
-    /// <summary>
-    /// Legacy method - now calls StartIdleAnimation for backwards compatibility
-    /// </summary>
-    [Server]
-    public void PlayEntranceSequence()
-    {
-        StartIdleAnimation();
-    }
-
-    /// <summary>
-    /// Legacy method - now calls StartIdleAnimation for backwards compatibility
-    /// </summary>
-    [Server]
-    public void PlaySpawnAnimation()
-    {
-        StartIdleAnimation();
-    }
-
-    /// <summary>
-    /// Legacy method - now calls StartIdleAnimation for backwards compatibility
-    /// </summary>
-    [Server]
-    public void TriggerSpawnAnimation()
-    {
-        StartIdleAnimation();
+        Debug.Log($"=== Animator Diagnosis for {networkEntity?.EntityName.Value} ===");
+        
+        if (modelAnimator == null)
+        {
+            Debug.LogError("ModelAnimator is null - please assign the Animator component from your 3D model");
+            return;
+        }
+        
+        if (modelAnimator.runtimeAnimatorController == null)
+        {
+            Debug.LogError("RuntimeAnimatorController is null - please assign an Animator Controller");
+            return;
+        }
+        
+        Debug.Log($"Animator enabled: {modelAnimator.enabled}");
+        Debug.Log($"GameObject active: {modelAnimator.gameObject.activeInHierarchy}");
+        Debug.Log($"Controller: {modelAnimator.runtimeAnimatorController.name}");
+        Debug.Log($"Layer count: {modelAnimator.layerCount}");
+        
+        // Check parameters
+        Debug.Log($"Parameters ({modelAnimator.parameters.Length}):");
+        foreach (var param in modelAnimator.parameters)
+        {
+            Debug.Log($"  - {param.name} ({param.type})");
+        }
+        
+        // Check specific triggers
+        bool hasIdle = HasAnimatorParameter(idleAnimationTrigger, AnimatorControllerParameterType.Trigger);
+        bool hasAttack = HasAnimatorParameter(attackAnimationTrigger, AnimatorControllerParameterType.Trigger);
+        bool hasTakeDamage = HasAnimatorParameter(takeDamageAnimationTrigger, AnimatorControllerParameterType.Trigger);
+        bool hasDefeated = HasAnimatorParameter(defeatedAnimationTrigger, AnimatorControllerParameterType.Trigger);
+        
+        Debug.Log($"Required Triggers:");
+        Debug.Log($"  - {idleAnimationTrigger}: {hasIdle}");
+        Debug.Log($"  - {attackAnimationTrigger}: {hasAttack}");
+        Debug.Log($"  - {takeDamageAnimationTrigger}: {hasTakeDamage}");
+        Debug.Log($"  - {defeatedAnimationTrigger}: {hasDefeated}");
+        
+        // Current state info
+        LogAnimatorState("Diagnosis");
+        
+        Debug.Log($"=== SETUP INSTRUCTIONS ===");
+        Debug.Log($"1. Add FishNet's NetworkAnimator component to your 3D model GameObject");
+        Debug.Log($"2. Ensure your Animator Controller has proper transitions from Idle to Attack/TakeDamage states");
+        Debug.Log($"3. Verify transition conditions use the correct trigger names");
+        Debug.Log($"4. Test animations using the context menu options above");
+        Debug.Log($"========================");
     }
 
     #endregion

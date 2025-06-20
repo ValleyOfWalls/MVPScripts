@@ -70,19 +70,25 @@ public class CardEffectResolver : NetworkBehaviour
     /// </summary>
     public void ResolveCardEffect()
     {
+        Debug.Log($"CardEffectResolver: ResolveCardEffect called for card {gameObject.name}");
+        
         if (!IsOwner)
         {
             Debug.LogWarning($"CardEffectResolver: Cannot resolve effect, not network owner of card {gameObject.name}");
             return;
         }
         
+        Debug.Log($"CardEffectResolver: Network ownership validated for card {gameObject.name}");
+        
         // Make sure we have source and target entities
         var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
         var allTargets = sourceAndTargetIdentifier.AllTargets;
         
+        Debug.Log($"CardEffectResolver: Source entity: {(sourceEntity != null ? sourceEntity.EntityName.Value : "null")}, Target count: {allTargets?.Count ?? 0}");
+        
         if (sourceEntity == null || allTargets.Count == 0)
         {
-            Debug.LogError($"CardEffectResolver: Missing source or target entities for card {gameObject.name}");
+            Debug.LogError($"CardEffectResolver: Missing source or target entities for card {gameObject.name} - Source: {sourceEntity != null}, Targets: {allTargets?.Count ?? 0}");
             return;
         }
         
@@ -94,11 +100,15 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
+        Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}");
+        
         // Get tracking data for combo check
         EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
         
         // Check sequence requirements (combo system)
         bool canPlay = cardData.CanPlayWithCombo(sourceTracker?.ComboCount ?? 0);
+        Debug.Log($"CardEffectResolver: Combo check - Can play: {canPlay}, Combo count: {sourceTracker?.ComboCount ?? 0}, Required: {cardData.RequiredComboAmount}");
+        
         if (!canPlay)
         {
             Debug.Log($"CardEffectResolver: Card {cardData.CardName} cannot be played - combo requirement not met");
@@ -110,16 +120,20 @@ public class CardEffectResolver : NetworkBehaviour
         foreach (var target in allTargets)
         {
             if (target != null)
+            {
                 targetIds.Add(target.ObjectId);
+                Debug.Log($"CardEffectResolver: Added target {target.EntityName.Value} (ID: {target.ObjectId}) to target list");
+            }
         }
         
+        Debug.Log($"CardEffectResolver: Calling CmdResolveEffect with source {sourceEntity.ObjectId}, {targetIds.Count} targets, card {cardData.CardId}");
         CmdResolveEffect(sourceEntity.ObjectId, targetIds.ToArray(), cardData.CardId);
     }
     
     [ServerRpc]
     private void CmdResolveEffect(int sourceEntityId, int[] targetEntityIds, int cardDataId)
     {
-        Debug.Log($"CardEffectResolver: Server resolving effect for card {cardDataId} from entity {sourceEntityId} to {targetEntityIds.Length} targets");
+        Debug.Log($"CardEffectResolver: CmdResolveEffect called - Card: {cardDataId}, Source: {sourceEntityId}, Targets: [{string.Join(", ", targetEntityIds)}]");
         
         // Find the source entity
         NetworkEntity sourceEntity = FindEntityById(sourceEntityId);
@@ -135,7 +149,14 @@ public class CardEffectResolver : NetworkBehaviour
         {
             NetworkEntity target = FindEntityById(targetId);
             if (target != null)
+            {
                 targetEntities.Add(target);
+                Debug.Log($"CardEffectResolver: Found target entity {target.EntityName.Value} (ID: {targetId})");
+            }
+            else
+            {
+                Debug.LogError($"CardEffectResolver: Could not find target entity with ID {targetId}");
+            }
         }
         
         if (targetEntities.Count == 0)
@@ -152,12 +173,18 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
+        Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking if should trigger visual effects...");
+        
         // TRIGGER VISUAL EFFECTS BEFORE PROCESSING CARD EFFECTS
         if (targetEntities.Count > 0 && handleCardPlay != null)
         {
-            Debug.Log($"CardEffectResolver: Triggering visual effects for card {cardData.CardName}");
+            Debug.Log($"CardEffectResolver: Triggering visual effects for card {cardData.CardName} - calling RpcTriggerVisualEffects");
             // Use RPC to trigger visual effects on all clients
             RpcTriggerVisualEffects(sourceEntity.ObjectId, targetEntities[0].ObjectId, cardData.CardId);
+        }
+        else
+        {
+            Debug.LogWarning($"CardEffectResolver: Cannot trigger visual effects - targetEntities.Count: {targetEntities.Count}, handleCardPlay: {handleCardPlay != null}");
         }
         
         // Record card play in tracking systems
@@ -165,6 +192,8 @@ public class CardEffectResolver : NetworkBehaviour
         
         // Process the effect based on the card type
         ProcessCardEffects(sourceEntity, targetEntities, cardData);
+        
+        Debug.Log($"CardEffectResolver: CmdResolveEffect completed for card {cardData.CardName}");
     }
     
     /// <summary>
@@ -806,6 +835,8 @@ public class CardEffectResolver : NetworkBehaviour
         NetworkEntity sourceEntity = FindEntityById(sourceEntityId);
         NetworkEntity targetEntity = FindEntityById(targetEntityId);
         
+        Debug.Log($"CardEffectResolver: Entity lookup results - Source: {(sourceEntity != null ? sourceEntity.EntityName.Value : "null")}, Target: {(targetEntity != null ? targetEntity.EntityName.Value : "null")}");
+        
         if (sourceEntity == null || targetEntity == null)
         {
             Debug.LogError($"CardEffectResolver: Could not find entities for visual effects - Source: {sourceEntity != null}, Target: {targetEntity != null}");
@@ -813,7 +844,10 @@ public class CardEffectResolver : NetworkBehaviour
         }
         
         // Check if these entities are in the currently viewed fight
-        if (!ShouldShowVisualEffectsForEntities(sourceEntity, targetEntity))
+        bool shouldShow = ShouldShowVisualEffectsForEntities(sourceEntity, targetEntity);
+        Debug.Log($"CardEffectResolver: ShouldShowVisualEffectsForEntities result: {shouldShow}");
+        
+        if (!shouldShow)
         {
             Debug.Log($"CardEffectResolver: Skipping visual effects - entities not in currently viewed fight");
             return;
@@ -827,11 +861,14 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
+        Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking handleCardPlay...");
+        
         // Trigger visual effects
         if (handleCardPlay != null)
         {
-            Debug.Log($"CardEffectResolver: Calling TriggerVisualEffects for card {cardData.CardName}");
+            Debug.Log($"CardEffectResolver: Calling TriggerVisualEffects for card {cardData.CardName} - Source: {sourceEntity.EntityName.Value}, Target: {targetEntity.EntityName.Value}");
             handleCardPlay.TriggerVisualEffects(sourceEntity, targetEntity, cardData);
+            Debug.Log($"CardEffectResolver: TriggerVisualEffects call completed for card {cardData.CardName}");
         }
         else
         {

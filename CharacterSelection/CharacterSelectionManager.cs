@@ -234,6 +234,9 @@ public class CharacterSelectionManager : NetworkBehaviour
                 hasSelection = false
             };
             
+            // Ensure selection objects are spawned when any player joins
+            EnsureSelectionObjectsSpawned();
+            
             BroadcastPlayerUpdates();
             Debug.Log($"CharacterSelectionManager: Added player {playerName} to character selection");
         }
@@ -248,8 +251,37 @@ public class CharacterSelectionManager : NetworkBehaviour
         Debug.Log($"CharacterSelectionManager: ServerAddPlayerDirectly called for {playerName}");
         ServerAddPlayerLogic(conn, playerName);
         
+        // Ensure selection objects are spawned on server for all clients
+        EnsureSelectionObjectsSpawned();
+        
         // Ensure the joining client gets their UI initialized
         TargetRpcInitializeJoiningClient(conn);
+    }
+    
+    /// <summary>
+    /// Ensures selection objects are spawned on the server
+    /// </summary>
+    [Server]
+    private void EnsureSelectionObjectsSpawned()
+    {
+        // Check if selection objects already exist
+        SelectionNetworkObject[] existingObjects = FindObjectsOfType<SelectionNetworkObject>();
+        if (existingObjects.Length > 0)
+        {
+            Debug.Log($"CharacterSelectionManager: Selection objects already spawned ({existingObjects.Length} found)");
+            return;
+        }
+        
+        // Find the UI manager and trigger object spawning
+        if (uiManager != null)
+        {
+            Debug.Log("CharacterSelectionManager: Triggering server to spawn selection objects for new client");
+            uiManager.ServerEnsureSelectionObjectsSpawned();
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionManager: UI manager not found, cannot spawn selection objects");
+        }
     }
 
     /// <summary>
