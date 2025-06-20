@@ -1,11 +1,12 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
+using System.Collections.Generic;
 
 /// <summary>
-/// Creates a diagonal shine effect that moves across UI elements or 3D objects.
-/// Works with both UI Images/RawImages and 3D renderers with materials.
-/// Attach to any GameObject with a Renderer or Image component.
+/// Creates a diagonal shine effect that moves across UI elements using a custom shader.
+/// Works with UI Images that support custom materials.
+/// Attach to any GameObject with Image components (either on this object or child objects).
 /// </summary>
 public class DiagonalShineEffect : MonoBehaviour
 {
@@ -13,53 +14,66 @@ public class DiagonalShineEffect : MonoBehaviour
     [SerializeField] private bool enableShine = true;
     [SerializeField] private float shineInterval = 3f; // Time between shine effects
     [SerializeField] private float shineDuration = 1f; // Duration of each shine animation
-    [SerializeField] private float shineIntensity = 1.5f; // Brightness multiplier for shine
-    [SerializeField] private float shineWidth = 0.3f; // Width of the shine band (0-1)
+    [SerializeField] private float shineIntensity = 2f; // Brightness of shine
+    [SerializeField] private float shineWidth = 0.1f; // Width of the shine band (0-1)
     [SerializeField] private float shineAngle = 45f; // Angle of the shine in degrees
     [SerializeField] private bool randomizeInterval = true; // Add randomness to shine timing
     [SerializeField] private Vector2 intervalRange = new Vector2(2f, 5f); // Random interval range
+    [SerializeField] private float shineSoftness = 0.1f; // Softness of shine edges
     
     [Header("Shine Movement")]
     [SerializeField] private AnimationCurve shineCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
     [SerializeField] private bool reverseDirection = false; // Reverse shine direction
-    [SerializeField] private float shineStartOffset = -0.5f; // Start position offset (-1 to 1)
-    [SerializeField] private float shineEndOffset = 1.5f; // End position offset (-1 to 1)
+    [SerializeField] private float shineStartPosition = -0.5f; // Start position (-1 to 2)
+    [SerializeField] private float shineEndPosition = 1.5f; // End position (-1 to 2)
     
     [Header("Color Settings")]
     [SerializeField] private Color shineColor = Color.white;
-    [SerializeField] private bool useOriginalColorTint = true; // Blend with original color
-    [SerializeField] private float colorBlendFactor = 0.5f; // How much to blend with original color
+    
+    [Header("Material Settings")]
+    [SerializeField] private Material shineMaterialTemplate; // Template material with DiagonalShine shader
+    [SerializeField] private bool includeChildComponents = true; // Search for Image components in child objects
     
     [Header("Advanced Settings")]
     [SerializeField] private bool shineOnStart = false; // Play shine effect immediately on start
     [SerializeField] private bool shineOnEnable = false; // Play shine effect when enabled
     [SerializeField] private bool useUnscaledTime = false; // Use unscaled time for animations
-    [SerializeField] private LayerMask affectedLayers = -1; // Which layers to affect (for 3D objects)
     
     [Header("Debug")]
     [SerializeField] private bool debugMode = false;
-    [SerializeField] private bool showGizmos = false;
     
-    // Component references
-    private Image uiImage;
-    private RawImage uiRawImage;
-    private Renderer objectRenderer;
-    private Material originalMaterial;
-    private Material shineMaterial;
+    // Component tracking
+    private List<ImageShineData> imageShineData = new List<ImageShineData>();
     
     // State tracking
     private bool isShining = false;
     private Coroutine shineCoroutine;
     private Coroutine intervalCoroutine;
-    private Color originalColor;
-    private Vector2 currentShinePosition;
     
     // Material property IDs (for performance)
-    private static readonly int ShinePosition = Shader.PropertyToID("_ShinePosition");
+    private static readonly int ShineLocation = Shader.PropertyToID("_ShineLocation");
     private static readonly int ShineWidth = Shader.PropertyToID("_ShineWidth");
     private static readonly int ShineAngle = Shader.PropertyToID("_ShineAngle");
     private static readonly int ShineIntensity = Shader.PropertyToID("_ShineIntensity");
     private static readonly int ShineColor = Shader.PropertyToID("_ShineColor");
+    private static readonly int ShineSoftness = Shader.PropertyToID("_ShineSoftness");
+    
+    // Class to track each image and its materials
+    [System.Serializable]
+    private class ImageShineData
+    {
+        public Image image;
+        public Material originalMaterial;
+        public Material shineMaterial;
+        public bool hadMaterial;
+        
+        public ImageShineData(Image img)
+        {
+            image = img;
+            originalMaterial = img.material;
+            hadMaterial = originalMaterial != null && originalMaterial != img.defaultMaterial;
+        }
+    }
     
     #region Unity Lifecycle
     
@@ -105,79 +119,66 @@ public class DiagonalShineEffect : MonoBehaviour
     
     private void InitializeComponents()
     {
-        // Try to find UI components first
-        uiImage = GetComponent<Image>();
-        uiRawImage = GetComponent<RawImage>();
+        imageShineData.Clear();
         
-        // If no UI components, try 3D renderer
-        if (uiImage == null && uiRawImage == null)
+        // Find all images to apply shine to
+        List<Image> imagesToProcess = new List<Image>();
+        
+        // Check for image on this GameObject
+        Image mainImage = GetComponent<Image>();
+        if (mainImage != null)
         {
-            objectRenderer = GetComponent<Renderer>();
-            
-            if (objectRenderer != null)
+            imagesToProcess.Add(mainImage);
+        }
+        
+        // Check child images if enabled
+        if (includeChildComponents)
+        {
+            Image[] childImages = GetComponentsInChildren<Image>(true);
+            foreach (Image img in childImages)
             {
-                // Store original material
-                originalMaterial = objectRenderer.material;
-                CreateShineMaterial();
+                if (img != mainImage) // Don't add the main image twice
+                {
+                    imagesToProcess.Add(img);
+                }
             }
         }
         
-        // Store original color
-        StoreOriginalColor();
+        // Create shine data for each image
+        foreach (Image img in imagesToProcess)
+        {
+            ImageShineData data = new ImageShineData(img);
+            CreateShineMaterial(data);
+            imageShineData.Add(data);
+        }
         
-        LogDebug($"Initialized shine effect on {gameObject.name}. UI Image: {uiImage != null}, UI RawImage: {uiRawImage != null}, Renderer: {objectRenderer != null}");
+        LogDebug($"Initialized shine effect on {gameObject.name}. Found {imageShineData.Count} images to process.");
     }
     
-    private void StoreOriginalColor()
+    private void CreateShineMaterial(ImageShineData data)
     {
-        if (uiImage != null)
+        if (shineMaterialTemplate == null)
         {
-            originalColor = uiImage.color;
-        }
-        else if (uiRawImage != null)
-        {
-            originalColor = uiRawImage.color;
-        }
-        else if (objectRenderer != null && originalMaterial != null)
-        {
-            originalColor = originalMaterial.color;
-        }
-        else
-        {
-            originalColor = Color.white;
-        }
-    }
-    
-    private void CreateShineMaterial()
-    {
-        if (originalMaterial == null) return;
-        
-        // Create a copy of the original material for shine effects
-        shineMaterial = new Material(originalMaterial);
-        
-        // Set initial shine properties if the shader supports them
-        if (shineMaterial.HasProperty(ShinePosition))
-        {
-            shineMaterial.SetVector(ShinePosition, Vector2.zero);
-        }
-        if (shineMaterial.HasProperty(ShineWidth))
-        {
-            shineMaterial.SetFloat(ShineWidth, shineWidth);
-        }
-        if (shineMaterial.HasProperty(ShineAngle))
-        {
-            shineMaterial.SetFloat(ShineAngle, shineAngle);
-        }
-        if (shineMaterial.HasProperty(ShineIntensity))
-        {
-            shineMaterial.SetFloat(ShineIntensity, 0f); // Start with no shine
-        }
-        if (shineMaterial.HasProperty(ShineColor))
-        {
-            shineMaterial.SetColor(ShineColor, shineColor);
+            LogDebug($"No shine material template assigned. Please assign a material using the DiagonalShine shader.");
+            return;
         }
         
-        objectRenderer.material = shineMaterial;
+        // Create instance of the shine material
+        data.shineMaterial = new Material(shineMaterialTemplate);
+        
+        // Set initial shine properties
+        data.shineMaterial.SetFloat(ShineLocation, shineStartPosition);
+        data.shineMaterial.SetFloat(ShineWidth, shineWidth);
+        data.shineMaterial.SetFloat(ShineAngle, shineAngle);
+        data.shineMaterial.SetFloat(ShineIntensity, 0f); // Start with no shine
+        data.shineMaterial.SetColor(ShineColor, shineColor);
+        data.shineMaterial.SetFloat(ShineSoftness, shineSoftness);
+        
+        // Copy the original texture to the shine material
+        if (data.image.sprite != null)
+        {
+            data.shineMaterial.SetTexture("_MainTex", data.image.sprite.texture);
+        }
     }
     
     #endregion
@@ -189,9 +190,9 @@ public class DiagonalShineEffect : MonoBehaviour
     /// </summary>
     public void PlayShineEffect()
     {
-        if (!enabled || (!uiImage && !uiRawImage && !objectRenderer))
+        if (!enabled || imageShineData.Count == 0)
         {
-            LogDebug("Cannot play shine effect: component not enabled or no valid target found");
+            LogDebug("Cannot play shine effect: component not enabled or no valid images found");
             return;
         }
         
@@ -240,7 +241,7 @@ public class DiagonalShineEffect : MonoBehaviour
         }
         
         isShining = false;
-        RestoreOriginalAppearance();
+        RestoreOriginalMaterials();
     }
     
     /// <summary>
@@ -291,6 +292,15 @@ public class DiagonalShineEffect : MonoBehaviour
         isShining = true;
         LogDebug($"Starting shine animation on {gameObject.name}");
         
+        // Apply shine materials to all images
+        foreach (var data in imageShineData)
+        {
+            if (data.image != null && data.shineMaterial != null)
+            {
+                data.image.material = data.shineMaterial;
+            }
+        }
+        
         float elapsed = 0f;
         
         while (elapsed < shineDuration)
@@ -301,19 +311,29 @@ public class DiagonalShineEffect : MonoBehaviour
             
             // Calculate shine position
             float shinePos = reverseDirection ? 
-                Mathf.Lerp(shineEndOffset, shineStartOffset, curveValue) :
-                Mathf.Lerp(shineStartOffset, shineEndOffset, curveValue);
+                Mathf.Lerp(shineEndPosition, shineStartPosition, curveValue) :
+                Mathf.Lerp(shineStartPosition, shineEndPosition, curveValue);
             
-            currentShinePosition = new Vector2(shinePos, 0f);
-            
-            // Apply shine effect based on component type
-            ApplyShineEffect(curveValue, shinePos);
+            // Update all shine materials
+            foreach (var data in imageShineData)
+            {
+                if (data.shineMaterial != null)
+                {
+                    data.shineMaterial.SetFloat(ShineLocation, shinePos);
+                    data.shineMaterial.SetFloat(ShineIntensity, shineIntensity);
+                    data.shineMaterial.SetFloat(ShineWidth, shineWidth);
+                    data.shineMaterial.SetFloat(ShineAngle, shineAngle);
+                    data.shineMaterial.SetColor(ShineColor, shineColor);
+                    data.shineMaterial.SetFloat(ShineSoftness, shineSoftness);
+                }
+            }
             
             yield return null;
         }
         
-        // Ensure clean end state
-        RestoreOriginalAppearance();
+        // Restore original materials
+        RestoreOriginalMaterials();
+        
         isShining = false;
         shineCoroutine = null;
         
@@ -322,145 +342,36 @@ public class DiagonalShineEffect : MonoBehaviour
     
     #endregion
     
-    #region Shine Application
-    
-    private void ApplyShineEffect(float normalizedTime, float shinePosition)
-    {
-        // Calculate shine intensity based on position and width
-        float distanceFromCenter = Mathf.Abs(shinePosition - 0.5f);
-        float maxDistance = (shineEndOffset - shineStartOffset) * 0.5f;
-        float intensity = 1f - Mathf.Clamp01(distanceFromCenter / maxDistance);
-        
-        // Apply width modulation
-        if (shinePosition >= -shineWidth * 0.5f && shinePosition <= 1f + shineWidth * 0.5f)
-        {
-            intensity *= shineIntensity;
-        }
-        else
-        {
-            intensity = 0f;
-        }
-        
-        if (uiImage != null)
-        {
-            ApplyUIShine(uiImage, intensity);
-        }
-        else if (uiRawImage != null)
-        {
-            ApplyUIShine(uiRawImage, intensity);
-        }
-        else if (objectRenderer != null && shineMaterial != null)
-        {
-            Apply3DShine(intensity, shinePosition);
-        }
-    }
-    
-    private void ApplyUIShine(Graphic graphic, float intensity)
-    {
-        if (graphic == null) return;
-        
-        Color shineColorFinal = useOriginalColorTint ? 
-            Color.Lerp(originalColor, shineColor, colorBlendFactor) : 
-            shineColor;
-        
-        Color currentColor = Color.Lerp(originalColor, shineColorFinal, intensity);
-        graphic.color = currentColor;
-    }
-    
-    private void Apply3DShine(float intensity, float shinePosition)
-    {
-        if (shineMaterial == null) return;
-        
-        // Update material properties if supported
-        if (shineMaterial.HasProperty(ShinePosition))
-        {
-            Vector2 pos = CalculateShinePositionForAngle(shinePosition);
-            shineMaterial.SetVector(ShinePosition, pos);
-        }
-        
-        if (shineMaterial.HasProperty(ShineIntensity))
-        {
-            shineMaterial.SetFloat(ShineIntensity, intensity);
-        }
-        
-        if (shineMaterial.HasProperty(ShineWidth))
-        {
-            shineMaterial.SetFloat(ShineWidth, shineWidth);
-        }
-        
-        if (shineMaterial.HasProperty(ShineAngle))
-        {
-            shineMaterial.SetFloat(ShineAngle, shineAngle);
-        }
-        
-        if (shineMaterial.HasProperty(ShineColor))
-        {
-            Color shineColorFinal = useOriginalColorTint ? 
-                Color.Lerp(originalColor, shineColor, colorBlendFactor) : 
-                shineColor;
-            shineMaterial.SetColor(ShineColor, shineColorFinal);
-        }
-        
-        // Fallback: modify main color if no shine properties
-        if (!shineMaterial.HasProperty(ShineIntensity))
-        {
-            Color shineColorFinal = useOriginalColorTint ? 
-                Color.Lerp(originalColor, shineColor, colorBlendFactor) : 
-                shineColor;
-            
-            Color currentColor = Color.Lerp(originalColor, shineColorFinal, intensity);
-            shineMaterial.color = currentColor;
-        }
-    }
-    
-    private Vector2 CalculateShinePositionForAngle(float shinePosition)
-    {
-        float angleRad = shineAngle * Mathf.Deg2Rad;
-        Vector2 direction = new Vector2(Mathf.Cos(angleRad), Mathf.Sin(angleRad));
-        return direction * shinePosition;
-    }
-    
-    private void RestoreOriginalAppearance()
-    {
-        if (uiImage != null)
-        {
-            uiImage.color = originalColor;
-        }
-        else if (uiRawImage != null)
-        {
-            uiRawImage.color = originalColor;
-        }
-        else if (objectRenderer != null && shineMaterial != null)
-        {
-            if (shineMaterial.HasProperty(ShineIntensity))
-            {
-                shineMaterial.SetFloat(ShineIntensity, 0f);
-            }
-            else
-            {
-                shineMaterial.color = originalColor;
-            }
-        }
-    }
-    
-    #endregion
-    
     #region Material Management
+    
+    private void RestoreOriginalMaterials()
+    {
+        foreach (var data in imageShineData)
+        {
+            if (data.image != null)
+            {
+                data.image.material = data.hadMaterial ? data.originalMaterial : null;
+            }
+        }
+    }
     
     private void CleanupMaterials()
     {
-        if (shineMaterial != null)
+        foreach (var data in imageShineData)
         {
-            if (Application.isPlaying)
+            if (data.shineMaterial != null)
             {
-                Destroy(shineMaterial);
+                if (Application.isPlaying)
+                {
+                    Destroy(data.shineMaterial);
+                }
+                else
+                {
+                    DestroyImmediate(data.shineMaterial);
+                }
             }
-            else
-            {
-                DestroyImmediate(shineMaterial);
-            }
-            shineMaterial = null;
         }
+        imageShineData.Clear();
     }
     
     #endregion
@@ -474,8 +385,8 @@ public class DiagonalShineEffect : MonoBehaviour
         shineInterval = Mathf.Max(0.1f, shineInterval);
         shineDuration = Mathf.Max(0.1f, shineDuration);
         shineIntensity = Mathf.Max(0f, shineIntensity);
-        shineWidth = Mathf.Clamp01(shineWidth);
-        colorBlendFactor = Mathf.Clamp01(colorBlendFactor);
+        shineWidth = Mathf.Clamp(shineWidth, 0.001f, 1f);
+        shineSoftness = Mathf.Clamp01(shineSoftness);
         
         if (intervalRange.x > intervalRange.y)
         {
@@ -484,15 +395,20 @@ public class DiagonalShineEffect : MonoBehaviour
         intervalRange.x = Mathf.Max(0.1f, intervalRange.x);
         intervalRange.y = Mathf.Max(0.1f, intervalRange.y);
         
-        // Update material properties in editor if possible
-        if (Application.isPlaying && shineMaterial != null)
+        // Update material properties in real-time if playing
+        if (Application.isPlaying && isShining)
         {
-            if (shineMaterial.HasProperty(ShineWidth))
-                shineMaterial.SetFloat(ShineWidth, shineWidth);
-            if (shineMaterial.HasProperty(ShineAngle))
-                shineMaterial.SetFloat(ShineAngle, shineAngle);
-            if (shineMaterial.HasProperty(ShineColor))
-                shineMaterial.SetColor(ShineColor, shineColor);
+            foreach (var data in imageShineData)
+            {
+                if (data.shineMaterial != null)
+                {
+                    data.shineMaterial.SetFloat(ShineWidth, shineWidth);
+                    data.shineMaterial.SetFloat(ShineAngle, shineAngle);
+                    data.shineMaterial.SetColor(ShineColor, shineColor);
+                    data.shineMaterial.SetFloat(ShineIntensity, shineIntensity);
+                    data.shineMaterial.SetFloat(ShineSoftness, shineSoftness);
+                }
+            }
         }
     }
     
@@ -508,11 +424,21 @@ public class DiagonalShineEffect : MonoBehaviour
             shineEffect.PlayShineEffect();
         }
     }
+    
+    /// <summary>
+    /// Context menu to create shine material template
+    /// </summary>
+    [UnityEditor.MenuItem("CONTEXT/DiagonalShineEffect/Create Shine Material Template")]
+    private static void CreateShineMaterialTemplate(UnityEditor.MenuCommand command)
+    {
+        // This would help users create the material easily
+        LogDebugStatic("Please create a Material using the 'UI/DiagonalShine' shader and assign it to the Shine Material Template field.");
+    }
 #endif
     
     #endregion
     
-    #region Debug and Gizmos
+    #region Debug
     
     private void LogDebug(string message)
     {
@@ -522,25 +448,9 @@ public class DiagonalShineEffect : MonoBehaviour
         }
     }
     
-    private void OnDrawGizmos()
+    private static void LogDebugStatic(string message)
     {
-        if (!showGizmos) return;
-        
-        // Draw shine direction
-        Vector3 center = transform.position;
-        float angleRad = shineAngle * Mathf.Deg2Rad;
-        Vector3 direction = new Vector3(Mathf.Cos(angleRad), Mathf.Sin(angleRad), 0f);
-        
-        Gizmos.color = shineColor;
-        Gizmos.DrawLine(center - direction * 2f, center + direction * 2f);
-        
-        // Draw shine position if shining
-        if (isShining)
-        {
-            Vector3 shinePos = center + (Vector3)currentShinePosition;
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(shinePos, 0.1f);
-        }
+        Debug.Log($"[DiagonalShineEffect] {message}");
     }
     
     #endregion
