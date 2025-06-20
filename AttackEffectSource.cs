@@ -1,23 +1,17 @@
 using UnityEngine;
 
 /// <summary>
-/// Component that defines where attack effects should originate from on character/pet models.
+/// Component that defines where effect animations should originate from on character/pet models.
 /// Attach to: Root of character/pet prefabs alongside CharacterData or PetData.
 /// </summary>
-public class AttackEffectSource : MonoBehaviour
+public class EffectAnimationSource : MonoBehaviour
 {
-    [Header("Effect Origin Points")]
-    [SerializeField] private Transform meleeAttackPoint;
-    [SerializeField] private Transform rangedAttackPoint;
-    [SerializeField] private Transform magicAttackPoint;
-    [SerializeField] private Transform defaultAttackPoint;
+    [Header("Effect Origin Point")]
+    [SerializeField] private Transform effectPoint;
     
     [Header("Auto-Discovery Settings")]
-    [SerializeField] private bool autoDiscoverPoints = true;
-    [SerializeField] private string[] meleePointNames = { "MeleePoint", "WeaponPoint", "RightHand", "Hand_R" };
-    [SerializeField] private string[] rangedPointNames = { "RangedPoint", "BowPoint", "LeftHand", "Hand_L" };
-    [SerializeField] private string[] magicPointNames = { "MagicPoint", "StaffPoint", "Chest", "Head" };
-    [SerializeField] private string[] defaultPointNames = { "AttackPoint", "EffectPoint", "Center" };
+    [SerializeField] private bool autoDiscoverPoint = true;
+    [SerializeField] private string[] effectPointNames = { "EffectPoint", "AttackPoint", "MeleePoint", "WeaponPoint", "RightHand", "Hand_R", "Center" };
     
     [Header("Fallback Settings")]
     [SerializeField] private Vector3 fallbackOffset = Vector3.up;
@@ -31,30 +25,16 @@ public class AttackEffectSource : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool showGizmos = true;
     [SerializeField] private float gizmoSize = 0.1f;
-    [SerializeField] private Color meleeGizmoColor = Color.red;
-    [SerializeField] private Color rangedGizmoColor = Color.blue;
-    [SerializeField] private Color magicGizmoColor = Color.magenta;
-    [SerializeField] private Color defaultGizmoColor = Color.yellow;
+    [SerializeField] private Color effectGizmoColor = Color.yellow;
     
     private bool hasDiscovered = false;
     
-    // Public accessors for effect points
-    public Transform MeleeAttackPoint => GetEffectPoint(AttackType.Melee);
-    public Transform RangedAttackPoint => GetEffectPoint(AttackType.Ranged);
-    public Transform MagicAttackPoint => GetEffectPoint(AttackType.Magic);
-    public Transform DefaultAttackPoint => GetEffectPoint(AttackType.Default);
-    
-    public enum AttackType
-    {
-        Melee,
-        Ranged,
-        Magic,
-        Default
-    }
+    // Public accessor for effect point
+    public Transform EffectPoint => GetEffectPoint();
     
     private void Awake()
     {
-        DiscoverEffectPoints();
+        DiscoverEffectPoint();
     }
     
     private void Start()
@@ -62,7 +42,7 @@ public class AttackEffectSource : MonoBehaviour
         // Ensure discovery happens even if Awake was missed
         if (!hasDiscovered)
         {
-            DiscoverEffectPoints();
+            DiscoverEffectPoint();
         }
     }
     
@@ -70,29 +50,26 @@ public class AttackEffectSource : MonoBehaviour
     {
         // Discover points in editor when values change
         #if UNITY_EDITOR
-        if (!Application.isPlaying && autoDiscoverPoints)
+        if (!Application.isPlaying && autoDiscoverPoint)
         {
-            DiscoverEffectPoints();
+            DiscoverEffectPoint();
         }
         #endif
     }
     
     /// <summary>
-    /// Automatically discovers effect points in the model hierarchy
+    /// Automatically discovers effect point in the model hierarchy
     /// </summary>
-    [ContextMenu("Discover Effect Points")]
-    public void DiscoverEffectPoints()
+    [ContextMenu("Discover Effect Point")]
+    public void DiscoverEffectPoint()
     {
         // Find the model root (prioritize components that might indicate the model)
         DiscoverModelRoot();
         
-        if (autoDiscoverPoints && discoveredModelRoot != null)
+        if (autoDiscoverPoint && discoveredModelRoot != null)
         {
-            // Try to find specific effect points by name
-            meleeAttackPoint = FindPointByNames(meleePointNames);
-            rangedAttackPoint = FindPointByNames(rangedPointNames);
-            magicAttackPoint = FindPointByNames(magicPointNames);
-            defaultAttackPoint = FindPointByNames(defaultPointNames);
+            // Try to find specific effect point by name
+            effectPoint = FindPointByNames(effectPointNames);
         }
         
         // Calculate model bounds for fallback positioning
@@ -100,12 +77,9 @@ public class AttackEffectSource : MonoBehaviour
         
         hasDiscovered = true;
         
-        Debug.Log($"AttackEffectSource: Discovered effect points for {gameObject.name}:" +
+        Debug.Log($"EffectAnimationSource: Discovered effect point for {gameObject.name}:" +
                   $"\n- Model Root: {(discoveredModelRoot != null ? discoveredModelRoot.name : "None")}" +
-                  $"\n- Melee Point: {(meleeAttackPoint != null ? meleeAttackPoint.name : "Auto-Generated")}" +
-                  $"\n- Ranged Point: {(rangedAttackPoint != null ? rangedAttackPoint.name : "Auto-Generated")}" +
-                  $"\n- Magic Point: {(magicAttackPoint != null ? magicAttackPoint.name : "Auto-Generated")}" +
-                  $"\n- Default Point: {(defaultAttackPoint != null ? defaultAttackPoint.name : "Auto-Generated")}" +
+                  $"\n- Effect Point: {(effectPoint != null ? effectPoint.name : "Auto-Generated")}" +
                   $"\n- Model Bounds: {modelBounds}");
     }
     
@@ -216,45 +190,27 @@ public class AttackEffectSource : MonoBehaviour
     }
     
     /// <summary>
-    /// Gets the effect point for a specific attack type
+    /// Gets the effect point transform
     /// </summary>
-    public Transform GetEffectPoint(AttackType attackType)
+    public Transform GetEffectPoint()
     {
-        if (!hasDiscovered) DiscoverEffectPoints();
-        
-        Transform point = null;
-        
-        switch (attackType)
-        {
-            case AttackType.Melee:
-                point = meleeAttackPoint;
-                break;
-            case AttackType.Ranged:
-                point = rangedAttackPoint;
-                break;
-            case AttackType.Magic:
-                point = magicAttackPoint;
-                break;
-            case AttackType.Default:
-                point = defaultAttackPoint;
-                break;
-        }
+        if (!hasDiscovered) DiscoverEffectPoint();
         
         // If no specific point found, return fallback position
-        if (point == null)
+        if (effectPoint == null)
         {
             return GetFallbackPoint();
         }
         
-        return point;
+        return effectPoint;
     }
     
     /// <summary>
-    /// Gets the world position for an attack type
+    /// Gets the world position for effect animations
     /// </summary>
-    public Vector3 GetEffectPosition(AttackType attackType)
+    public Vector3 GetEffectPosition()
     {
-        Transform point = GetEffectPoint(attackType);
+        Transform point = GetEffectPoint();
         return point != null ? point.position : GetFallbackPosition();
     }
     
@@ -264,12 +220,12 @@ public class AttackEffectSource : MonoBehaviour
     private Transform GetFallbackPoint()
     {
         // Create a temporary point if needed
-        if (defaultAttackPoint == null && discoveredModelRoot != null)
+        if (effectPoint == null && discoveredModelRoot != null)
         {
             return discoveredModelRoot;
         }
         
-        return defaultAttackPoint != null ? defaultAttackPoint : transform;
+        return effectPoint != null ? effectPoint : transform;
     }
     
     /// <summary>
@@ -293,19 +249,19 @@ public class AttackEffectSource : MonoBehaviour
     [ContextMenu("Create Effect Point Here")]
     public GameObject CreateEffectPoint(string pointName, Vector3 localPosition)
     {
-        GameObject effectPoint = new GameObject(pointName);
-        effectPoint.transform.SetParent(discoveredModelRoot != null ? discoveredModelRoot : transform);
-        effectPoint.transform.localPosition = localPosition;
+        GameObject effectPointGO = new GameObject(pointName);
+        effectPointGO.transform.SetParent(discoveredModelRoot != null ? discoveredModelRoot : transform);
+        effectPointGO.transform.localPosition = localPosition;
         
-        return effectPoint;
+        return effectPointGO;
     }
     
     /// <summary>
-    /// Validates that effect points are properly configured
+    /// Validates that effect point is properly configured
     /// </summary>
     public bool IsValid()
     {
-        if (!hasDiscovered) DiscoverEffectPoints();
+        if (!hasDiscovered) DiscoverEffectPoint();
         
         // At minimum, we need a fallback position
         return discoveredModelRoot != null || transform != null;
@@ -317,14 +273,11 @@ public class AttackEffectSource : MonoBehaviour
         
         if (!hasDiscovered && Application.isPlaying)
         {
-            DiscoverEffectPoints();
+            DiscoverEffectPoint();
         }
         
-        // Draw effect points
-        DrawEffectPointGizmo(AttackType.Melee, meleeGizmoColor);
-        DrawEffectPointGizmo(AttackType.Ranged, rangedGizmoColor);
-        DrawEffectPointGizmo(AttackType.Magic, magicGizmoColor);
-        DrawEffectPointGizmo(AttackType.Default, defaultGizmoColor);
+        // Draw effect point
+        DrawEffectPointGizmo();
         
         // Draw model bounds
         if (useModelBounds && modelBounds.size != Vector3.zero)
@@ -334,11 +287,11 @@ public class AttackEffectSource : MonoBehaviour
         }
     }
     
-    private void DrawEffectPointGizmo(AttackType attackType, Color color)
+    private void DrawEffectPointGizmo()
     {
-        Vector3 position = GetEffectPosition(attackType);
+        Vector3 position = GetEffectPosition();
         
-        Gizmos.color = color;
+        Gizmos.color = effectGizmoColor;
         Gizmos.DrawWireSphere(position, gizmoSize);
         
         // Draw a small cross to indicate direction

@@ -558,12 +558,8 @@ public class CardEffect
         (int)EffectAnimationBehavior.ProjectileFromSource,
         (int)EffectAnimationBehavior.BeamToTarget,
         (int)EffectAnimationBehavior.AreaEffect)]
-    [Tooltip("Name of custom effect from AttackEffectManager's database (overrides defaults)")]
+    [Tooltip("Name of custom effect from EffectAnimationManager's database (overrides defaults)")]
     public string customEffectName;
-    
-    [ConditionalField("animationBehavior", (int)EffectAnimationBehavior.ProjectileFromSource, false)]
-    [Tooltip("Type of attack effect to use (fallback if no custom prefab assigned)")]
-    public AttackEffectSource.AttackType fallbackAttackType = AttackEffectSource.AttackType.Default;
     
     [ShowIfAny("animationBehavior", 
         (int)EffectAnimationBehavior.ProjectileFromSource,
@@ -572,8 +568,36 @@ public class CardEffect
     [Tooltip("How long the effect takes to travel/play (0 = use manager default)")]
     public float customDuration = 0f;
     
+    [ShowIfAny("animationBehavior", 
+        (int)EffectAnimationBehavior.InstantOnTarget,
+        (int)EffectAnimationBehavior.ProjectileFromSource,
+        (int)EffectAnimationBehavior.BeamToTarget)]
+    [Tooltip("Custom sound effect name to play with this effect")]
+    public string customSoundEffectName;
+    
     [Tooltip("Delay before this effect's animation plays (useful for sequencing multiple effects)")]
     public float animationDelay = 0f;
+    
+    [Header("═══ FINISHING ANIMATIONS ═══")]
+    [ShowIfAny("animationBehavior", 
+        (int)EffectAnimationBehavior.ProjectileFromSource,
+        (int)EffectAnimationBehavior.BeamToTarget,
+        (int)EffectAnimationBehavior.InstantOnTarget)]
+    [Tooltip("Play a finishing animation on target after the main effect")]
+    public bool hasFinishingAnimation = false;
+    
+    [ConditionalField("hasFinishingAnimation", true, true)]
+    [Tooltip("Custom finishing animation name to use from EffectAnimationManager database")]
+    public string finishingAnimationName;
+    
+    [ConditionalField("hasFinishingAnimation", true, true)]
+    [Tooltip("Custom sound effect name to play with the finishing animation")]
+    public string finishingSoundEffectName;
+    
+    [ConditionalField("hasFinishingAnimation", true, true)]
+    [Tooltip("Delay before the finishing animation plays after main effect reaches target")]
+    [Range(0f, 2f)]
+    public float finishingAnimationDelay = 0.1f;
     
     [ShowIfAny("animationBehavior", 
         (int)EffectAnimationBehavior.InstantOnTarget,

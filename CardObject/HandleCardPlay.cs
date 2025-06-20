@@ -29,6 +29,9 @@ public class HandleCardPlay : NetworkBehaviour
     
     // Static tracking to prevent multiple damage animations on the same target
     private static Dictionary<int, Coroutine> activeDamageAnimations = new Dictionary<int, Coroutine>();
+    
+    // Tracking for finishing animations
+    private static Dictionary<int, List<System.Collections.IEnumerator>> activeFinishingAnimations = new Dictionary<int, List<System.Collections.IEnumerator>>();
 
     private void Awake()
     {
@@ -561,69 +564,7 @@ public class HandleCardPlay : NetworkBehaviour
         return shouldTrigger;
     }
     
-    /// <summary>
-    /// Determines attack type for a specific effect
-    /// </summary>
-    private AttackEffectSource.AttackType DetermineAttackType(CardEffect effect, CardData cardData)
-    {
-        if (effect == null || cardData == null) return AttackEffectSource.AttackType.Default;
-        
-        // Check if effect has a fallback attack type
-        if (effect.animationBehavior == EffectAnimationBehavior.ProjectileFromSource)
-        {
-            return effect.fallbackAttackType;
-        }
-        
-        // Auto-detect based on effect type
-        switch (effect.effectType)
-        {
-            case CardEffectType.Damage:
-                return DetermineAttackTypeFromCardKeywords(cardData);
-            case CardEffectType.ApplyWeak:
-            case CardEffectType.ApplyBreak:
-            case CardEffectType.ApplyStun:
-            case CardEffectType.ApplyCurse:
-                return AttackEffectSource.AttackType.Magic; // Status effects are magical
-            case CardEffectType.ApplyDamageOverTime:
-                return AttackEffectSource.AttackType.Magic; // DoT effects are magical
-            default:
-                return AttackEffectSource.AttackType.Default;
-        }
-    }
-    
-    /// <summary>
-    /// Determines attack type based on card keywords (fallback method)
-    /// </summary>
-    private AttackEffectSource.AttackType DetermineAttackTypeFromCardKeywords(CardData cardData)
-    {
-        if (cardData == null) return AttackEffectSource.AttackType.Default;
-        
-        string cardName = cardData.CardName.ToLower();
-        string description = cardData.Description.ToLower();
-        
-        // Magic attacks
-        if (cardName.Contains("spell") || cardName.Contains("magic") || cardName.Contains("bolt") ||
-            description.Contains("magic") || description.Contains("spell"))
-        {
-            return AttackEffectSource.AttackType.Magic;
-        }
-        
-        // Ranged attacks
-        if (cardName.Contains("shot") || cardName.Contains("arrow") || cardName.Contains("projectile") ||
-            description.Contains("ranged") || description.Contains("shoot"))
-        {
-            return AttackEffectSource.AttackType.Ranged;
-        }
-        
-        // Melee attacks
-        if (cardName.Contains("strike") || cardName.Contains("slash") || cardName.Contains("punch") ||
-            cardName.Contains("melee") || description.Contains("melee"))
-        {
-            return AttackEffectSource.AttackType.Melee;
-        }
-        
-        return AttackEffectSource.AttackType.Default;
-    }
+
     
     /// <summary>
     /// Triggers attack visual effects including animations and particles based on card effects
@@ -704,9 +645,9 @@ public class HandleCardPlay : NetworkBehaviour
                 Debug.Log($"HandleCardPlay: TriggerVisualEffects - Damage animation already scheduled for {targetEntity.EntityName.Value} (ID: {targetId}), canceling previous one");
                 
                 // Cancel the existing coroutine
-                if (AttackEffectManager.Instance != null && activeDamageAnimations[targetId] != null)
+                if (EffectAnimationManager.Instance != null && activeDamageAnimations[targetId] != null)
                 {
-                    AttackEffectManager.Instance.StopCoroutine(activeDamageAnimations[targetId]);
+                    EffectAnimationManager.Instance.StopCoroutine(activeDamageAnimations[targetId]);
                 }
                 
                 activeDamageAnimations.Remove(targetId);
@@ -714,15 +655,15 @@ public class HandleCardPlay : NetworkBehaviour
             
             Debug.Log($"HandleCardPlay: TriggerVisualEffects - Scheduling damage animation on target {targetEntity.EntityName.Value} (ID: {targetId}) with delay {damageAnimDelay}");
             
-            // Use AttackEffectManager to start the coroutine since the card GameObject may become inactive
-            if (AttackEffectManager.Instance != null)
+            // Use EffectAnimationManager to start the coroutine since the card GameObject may become inactive
+            if (EffectAnimationManager.Instance != null)
             {
-                Coroutine damageCoroutine = AttackEffectManager.Instance.StartCoroutine(TriggerDamageAnimationDelayed(targetEntity, damageAnimDelay));
+                Coroutine damageCoroutine = EffectAnimationManager.Instance.StartCoroutine(TriggerDamageAnimationDelayed(targetEntity, damageAnimDelay));
                 activeDamageAnimations[targetId] = damageCoroutine;
             }
             else
             {
-                Debug.LogError($"HandleCardPlay: TriggerVisualEffects - AttackEffectManager.Instance is null, cannot schedule damage animation");
+                Debug.LogError($"HandleCardPlay: TriggerVisualEffects - EffectAnimationManager.Instance is null, cannot schedule damage animation");
             }
         }
         else
@@ -781,40 +722,62 @@ public class HandleCardPlay : NetworkBehaviour
     {
         float duration = effect.customDuration > 0 ? effect.customDuration : 0f; // 0 means use default
         
+        // Trigger sound effect if specified
+        if (!string.IsNullOrEmpty(effect.customSoundEffectName))
+        {
+            Vector3 soundPosition = sourceEntity.transform.position;
+            SoundEffectManager.TriggerNamedSoundEffect(soundPosition, effect.customSoundEffectName, 
+                (uint)sourceEntity.ObjectId, (uint)targetEntity.ObjectId);
+        }
+        
         switch (effect.animationBehavior)
         {
             case EffectAnimationBehavior.None:
+                // Still trigger finishing animation if it exists
+                if (effect.hasFinishingAnimation)
+                {
+                    TriggerFinishingAnimation(targetEntity, effect, effect.finishingAnimationDelay);
+                }
                 return 0f;
                 
             case EffectAnimationBehavior.InstantOnTarget:
                 // Play effect instantly on target with delay
-                if (AttackEffectManager.Instance != null)
+                if (EffectAnimationManager.Instance != null)
                 {
-                    AttackEffectManager.Instance.StartCoroutine(TriggerInstantEffectDelayed(targetEntity, effect, effect.animationDelay));
+                    EffectAnimationManager.Instance.StartCoroutine(TriggerInstantEffectDelayed(targetEntity, effect, effect.animationDelay));
                 }
+                
+                // Trigger finishing animation if specified (can play simultaneously)
+                if (effect.hasFinishingAnimation)
+                {
+                    float finishingDelay = effect.animationDelay + effect.finishingAnimationDelay;
+                    TriggerFinishingAnimation(targetEntity, effect, finishingDelay);
+                }
+                
                 return effect.animationDelay + 0.5f; // Short duration for instant effect
                 
             case EffectAnimationBehavior.ProjectileFromSource:
             case EffectAnimationBehavior.Auto:
                 // Projectile from source to target
-                AttackEffectSource.AttackType attackType = DetermineAttackType(effect, cardData);
+                float totalDelay = effect.animationDelay;
+                float effectDuration = duration > 0 ? duration : 2f; // Default duration
                 
                 if (effect.animationDelay > 0f)
                 {
                     if (!string.IsNullOrEmpty(effect.customEffectName))
                     {
                         Debug.Log($"HandleCardPlay: Using delayed custom effect name: {effect.customEffectName}");
-                        if (AttackEffectManager.Instance != null)
+                        if (EffectAnimationManager.Instance != null)
                         {
-                            AttackEffectManager.Instance.StartCoroutine(TriggerNamedCustomEffectDelayed(sourceEntity, targetEntity, effect.customEffectName, duration, effect.animationDelay));
+                            EffectAnimationManager.Instance.StartCoroutine(TriggerNamedCustomEffectDelayed(sourceEntity, targetEntity, effect.customEffectName, duration, effect.animationDelay));
                         }
                     }
                     else
                     {
-                        Debug.Log($"HandleCardPlay: Using delayed default attack type: {attackType}");
-                        if (AttackEffectManager.Instance != null)
+                        Debug.Log($"HandleCardPlay: Using delayed default effect");
+                        if (EffectAnimationManager.Instance != null)
                         {
-                            AttackEffectManager.Instance.StartCoroutine(TriggerProjectileEffectDelayed(sourceEntity, targetEntity, attackType, duration, effect.animationDelay));
+                            EffectAnimationManager.Instance.StartCoroutine(TriggerDefaultEffectDelayed(sourceEntity, targetEntity, duration, effect.animationDelay));
                         }
                     }
                 }
@@ -823,49 +786,94 @@ public class HandleCardPlay : NetworkBehaviour
                     if (!string.IsNullOrEmpty(effect.customEffectName))
                     {
                         Debug.Log($"HandleCardPlay: Using custom effect name: {effect.customEffectName}");
-                        AttackEffectManager.TriggerNamedCustomEffect(sourceEntity, targetEntity, effect.customEffectName, duration);
+                        EffectAnimationManager.TriggerNamedCustomEffect(sourceEntity, targetEntity, effect.customEffectName, duration);
                     }
                     else
                     {
-                        Debug.Log($"HandleCardPlay: Using default attack type: {attackType}");
-                        AttackEffectManager.TriggerAttackEffect(sourceEntity, targetEntity, attackType, duration);
+                        Debug.Log($"HandleCardPlay: Using default effect");
+                        EffectAnimationManager.TriggerEffectAnimation(sourceEntity, targetEntity, duration);
                     }
                 }
                 
-                float projectileDuration = duration > 0 ? duration : 2f; // Default duration
-                return effect.animationDelay + projectileDuration;
+                // Trigger finishing animation if specified (waits for projectile to reach target)
+                if (effect.hasFinishingAnimation)
+                {
+                    float finishingDelay = totalDelay + effectDuration + effect.finishingAnimationDelay;
+                    TriggerFinishingAnimation(targetEntity, effect, finishingDelay);
+                }
+                
+                return effect.animationDelay + effectDuration;
                 
             case EffectAnimationBehavior.OnSourceOnly:
                 // Effect plays on source only
-                if (AttackEffectManager.Instance != null)
+                if (EffectAnimationManager.Instance != null)
                 {
-                    AttackEffectManager.Instance.StartCoroutine(TriggerSourceEffectDelayed(sourceEntity, effect, effect.animationDelay));
+                    EffectAnimationManager.Instance.StartCoroutine(TriggerSourceEffectDelayed(sourceEntity, effect, effect.animationDelay));
                 }
+                
+                // Trigger finishing animation if specified (can play simultaneously)
+                if (effect.hasFinishingAnimation)
+                {
+                    float finishingDelay = effect.animationDelay + effect.finishingAnimationDelay;
+                    TriggerFinishingAnimation(sourceEntity, effect, finishingDelay);
+                }
+                
                 return effect.animationDelay + 1f;
                 
             case EffectAnimationBehavior.AreaEffect:
                 // Area effect (could be enhanced later for multiple targets)
-                if (AttackEffectManager.Instance != null)
+                if (EffectAnimationManager.Instance != null)
                 {
-                    AttackEffectManager.Instance.StartCoroutine(TriggerAreaEffectDelayed(sourceEntity, targetEntity, effect, effect.animationDelay));
+                    EffectAnimationManager.Instance.StartCoroutine(TriggerAreaEffectDelayed(sourceEntity, targetEntity, effect, effect.animationDelay));
                 }
+                
+                // Trigger finishing animation if specified (can play simultaneously)
+                if (effect.hasFinishingAnimation)
+                {
+                    float finishingDelay = effect.animationDelay + effect.finishingAnimationDelay;
+                    TriggerFinishingAnimation(targetEntity, effect, finishingDelay);
+                }
+                
                 return effect.animationDelay + 1.5f;
                 
             case EffectAnimationBehavior.BeamToTarget:
                 // Continuous beam effect
-                AttackEffectSource.AttackType beamType = DetermineAttackType(effect, cardData);
                 float beamDuration = duration > 0 ? duration : 3f; // Beams are longer
                 
                 if (effect.animationDelay > 0f)
                 {
-                    if (AttackEffectManager.Instance != null)
+                    if (!string.IsNullOrEmpty(effect.customEffectName))
                     {
-                        AttackEffectManager.Instance.StartCoroutine(TriggerProjectileEffectDelayed(sourceEntity, targetEntity, beamType, beamDuration, effect.animationDelay));
+                        if (EffectAnimationManager.Instance != null)
+                        {
+                            EffectAnimationManager.Instance.StartCoroutine(TriggerNamedCustomEffectDelayed(sourceEntity, targetEntity, effect.customEffectName, beamDuration, effect.animationDelay));
+                        }
+                    }
+                    else
+                    {
+                        if (EffectAnimationManager.Instance != null)
+                        {
+                            EffectAnimationManager.Instance.StartCoroutine(TriggerDefaultEffectDelayed(sourceEntity, targetEntity, beamDuration, effect.animationDelay));
+                        }
                     }
                 }
                 else
                 {
-                    AttackEffectManager.TriggerAttackEffect(sourceEntity, targetEntity, beamType, beamDuration);
+                    if (!string.IsNullOrEmpty(effect.customEffectName))
+                    {
+                        EffectAnimationManager.TriggerNamedCustomEffect(sourceEntity, targetEntity, effect.customEffectName, beamDuration);
+                    }
+                    else
+                    {
+                        EffectAnimationManager.TriggerEffectAnimation(sourceEntity, targetEntity, beamDuration);
+                    }
+                }
+                
+                // Trigger finishing animation if specified (waits for beam to complete)
+                if (effect.hasFinishingAnimation)
+                {
+                    float finishingDelay = effect.animationDelay + beamDuration + effect.finishingAnimationDelay;
+                    TriggerFinishingAnimation(targetEntity, effect, finishingDelay);
                 }
                 
                 return effect.animationDelay + beamDuration;
@@ -876,21 +884,12 @@ public class HandleCardPlay : NetworkBehaviour
     }
     
     /// <summary>
-    /// Coroutine to trigger projectile effect after a delay
+    /// Coroutine to trigger default effect after a delay
     /// </summary>
-    private System.Collections.IEnumerator TriggerProjectileEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, AttackEffectSource.AttackType attackType, float duration, float delay)
+    private System.Collections.IEnumerator TriggerDefaultEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, float duration, float delay)
     {
         yield return new WaitForSeconds(delay);
-        AttackEffectManager.TriggerAttackEffect(sourceEntity, targetEntity, attackType, duration);
-    }
-    
-    /// <summary>
-    /// Coroutine to trigger custom projectile effect after a delay
-    /// </summary>
-    private System.Collections.IEnumerator TriggerCustomProjectileEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, GameObject customPrefab, AttackEffectSource.AttackType fallbackAttackType, float duration, float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        AttackEffectManager.TriggerCustomAttackEffect(sourceEntity, targetEntity, customPrefab, fallbackAttackType, duration);
+        EffectAnimationManager.TriggerEffectAnimation(sourceEntity, targetEntity, duration);
     }
     
     /// <summary>
@@ -899,7 +898,51 @@ public class HandleCardPlay : NetworkBehaviour
     private System.Collections.IEnumerator TriggerNamedCustomEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, float duration, float delay)
     {
         yield return new WaitForSeconds(delay);
-        AttackEffectManager.TriggerNamedCustomEffect(sourceEntity, targetEntity, effectName, duration);
+        EffectAnimationManager.TriggerNamedCustomEffect(sourceEntity, targetEntity, effectName, duration);
+    }
+    
+    /// <summary>
+    /// Triggers a finishing animation on the target entity
+    /// </summary>
+    private void TriggerFinishingAnimation(NetworkEntity targetEntity, CardEffect effect, float delay)
+    {
+        if (string.IsNullOrEmpty(effect.finishingAnimationName))
+        {
+            Debug.LogWarning($"HandleCardPlay: Finishing animation requested but no animation name specified for effect {effect.effectType}");
+            return;
+        }
+        
+        Debug.Log($"HandleCardPlay: Scheduling finishing animation '{effect.finishingAnimationName}' on {targetEntity.EntityName.Value} with delay {delay}");
+        
+        if (EffectAnimationManager.Instance != null)
+        {
+            EffectAnimationManager.Instance.StartCoroutine(TriggerFinishingAnimationDelayed(targetEntity, effect, delay));
+        }
+        else
+        {
+            Debug.LogError("HandleCardPlay: EffectAnimationManager.Instance is null, cannot schedule finishing animation");
+        }
+    }
+    
+    /// <summary>
+    /// Coroutine to trigger finishing animation after a delay
+    /// </summary>
+    private System.Collections.IEnumerator TriggerFinishingAnimationDelayed(NetworkEntity targetEntity, CardEffect effect, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        
+        // Trigger finishing animation
+        EffectAnimationManager.TriggerNamedCustomEffect(targetEntity, targetEntity, effect.finishingAnimationName, 0f);
+        
+        // Trigger finishing sound effect if specified
+        if (!string.IsNullOrEmpty(effect.finishingSoundEffectName))
+        {
+            Vector3 soundPosition = targetEntity.transform.position;
+            SoundEffectManager.TriggerNamedSoundEffect(soundPosition, effect.finishingSoundEffectName, 
+                (uint)targetEntity.ObjectId, (uint)targetEntity.ObjectId);
+        }
+        
+        Debug.Log($"HandleCardPlay: Triggered finishing animation '{effect.finishingAnimationName}' on {targetEntity.EntityName.Value}");
     }
     
     /// <summary>
