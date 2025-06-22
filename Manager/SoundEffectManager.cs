@@ -1,6 +1,4 @@
 using UnityEngine;
-using FishNet.Object;
-using FishNet.Object.Synchronizing;
 using System.Collections.Generic;
 using System.Collections;
 
@@ -29,10 +27,11 @@ public class CustomSoundEntry
 }
 
 /// <summary>
-/// Singleton manager for handling sound effects synchronized across clients based on fight visibility.
+/// Singleton manager for handling sound effects with local playback support.
+/// Can be used with or without networking - handles both scenarios gracefully.
 /// Attach to: A GameObject in the scene (preferably on a manager object).
 /// </summary>
-public class SoundEffectManager : NetworkBehaviour
+public class SoundEffectManager : MonoBehaviour
 {
     [Header("Fallback Sound")]
     [SerializeField] private AudioClip defaultSoundClip;
@@ -65,19 +64,6 @@ public class SoundEffectManager : NetworkBehaviour
     // Audio source parent
     private Transform audioSourceParent;
     
-    public override void OnStartServer()
-    {
-        base.OnStartServer();
-        InitializeManager();
-    }
-    
-    public override void OnStartClient()
-    {
-        base.OnStartClient();
-        InitializeManager();
-        Debug.Log("SoundEffectManager: Client initialization completed");
-    }
-    
     private void Awake()
     {
         // Singleton pattern
@@ -93,9 +79,15 @@ public class SoundEffectManager : NetworkBehaviour
         }
     }
     
+    private void Start()
+    {
+        // Always initialize on Start to ensure it works in all scenarios
+        InitializeManager();
+    }
+    
     private void InitializeManager()
     {
-        Debug.Log($"SoundEffectManager: Starting initialization - IsServer: {IsServerStarted}, IsClient: {IsClientStarted}");
+        Debug.Log($"SoundEffectManager: Starting initialization");
         
         // Create audio source parent
         if (audioSourceParent == null)
@@ -154,7 +146,6 @@ public class SoundEffectManager : NetworkBehaviour
     {
         GameObject audioGO = new GameObject("PooledAudioSource");
         audioGO.transform.SetParent(audioSourceParent);
-        audioGO.SetActive(false);
         
         AudioSource audioSource = audioGO.AddComponent<AudioSource>();
         audioSource.playOnAwake = false;
@@ -164,53 +155,6 @@ public class SoundEffectManager : NetworkBehaviour
         audioSource.SetCustomCurve(AudioSourceCurveType.CustomRolloff, volumeRolloff);
         
         return audioSource;
-    }
-    
-    /// <summary>
-    /// Plays a default sound effect at a specific position
-    /// </summary>
-    [Server]
-    public void PlaySoundEffect(Vector3 position, uint sourceEntityId, uint targetEntityId)
-    {
-        PlaySoundEffectWithClip(position, defaultSoundClip, defaultVolume, defaultPitch, false, sourceEntityId, targetEntityId);
-    }
-    
-    /// <summary>
-    /// Plays a named custom sound effect at a specific position
-    /// </summary>
-    [Server]
-    public void PlayNamedSoundEffect(Vector3 position, string soundName, uint sourceEntityId, uint targetEntityId)
-    {
-        if (customSoundLookup.TryGetValue(soundName, out CustomSoundEntry soundEntry))
-        {
-            Debug.Log($"SoundEffectManager: Playing custom sound '{soundName}' at {position}");
-            RpcPlayNamedSoundEffect(position, soundName, sourceEntityId, targetEntityId);
-        }
-        else
-        {
-            Debug.LogWarning($"SoundEffectManager: Custom sound '{soundName}' not found in database, using default sound");
-            PlaySoundEffect(position, sourceEntityId, targetEntityId);
-        }
-    }
-    
-    /// <summary>
-    /// Plays a sound effect with specific clip and parameters
-    /// </summary>
-    [Server]
-    public void PlaySoundEffectWithClip(Vector3 position, AudioClip clip, float volume, float pitch, bool loop, uint sourceEntityId, uint targetEntityId)
-    {
-        if (clip == null)
-        {
-            Debug.LogWarning("SoundEffectManager: Audio clip is null, cannot play sound");
-            return;
-        }
-        
-        if (debugMode)
-        {
-            Debug.Log($"SoundEffectManager: Playing sound {clip.name} at {position}");
-        }
-        
-        RpcPlaySoundEffect(position, clip.name, volume, pitch, loop, sourceEntityId, targetEntityId);
     }
     
     /// <summary>
@@ -227,59 +171,6 @@ public class SoundEffectManager : NetworkBehaviour
         }
         
         return visibilityManager.ShouldShowVisualEffectsForEntities(sourceEntityId, targetEntityId);
-    }
-    
-    /// <summary>
-    /// RPC to play default sound effect on clients in the viewed fight
-    /// </summary>
-    [ObserversRpc]
-    private void RpcPlaySoundEffect(Vector3 position, string clipName, float volume, float pitch, bool loop, uint sourceEntityId, uint targetEntityId)
-    {
-        // Check if sounds should be played on this client based on current fight visibility
-        if (!ShouldPlaySoundEffectsForEntities(sourceEntityId, targetEntityId))
-        {
-            Debug.Log($"SoundEffectManager: Skipping sound effect '{clipName}' - not in currently viewed fight");
-            return;
-        }
-        
-        // Try to find the clip in our database or resources
-        AudioClip clip = FindAudioClip(clipName);
-        if (clip == null)
-        {
-            Debug.LogWarning($"SoundEffectManager: Could not find audio clip '{clipName}'");
-            return;
-        }
-        
-        PlayAudioClipAtPosition(position, clip, volume, pitch, loop);
-    }
-    
-    /// <summary>
-    /// RPC to play named custom sound effect on clients in the viewed fight
-    /// </summary>
-    [ObserversRpc]
-    private void RpcPlayNamedSoundEffect(Vector3 position, string soundName, uint sourceEntityId, uint targetEntityId)
-    {
-        // Check if sounds should be played on this client based on current fight visibility
-        if (!ShouldPlaySoundEffectsForEntities(sourceEntityId, targetEntityId))
-        {
-            Debug.Log($"SoundEffectManager: Skipping named sound effect '{soundName}' - not in currently viewed fight");
-            return;
-        }
-        
-        if (customSoundLookup.TryGetValue(soundName, out CustomSoundEntry soundEntry))
-        {
-            PlayAudioClipAtPosition(position, soundEntry.audioClip, soundEntry.volume, soundEntry.pitch, soundEntry.loop);
-        }
-        else
-        {
-            Debug.LogWarning($"SoundEffectManager: Named sound '{soundName}' not found in lookup, trying fallback");
-            
-            // Try to find default clip as fallback
-            if (defaultSoundClip != null)
-            {
-                PlayAudioClipAtPosition(position, defaultSoundClip, defaultVolume, defaultPitch, false);
-            }
-        }
     }
     
     /// <summary>
@@ -300,7 +191,12 @@ public class SoundEffectManager : NetworkBehaviour
         audioSource.volume = volume;
         audioSource.pitch = pitch;
         audioSource.loop = loop;
-        audioSource.gameObject.SetActive(true);
+        
+        // Make sure the audio source GameObject is active
+        if (!audioSource.gameObject.activeInHierarchy)
+        {
+            audioSource.gameObject.SetActive(true);
+        }
         
         // Play the sound
         audioSource.Play();
@@ -323,6 +219,13 @@ public class SoundEffectManager : NetworkBehaviour
     /// </summary>
     private AudioSource GetPooledAudioSource()
     {
+        // Ensure pool is initialized
+        if (audioSourcePool == null)
+        {
+            Debug.LogWarning("SoundEffectManager: Audio source pool not initialized, initializing now");
+            InitializeAudioSourcePool();
+        }
+        
         if (audioSourcePool.Count > 0)
         {
             return audioSourcePool.Dequeue();
@@ -355,7 +258,6 @@ public class SoundEffectManager : NetworkBehaviour
         
         audioSource.Stop();
         audioSource.clip = null;
-        audioSource.gameObject.SetActive(false);
         audioSource.transform.position = Vector3.zero;
         
         activeAudioSources.Remove(audioSource);
@@ -397,10 +299,12 @@ public class SoundEffectManager : NetworkBehaviour
         return clip;
     }
     
+    #region Public API
+    
     /// <summary>
     /// Public method for external scripts to trigger sound effects
     /// </summary>
-    public static void TriggerSoundEffect(Vector3 position, uint sourceEntityId, uint targetEntityId)
+    public static void TriggerSoundEffect(Vector3 position, uint sourceEntityId = 0, uint targetEntityId = 0)
     {
         if (Instance == null)
         {
@@ -408,21 +312,13 @@ public class SoundEffectManager : NetworkBehaviour
             return;
         }
         
-        if (Instance.IsServerStarted)
-        {
-            Instance.PlaySoundEffect(position, sourceEntityId, targetEntityId);
-        }
-        else
-        {
-            Debug.Log("SoundEffectManager: Triggering local sound effect on client");
-            Instance.TriggerLocalSoundEffect(position, sourceEntityId, targetEntityId);
-        }
+        Instance.PlaySoundEffect(position, sourceEntityId, targetEntityId);
     }
     
     /// <summary>
     /// Public method for external scripts to trigger named sound effects
     /// </summary>
-    public static void TriggerNamedSoundEffect(Vector3 position, string soundName, uint sourceEntityId, uint targetEntityId)
+    public static void TriggerNamedSoundEffect(Vector3 position, string soundName, uint sourceEntityId = 0, uint targetEntityId = 0)
     {
         if (Instance == null)
         {
@@ -430,26 +326,21 @@ public class SoundEffectManager : NetworkBehaviour
             return;
         }
         
-        if (Instance.IsServerStarted)
-        {
-            Instance.PlayNamedSoundEffect(position, soundName, sourceEntityId, targetEntityId);
-        }
-        else
-        {
-            Debug.Log($"SoundEffectManager: Triggering local named sound effect '{soundName}' on client");
-            Instance.TriggerLocalNamedSoundEffect(position, soundName, sourceEntityId, targetEntityId);
-        }
+        Instance.PlayNamedSoundEffect(position, soundName, sourceEntityId, targetEntityId);
     }
     
     /// <summary>
-    /// Triggers local sound effect without server validation
+    /// Play a default sound effect at a specific position
     /// </summary>
-    private void TriggerLocalSoundEffect(Vector3 position, uint sourceEntityId, uint targetEntityId)
+    public void PlaySoundEffect(Vector3 position, uint sourceEntityId = 0, uint targetEntityId = 0)
     {
-        // Check if sounds should be played on this client
+        // Check if sounds should be played based on visibility
         if (!ShouldPlaySoundEffectsForEntities(sourceEntityId, targetEntityId))
         {
-            Debug.Log("SoundEffectManager: Skipping local sound effect - not in currently viewed fight");
+            if (debugMode)
+            {
+                Debug.Log("SoundEffectManager: Skipping sound effect - not in currently viewed fight");
+            }
             return;
         }
         
@@ -459,30 +350,117 @@ public class SoundEffectManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogWarning("SoundEffectManager: No default sound clip assigned for local playback");
+            Debug.LogWarning("SoundEffectManager: No default sound clip assigned");
         }
     }
     
     /// <summary>
-    /// Triggers local named sound effect without server validation
+    /// Play a named custom sound effect at a specific position
     /// </summary>
-    private void TriggerLocalNamedSoundEffect(Vector3 position, string soundName, uint sourceEntityId, uint targetEntityId)
+    public void PlayNamedSoundEffect(Vector3 position, string soundName, uint sourceEntityId = 0, uint targetEntityId = 0)
     {
-        // Check if sounds should be played on this client
+        // Check if sounds should be played based on visibility
         if (!ShouldPlaySoundEffectsForEntities(sourceEntityId, targetEntityId))
         {
-            Debug.Log($"SoundEffectManager: Skipping local named sound effect '{soundName}' - not in currently viewed fight");
+            if (debugMode)
+            {
+                Debug.Log($"SoundEffectManager: Skipping named sound effect '{soundName}' - not in currently viewed fight");
+            }
             return;
+        }
+        
+        // Ensure initialization
+        if (customSoundLookup == null)
+        {
+            Debug.LogWarning("SoundEffectManager: Custom sound lookup not initialized, initializing now");
+            InitializeCustomSoundDatabase();
         }
         
         if (customSoundLookup.TryGetValue(soundName, out CustomSoundEntry soundEntry))
         {
+            if (debugMode)
+            {
+                Debug.Log($"SoundEffectManager: Playing custom sound '{soundName}' at {position}");
+            }
             PlayAudioClipAtPosition(position, soundEntry.audioClip, soundEntry.volume, soundEntry.pitch, soundEntry.loop);
         }
         else
         {
-            Debug.LogWarning($"SoundEffectManager: Named sound '{soundName}' not found for local playback, using default");
-            TriggerLocalSoundEffect(position, sourceEntityId, targetEntityId);
+            Debug.LogWarning($"SoundEffectManager: Named sound '{soundName}' not found in database, using default sound");
+            PlaySoundEffect(position, sourceEntityId, targetEntityId);
         }
     }
+    
+    /// <summary>
+    /// Play a sound effect with specific clip and parameters
+    /// </summary>
+    public void PlaySoundEffectWithClip(Vector3 position, AudioClip clip, float volume, float pitch, bool loop, uint sourceEntityId = 0, uint targetEntityId = 0)
+    {
+        if (clip == null)
+        {
+            Debug.LogWarning("SoundEffectManager: Audio clip is null, cannot play sound");
+            return;
+        }
+        
+        // Check if sounds should be played based on visibility
+        if (!ShouldPlaySoundEffectsForEntities(sourceEntityId, targetEntityId))
+        {
+            if (debugMode)
+            {
+                Debug.Log($"SoundEffectManager: Skipping sound effect '{clip.name}' - not in currently viewed fight");
+            }
+            return;
+        }
+        
+        if (debugMode)
+        {
+            Debug.Log($"SoundEffectManager: Playing sound {clip.name} at {position}");
+        }
+        
+        PlayAudioClipAtPosition(position, clip, volume, pitch, loop);
+    }
+    
+    /// <summary>
+    /// Stop all currently playing sounds
+    /// </summary>
+    public void StopAllSounds()
+    {
+        foreach (var audioSource in activeAudioSources)
+        {
+            if (audioSource != null)
+            {
+                audioSource.Stop();
+            }
+        }
+        
+        // Return all to pool
+        while (activeAudioSources.Count > 0)
+        {
+            ReturnAudioSourceToPool(activeAudioSources[0]);
+        }
+    }
+    
+    /// <summary>
+    /// Set master volume for all sound effects
+    /// </summary>
+    public void SetMasterVolume(float volume)
+    {
+        defaultVolume = Mathf.Clamp01(volume);
+        
+        // Update all active audio sources
+        foreach (var audioSource in activeAudioSources)
+        {
+            if (audioSource != null)
+            {
+                audioSource.volume = defaultVolume;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Get current master volume
+    /// </summary>
+    public float GetMasterVolume() => defaultVolume;
+    
+    #endregion
 } 
