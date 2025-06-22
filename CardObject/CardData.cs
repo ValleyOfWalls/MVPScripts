@@ -2,6 +2,21 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 
+/// <summary>
+/// Defines the category of a card for different game systems
+/// </summary>
+public enum CardCategory
+{
+    [Tooltip("Basic cards that come with starter decks (BasicAttack, BasicDefend, etc.)")]
+    Starter,
+    
+    [Tooltip("Advanced cards available in draft packs and shops")]
+    Draftable,
+    
+    [Tooltip("Upgraded versions of cards (not available in drafts or shops)")]
+    Upgraded
+}
+
 [CreateAssetMenu(fileName = "New CardData", menuName = "Card Game/Card Data")]
 public class CardData : ScriptableObject
 {
@@ -11,6 +26,10 @@ public class CardData : ScriptableObject
     [TextArea(2, 4)]
     [SerializeField] private string _description = "Card Description";
     [SerializeField] private Sprite _cardArtwork;
+
+    [Header("═══ CARD CATEGORY ═══")]
+    [Tooltip("Determines where this card can appear (starter decks, draft packs, shops, etc.)")]
+    [SerializeField] private CardCategory _cardCategory = CardCategory.Draftable;
 
     [Header("═══ CORE MECHANICS ═══")]
     [Tooltip("What type of card this is (affects sequencing and AI)")]
@@ -68,6 +87,7 @@ public class CardData : ScriptableObject
     public string CardName => _cardName;
     public string Description => _description;
     public Sprite CardArtwork => _cardArtwork;
+    public CardCategory CardCategory => _cardCategory;
     public CardType CardType => _cardType;
     public int EnergyCost => _energyCost;
     public CardData UpgradedVersion => _upgradedVersion;
@@ -209,6 +229,14 @@ public class CardData : ScriptableObject
     {
         _changesStance = true;
         _newStance = newStance;
+    }
+
+    /// <summary>
+    /// Set the category of this card (Starter, Draftable, or Upgraded)
+    /// </summary>
+    public void SetCardCategory(CardCategory category)
+    {
+        _cardCategory = category;
     }
 
     /// <summary>

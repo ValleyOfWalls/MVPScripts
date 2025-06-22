@@ -124,22 +124,22 @@ public class ShopPack : NetworkBehaviour
             return;
         }
         
-        // Get a random card from the database
+        // Get random draftable cards from the database (shops should sell draftable cards, not starter or upgraded cards)
         if (CardDatabase.Instance == null)
         {
             Debug.LogError("ShopPack: Cannot create shop card - CardDatabase instance not found");
             return;
         }
         
-        List<CardData> allCards = CardDatabase.Instance.GetAllCards();
-        if (allCards.Count == 0)
+        List<CardData> draftableCards = CardDatabase.Instance.GetDraftableCards();
+        if (draftableCards.Count == 0)
         {
-            Debug.LogError("ShopPack: Cannot create shop card - no cards in database");
+            Debug.LogError("ShopPack: Cannot create shop card - no draftable cards in database");
             return;
         }
         
-        // Select a random card
-        CardData randomCardData = allCards[UnityEngine.Random.Range(0, allCards.Count)];
+        // Select a random draftable card
+        CardData randomCardData = draftableCards[UnityEngine.Random.Range(0, draftableCards.Count)];
         
         // Generate a random cost within the specified range
         int cardCost = UnityEngine.Random.Range(minCost, maxCost + 1);

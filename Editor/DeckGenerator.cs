@@ -363,6 +363,10 @@ public class DeckGenerator : EditorWindow
         // Initialize the effects list
         effectsField?.SetValue(card, new System.Collections.Generic.List<CardEffect>());
         
+        // Set the card category based on file path
+        CardCategory category = DetermineCardCategory(fileName);
+        card.SetCardCategory(category);
+        
         string assetPath = CARDS_FOLDER + fileName + ".asset";
         
         // Ensure directory exists for nested paths
@@ -379,6 +383,33 @@ public class DeckGenerator : EditorWindow
         card.name = assetFileName;
         
         return card;
+    }
+    
+    /// <summary>
+    /// Determines the card category based on the file path
+    /// </summary>
+    private CardCategory DetermineCardCategory(string fileName)
+    {
+        string fileNameLower = fileName.ToLower();
+        
+        if (fileNameLower.Contains("upgraded/") || fileNameLower.Contains("_upgraded"))
+        {
+            return CardCategory.Upgraded;
+        }
+        else if (fileNameLower.Contains("draft/"))
+        {
+            return CardCategory.Draftable;
+        }
+        else if (fileNameLower.Contains("basicattack") || fileNameLower.Contains("basicdefend") || 
+                 fileNameLower.Contains("starter/"))
+        {
+            return CardCategory.Starter;
+        }
+        else
+        {
+            // Default to draftable for other cards (like special starter deck cards)
+            return CardCategory.Draftable;
+        }
     }
     
     private void SaveCardAsset(CardData card)

@@ -9,8 +9,19 @@ public class CardDatabase : MonoBehaviour
 {
     public static CardDatabase Instance { get; private set; }
 
+    [Header("All Cards")]
     [SerializeField]
-    private List<CardData> allCardDataList = new List<CardData>(); // Assign all CardData SOs here in Inspector
+    private List<CardData> allCardDataList = new List<CardData>(); // All cards for backwards compatibility
+
+    [Header("Card Categories")]
+    [SerializeField]
+    private List<CardData> starterCardsList = new List<CardData>(); // Basic starter cards (BasicAttack, BasicDefend, etc.)
+    
+    [SerializeField]
+    private List<CardData> draftableCardsList = new List<CardData>(); // Cards available in draft packs
+    
+    [SerializeField]
+    private List<CardData> upgradedCardsList = new List<CardData>(); // Upgraded versions of cards (not draftable)
 
     // OR, load from Resources:
     // [SerializeField] private string cardDataPathInResources = "CardData"; 
@@ -35,14 +46,23 @@ public class CardDatabase : MonoBehaviour
     {
         cardDataById.Clear();
 
+        // Combine all card lists for the main dictionary
+        List<CardData> allCards = new List<CardData>();
+        allCards.AddRange(allCardDataList);
+        allCards.AddRange(starterCardsList);
+        allCards.AddRange(draftableCardsList);
+        allCards.AddRange(upgradedCardsList);
+        
+        // Remove duplicates (in case a card appears in multiple lists)
+        allCards = allCards.Distinct().ToList();
+
         // Sort cards by their existing CardId to ensure consistent ordering
-        allCardDataList.Sort((a, b) => a.CardId.CompareTo(b.CardId));
+        allCards.Sort((a, b) => a.CardId.CompareTo(b.CardId));
 
         // Ensure cards have sequential IDs starting from 1
         int nextId = 1;
         
-        // Option 1: If using the list assigned in Inspector
-        foreach (CardData data in allCardDataList)
+        foreach (CardData data in allCards)
         {
             if (data != null)
             {
@@ -78,31 +98,16 @@ public class CardDatabase : MonoBehaviour
                 }
             }
         }
-        Debug.Log($"CardDatabase initialized with {cardDataById.Count} cards from Inspector list.");
-
-        // Option 2: If loading from Resources folder
-        /*
-        CardData[] loadedCards = Resources.LoadAll<CardData>(cardDataPathInResources);
-        foreach (CardData data in loadedCards)
-        {
-            if (data != null)
-            {
-                if (!cardDataById.ContainsKey(data.CardId))
-                {
-                    cardDataById.Add(data.CardId, data);
-                }
-                else
-                {
-                    Debug.LogWarning($"CardDatabase: Duplicate CardId {data.CardId} found for '{data.CardName}' and '{cardDataById[data.CardId].CardName}'. Ignoring duplicate.");
-                }
-            }
-        }
-        Debug.Log($"CardDatabase initialized with {cardDataById.Count} cards from Resources folder: Assets/Resources/{cardDataPathInResources}");
-        */
+        
+        Debug.Log($"CardDatabase initialized with {cardDataById.Count} total cards:");
+        Debug.Log($"  - All Cards List: {allCardDataList.Count}");
+        Debug.Log($"  - Starter Cards: {starterCardsList.Count}");
+        Debug.Log($"  - Draftable Cards: {draftableCardsList.Count}");
+        Debug.Log($"  - Upgraded Cards: {upgradedCardsList.Count}");
 
         if (cardDataById.Count == 0)
         {
-            Debug.LogWarning("CardDatabase is empty. Make sure to assign CardData ScriptableObjects to the list in the Inspector or place them in the Resources folder if using that loading method.");
+            Debug.LogWarning("CardDatabase is empty. Make sure to assign CardData ScriptableObjects to the appropriate lists in the Inspector.");
         }
     }
 
@@ -121,38 +126,58 @@ public class CardDatabase : MonoBehaviour
         return new List<CardData>(cardDataById.Values);
     }
 
+    /// <summary>
+    /// Gets all starter cards (basic cards that come with starter decks)
+    /// </summary>
+    public List<CardData> GetStarterCards()
+    {
+        return new List<CardData>(starterCardsList);
+    }
+
+    /// <summary>
+    /// Gets all draftable cards (cards that can appear in draft packs)
+    /// </summary>
+    public List<CardData> GetDraftableCards()
+    {
+        return new List<CardData>(draftableCardsList);
+    }
+
+    /// <summary>
+    /// Gets all upgraded cards (upgraded versions, not draftable)
+    /// </summary>
+    public List<CardData> GetUpgradedCards()
+    {
+        return new List<CardData>(upgradedCardsList);
+    }
+
     public List<CardData> GetRandomCards(int count)
     {
-        if (count <= 0) return new List<CardData>();
-        
-        // Create a shuffled list of available cards
-        List<CardData> availableCards = new List<CardData>(allCardDataList);
-        int n = availableCards.Count;
-        while (n > 1)
-        {
-            n--;
-            int k = Random.Range(0, n + 1);
-            CardData temp = availableCards[k];
-            availableCards[k] = availableCards[n];
-            availableCards[n] = temp;
-        }
-        
-        // Return the requested number of cards (or all if count > available)
-        return availableCards.Take(Mathf.Min(count, availableCards.Count)).ToList();
+        return GetRandomCardsFromList(GetAllCards(), count, false);
     }
 
     /// <summary>
     /// Gets random cards allowing duplicates - useful for draft packs
+    /// Now uses only draftable cards instead of all cards
     /// </summary>
     /// <param name="count">Number of cards to get</param>
-    /// <returns>List of random cards, potentially with duplicates</returns>
+    /// <returns>List of random draftable cards, potentially with duplicates</returns>
     public List<CardData> GetRandomCardsWithDuplicates(int count)
+    {
+        return GetRandomDraftableCardsWithDuplicates(count);
+    }
+
+    /// <summary>
+    /// Gets random draftable cards allowing duplicates - for draft packs
+    /// </summary>
+    /// <param name="count">Number of cards to get</param>
+    /// <returns>List of random draftable cards, potentially with duplicates</returns>
+    public List<CardData> GetRandomDraftableCardsWithDuplicates(int count)
     {
         if (count <= 0) return new List<CardData>();
         
-        if (allCardDataList.Count == 0)
+        if (draftableCardsList.Count == 0)
         {
-            Debug.LogWarning("CardDatabase: No cards available to select from.");
+            Debug.LogWarning("CardDatabase: No draftable cards available to select from. Make sure draftable cards are assigned in the Inspector.");
             return new List<CardData>();
         }
         
@@ -161,22 +186,95 @@ public class CardDatabase : MonoBehaviour
         // Select random cards allowing duplicates
         for (int i = 0; i < count; i++)
         {
-            int randomIndex = Random.Range(0, allCardDataList.Count);
-            result.Add(allCardDataList[randomIndex]);
+            int randomIndex = Random.Range(0, draftableCardsList.Count);
+            result.Add(draftableCardsList[randomIndex]);
         }
         
         return result;
     }
 
+    /// <summary>
+    /// Gets random starter cards allowing duplicates
+    /// </summary>
+    /// <param name="count">Number of cards to get</param>
+    /// <returns>List of random starter cards, potentially with duplicates</returns>
+    public List<CardData> GetRandomStarterCardsWithDuplicates(int count)
+    {
+        if (count <= 0) return new List<CardData>();
+        
+        if (starterCardsList.Count == 0)
+        {
+            Debug.LogWarning("CardDatabase: No starter cards available to select from.");
+            return new List<CardData>();
+        }
+        
+        List<CardData> result = new List<CardData>();
+        
+        // Select random cards allowing duplicates
+        for (int i = 0; i < count; i++)
+        {
+            int randomIndex = Random.Range(0, starterCardsList.Count);
+            result.Add(starterCardsList[randomIndex]);
+        }
+        
+        return result;
+    }
+
+    /// <summary>
+    /// Helper method to get random cards from a specific list
+    /// </summary>
+    private List<CardData> GetRandomCardsFromList(List<CardData> sourceList, int count, bool allowDuplicates)
+    {
+        if (count <= 0) return new List<CardData>();
+        
+        if (sourceList.Count == 0)
+        {
+            Debug.LogWarning("CardDatabase: Source list is empty.");
+            return new List<CardData>();
+        }
+        
+        if (allowDuplicates)
+        {
+            List<CardData> result = new List<CardData>();
+            for (int i = 0; i < count; i++)
+            {
+                int randomIndex = Random.Range(0, sourceList.Count);
+                result.Add(sourceList[randomIndex]);
+            }
+            return result;
+        }
+        else
+        {
+            // Create a shuffled list of available cards
+            List<CardData> availableCards = new List<CardData>(sourceList);
+            int n = availableCards.Count;
+            while (n > 1)
+            {
+                n--;
+                int k = Random.Range(0, n + 1);
+                CardData temp = availableCards[k];
+                availableCards[k] = availableCards[n];
+                availableCards[n] = temp;
+            }
+            
+            // Return the requested number of cards (or all if count > available)
+            return availableCards.Take(Mathf.Min(count, availableCards.Count)).ToList();
+        }
+    }
+
 #if UNITY_EDITOR
     /// <summary>
     /// Editor function to automatically find and populate all CardData assets in the project
+    /// Now categorizes cards based on their CardCategory field
     /// </summary>
     [ContextMenu("Auto-Populate Card Database")]
     public void AutoPopulateCardDatabase()
     {
         string[] guids = AssetDatabase.FindAssets("t:CardData");
         List<CardData> foundCards = new List<CardData>();
+        List<CardData> foundStarterCards = new List<CardData>();
+        List<CardData> foundDraftableCards = new List<CardData>();
+        List<CardData> foundUpgradedCards = new List<CardData>();
         
         foreach (string guid in guids)
         {
@@ -186,19 +284,47 @@ public class CardDatabase : MonoBehaviour
             if (cardData != null)
             {
                 foundCards.Add(cardData);
+                
+                // Categorize based on CardCategory field
+                switch (cardData.CardCategory)
+                {
+                    case CardCategory.Starter:
+                        foundStarterCards.Add(cardData);
+                        break;
+                    case CardCategory.Draftable:
+                        foundDraftableCards.Add(cardData);
+                        break;
+                    case CardCategory.Upgraded:
+                        foundUpgradedCards.Add(cardData);
+                        break;
+                    default:
+                        // Default to draftable if category is not set properly
+                        foundDraftableCards.Add(cardData);
+                        Debug.LogWarning($"CardDatabase: Card '{cardData.CardName}' has unknown category, defaulting to Draftable");
+                        break;
+                }
             }
         }
         
         // Sort cards by name for consistency
         foundCards.Sort((a, b) => a.CardName.CompareTo(b.CardName));
+        foundStarterCards.Sort((a, b) => a.CardName.CompareTo(b.CardName));
+        foundDraftableCards.Sort((a, b) => a.CardName.CompareTo(b.CardName));
+        foundUpgradedCards.Sort((a, b) => a.CardName.CompareTo(b.CardName));
         
-        // Update the list
+        // Update the lists
         allCardDataList = foundCards;
+        starterCardsList = foundStarterCards;
+        draftableCardsList = foundDraftableCards;
+        upgradedCardsList = foundUpgradedCards;
         
         // Mark as dirty so the changes are saved
         EditorUtility.SetDirty(this);
         
-        Debug.Log($"CardDatabase: Auto-populated with {foundCards.Count} CardData assets found in project");
+        Debug.Log($"CardDatabase: Auto-populated with {foundCards.Count} total CardData assets:");
+        Debug.Log($"  - Starter Cards: {foundStarterCards.Count}");
+        Debug.Log($"  - Draftable Cards: {foundDraftableCards.Count}");
+        Debug.Log($"  - Upgraded Cards: {foundUpgradedCards.Count}");
         
         // Reinitialize the database
         InitializeDatabase();
@@ -214,7 +340,17 @@ public class CardDatabase : MonoBehaviour
         int invalidCards = 0;
         List<string> issues = new List<string>();
         
-        foreach (CardData card in allCardDataList)
+        // Validate all cards across all lists
+        List<CardData> allCardsToValidate = new List<CardData>();
+        allCardsToValidate.AddRange(allCardDataList);
+        allCardsToValidate.AddRange(starterCardsList);
+        allCardsToValidate.AddRange(draftableCardsList);
+        allCardsToValidate.AddRange(upgradedCardsList);
+        
+        // Remove duplicates
+        allCardsToValidate = allCardsToValidate.Distinct().ToList();
+        
+        foreach (CardData card in allCardsToValidate)
         {
             if (card == null)
             {
@@ -259,7 +395,7 @@ public class CardDatabase : MonoBehaviour
         Debug.Log($"CardDatabase Validation Complete:\n" +
                   $"✅ Valid Cards: {validCards}\n" +
                   $"❌ Invalid Cards: {invalidCards}\n" +
-                  $"Total Cards: {allCardDataList.Count}");
+                  $"Total Cards: {allCardsToValidate.Count}");
         
         if (issues.Count > 0)
         {
@@ -273,27 +409,40 @@ public class CardDatabase : MonoBehaviour
     [ContextMenu("Generate Card Summary")]
     public void GenerateCardSummary()
     {
-        if (allCardDataList.Count == 0)
+        List<CardData> allCardsToSummarize = new List<CardData>();
+        allCardsToSummarize.AddRange(allCardDataList);
+        allCardsToSummarize.AddRange(starterCardsList);
+        allCardsToSummarize.AddRange(draftableCardsList);
+        allCardsToSummarize.AddRange(upgradedCardsList);
+        
+        // Remove duplicates
+        allCardsToSummarize = allCardsToSummarize.Distinct().ToList();
+        
+        if (allCardsToSummarize.Count == 0)
         {
             Debug.Log("CardDatabase: No cards found. Use 'Auto-Populate Card Database' first.");
             return;
         }
         
         // Count by type
-        var typeGroups = allCardDataList
+        var typeGroups = allCardsToSummarize
             .Where(c => c != null)
             .GroupBy(c => c.CardType)
             .OrderBy(g => g.Key);
         
         // Count by energy cost
-        var costGroups = allCardDataList
+        var costGroups = allCardsToSummarize
             .Where(c => c != null)
             .GroupBy(c => c.EnergyCost)
             .OrderBy(g => g.Key);
         
         System.Text.StringBuilder summary = new System.Text.StringBuilder();
         summary.AppendLine($"=== CARD DATABASE SUMMARY ===");
-        summary.AppendLine($"Total Cards: {allCardDataList.Count}");
+        summary.AppendLine($"Total Unique Cards: {allCardsToSummarize.Count}");
+        summary.AppendLine($"Starter Cards: {starterCardsList.Count}");
+        summary.AppendLine($"Draftable Cards: {draftableCardsList.Count}");
+        summary.AppendLine($"Upgraded Cards: {upgradedCardsList.Count}");
+        summary.AppendLine($"Legacy All Cards List: {allCardDataList.Count}");
         summary.AppendLine();
         
         summary.AppendLine("📋 Cards by Type:");
@@ -311,10 +460,10 @@ public class CardDatabase : MonoBehaviour
         summary.AppendLine();
         
         // Find cards with interesting mechanics
-        var comboCards = allCardDataList.Where(c => c != null && c.BuildsCombo).Count();
-        var finisherCards = allCardDataList.Where(c => c != null && c.RequiresCombo).Count();
-        var conditionalCards = allCardDataList.Where(c => c != null && c.HasEffects && c.Effects.Any(e => e.conditionType != ConditionalType.None)).Count();
-        var scalingCards = allCardDataList.Where(c => c != null && c.HasEffects && c.Effects.Any(e => e.scalingType != ScalingType.None)).Count();
+        var comboCards = allCardsToSummarize.Where(c => c != null && c.BuildsCombo).Count();
+        var finisherCards = allCardsToSummarize.Where(c => c != null && c.RequiresCombo).Count();
+        var conditionalCards = allCardsToSummarize.Where(c => c != null && c.HasEffects && c.Effects.Any(e => e.conditionType != ConditionalType.None)).Count();
+        var scalingCards = allCardsToSummarize.Where(c => c != null && c.HasEffects && c.Effects.Any(e => e.scalingType != ScalingType.None)).Count();
         
         summary.AppendLine("🎯 Special Mechanics:");
         summary.AppendLine($"  Combo Builders: {comboCards}");
