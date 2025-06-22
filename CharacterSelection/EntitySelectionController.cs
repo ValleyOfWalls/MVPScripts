@@ -20,7 +20,7 @@ public class EntitySelectionController : MonoBehaviour
     
     [Header("UI Components (Button Mode)")]
     [SerializeField] private Button selectionButton;
-    [SerializeField] private PlayerSelectionIndicator selectionIndicator;
+
     
     [Header("3D Model Components (Model Mode)")]
     [SerializeField] private GameObject model3D;
@@ -75,8 +75,7 @@ public class EntitySelectionController : MonoBehaviour
         if (selectionButton == null)
             selectionButton = GetComponent<Button>();
         
-        if (selectionIndicator == null)
-            selectionIndicator = GetComponentInChildren<PlayerSelectionIndicator>();
+
         
         // Find 3D model components
         if (model3D == null)
@@ -543,10 +542,8 @@ public class EntitySelectionController : MonoBehaviour
     /// </summary>
     public void AddPlayerSelection(string playerID, Color playerColor)
     {
-        if (selectionIndicator != null)
-        {
-            selectionIndicator.AddPlayerSelection(playerID, playerColor);
-        }
+        // PlayerSelectionIndicator functionality removed
+        // This method is kept for backwards compatibility but does nothing
     }
     
     /// <summary>
@@ -554,10 +551,8 @@ public class EntitySelectionController : MonoBehaviour
     /// </summary>
     public void RemovePlayerSelection(string playerID)
     {
-        if (selectionIndicator != null)
-        {
-            selectionIndicator.RemovePlayerSelection(playerID);
-        }
+        // PlayerSelectionIndicator functionality removed
+        // This method is kept for backwards compatibility but does nothing
     }
     
     /// <summary>
@@ -565,10 +560,8 @@ public class EntitySelectionController : MonoBehaviour
     /// </summary>
     public void ClearAllPlayerSelectionsExcept(string playerID)
     {
-        if (selectionIndicator != null)
-        {
-            selectionIndicator.ClearAllExcept(playerID);
-        }
+        // PlayerSelectionIndicator functionality removed
+        // This method is kept for backwards compatibility but does nothing
     }
     
     /// <summary>
@@ -576,10 +569,8 @@ public class EntitySelectionController : MonoBehaviour
     /// </summary>
     public void ClearAllPlayerSelections()
     {
-        if (selectionIndicator != null)
-        {
-            selectionIndicator.ClearAll();
-        }
+        // PlayerSelectionIndicator functionality removed
+        // This method is kept for backwards compatibility but does nothing
     }
     
     #endregion
@@ -886,21 +877,7 @@ public class EntitySelectionController : MonoBehaviour
             }
         }
 
-        // Try to find and assign PlayerSelectionIndicator
-        if (selectionIndicator == null)
-        {
-            PlayerSelectionIndicator indicator = GetComponent<PlayerSelectionIndicator>();
-            if (indicator == null)
-            {
-                indicator = GetComponentInChildren<PlayerSelectionIndicator>();
-            }
-            if (indicator != null)
-            {
-                selectionIndicator = indicator;
-                changesWereMade = true;
-                Debug.Log($"EntitySelectionController: Auto-assigned PlayerSelectionIndicator from {indicator.gameObject.name}");
-            }
-        }
+        // PlayerSelectionIndicator functionality removed - skipping auto-assignment
 
         // Try to find and assign model components
         if (model3D == null)
@@ -1040,7 +1017,7 @@ public class EntitySelectionController : MonoBehaviour
         characterDataReference = null;
         petDataReference = null;
         selectionButton = null;
-        selectionIndicator = null;
+
         model3D = null;
         modelCollider = null;
         modelRenderer = null;

@@ -64,27 +64,11 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         if (characterDeckPanel != null)
         {
             characterDeckRect = characterDeckPanel.GetComponent<RectTransform>();
-            
-            // Add a component to monitor when this panel gets disabled
-            PanelDisableMonitor charMonitor = characterDeckPanel.GetComponent<PanelDisableMonitor>();
-            if (charMonitor == null)
-            {
-                charMonitor = characterDeckPanel.AddComponent<PanelDisableMonitor>();
-            }
-            charMonitor.SetPanelName("CharacterDeckPanel");
         }
         
         if (petDeckPanel != null)
         {
             petDeckRect = petDeckPanel.GetComponent<RectTransform>();
-            
-            // Add a component to monitor when this panel gets disabled
-            PanelDisableMonitor petMonitor = petDeckPanel.GetComponent<PanelDisableMonitor>();
-            if (petMonitor == null)
-            {
-                petMonitor = petDeckPanel.AddComponent<PanelDisableMonitor>();
-            }
-            petMonitor.SetPanelName("PetDeckPanel");
         }
         
         // Initialize panels in hidden state
@@ -867,23 +851,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
                 }
             }
             
-            // Also check for PlayerSelectionIndicator component which would indicate this is a selection item
-            if (currentTransform.GetComponent<PlayerSelectionIndicator>() != null)
-            {
-                Debug.Log($"CharacterSelectionUIAnimator: Found PlayerSelectionIndicator on: {currentTransform.name}");
-                return true;
-            }
-            
-            // Check if any children have PlayerSelectionIndicator (but don't go too deep)
-            if (hierarchyDepth < 3)
-            {
-                PlayerSelectionIndicator childIndicator = currentTransform.GetComponentInChildren<PlayerSelectionIndicator>();
-                if (childIndicator != null)
-                {
-                    Debug.Log($"CharacterSelectionUIAnimator: Found PlayerSelectionIndicator in children of: {currentTransform.name}");
-                    return true;
-                }
-            }
+            // PlayerSelectionIndicator functionality removed - skipping these checks
             
             // Check if we're in a known character/pet grid area by checking parent names
             if (currentTransform.parent != null)
