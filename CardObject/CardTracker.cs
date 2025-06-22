@@ -195,6 +195,12 @@ public class CardTracker : NetworkBehaviour
                 );
             }
         }
+        
+        // Notify the upgrade manager
+        if (CardUpgradeManager.Instance != null && card != null && ownerEntity != null)
+        {
+            CardUpgradeManager.Instance.OnCardPlayed(card, ownerEntity);
+        }
 
         Debug.Log($"CardTracker: Card {card?.CardData?.CardName} played {_timesPlayedThisFight.Value} times this fight");
     }
@@ -240,5 +246,51 @@ public class CardTracker : NetworkBehaviour
     {
         ownerEntity = entity;
         UpdateTrackingData();
+    }
+    
+    /// <summary>
+    /// Checks if all copies of this card in hand have been played this turn
+    /// </summary>
+    public bool AllCopiesPlayedFromHand()
+    {
+        if (card?.CardData == null) return false;
+        
+        // Get current copies in hand
+        int copiesInHand = trackingData.cardsWithSameNameInHand;
+        
+        // If there are no copies in hand and we've played at least one this fight, then all copies were played
+        return copiesInHand == 0 && _timesPlayedThisFight.Value > 0;
+    }
+    
+    /// <summary>
+    /// Gets the total number of copies of this card across all zones (deck, hand, discard)
+    /// </summary>
+    public int GetTotalCopiesCount()
+    {
+        return trackingData.cardsWithSameNameInDeck + 
+               trackingData.cardsWithSameNameInHand + 
+               trackingData.cardsWithSameNameInDiscard;
+    }
+    
+    /// <summary>
+    /// Checks if this card was played while the entity was in a specific stance
+    /// </summary>
+    public bool WasPlayedInStance(StanceType stance)
+    {
+        if (ownerEntity == null) return false;
+        
+        var entityTracker = ownerEntity.GetComponent<EntityTracker>();
+        return entityTracker?.CurrentStance == stance;
+    }
+    
+    /// <summary>
+    /// Checks if this card was played as part of a combo sequence
+    /// </summary>
+    public bool WasPlayedWithCombo()
+    {
+        if (ownerEntity == null) return false;
+        
+        var entityTracker = ownerEntity.GetComponent<EntityTracker>();
+        return entityTracker?.ComboCount > 0;
     }
 } 

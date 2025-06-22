@@ -167,6 +167,63 @@ public class NetworkEntityDeck : NetworkBehaviour
         cardIds.Clear();
 
     }
+    
+    /// <summary>
+    /// Replaces all instances of one card with another (for upgrades)
+    /// </summary>
+    /// <param name="oldCardId">The card ID to replace</param>
+    /// <param name="newCardId">The card ID to replace it with</param>
+    /// <returns>Number of cards replaced</returns>
+    [Server]
+    public int ReplaceCard(int oldCardId, int newCardId)
+    {
+        if (!IsServerInitialized) return 0;
+        
+        int replacedCount = 0;
+        
+        // Replace all instances of oldCardId with newCardId
+        for (int i = 0; i < cardIds.Count; i++)
+        {
+            if (cardIds[i] == oldCardId)
+            {
+                cardIds[i] = newCardId;
+                replacedCount++;
+            }
+        }
+        
+        if (replacedCount > 0)
+        {
+            Debug.Log($"NetworkEntityDeck: Replaced {replacedCount} copies of card {oldCardId} with card {newCardId}");
+        }
+        
+        return replacedCount;
+    }
+    
+    /// <summary>
+    /// Replaces a single instance of one card with another (for upgrades)
+    /// </summary>
+    /// <param name="oldCardId">The card ID to replace</param>
+    /// <param name="newCardId">The card ID to replace it with</param>
+    /// <returns>True if a card was replaced</returns>
+    [Server]
+    public bool ReplaceSingleCard(int oldCardId, int newCardId)
+    {
+        if (!IsServerInitialized) return false;
+        
+        // Find the first instance of oldCardId and replace it
+        for (int i = 0; i < cardIds.Count; i++)
+        {
+            if (cardIds[i] == oldCardId)
+            {
+                cardIds[i] = newCardId;
+                Debug.Log($"NetworkEntityDeck: Replaced one copy of card {oldCardId} with card {newCardId}");
+                return true;
+            }
+        }
+        
+        Debug.LogWarning($"NetworkEntityDeck: Could not find card {oldCardId} to replace with {newCardId}");
+        return false;
+    }
 
     /// <summary>
     /// Loads card data for a given ID

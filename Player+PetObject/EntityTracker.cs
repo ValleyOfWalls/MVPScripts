@@ -413,6 +413,12 @@ public class EntityTracker : NetworkBehaviour
             }
         }
         
+        // Notify the upgrade manager
+        if (CardUpgradeManager.Instance != null)
+        {
+            CardUpgradeManager.Instance.OnTurnEnd(entity);
+        }
+        
         Debug.Log($"EntityTracker: Turn end for {entity.EntityName.Value}");
     }
 
@@ -550,6 +556,20 @@ public class EntityTracker : NetworkBehaviour
         trackingData.tookDamageThisTurn = false;
     }
 
+    /// <summary>
+    /// Called when a fight ends - notifies upgrade manager
+    /// </summary>
+    [Server]
+    public static void NotifyFightEnd(bool victory, List<NetworkEntity> participatingEntities)
+    {
+        if (CardUpgradeManager.Instance != null)
+        {
+            CardUpgradeManager.Instance.OnFightEnd(victory, participatingEntities);
+        }
+        
+        Debug.Log($"EntityTracker: Fight ended with victory={victory}, {participatingEntities.Count} participating entities");
+    }
+    
     /// <summary>
     /// Gets all entities for zone effects
     /// </summary>

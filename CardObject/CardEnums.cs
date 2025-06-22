@@ -53,20 +53,14 @@ public enum CardEffectType
 }
 
 /// <summary>
-/// Enhanced card target types
+/// Card target types - single target with override options via "can also target" flags
 /// </summary>
 public enum CardTargetType
 {
     Self,           // Target the caster (player or pet)
     Opponent,       // Target the opponent (enemy player or pet)
     Ally,           // Target your ally (player targets pet, pet targets player)
-    Random,         // Target is chosen randomly
-    All,            // Target all entities
-    AllAllies,      // Target all allies
-    AllEnemies,     // Target all enemies
-    AllPlayers,     // Target all players globally
-    AllPets,        // Target all pets globally
-    Everyone        // Target everyone globally (zone effect)
+    Random          // Target is chosen randomly
 }
 
 /// <summary>
@@ -182,3 +176,67 @@ public enum ConditionalType
  * RESULT: CardEnums.cs now contains only enums, which is its intended purpose.
  *         All data structures are now in their logical homes where they're actually used.
  */ 
+
+/// <summary>
+/// Types of upgrade conditions based on available tracking data
+/// </summary>
+public enum UpgradeConditionType
+{
+    // Card-specific tracking
+    TimesPlayedThisFight,
+    TimesPlayedAcrossFights, // Requires persistent tracking
+    CopiesInDeck,
+    CopiesInHand,
+    CopiesInDiscard,
+    AllCopiesPlayedFromHand,
+    
+    // Combat performance
+    DamageDealtThisFight,
+    DamageDealtInSingleTurn,
+    DamageTakenThisFight,
+    HealingGivenThisFight,
+    HealingReceivedThisFight,
+    PerfectionStreakAchieved,
+    
+    // Combo and tactical
+    ComboCountReached,
+    PlayedWithCombo,
+    PlayedInStance,
+    PlayedAsFinisher,
+    ZeroCostCardsThisTurn,
+    ZeroCostCardsThisFight,
+    
+    // Health-based
+    PlayedAtLowHealth,
+    PlayedAtHighHealth,
+    SurvivedFightWithCard,
+    
+    // Turn-based
+    PlayedOnConsecutiveTurns,
+    PlayedMultipleTimesInTurn,
+    
+    // Victory conditions
+    WonFightUsingCard,
+    DefeatedOpponentWithCard
+}
+
+/// <summary>
+/// How to compare tracked values against required values for upgrades
+/// </summary>
+public enum UpgradeComparisonType
+{
+    [Tooltip("Tracked value must be greater than or equal to required value")]
+    GreaterThanOrEqual,
+    
+    [Tooltip("Tracked value must be exactly equal to required value")]
+    Equal,
+    
+    [Tooltip("Tracked value must be less than or equal to required value")]
+    LessThanOrEqual,
+    
+    [Tooltip("Tracked value must be greater than required value")]
+    GreaterThan,
+    
+    [Tooltip("Tracked value must be less than required value")]
+    LessThan
+}

@@ -460,23 +460,8 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
                 }
                 break;
                 
-            case CardTargetType.All:
-                targets.AddRange(GetAllPossibleTargets());
-                break;
-                
-            case CardTargetType.AllAllies:
-                targets.Add(sourceEntity); // Self is an ally
-                NetworkEntity allyEntity = GetAllyForEntity(sourceEntity);
-                if (allyEntity != null)
-                    targets.Add(allyEntity);
-                break;
-                
-            case CardTargetType.AllEnemies:
-                NetworkEntity enemyEntity = fightManager.GetOpponentForPlayer(sourceEntity);
-                if (enemyEntity != null)
-                    targets.Add(enemyEntity);
-                // Note: In a 1v1 system, there's only one enemy
-                break;
+            // Removed All, AllAllies, and AllEnemies targeting options
+            // These were replaced with single target + "can also target" system for flexibility
         }
     }
 

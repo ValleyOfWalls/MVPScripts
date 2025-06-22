@@ -480,20 +480,7 @@ public class PetCombatAI : NetworkBehaviour
                 }
                 break;
                 
-            case CardTargetType.All:
-            case CardTargetType.AllAllies:
-            case CardTargetType.AllEnemies:
-                // For multi-target cards, return the primary target (usually self for allies, opponent for enemies)
-                if (targetType == CardTargetType.AllEnemies)
-                {
-                    Debug.Log($"PetCombatAI: Card {cardData.CardName} targets All Enemies - returning opponent as primary");
-                    return opponentEntity;
-                }
-                else
-                {
-                    Debug.Log($"PetCombatAI: Card {cardData.CardName} targets All/AllAllies - returning self as primary");
-                    return petEntity;
-                }
+            // AllEnemies targeting removed - cards now use single targets with "can also target" flags
                 
             default:
                 Debug.LogWarning($"PetCombatAI: Unhandled target type {targetType} for card {cardData.CardName}, defaulting to opponent");

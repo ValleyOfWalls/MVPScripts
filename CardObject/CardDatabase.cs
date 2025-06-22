@@ -9,10 +9,6 @@ public class CardDatabase : MonoBehaviour
 {
     public static CardDatabase Instance { get; private set; }
 
-    [Header("All Cards")]
-    [SerializeField]
-    private List<CardData> allCardDataList = new List<CardData>(); // All cards for backwards compatibility
-
     [Header("Card Categories")]
     [SerializeField]
     private List<CardData> starterCardsList = new List<CardData>(); // Basic starter cards (BasicAttack, BasicDefend, etc.)
@@ -48,7 +44,6 @@ public class CardDatabase : MonoBehaviour
 
         // Combine all card lists for the main dictionary
         List<CardData> allCards = new List<CardData>();
-        allCards.AddRange(allCardDataList);
         allCards.AddRange(starterCardsList);
         allCards.AddRange(draftableCardsList);
         allCards.AddRange(upgradedCardsList);
@@ -100,7 +95,6 @@ public class CardDatabase : MonoBehaviour
         }
         
         Debug.Log($"CardDatabase initialized with {cardDataById.Count} total cards:");
-        Debug.Log($"  - All Cards List: {allCardDataList.Count}");
         Debug.Log($"  - Starter Cards: {starterCardsList.Count}");
         Debug.Log($"  - Draftable Cards: {draftableCardsList.Count}");
         Debug.Log($"  - Upgraded Cards: {upgradedCardsList.Count}");
@@ -307,13 +301,11 @@ public class CardDatabase : MonoBehaviour
         }
         
         // Sort cards by name for consistency
-        foundCards.Sort((a, b) => a.CardName.CompareTo(b.CardName));
         foundStarterCards.Sort((a, b) => a.CardName.CompareTo(b.CardName));
         foundDraftableCards.Sort((a, b) => a.CardName.CompareTo(b.CardName));
         foundUpgradedCards.Sort((a, b) => a.CardName.CompareTo(b.CardName));
         
         // Update the lists
-        allCardDataList = foundCards;
         starterCardsList = foundStarterCards;
         draftableCardsList = foundDraftableCards;
         upgradedCardsList = foundUpgradedCards;
@@ -321,7 +313,8 @@ public class CardDatabase : MonoBehaviour
         // Mark as dirty so the changes are saved
         EditorUtility.SetDirty(this);
         
-        Debug.Log($"CardDatabase: Auto-populated with {foundCards.Count} total CardData assets:");
+        int totalFound = foundStarterCards.Count + foundDraftableCards.Count + foundUpgradedCards.Count;
+        Debug.Log($"CardDatabase: Auto-populated with {totalFound} total CardData assets:");
         Debug.Log($"  - Starter Cards: {foundStarterCards.Count}");
         Debug.Log($"  - Draftable Cards: {foundDraftableCards.Count}");
         Debug.Log($"  - Upgraded Cards: {foundUpgradedCards.Count}");
@@ -342,7 +335,6 @@ public class CardDatabase : MonoBehaviour
         
         // Validate all cards across all lists
         List<CardData> allCardsToValidate = new List<CardData>();
-        allCardsToValidate.AddRange(allCardDataList);
         allCardsToValidate.AddRange(starterCardsList);
         allCardsToValidate.AddRange(draftableCardsList);
         allCardsToValidate.AddRange(upgradedCardsList);
@@ -410,7 +402,6 @@ public class CardDatabase : MonoBehaviour
     public void GenerateCardSummary()
     {
         List<CardData> allCardsToSummarize = new List<CardData>();
-        allCardsToSummarize.AddRange(allCardDataList);
         allCardsToSummarize.AddRange(starterCardsList);
         allCardsToSummarize.AddRange(draftableCardsList);
         allCardsToSummarize.AddRange(upgradedCardsList);
@@ -442,7 +433,7 @@ public class CardDatabase : MonoBehaviour
         summary.AppendLine($"Starter Cards: {starterCardsList.Count}");
         summary.AppendLine($"Draftable Cards: {draftableCardsList.Count}");
         summary.AppendLine($"Upgraded Cards: {upgradedCardsList.Count}");
-        summary.AppendLine($"Legacy All Cards List: {allCardDataList.Count}");
+        // Legacy all cards list removed - cards are now properly categorized
         summary.AppendLine();
         
         summary.AppendLine("📋 Cards by Type:");

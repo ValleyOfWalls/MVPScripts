@@ -69,6 +69,9 @@ public class CardData : ScriptableObject
     
     [Tooltip("Can target allies even if main target is different")]
     [SerializeField] private bool _canAlsoTargetAllies = false;
+    
+    [Tooltip("Can target opponent even if main target is different")]
+    [SerializeField] private bool _canAlsoTargetOpponent = false;
 
     [Header("═══ TRACKING & UPGRADES ═══")]
     [SerializeField] private CardData _upgradedVersion;
@@ -78,6 +81,26 @@ public class CardData : ScriptableObject
     
     [Tooltip("Track damage/healing for scaling")]
     [SerializeField] private bool _trackDamageHealing = true;
+    
+    [Header("═══ UPGRADE CONDITIONS ═══")]
+    [Tooltip("This card can upgrade to another version")]
+    [SerializeField] private bool _canUpgrade = false;
+    
+    [ConditionalField("_canUpgrade", true, true)]
+    [Tooltip("Type of condition required for upgrade")]
+    [SerializeField] private UpgradeConditionType _upgradeConditionType = UpgradeConditionType.TimesPlayedThisFight;
+    
+    [ConditionalField("_canUpgrade", true, true)]
+    [Tooltip("Value that must be reached for upgrade")]
+    [SerializeField] private int _upgradeRequiredValue = 5;
+    
+    [ConditionalField("_canUpgrade", true, true)]
+    [Tooltip("How to compare the tracked value")]
+    [SerializeField] private UpgradeComparisonType _upgradeComparisonType = UpgradeComparisonType.GreaterThanOrEqual;
+    
+    [ConditionalField("_canUpgrade", true, true)]
+    [Tooltip("Upgrade all copies of this card when conditions are met")]
+    [SerializeField] private bool _upgradeAllCopies = false;
 
     // ═══════════════════════════════════════════════════════════════
     // PUBLIC PROPERTIES - CLEAN INTERFACE
@@ -104,9 +127,17 @@ public class CardData : ScriptableObject
     
     public bool CanAlsoTargetSelf => _canAlsoTargetSelf;
     public bool CanAlsoTargetAllies => _canAlsoTargetAllies;
+    public bool CanAlsoTargetOpponent => _canAlsoTargetOpponent;
     
     public bool TrackPlayCount => _trackPlayCount;
     public bool TrackDamageHealing => _trackDamageHealing;
+    
+    // Upgrade system
+    public bool CanUpgrade => _canUpgrade;
+    public UpgradeConditionType UpgradeConditionType => _upgradeConditionType;
+    public int UpgradeRequiredValue => _upgradeRequiredValue;
+    public UpgradeComparisonType UpgradeComparisonType => _upgradeComparisonType;
+    public bool UpgradeAllCopies => _upgradeAllCopies;
     
     // Combo system
     public bool BuildsCombo => _buildsCombo;
@@ -238,6 +269,20 @@ public class CardData : ScriptableObject
     {
         _cardCategory = category;
     }
+    
+    /// <summary>
+    /// Setup upgrade conditions for this card
+    /// </summary>
+    public void SetupUpgrade(CardData upgradedVersion, UpgradeConditionType conditionType, int requiredValue, 
+        UpgradeComparisonType comparisonType = UpgradeComparisonType.GreaterThanOrEqual, bool upgradeAllCopies = false)
+    {
+        _canUpgrade = true;
+        _upgradedVersion = upgradedVersion;
+        _upgradeConditionType = conditionType;
+        _upgradeRequiredValue = requiredValue;
+        _upgradeComparisonType = comparisonType;
+        _upgradeAllCopies = upgradeAllCopies;
+    }
 
     /// <summary>
     /// Add a conditional effect to this card with OR logic (alternative replaces main effect)
@@ -305,6 +350,9 @@ public class CardData : ScriptableObject
             
         if (_canAlsoTargetAllies && !validTargets.Contains(CardTargetType.Ally))
             validTargets.Add(CardTargetType.Ally);
+            
+        if (_canAlsoTargetOpponent && !validTargets.Contains(CardTargetType.Opponent))
+            validTargets.Add(CardTargetType.Opponent);
             
         return validTargets;
     }

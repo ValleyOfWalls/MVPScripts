@@ -373,15 +373,8 @@ public class CardEffectResolver : NetworkBehaviour
                 if (ally != null)
                     effectTargets.Add(ally);
                 break;
-            case CardTargetType.AllPlayers:
-                effectTargets.AddRange(EntityTracker.GetAllEntitiesForZoneEffect(true, false));
-                break;
-            case CardTargetType.AllPets:
-                effectTargets.AddRange(EntityTracker.GetAllEntitiesForZoneEffect(false, true));
-                break;
-            case CardTargetType.Everyone:
-                effectTargets.AddRange(EntityTracker.GetAllEntitiesForZoneEffect(true, true));
-                break;
+            // Removed AllPlayers, AllPets, and Everyone targeting options
+            // These were replaced with more specific targeting through the "can also target" system
             default:
                 // Use original targets for other types
                 effectTargets.AddRange(originalTargets);
