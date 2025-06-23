@@ -209,6 +209,7 @@ public enum UpgradeConditionType
     // Health-based
     PlayedAtLowHealth,
     PlayedAtHighHealth,
+    PlayedAtHalfHealth, // Under 50% HP
     SurvivedFightWithCard,
     
     // Turn-based
@@ -217,7 +218,36 @@ public enum UpgradeConditionType
     
     // Victory conditions
     WonFightUsingCard,
-    DefeatedOpponentWithCard
+    DefeatedOpponentWithCard,
+    LostFightWithCard, // Lose to Win condition
+    
+    // NEW: Advanced tracking conditions (per-fight)
+    ComboUseBackToBack, // Played back-to-back with same card type
+    DrawnOften, // Drawn X times this fight
+    HeldAtTurnEnd, // In hand at end of turn X times this fight
+    DiscardedManually, // Manually discarded X times this fight
+    FinalCardInHand, // Last card in hand X times this fight
+    FamiliarNameInDeck, // X cards share keyword/title fragment
+    OnlyCardTypeInDeck, // Only card of its type in deck
+    AllCardsCostLowEnough, // All cards cost 1 or less
+    DeckSizeBelow, // Deck has fewer than X cards
+    SurvivedStatusEffect, // Survived specific status effect this fight
+    BattleLengthOver, // Battle lasted longer than X turns
+    PerfectTurnPlayed, // Played in perfect turn (no damage, all energy used)
+    OnlyCardPlayedThisTurn, // Only card played that turn
+    
+    // NEW: Lifetime tracking conditions
+    DrawnOftenLifetime, // Drawn X times across all fights
+    HeldAtTurnEndLifetime, // In hand at end of turn X times lifetime
+    DiscardedManuallyLifetime, // Manually discarded X times lifetime
+    FinalCardInHandLifetime, // Last card in hand X times lifetime
+    ComboUseBackToBackLifetime, // Played back-to-back X times lifetime
+    OnlyCardPlayedInTurnLifetime, // Only card played X times lifetime
+    TotalFightsWon, // Won X fights total
+    TotalFightsLost, // Lost X fights total
+    TotalBattleTurns, // Participated in X total battle turns
+    TotalPerfectTurns, // Achieved X perfect turns lifetime
+    TotalStatusEffectsSurvived // Survived X different status effects lifetime
 }
 
 /// <summary>

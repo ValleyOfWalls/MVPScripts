@@ -1,9 +1,9 @@
 using UnityEngine;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -28,6 +28,21 @@ public class CardUpgradeManager : NetworkBehaviour
     // Network synchronized data for persistent tracking
     private readonly SyncDictionary<int, int> persistentPlayCounts = new SyncDictionary<int, int>(); // cardId -> play count across fights
     private readonly SyncDictionary<int, int> persistentWinCounts = new SyncDictionary<int, int>(); // cardId -> wins with card
+    
+    // Card-specific lifetime tracking
+    private readonly SyncDictionary<int, int> persistentDrawCounts = new SyncDictionary<int, int>(); // cardId -> draws across fights
+    private readonly SyncDictionary<int, int> persistentHeldAtTurnEndCounts = new SyncDictionary<int, int>(); // cardId -> held at turn end
+    private readonly SyncDictionary<int, int> persistentDiscardCounts = new SyncDictionary<int, int>(); // cardId -> manual discards
+    private readonly SyncDictionary<int, int> persistentFinalCardCounts = new SyncDictionary<int, int>(); // cardId -> times as final card
+    private readonly SyncDictionary<int, int> persistentBackToBackCounts = new SyncDictionary<int, int>(); // cardId -> back-to-back plays
+    private readonly SyncDictionary<int, int> persistentSoloPlayCounts = new SyncDictionary<int, int>(); // cardId -> solo plays
+    
+    // Entity-specific lifetime tracking
+    private readonly SyncDictionary<int, int> persistentEntityFightsWon = new SyncDictionary<int, int>(); // entityId -> fights won
+    private readonly SyncDictionary<int, int> persistentEntityFightsLost = new SyncDictionary<int, int>(); // entityId -> fights lost
+    private readonly SyncDictionary<int, int> persistentEntityBattleTurns = new SyncDictionary<int, int>(); // entityId -> total battle turns
+    private readonly SyncDictionary<int, int> persistentEntityPerfectTurns = new SyncDictionary<int, int>(); // entityId -> perfect turns
+    private readonly SyncDictionary<int, int> persistentEntityStatusEffectsSurvived = new SyncDictionary<int, int>(); // entityId -> unique status effects survived
     
     // Per-fight tracking
     private Dictionary<int, HashSet<int>> upgradedCardsThisFight = new Dictionary<int, HashSet<int>>(); // entityId -> set of upgraded card IDs
@@ -234,6 +249,183 @@ public class CardUpgradeManager : NetworkBehaviour
     }
     
     /// <summary>
+    /// Updates persistent card draw count
+    /// </summary>
+    [Server]
+    public void UpdatePersistentDrawCount(int cardId)
+    {
+        if (!IsServerInitialized) return;
+        
+        if (persistentDrawCounts.ContainsKey(cardId))
+        {
+            persistentDrawCounts[cardId]++;
+        }
+        else
+        {
+            persistentDrawCounts[cardId] = 1;
+        }
+    }
+    
+    /// <summary>
+    /// Updates persistent card held at turn end count
+    /// </summary>
+    [Server]
+    public void UpdatePersistentHeldAtTurnEndCount(int cardId)
+    {
+        if (!IsServerInitialized) return;
+        
+        if (persistentHeldAtTurnEndCounts.ContainsKey(cardId))
+        {
+            persistentHeldAtTurnEndCounts[cardId]++;
+        }
+        else
+        {
+            persistentHeldAtTurnEndCounts[cardId] = 1;
+        }
+    }
+    
+    /// <summary>
+    /// Updates persistent card discard count
+    /// </summary>
+    [Server]
+    public void UpdatePersistentDiscardCount(int cardId)
+    {
+        if (!IsServerInitialized) return;
+        
+        if (persistentDiscardCounts.ContainsKey(cardId))
+        {
+            persistentDiscardCounts[cardId]++;
+        }
+        else
+        {
+            persistentDiscardCounts[cardId] = 1;
+        }
+    }
+    
+    /// <summary>
+    /// Updates persistent final card count
+    /// </summary>
+    [Server]
+    public void UpdatePersistentFinalCardCount(int cardId)
+    {
+        if (!IsServerInitialized) return;
+        
+        if (persistentFinalCardCounts.ContainsKey(cardId))
+        {
+            persistentFinalCardCounts[cardId]++;
+        }
+        else
+        {
+            persistentFinalCardCounts[cardId] = 1;
+        }
+    }
+    
+    /// <summary>
+    /// Updates persistent back-to-back play count
+    /// </summary>
+    [Server]
+    public void UpdatePersistentBackToBackCount(int cardId)
+    {
+        if (!IsServerInitialized) return;
+        
+        if (persistentBackToBackCounts.ContainsKey(cardId))
+        {
+            persistentBackToBackCounts[cardId]++;
+        }
+        else
+        {
+            persistentBackToBackCounts[cardId] = 1;
+        }
+    }
+    
+    /// <summary>
+    /// Updates persistent solo play count
+    /// </summary>
+    [Server]
+    public void UpdatePersistentSoloPlayCount(int cardId)
+    {
+        if (!IsServerInitialized) return;
+        
+        if (persistentSoloPlayCounts.ContainsKey(cardId))
+        {
+            persistentSoloPlayCounts[cardId]++;
+        }
+        else
+        {
+            persistentSoloPlayCounts[cardId] = 1;
+        }
+    }
+    
+    /// <summary>
+    /// Updates persistent entity tracking data
+    /// </summary>
+    [Server]
+    public void UpdatePersistentEntityTracking(int entityId, bool victory, int battleTurns, int perfectTurns, int statusEffectsSurvived)
+    {
+        if (!IsServerInitialized) return;
+        
+        // Update fights won/lost
+        if (victory)
+        {
+            if (persistentEntityFightsWon.ContainsKey(entityId))
+            {
+                persistentEntityFightsWon[entityId]++;
+            }
+            else
+            {
+                persistentEntityFightsWon[entityId] = 1;
+            }
+        }
+        else
+        {
+            if (persistentEntityFightsLost.ContainsKey(entityId))
+            {
+                persistentEntityFightsLost[entityId]++;
+            }
+            else
+            {
+                persistentEntityFightsLost[entityId] = 1;
+            }
+        }
+        
+        // Update battle turns
+        if (persistentEntityBattleTurns.ContainsKey(entityId))
+        {
+            persistentEntityBattleTurns[entityId] += battleTurns;
+        }
+        else
+        {
+            persistentEntityBattleTurns[entityId] = battleTurns;
+        }
+        
+        // Update perfect turns
+        if (perfectTurns > 0)
+        {
+            if (persistentEntityPerfectTurns.ContainsKey(entityId))
+            {
+                persistentEntityPerfectTurns[entityId] += perfectTurns;
+            }
+            else
+            {
+                persistentEntityPerfectTurns[entityId] = perfectTurns;
+            }
+        }
+        
+        // Update status effects survived
+        if (statusEffectsSurvived > 0)
+        {
+            if (persistentEntityStatusEffectsSurvived.ContainsKey(entityId))
+            {
+                persistentEntityStatusEffectsSurvived[entityId] += statusEffectsSurvived;
+            }
+            else
+            {
+                persistentEntityStatusEffectsSurvived[entityId] = statusEffectsSurvived;
+            }
+        }
+    }
+
+    /// <summary>
     /// Updates persistent win tracking
     /// </summary>
     private void UpdatePersistentWinTracking(List<NetworkEntity> entities)
@@ -383,6 +575,91 @@ public class CardUpgradeManager : NetworkBehaviour
             case UpgradeConditionType.PlayedAtHighHealth:
                 float healthPercentHigh = (float)entity.CurrentHealth.Value / entity.MaxHealth.Value * 100f;
                 return healthPercentHigh >= 75f ? 1 : 0; // Consider high health as 75% or above
+                
+            case UpgradeConditionType.PlayedAtHalfHealth:
+                float healthPercentHalf = (float)entity.CurrentHealth.Value / entity.MaxHealth.Value * 100f;
+                return healthPercentHalf <= 50f ? 1 : 0; // Under 50% HP
+                
+            case UpgradeConditionType.LostFightWithCard:
+                return entityTracker?.TrackingData.lostLastFight == true ? 1 : 0;
+                
+            case UpgradeConditionType.ComboUseBackToBack:
+                return cardTracker?.TrackingData.timesPlayedBackToBack ?? 0;
+                
+            case UpgradeConditionType.DrawnOften:
+                return cardTracker?.TrackingData.timesDrawnThisFight ?? 0;
+                
+            case UpgradeConditionType.HeldAtTurnEnd:
+                return cardTracker?.TrackingData.timesHeldAtTurnEnd ?? 0;
+                
+            case UpgradeConditionType.DiscardedManually:
+                return cardTracker?.TrackingData.timesDiscardedManually ?? 0;
+                
+            case UpgradeConditionType.FinalCardInHand:
+                return cardTracker?.TrackingData.timesFinalCardInHand ?? 0;
+                
+            case UpgradeConditionType.FamiliarNameInDeck:
+                return GetFamiliarNameCount(card.CardData, entity);
+                
+            case UpgradeConditionType.OnlyCardTypeInDeck:
+                return IsOnlyCardTypeInDeck(card.CardData, entity) ? 1 : 0;
+                
+            case UpgradeConditionType.AllCardsCostLowEnough:
+                return AllCardsCostLowEnough(entity) ? 1 : 0;
+                
+            case UpgradeConditionType.DeckSizeBelow:
+                return GetDeckSize(entity);
+                
+            case UpgradeConditionType.SurvivedStatusEffect:
+                return entityTracker?.TrackingData.survivedStatusEffects.Count ?? 0;
+                
+            case UpgradeConditionType.BattleLengthOver:
+                return entityTracker?.TrackingData.battleTurnCount ?? 0;
+                
+            case UpgradeConditionType.PerfectTurnPlayed:
+                return entityTracker?.TrackingData.hadPerfectTurnThisFight == true ? 1 : 0;
+                
+            case UpgradeConditionType.OnlyCardPlayedThisTurn:
+                return cardTracker?.TrackingData.timesOnlyCardPlayedInTurn ?? 0;
+                
+            // Lifetime tracking conditions
+            case UpgradeConditionType.DrawnOftenLifetime:
+                return persistentDrawCounts.ContainsKey(cardId) ? persistentDrawCounts[cardId] : 0;
+                
+            case UpgradeConditionType.HeldAtTurnEndLifetime:
+                return persistentHeldAtTurnEndCounts.ContainsKey(cardId) ? persistentHeldAtTurnEndCounts[cardId] : 0;
+                
+            case UpgradeConditionType.DiscardedManuallyLifetime:
+                return persistentDiscardCounts.ContainsKey(cardId) ? persistentDiscardCounts[cardId] : 0;
+                
+            case UpgradeConditionType.FinalCardInHandLifetime:
+                return persistentFinalCardCounts.ContainsKey(cardId) ? persistentFinalCardCounts[cardId] : 0;
+                
+            case UpgradeConditionType.ComboUseBackToBackLifetime:
+                return persistentBackToBackCounts.ContainsKey(cardId) ? persistentBackToBackCounts[cardId] : 0;
+                
+            case UpgradeConditionType.OnlyCardPlayedInTurnLifetime:
+                return persistentSoloPlayCounts.ContainsKey(cardId) ? persistentSoloPlayCounts[cardId] : 0;
+                
+            case UpgradeConditionType.TotalFightsWon:
+                int entityIdWon = entity.ObjectId;
+                return persistentEntityFightsWon.ContainsKey(entityIdWon) ? persistentEntityFightsWon[entityIdWon] : 0;
+                
+            case UpgradeConditionType.TotalFightsLost:
+                int entityIdLost = entity.ObjectId;
+                return persistentEntityFightsLost.ContainsKey(entityIdLost) ? persistentEntityFightsLost[entityIdLost] : 0;
+                
+            case UpgradeConditionType.TotalBattleTurns:
+                int entityIdTurns = entity.ObjectId;
+                return persistentEntityBattleTurns.ContainsKey(entityIdTurns) ? persistentEntityBattleTurns[entityIdTurns] : 0;
+                
+            case UpgradeConditionType.TotalPerfectTurns:
+                int entityIdPerfect = entity.ObjectId;
+                return persistentEntityPerfectTurns.ContainsKey(entityIdPerfect) ? persistentEntityPerfectTurns[entityIdPerfect] : 0;
+                
+            case UpgradeConditionType.TotalStatusEffectsSurvived:
+                int entityIdStatus = entity.ObjectId;
+                return persistentEntityStatusEffectsSurvived.ContainsKey(entityIdStatus) ? persistentEntityStatusEffectsSurvived[entityIdStatus] : 0;
                 
             // Add more condition types as needed
             default:
@@ -603,6 +880,96 @@ public class CardUpgradeManager : NetworkBehaviour
     }
     
     /// <summary>
+    /// Gets the number of cards in deck that share a keyword or title fragment with the given card
+    /// </summary>
+    private int GetFamiliarNameCount(CardData cardData, NetworkEntity entity)
+    {
+        var entityDeck = entity.GetComponent<NetworkEntityDeck>();
+        if (entityDeck == null) return 0;
+        
+        string cardName = cardData.CardName;
+        string[] keywords = cardName.Split(' '); // Simple keyword extraction
+        
+        var deckCardIds = entityDeck.GetAllCardIds();
+        int familiarCount = 0;
+        
+        foreach (int deckCardId in deckCardIds)
+        {
+            CardData deckCard = CardDatabase.Instance?.GetCardById(deckCardId);
+            if (deckCard == null || deckCard == cardData) continue;
+            
+            // Check if any keyword from the original card appears in this deck card's name
+            foreach (string keyword in keywords)
+            {
+                if (keyword.Length > 2 && deckCard.CardName.Contains(keyword, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    familiarCount++;
+                    break; // Only count each card once
+                }
+            }
+        }
+        
+        return familiarCount;
+    }
+    
+    /// <summary>
+    /// Checks if this card is the only one of its type in the deck
+    /// </summary>
+    private bool IsOnlyCardTypeInDeck(CardData cardData, NetworkEntity entity)
+    {
+        var entityDeck = entity.GetComponent<NetworkEntityDeck>();
+        if (entityDeck == null) return false;
+        
+        var deckCardIds = entityDeck.GetAllCardIds();
+        int sameTypeCount = 0;
+        
+        foreach (int deckCardId in deckCardIds)
+        {
+            CardData deckCard = CardDatabase.Instance?.GetCardById(deckCardId);
+            if (deckCard != null && deckCard.CardType == cardData.CardType)
+            {
+                sameTypeCount++;
+                if (sameTypeCount > 1) return false; // More than one of this type
+            }
+        }
+        
+        return sameTypeCount == 1; // Exactly one (this card)
+    }
+    
+    /// <summary>
+    /// Checks if all cards in deck cost 1 or less
+    /// </summary>
+    private bool AllCardsCostLowEnough(NetworkEntity entity)
+    {
+        var entityDeck = entity.GetComponent<NetworkEntityDeck>();
+        if (entityDeck == null) return false;
+        
+        var deckCardIds = entityDeck.GetAllCardIds();
+        
+        foreach (int deckCardId in deckCardIds)
+        {
+            CardData deckCard = CardDatabase.Instance?.GetCardById(deckCardId);
+            if (deckCard != null && deckCard.EnergyCost > 1)
+            {
+                return false; // Found a card that costs more than 1
+            }
+        }
+        
+        return true; // All cards cost 1 or less
+    }
+    
+    /// <summary>
+    /// Gets the total deck size
+    /// </summary>
+    private int GetDeckSize(NetworkEntity entity)
+    {
+        var entityDeck = entity.GetComponent<NetworkEntityDeck>();
+        if (entityDeck == null) return 0;
+        
+        return entityDeck.GetAllCardIds().Count;
+    }
+
+    /// <summary>
     /// Gets condition value for progress tracking without requiring a Card instance
     /// </summary>
     private int GetConditionValueForProgress(UpgradeConditionType conditionType, int cardId, NetworkEntity entity)
@@ -644,7 +1011,68 @@ public class CardUpgradeManager : NetworkBehaviour
             case UpgradeConditionType.ComboCountReached:
                 return entityTracker?.ComboCount ?? 0;
                 
-            // For other condition types, return 0 as they require more complex tracking
+            case UpgradeConditionType.PlayedAtHalfHealth:
+                float healthPercentHalf = (float)entity.CurrentHealth.Value / entity.MaxHealth.Value * 100f;
+                return healthPercentHalf <= 50f ? 1 : 0;
+                
+            case UpgradeConditionType.LostFightWithCard:
+                return entityTracker?.TrackingData.lostLastFight == true ? 1 : 0;
+                
+            case UpgradeConditionType.BattleLengthOver:
+                return entityTracker?.TrackingData.battleTurnCount ?? 0;
+                
+            case UpgradeConditionType.PerfectTurnPlayed:
+                return entityTracker?.TrackingData.hadPerfectTurnThisFight == true ? 1 : 0;
+                
+            case UpgradeConditionType.SurvivedStatusEffect:
+                return entityTracker?.TrackingData.survivedStatusEffects.Count ?? 0;
+                
+            case UpgradeConditionType.DeckSizeBelow:
+                return GetDeckSize(entity);
+                
+            case UpgradeConditionType.AllCardsCostLowEnough:
+                return AllCardsCostLowEnough(entity) ? 1 : 0;
+                
+            // Lifetime tracking conditions for progress
+            case UpgradeConditionType.DrawnOftenLifetime:
+                return persistentDrawCounts.ContainsKey(cardId) ? persistentDrawCounts[cardId] : 0;
+                
+            case UpgradeConditionType.HeldAtTurnEndLifetime:
+                return persistentHeldAtTurnEndCounts.ContainsKey(cardId) ? persistentHeldAtTurnEndCounts[cardId] : 0;
+                
+            case UpgradeConditionType.DiscardedManuallyLifetime:
+                return persistentDiscardCounts.ContainsKey(cardId) ? persistentDiscardCounts[cardId] : 0;
+                
+            case UpgradeConditionType.FinalCardInHandLifetime:
+                return persistentFinalCardCounts.ContainsKey(cardId) ? persistentFinalCardCounts[cardId] : 0;
+                
+            case UpgradeConditionType.ComboUseBackToBackLifetime:
+                return persistentBackToBackCounts.ContainsKey(cardId) ? persistentBackToBackCounts[cardId] : 0;
+                
+            case UpgradeConditionType.OnlyCardPlayedInTurnLifetime:
+                return persistentSoloPlayCounts.ContainsKey(cardId) ? persistentSoloPlayCounts[cardId] : 0;
+                
+            case UpgradeConditionType.TotalFightsWon:
+                int entityIdForWins = entity.ObjectId;
+                return persistentEntityFightsWon.ContainsKey(entityIdForWins) ? persistentEntityFightsWon[entityIdForWins] : 0;
+                
+            case UpgradeConditionType.TotalFightsLost:
+                int entityIdForLosses = entity.ObjectId;
+                return persistentEntityFightsLost.ContainsKey(entityIdForLosses) ? persistentEntityFightsLost[entityIdForLosses] : 0;
+                
+            case UpgradeConditionType.TotalBattleTurns:
+                int entityIdForTurns = entity.ObjectId;
+                return persistentEntityBattleTurns.ContainsKey(entityIdForTurns) ? persistentEntityBattleTurns[entityIdForTurns] : 0;
+                
+            case UpgradeConditionType.TotalPerfectTurns:
+                int entityIdForPerfect = entity.ObjectId;
+                return persistentEntityPerfectTurns.ContainsKey(entityIdForPerfect) ? persistentEntityPerfectTurns[entityIdForPerfect] : 0;
+                
+            case UpgradeConditionType.TotalStatusEffectsSurvived:
+                int entityIdForStatus = entity.ObjectId;
+                return persistentEntityStatusEffectsSurvived.ContainsKey(entityIdForStatus) ? persistentEntityStatusEffectsSurvived[entityIdForStatus] : 0;
+                
+            // For other condition types that require Card instance, return 0 for progress
             default:
                 return 0;
         }

@@ -744,6 +744,22 @@ public class CardTrackingData
     public int zeroCostCardsThisTurn;
     public int zeroCostCardsThisFight;
     public CardType lastPlayedCardType;
+    
+    [Header("Advanced Tracking - This Fight")]
+    public int timesDrawnThisFight; // How many times drawn
+    public int timesHeldAtTurnEnd; // Times in hand at end of turn
+    public int timesDiscardedManually; // Manual discards
+    public int timesFinalCardInHand; // Times as last card in hand
+    public int timesPlayedBackToBack; // Played after same card type
+    public int timesOnlyCardPlayedInTurn; // Only card played that turn
+    
+    [Header("Advanced Tracking - Lifetime")]
+    public int timesDrawnLifetime; // Total times drawn across all fights
+    public int timesHeldAtTurnEndLifetime; // Total times held at turn end
+    public int timesDiscardedManuallyLifetime; // Total manual discards
+    public int timesFinalCardInHandLifetime; // Total times as final card
+    public int timesPlayedBackToBackLifetime; // Total back-to-back plays
+    public int timesOnlyCardPlayedInTurnLifetime; // Total solo plays
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -117,7 +117,9 @@ public class EntityTracker : NetworkBehaviour
             _zeroCostCardsThisFight.Value++;
         }
 
-        // Update last played card type
+        // Update card type tracking for back-to-back detection
+        trackingData.secondLastPlayedCardType = trackingData.lastPlayedCardType;
+        trackingData.lastPlayedCardType = cardType;
         _lastPlayedCardType.Value = (int)cardType;
 
         // Update combo count
@@ -348,6 +350,7 @@ public class EntityTracker : NetworkBehaviour
         if (!IsServerInitialized) return;
 
         trackingData.currentTurnNumber++;
+        trackingData.battleTurnCount++;
         
         // Reset turn-specific counters
         _zeroCostCardsThisTurn.Value = 0;
@@ -356,6 +359,7 @@ public class EntityTracker : NetworkBehaviour
         trackingData.healingGivenLastRound = 0;
         trackingData.healingReceivedLastRound = 0;
         trackingData.damageTakenLastRound = 0;
+        trackingData.usedAllEnergyThisTurn = false;
         
         // Update perfection streak if no damage was taken last turn
         if (!trackingData.tookDamageThisTurn)
@@ -377,7 +381,7 @@ public class EntityTracker : NetworkBehaviour
         // Process stance turn-start effects
         ProcessStanceTurnEffects(true);
         
-        Debug.Log($"EntityTracker: Turn start for {entity.EntityName.Value}. Turn: {trackingData.currentTurnNumber}, Perfection: {_perfectionStreak.Value}");
+        Debug.Log($"EntityTracker: Turn start for {entity.EntityName.Value}. Turn: {trackingData.currentTurnNumber}, Battle Turn: {trackingData.battleTurnCount}, Perfection: {_perfectionStreak.Value}");
     }
 
     /// <summary>
@@ -387,6 +391,13 @@ public class EntityTracker : NetworkBehaviour
     public void OnTurnEnd()
     {
         if (!IsServerInitialized) return;
+
+        // Check for perfect turn (no damage taken + all energy used)
+        if (!trackingData.tookDamageThisTurn && trackingData.usedAllEnergyThisTurn)
+        {
+            trackingData.hadPerfectTurnThisFight = true;
+            Debug.Log($"EntityTracker: {entity.EntityName.Value} had a perfect turn!");
+        }
 
         // Process status effects at end of turn
         EffectHandler effectHandler = entity.GetComponent<EffectHandler>();
@@ -513,12 +524,20 @@ public class EntityTracker : NetworkBehaviour
     {
         if (!IsServerInitialized) return;
 
-        // Reset all fight-specific data
+        // Reset fight-specific data (preserve lifetime data)
         trackingData.damageTakenThisFight = 0;
         trackingData.damageDealtThisFight = 0;
         trackingData.healingReceivedThisFight = 0;
         trackingData.healingGivenThisFight = 0;
         trackingData.currentTurnNumber = 0;
+        trackingData.battleTurnCount = 0;
+        trackingData.hadPerfectTurnThisFight = false;
+        trackingData.usedAllEnergyThisTurn = false;
+        trackingData.secondLastPlayedCardType = CardType.None;
+        trackingData.wonLastFight = false;
+        trackingData.lostLastFight = false;
+        trackingData.survivedStatusEffects.Clear();
+        // Note: totalFightsWon, totalFightsLost, totalBattleTurns, totalPerfectTurns, totalStatusEffectsSurvived are preserved
         
         _comboCount.Value = 0;
         _perfectionStreak.Value = 0;
@@ -557,11 +576,88 @@ public class EntityTracker : NetworkBehaviour
     }
 
     /// <summary>
+    /// Records energy usage for perfect turn tracking
+    /// </summary>
+    [Server]
+    public void RecordEnergyUsage(int currentEnergy, int maxEnergy)
+    {
+        if (!IsServerInitialized) return;
+        
+        // Check if all energy was used (allowing for 0 remaining)
+        trackingData.usedAllEnergyThisTurn = (currentEnergy == 0);
+    }
+    
+    /// <summary>
+    /// Records surviving a status effect
+    /// </summary>
+    [Server]
+    public void RecordSurvivedStatusEffect(string statusEffectName)
+    {
+        if (!IsServerInitialized) return;
+        
+        if (!trackingData.survivedStatusEffects.Contains(statusEffectName))
+        {
+            trackingData.survivedStatusEffects.Add(statusEffectName);
+            trackingData.totalStatusEffectsSurvived++;
+            Debug.Log($"EntityTracker: {entity.EntityName.Value} survived status effect: {statusEffectName}. Total unique: {trackingData.totalStatusEffectsSurvived}");
+        }
+    }
+    
+    /// <summary>
+    /// Records fight outcome for this entity
+    /// </summary>
+    [Server]
+    public void RecordFightOutcome(bool victory)
+    {
+        if (!IsServerInitialized) return;
+        
+        trackingData.wonLastFight = victory;
+        trackingData.lostLastFight = !victory;
+        
+        // Update lifetime tracking
+        if (victory)
+        {
+            trackingData.totalFightsWon++;
+        }
+        else
+        {
+            trackingData.totalFightsLost++;
+        }
+        
+        // Update lifetime battle turns
+        trackingData.totalBattleTurns += trackingData.battleTurnCount;
+        
+        // Update lifetime perfect turns
+        if (trackingData.hadPerfectTurnThisFight)
+        {
+            trackingData.totalPerfectTurns++;
+        }
+        
+        // Notify upgrade manager for persistent tracking
+        if (CardUpgradeManager.Instance != null)
+        {
+            CardUpgradeManager.Instance.UpdatePersistentEntityTracking(entity.ObjectId, victory, trackingData.battleTurnCount, trackingData.hadPerfectTurnThisFight ? 1 : 0, trackingData.survivedStatusEffects.Count);
+        }
+        
+        Debug.Log($"EntityTracker: {entity.EntityName.Value} fight outcome: {(victory ? "Victory" : "Defeat")}. Lifetime: {trackingData.totalFightsWon}W/{trackingData.totalFightsLost}L");
+    }
+
+    /// <summary>
     /// Called when a fight ends - notifies upgrade manager
     /// </summary>
     [Server]
     public static void NotifyFightEnd(bool victory, List<NetworkEntity> participatingEntities)
     {
+        // Record fight outcomes for all participating entities
+        foreach (var entity in participatingEntities)
+        {
+            var tracker = entity.GetComponent<EntityTracker>();
+            if (tracker != null)
+            {
+                tracker.RecordFightOutcome(victory);
+            }
+        }
+        
         if (CardUpgradeManager.Instance != null)
         {
             CardUpgradeManager.Instance.OnFightEnd(victory, participatingEntities);
@@ -620,6 +716,7 @@ public class EntityTrackingData
     public int perfectionStreak; // Turns without taking damage
     public int currentTurnNumber;
     public bool tookDamageThisTurn;
+    public bool hadPerfectTurnThisFight; // No damage taken + all energy used
     
     [Header("Combat State")]
     public int comboCount;
@@ -634,9 +731,24 @@ public class EntityTrackingData
     public int cardsPlayedThisTurn;
     public int cardsPlayedThisFight;
     public CardType lastPlayedCardType;
+    public CardType secondLastPlayedCardType; // For back-to-back tracking
+    public bool usedAllEnergyThisTurn;
     
     [Header("Strength")]
     public int strengthStacks;
+    
+    [Header("Battle Tracking - This Fight")]
+    public int battleTurnCount; // Total turns in current battle
+    public bool wonLastFight;
+    public bool lostLastFight;
+    public List<string> survivedStatusEffects = new List<string>(); // Status effects survived this fight
+    
+    [Header("Battle Tracking - Lifetime")]
+    public int totalFightsWon; // Total fights won across all time
+    public int totalFightsLost; // Total fights lost across all time
+    public int totalBattleTurns; // Total turns across all battles
+    public int totalPerfectTurns; // Total perfect turns achieved
+    public int totalStatusEffectsSurvived; // Total unique status effects survived
 }
 
 /// <summary>

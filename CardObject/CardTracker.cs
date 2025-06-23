@@ -179,7 +179,7 @@ public class CardTracker : NetworkBehaviour
 
         _timesPlayedThisFight.Value++;
         
-        // Also record in the entity tracker if available
+        // Check for back-to-back play
         if (ownerEntity != null)
         {
             EntityTracker entityTracker = ownerEntity.GetComponent<EntityTracker>();
@@ -187,6 +187,33 @@ public class CardTracker : NetworkBehaviour
             {
                 CardData cardData = card.CardData;
                 bool isComboCard = cardData.BuildsCombo;
+                
+                // Check if this was played back-to-back with same card type
+                if (entityTracker.TrackingData.lastPlayedCardType == cardData.CardType)
+                {
+                    trackingData.timesPlayedBackToBack++;
+                    trackingData.timesPlayedBackToBackLifetime++;
+                    
+                    // Notify upgrade manager for persistent tracking
+                    if (CardUpgradeManager.Instance != null)
+                    {
+                        CardUpgradeManager.Instance.UpdatePersistentBackToBackCount(cardData.CardId);
+                    }
+                }
+                
+                // Check if this is the only card played this turn
+                if (entityTracker.TrackingData.cardsPlayedThisTurn == 0) // About to be 1 after this play
+                {
+                    trackingData.timesOnlyCardPlayedInTurn++;
+                    trackingData.timesOnlyCardPlayedInTurnLifetime++;
+                    
+                    // Notify upgrade manager for persistent tracking
+                    if (CardUpgradeManager.Instance != null)
+                    {
+                        CardUpgradeManager.Instance.UpdatePersistentSoloPlayCount(cardData.CardId);
+                    }
+                }
+                
                 entityTracker.RecordCardPlayed(
                     cardData.CardId, 
                     isComboCard, 
@@ -214,6 +241,15 @@ public class CardTracker : NetworkBehaviour
         if (!IsServerInitialized) return;
 
         _timesPlayedThisFight.Value = 0;
+        
+        // Reset per-fight tracking (keep lifetime data)
+        trackingData.timesDrawnThisFight = 0;
+        trackingData.timesHeldAtTurnEnd = 0;
+        trackingData.timesDiscardedManually = 0;
+        trackingData.timesFinalCardInHand = 0;
+        trackingData.timesPlayedBackToBack = 0;
+        trackingData.timesOnlyCardPlayedInTurn = 0;
+        
         UpdateTrackingData();
 
         Debug.Log($"CardTracker: Reset tracking data for card {card?.CardData?.CardName}");
@@ -292,5 +328,85 @@ public class CardTracker : NetworkBehaviour
         
         var entityTracker = ownerEntity.GetComponent<EntityTracker>();
         return entityTracker?.ComboCount > 0;
+    }
+    
+    /// <summary>
+    /// Records that this card was drawn
+    /// </summary>
+    [Server]
+    public void RecordCardDrawn()
+    {
+        if (!IsServerInitialized) return;
+        
+        trackingData.timesDrawnThisFight++;
+        trackingData.timesDrawnLifetime++;
+        
+        // Notify upgrade manager for persistent tracking
+        if (CardUpgradeManager.Instance != null && card?.CardData != null)
+        {
+            CardUpgradeManager.Instance.UpdatePersistentDrawCount(card.CardData.CardId);
+        }
+        
+        Debug.Log($"CardTracker: Card {card?.CardData?.CardName} drawn {trackingData.timesDrawnThisFight} times this fight, {trackingData.timesDrawnLifetime} times lifetime");
+    }
+    
+    /// <summary>
+    /// Records that this card was manually discarded
+    /// </summary>
+    [Server]
+    public void RecordCardDiscarded()
+    {
+        if (!IsServerInitialized) return;
+        
+        trackingData.timesDiscardedManually++;
+        trackingData.timesDiscardedManuallyLifetime++;
+        
+        // Notify upgrade manager for persistent tracking
+        if (CardUpgradeManager.Instance != null && card?.CardData != null)
+        {
+            CardUpgradeManager.Instance.UpdatePersistentDiscardCount(card.CardData.CardId);
+        }
+        
+        Debug.Log($"CardTracker: Card {card?.CardData?.CardName} discarded {trackingData.timesDiscardedManually} times this fight, {trackingData.timesDiscardedManuallyLifetime} times lifetime");
+    }
+    
+    /// <summary>
+    /// Records that this card was held at turn end
+    /// </summary>
+    [Server]
+    public void RecordHeldAtTurnEnd()
+    {
+        if (!IsServerInitialized) return;
+        
+        trackingData.timesHeldAtTurnEnd++;
+        trackingData.timesHeldAtTurnEndLifetime++;
+        
+        // Notify upgrade manager for persistent tracking
+        if (CardUpgradeManager.Instance != null && card?.CardData != null)
+        {
+            CardUpgradeManager.Instance.UpdatePersistentHeldAtTurnEndCount(card.CardData.CardId);
+        }
+        
+        Debug.Log($"CardTracker: Card {card?.CardData?.CardName} held at turn end {trackingData.timesHeldAtTurnEnd} times this fight, {trackingData.timesHeldAtTurnEndLifetime} times lifetime");
+    }
+    
+    /// <summary>
+    /// Records that this card was the final card in hand
+    /// </summary>
+    [Server]
+    public void RecordFinalCardInHand()
+    {
+        if (!IsServerInitialized) return;
+        
+        trackingData.timesFinalCardInHand++;
+        trackingData.timesFinalCardInHandLifetime++;
+        
+        // Notify upgrade manager for persistent tracking
+        if (CardUpgradeManager.Instance != null && card?.CardData != null)
+        {
+            CardUpgradeManager.Instance.UpdatePersistentFinalCardCount(card.CardData.CardId);
+        }
+        
+        Debug.Log($"CardTracker: Card {card?.CardData?.CardName} was final card in hand {trackingData.timesFinalCardInHand} times this fight, {trackingData.timesFinalCardInHandLifetime} times lifetime");
     }
 } 
