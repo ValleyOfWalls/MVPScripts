@@ -214,6 +214,43 @@ public class ReliableMenuText : MonoBehaviour, IPointerEnterHandler, IPointerExi
                 shadowDistance = new Vector2(2, -2)
             };
         }
+        
+        // Expand the array to include the new eggshell + gold style
+        if (menuStyles.Length == 4)
+        {
+            var expandedStyles = new MenuStyle[5];
+            for (int i = 0; i < menuStyles.Length; i++)
+            {
+                expandedStyles[i] = menuStyles[i];
+            }
+            
+            // Eggshell + Gold
+            expandedStyles[4] = new MenuStyle
+            {
+                styleName = "Eggshell Gold",
+                normalColor = new Color(0.96f, 0.94f, 0.87f, 1f), // Eggshell base
+                hoverColor = new Color(0.98f, 0.96f, 0.89f, 1f), // Light eggshell on hover
+                normalSize = 24f,
+                hoverSize = 27f,
+                useGradient = true,
+                gradientTopLeft = new Color(0.98f, 0.96f, 0.89f, 1f), // Light eggshell
+                gradientTopRight = new Color(0.98f, 0.96f, 0.89f, 1f),
+                gradientBottomLeft = new Color(1f, 0.84f, 0.4f, 1f), // Gold
+                gradientBottomRight = new Color(1f, 0.84f, 0.4f, 1f),
+                hoverGradientTopLeft = new Color(1f, 0.98f, 0.92f, 1f), // Brighter eggshell
+                hoverGradientTopRight = new Color(1f, 0.98f, 0.92f, 1f),
+                hoverGradientBottomLeft = new Color(1f, 0.88f, 0.5f, 1f), // Brighter gold
+                hoverGradientBottomRight = new Color(1f, 0.88f, 0.5f, 1f),
+                enableGlow = true,
+                glowColor = new Color(1f, 0.9f, 0.6f, 0.7f), // Warm golden glow
+                glowDistance = 3f,
+                enableShadow = true,
+                shadowColor = new Color(0.4f, 0.3f, 0.2f, 0.5f), // Warm brown shadow
+                shadowDistance = new Vector2(2, -2)
+            };
+            
+            menuStyles = expandedStyles;
+        }
     }
 
     private void RefreshUIEffects()
@@ -496,6 +533,43 @@ public class ReliableMenuText : MonoBehaviour, IPointerEnterHandler, IPointerExi
             RefreshUIEffects();
             ApplyCurrentStyle();
         }
+    }
+
+    // Public properties for external access to runtime controls
+    public bool EnableHoverEffects
+    {
+        get { return enableHoverEffects; }
+        set { enableHoverEffects = value; }
+    }
+
+    public bool EnableSparkles
+    {
+        get { return enableSparkles; }
+        set { enableSparkles = value; }
+    }
+
+    public bool EnableBreathingEffect
+    {
+        get { return enableBreathingEffect; }
+        set 
+        { 
+            enableBreathingEffect = value;
+            if (value && Application.isPlaying)
+            {
+                StartBreathingEffect();
+            }
+            else if (!value && breathingCoroutine != null)
+            {
+                StopCoroutine(breathingCoroutine);
+                transform.localScale = originalScale;
+            }
+        }
+    }
+
+    public int CurrentStyleIndex
+    {
+        get { return currentStyleIndex; }
+        set { SetStyle(value); }
     }
 
     private void OnValidate()
