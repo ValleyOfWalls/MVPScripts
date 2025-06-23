@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6413265810eb1504c817200cd10cc0a1, type: 3}
+  m_Name: Beast Pet Deck
+  m_EditorClassIdentifier: 
+  _deckName: Beast Pet Deck
+  _cardsInDeck:
+  - {fileID: 11400000, guid: f7f4aa9a12d1f714384e3e1744219b52, type: 2}
+  - {fileID: 11400000, guid: f7f4aa9a12d1f714384e3e1744219b52, type: 2}
+  - {fileID: 11400000, guid: 8da7aa8448657554b9c0641ce43f67f7, type: 2}
+  - {fileID: 11400000, guid: 8da7aa8448657554b9c0641ce43f67f7, type: 2}
+  - {fileID: 11400000, guid: a32701bad5932da4e88465d013da1ad9, type: 2}
+  - {fileID: 11400000, guid: a32701bad5932da4e88465d013da1ad9, type: 2}
+  - {fileID: 11400000, guid: 68fb3536738a9a246ba588ba6a386f49, type: 2}
+  - {fileID: 11400000, guid: 68fb3536738a9a246ba588ba6a386f49, type: 2}
+  - {fileID: 11400000, guid: 0115abab2f8a81448b069b6b111f753e, type: 2}
+  - {fileID: 11400000, guid: b70e66ff63a2c864f8e98c2d195a3708, type: 2}

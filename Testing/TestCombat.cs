@@ -519,7 +519,6 @@ public class CardSpawnerWindow : EditorWindow
         if (card.BuildsCombo) features.Add("Combo");
         if (card.RequiresCombo) features.Add("Finisher");
         if (card.ChangesStance) features.Add("Stance");
-        if (card.CreatesPersistentEffects) features.Add("Persistent");
         
         // Check for specific effect types
         if (card.HasEffects)

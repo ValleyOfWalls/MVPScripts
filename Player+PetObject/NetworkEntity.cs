@@ -41,9 +41,9 @@ public class NetworkEntity : NetworkBehaviour
     // Stats
     [Header("Health & Energy")]
     [SerializeField] private int _maxHealth = 100;
-    [SerializeField] private int _maxEnergy = 3;
+    [SerializeField] private int _maxEnergy = 100;
     [SerializeField] private int _currentHealth = 100;
-    [SerializeField] private int _currentEnergy = 3;
+    [SerializeField] private int _currentEnergy = 100;
 
     public readonly SyncVar<int> MaxHealth = new SyncVar<int>();
     public readonly SyncVar<int> MaxEnergy = new SyncVar<int>();
@@ -81,32 +81,20 @@ public class NetworkEntity : NetworkBehaviour
         // Update inspector owner ID
         inspectorOwnerClientId = Owner?.ClientId ?? -1;
 
-        // Use serialized fields as initial values
+        // Log the serialized field values BEFORE using them
+        Debug.Log($"NetworkEntity OnStartServer: {entityType} BEFORE SyncVar assignment - _maxHealth: {_maxHealth}, _maxEnergy: {_maxEnergy}, _currentHealth: {_currentHealth}, _currentEnergy: {_currentEnergy}");
+        
+        // Use serialized fields as initial values (these should be set by PlayerSpawner during character selection)
         MaxHealth.Value = _maxHealth;
         MaxEnergy.Value = _maxEnergy;
         CurrentHealth.Value = _currentHealth;
         CurrentEnergy.Value = _currentEnergy;
 
-        // Override with GameManager values if available
-        if (gameManager != null)
-        {
-            if (entityType == EntityType.Player)
-            {
-                MaxHealth.Value = gameManager.PlayerMaxHealth.Value;
-                MaxEnergy.Value = gameManager.PlayerMaxEnergy.Value;
-            }
-            else
-            {
-                MaxHealth.Value = gameManager.PetMaxHealth.Value;
-                MaxEnergy.Value = gameManager.PetMaxEnergy.Value;
-            }
-            CurrentHealth.Value = MaxHealth.Value;
-            CurrentEnergy.Value = MaxEnergy.Value;
-        }
-
-        // Set defaults if needed
-        if (MaxHealth.Value == 0) MaxHealth.Value = entityType == EntityType.Player ? 100 : 50;
-        if (MaxEnergy.Value == 0) MaxEnergy.Value = entityType == EntityType.Player ? 3 : 2;
+        // Ensure current values match max values
+        CurrentHealth.Value = MaxHealth.Value;
+        CurrentEnergy.Value = MaxEnergy.Value;
+        
+        Debug.Log($"NetworkEntity OnStartServer: {entityType} AFTER SyncVar assignment - MaxHealth: {MaxHealth.Value}, MaxEnergy: {MaxEnergy.Value}, CurrentHealth: {CurrentHealth.Value}, CurrentEnergy: {CurrentEnergy.Value}");
 
         // Set initial currency for players
         if (entityType == EntityType.Player)
@@ -410,6 +398,38 @@ public class NetworkEntity : NetworkBehaviour
             return SelectedPetIndex.Value >= 0 && !string.IsNullOrEmpty(PetPrefabPath.Value);
         }
         return false;
+    }
+
+    #endregion
+
+    #region Manual Stats Update
+
+    /// <summary>
+    /// Manually updates the SyncVars from the current serialized field values
+    /// Called by PlayerSpawner after applying character/pet data via reflection
+    /// </summary>
+    [Server]
+    public void RefreshStatsFromSerializedFields()
+    {
+        Debug.Log($"NetworkEntity: RefreshStatsFromSerializedFields called for {entityType} - BEFORE refresh: MaxEnergy={MaxEnergy.Value}, _maxEnergy={_maxEnergy}");
+        
+        // Update SyncVars from current serialized field values
+        MaxHealth.Value = _maxHealth;
+        MaxEnergy.Value = _maxEnergy;
+        CurrentHealth.Value = _currentHealth;
+        CurrentEnergy.Value = _currentEnergy;
+        
+        // Ensure current values match max values
+        CurrentHealth.Value = MaxHealth.Value;
+        CurrentEnergy.Value = MaxEnergy.Value;
+        
+        // Update currency for players
+        if (entityType == EntityType.Player)
+        {
+            Currency.Value = _currency;
+        }
+        
+        Debug.Log($"NetworkEntity: RefreshStatsFromSerializedFields completed for {entityType} - AFTER refresh: MaxEnergy={MaxEnergy.Value}, CurrentEnergy={CurrentEnergy.Value}");
     }
 
     #endregion

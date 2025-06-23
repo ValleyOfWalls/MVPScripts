@@ -334,24 +334,7 @@ public class ScalingEffectPropertyDrawer : PropertyDrawer
     }
 }
 
-/// <summary>
-/// Custom property drawer for PersistentFightEffect to ensure proper display
-/// </summary>
-[CustomPropertyDrawer(typeof(PersistentFightEffect))]
-public class PersistentFightEffectPropertyDrawer : PropertyDrawer
-{
-    public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
-    {
-        EditorGUI.BeginProperty(position, label, property);
-        EditorGUI.PropertyField(position, property, label, true);
-        EditorGUI.EndProperty();
-    }
-    
-    public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
-    {
-        return EditorGUI.GetPropertyHeight(property, label, true);
-    }
-}
+
 
 /// <summary>
 /// Custom property drawer for CardEffect to ensure proper display

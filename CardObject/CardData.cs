@@ -53,15 +53,12 @@ public class CardData : ScriptableObject
     [Tooltip("Amount of combo required to play this card")]
     [SerializeField] private int _requiredComboAmount = 1;
 
-    [Header("═══ STANCE & PERSISTENT EFFECTS ═══")]
+    [Header("═══ STANCE EFFECTS ═══")]
     [Tooltip("This card changes combat stance")]
     [SerializeField] private bool _changesStance = false;
     
     [ConditionalField("_changesStance", true, true)]
     [SerializeField] private StanceType _newStance = StanceType.Aggressive;
-    
-    [Tooltip("Effects that last the entire fight")]
-    [SerializeField] private List<PersistentFightEffect> _persistentEffects = new List<PersistentFightEffect>();
 
     [Header("═══ ADVANCED TARGETING ═══")]
     [Tooltip("Can target self even if main target is different")]
@@ -121,9 +118,6 @@ public class CardData : ScriptableObject
     
     public bool ChangesStance => _changesStance;
     public StanceType NewStance => _newStance;
-    
-    public bool CreatesPersistentEffects => _persistentEffects != null && _persistentEffects.Count > 0;
-    public List<PersistentFightEffect> PersistentEffects => _persistentEffects ?? new List<PersistentFightEffect>();
     
     public bool CanAlsoTargetSelf => _canAlsoTargetSelf;
     public bool CanAlsoTargetAllies => _canAlsoTargetAllies;
@@ -697,29 +691,7 @@ public class CardSequenceRequirement
     public StanceType requiredStance;
 }
 
-/// <summary>
-/// Data structure for persistent fight effects
-/// </summary>
-[System.Serializable]
-public class PersistentFightEffect
-{
-    [Header("Basic Configuration")]
-    public string effectName = "Persistent Effect";
-    public CardEffectType effectType = CardEffectType.Damage;
-    public int potency = 1;
-    
-    [Header("Trigger Timing")]
-    public int triggerInterval = 1; // Every X turns
-    public bool lastEntireFight = true;
-    public int turnDuration = 0; // If not entire fight
-    
-    [Header("Requirements")]
-    public bool requiresStance = false;
-    public StanceType requiredStance = StanceType.None;
-    
-    [Header("Stacking")]
-    public bool stackable = true;
-}
+
 
 /// <summary>
 /// Enhanced tracking data for various card mechanics

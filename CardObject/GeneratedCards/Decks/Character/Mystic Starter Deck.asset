@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6413265810eb1504c817200cd10cc0a1, type: 3}
+  m_Name: Mystic Starter Deck
+  m_EditorClassIdentifier: 
+  _deckName: Mystic Starter Deck
+  _cardsInDeck:
+  - {fileID: 11400000, guid: a1658e26ef71de94f9ae1f1ef293f15f, type: 2}
+  - {fileID: 11400000, guid: a1658e26ef71de94f9ae1f1ef293f15f, type: 2}
+  - {fileID: 11400000, guid: 923acb136f0cd2a409dda2352c154fc5, type: 2}
+  - {fileID: 11400000, guid: 923acb136f0cd2a409dda2352c154fc5, type: 2}
+  - {fileID: 11400000, guid: 4750619a54ce0cd4d8059101be8a3106, type: 2}
+  - {fileID: 11400000, guid: 4750619a54ce0cd4d8059101be8a3106, type: 2}
+  - {fileID: 11400000, guid: 76e56f36e30dd8746802c1c328aa6329, type: 2}
+  - {fileID: 11400000, guid: 76e56f36e30dd8746802c1c328aa6329, type: 2}
+  - {fileID: 11400000, guid: 84ec0a5ae16ef524ba0a0838bb598bc3, type: 2}
+  - {fileID: 11400000, guid: c04dfe7f01c95b44e888e945f0654b63, type: 2}

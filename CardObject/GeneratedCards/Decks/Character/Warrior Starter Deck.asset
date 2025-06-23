@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6413265810eb1504c817200cd10cc0a1, type: 3}
+  m_Name: Warrior Starter Deck
+  m_EditorClassIdentifier: 
+  _deckName: Warrior Starter Deck
+  _cardsInDeck:
+  - {fileID: 11400000, guid: 17d774eb9b6bb614e94d6a8e1d90f162, type: 2}
+  - {fileID: 11400000, guid: 17d774eb9b6bb614e94d6a8e1d90f162, type: 2}
+  - {fileID: 11400000, guid: 15e9aaa24ed07fc4b9a63097005f16e8, type: 2}
+  - {fileID: 11400000, guid: 15e9aaa24ed07fc4b9a63097005f16e8, type: 2}
+  - {fileID: 11400000, guid: e39d52bed6a2a4947a1650a75400068c, type: 2}
+  - {fileID: 11400000, guid: e39d52bed6a2a4947a1650a75400068c, type: 2}
+  - {fileID: 11400000, guid: cc670355317f4cf45a1066951ac4ab25, type: 2}
+  - {fileID: 11400000, guid: cc670355317f4cf45a1066951ac4ab25, type: 2}
+  - {fileID: 11400000, guid: 0ebd3985a6bae5c489b5b85f7ed43270, type: 2}
+  - {fileID: 11400000, guid: 537f227995775a8489e13cb0b9649cd0, type: 2}

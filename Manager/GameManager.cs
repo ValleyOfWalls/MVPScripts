@@ -4,6 +4,11 @@ using FishNet.Object.Synchronizing;
 
 /// <summary>
 /// Centralized manager for global game rules and settings.
+/// 
+/// Health & Energy: GameManager provides default/fallback values for health and energy.
+/// Character-specific values from CharacterData.BaseHealth/BaseEnergy take precedence
+/// when entities are spawned through the character selection system.
+/// 
 /// Attach to: A persistent NetworkObject in the scene that will manage game-wide rules.
 /// </summary>
 public class GameManager : NetworkBehaviour
@@ -15,20 +20,14 @@ public class GameManager : NetworkBehaviour
     private int playerInitialDraw = 5;
     [SerializeField, Tooltip("Target number of cards in player's hand after drawing each round")]
     private int playerHandTarget = 3;
-    [SerializeField, Tooltip("Maximum energy a player can have")]
-    private int playerMaxEnergyAmount = 3;
-    [SerializeField, Tooltip("Maximum health a player can have")]
-    private int playerMaxHealthAmount = 100;
 
     [Header("Pet Card Settings")]
     [SerializeField, Tooltip("Number of cards a pet draws on the first round")]
     private int petInitialDraw = 3;
     [SerializeField, Tooltip("Target number of cards in pet's hand after drawing each round")]
     private int petHandTarget = 3;
-    [SerializeField, Tooltip("Maximum energy a pet can have")]
-    private int petMaxEnergyAmount = 2;
-    [SerializeField, Tooltip("Maximum health a pet can have")]
-    private int petMaxHealthAmount = 50;
+
+
 
     [Header("Game Rules")]
     [SerializeField, Tooltip("If true, players will automatically be set to ready when they join the lobby.")]
@@ -208,10 +207,8 @@ public class GameManager : NetworkBehaviour
         PetDrawAmount.Value = petInitialDraw;
         PlayerTargetHandSize.Value = playerHandTarget;
         PetTargetHandSize.Value = petHandTarget;
-        PlayerMaxEnergy.Value = playerMaxEnergyAmount;
-        PetMaxEnergy.Value = petMaxEnergyAmount;
-        PlayerMaxHealth.Value = playerMaxHealthAmount;
-        PetMaxHealth.Value = petMaxHealthAmount;
+        // Note: PlayerMaxEnergy, PetMaxEnergy, PlayerMaxHealth, PetMaxHealth are not set here
+        // These values should come from CharacterData and PetData during character selection
         
         // Initialize damage modifier SyncVars
         CriticalHitsEnabled.Value = criticalHitsEnabled;

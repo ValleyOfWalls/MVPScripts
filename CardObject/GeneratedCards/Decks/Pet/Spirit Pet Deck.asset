@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6413265810eb1504c817200cd10cc0a1, type: 3}
+  m_Name: Spirit Pet Deck
+  m_EditorClassIdentifier: 
+  _deckName: Spirit Pet Deck
+  _cardsInDeck:
+  - {fileID: 11400000, guid: 24f75d5457061e2429b47141f1fc9840, type: 2}
+  - {fileID: 11400000, guid: 24f75d5457061e2429b47141f1fc9840, type: 2}
+  - {fileID: 11400000, guid: b162452c4127dc34785f6e00a3bd86ce, type: 2}
+  - {fileID: 11400000, guid: b162452c4127dc34785f6e00a3bd86ce, type: 2}
+  - {fileID: 11400000, guid: 33acf739c72bb3240a6ed7eae0b88d58, type: 2}
+  - {fileID: 11400000, guid: 33acf739c72bb3240a6ed7eae0b88d58, type: 2}
+  - {fileID: 11400000, guid: 3126e739443438343a652659aab0390d, type: 2}
+  - {fileID: 11400000, guid: 3126e739443438343a652659aab0390d, type: 2}
+  - {fileID: 11400000, guid: 8f98e5b1181b831499f240ef4915d906, type: 2}
+  - {fileID: 11400000, guid: ff916872d2189354aa17bdd6a959af5d, type: 2}

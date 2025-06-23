@@ -230,11 +230,7 @@ public class CardEffectResolver : NetworkBehaviour
             ProcessStanceChange(sourceEntity, cardData.NewStance);
         }
         
-        // Process persistent effects if card creates them
-        if (cardData.CreatesPersistentEffects)
-        {
-            ProcessPersistentEffects(sourceEntity, cardData);
-        }
+
         
         // Process all effects from the Effects list
         if (cardData.HasEffects)
@@ -298,24 +294,7 @@ public class CardEffectResolver : NetworkBehaviour
         }
     }
     
-    /// <summary>
-    /// Processes persistent fight effects
-    /// </summary>
-    private void ProcessPersistentEffects(NetworkEntity sourceEntity, CardData cardData)
-    {
-        EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
-        if (sourceTracker == null) return;
-        
-        foreach (var persistentEffect in cardData.PersistentEffects)
-        {
-            // Convert persistent effect to string for storage
-            string effectData = $"{persistentEffect.effectName}|{persistentEffect.effectType}|{persistentEffect.potency}|{persistentEffect.triggerInterval}|{persistentEffect.turnDuration}|{persistentEffect.lastEntireFight}";
-            
-            sourceTracker.AddPersistentEffect(effectData);
-            
-            Debug.Log($"CardEffectResolver: Added persistent effect {persistentEffect.effectName} to {sourceEntity.EntityName.Value}");
-        }
-    }
+
     
     /// <summary>
     /// Calculate scaling value based on tracking data

@@ -1,0 +1,62 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
+  m_Name: Feral Rage
+  m_EditorClassIdentifier: 
+  _cardId: 9526
+  _cardName: Feral Rage
+  _description: Deal 15 damage to opponent.
+  _cardArtwork: {fileID: 0}
+  _cardCategory: 1
+  _cardType: 1
+  _energyCost: 30
+  _effects:
+  - effectType: 0
+    amount: 15
+    duration: 0
+    targetType: 1
+    elementalType: 0
+    conditionType: 0
+    conditionValue: 0
+    hasAlternativeEffect: 0
+    alternativeLogic: 0
+    alternativeEffectType: 0
+    alternativeEffectAmount: 1
+    scalingType: 8
+    scalingMultiplier: 0.4
+    maxScaling: 10
+    animationBehavior: 0
+    customEffectName: 
+    customDuration: 0
+    customSoundEffectName: 
+    animationDelay: 0
+    hasFinishingAnimation: 0
+    finishingAnimationName: 
+    finishingSoundEffectName: 
+    finishingAnimationDelay: 0.1
+    instantEffectPrefab: {fileID: 0}
+  _buildsCombo: 0
+  _requiresCombo: 0
+  _requiredComboAmount: 1
+  _changesStance: 0
+  _newStance: 1
+  _canAlsoTargetSelf: 0
+  _canAlsoTargetAllies: 0
+  _canAlsoTargetOpponent: 0
+  _upgradedVersion: {fileID: 0}
+  _trackPlayCount: 1
+  _trackDamageHealing: 1
+  _canUpgrade: 1
+  _upgradeConditionType: 18
+  _upgradeRequiredValue: 3
+  _upgradeComparisonType: 0
+  _upgradeAllCopies: 0

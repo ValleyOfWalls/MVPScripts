@@ -238,8 +238,14 @@ public class PlayerSpawner : MonoBehaviour
         string entityName = !string.IsNullOrEmpty(customName) ? customName : characterData.CharacterName;
         playerEntity.EntityName.Value = entityName;
 
+        // Log the values from CharacterData BEFORE applying them
+        Debug.Log($"PlayerSpawner: ApplyCharacterDataToEntity - CharacterData values: Health={characterData.BaseHealth}, Energy={characterData.BaseEnergy}, Currency={characterData.StartingCurrency}");
+
         // Apply base stats using reflection to set NetworkEntity's private fields
         SetEntityBaseStats(playerEntity.gameObject, characterData.BaseHealth, characterData.BaseEnergy, characterData.StartingCurrency);
+
+        // IMPORTANT: Refresh the NetworkEntity's SyncVars after reflection changes
+        playerEntity.RefreshStatsFromSerializedFields();
 
         // Apply visual configuration
         ConfigureEntityVisuals(playerEntity.gameObject, characterData.CharacterMaterial, characterData.CharacterMesh, 
@@ -267,8 +273,14 @@ public class PlayerSpawner : MonoBehaviour
         string entityName = !string.IsNullOrEmpty(customName) ? customName : petData.PetName;
         petEntity.EntityName.Value = entityName;
 
+        // Log the values from PetData BEFORE applying them
+        Debug.Log($"PlayerSpawner: ApplyPetDataToEntity - PetData values: Health={petData.BaseHealth}, Energy={petData.BaseEnergy}");
+
         // Apply base stats using reflection to set NetworkEntity's private fields
         SetEntityBaseStats(petEntity.gameObject, petData.BaseHealth, petData.BaseEnergy, 0); // Pets don't have currency
+
+        // IMPORTANT: Refresh the NetworkEntity's SyncVars after reflection changes
+        petEntity.RefreshStatsFromSerializedFields();
 
         // Apply visual configuration
         ConfigureEntityVisuals(petEntity.gameObject, petData.PetMaterial, petData.PetMesh, 
@@ -333,26 +345,78 @@ public class PlayerSpawner : MonoBehaviour
         NetworkEntity networkEntity = entityObj.GetComponent<NetworkEntity>();
         if (networkEntity != null)
         {
+            // Log the values BEFORE setting them
+            Debug.Log($"PlayerSpawner: BEFORE reflection - Health: {baseHealth}, Energy: {baseEnergy}, Currency: {startingCurrency}");
+            
             // Set the serialized fields directly
             var type = typeof(NetworkEntity);
             
             var healthField = type.GetField("_maxHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (healthField != null) healthField.SetValue(networkEntity, baseHealth);
+            if (healthField != null) 
+            {
+                object oldHealth = healthField.GetValue(networkEntity);
+                healthField.SetValue(networkEntity, baseHealth);
+                Debug.Log($"PlayerSpawner: Set _maxHealth from {oldHealth} to {baseHealth}");
+            }
+            else
+            {
+                Debug.LogError("PlayerSpawner: Could not find _maxHealth field via reflection!");
+            }
             
             var energyField = type.GetField("_maxEnergy", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (energyField != null) energyField.SetValue(networkEntity, baseEnergy);
+            if (energyField != null) 
+            {
+                object oldEnergy = energyField.GetValue(networkEntity);
+                energyField.SetValue(networkEntity, baseEnergy);
+                Debug.Log($"PlayerSpawner: Set _maxEnergy from {oldEnergy} to {baseEnergy}");
+            }
+            else
+            {
+                Debug.LogError("PlayerSpawner: Could not find _maxEnergy field via reflection!");
+            }
             
             var currencyField = type.GetField("_currency", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (currencyField != null) currencyField.SetValue(networkEntity, startingCurrency);
+            if (currencyField != null) 
+            {
+                object oldCurrency = currencyField.GetValue(networkEntity);
+                currencyField.SetValue(networkEntity, startingCurrency);
+                Debug.Log($"PlayerSpawner: Set _currency from {oldCurrency} to {startingCurrency}");
+            }
+            else
+            {
+                Debug.LogError("PlayerSpawner: Could not find _currency field via reflection!");
+            }
             
             // Also set current values
             var currentHealthField = type.GetField("_currentHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (currentHealthField != null) currentHealthField.SetValue(networkEntity, baseHealth);
+            if (currentHealthField != null) 
+            {
+                object oldCurrentHealth = currentHealthField.GetValue(networkEntity);
+                currentHealthField.SetValue(networkEntity, baseHealth);
+                Debug.Log($"PlayerSpawner: Set _currentHealth from {oldCurrentHealth} to {baseHealth}");
+            }
+            else
+            {
+                Debug.LogError("PlayerSpawner: Could not find _currentHealth field via reflection!");
+            }
             
             var currentEnergyField = type.GetField("_currentEnergy", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (currentEnergyField != null) currentEnergyField.SetValue(networkEntity, baseEnergy);
+            if (currentEnergyField != null) 
+            {
+                object oldCurrentEnergy = currentEnergyField.GetValue(networkEntity);
+                currentEnergyField.SetValue(networkEntity, baseEnergy);
+                Debug.Log($"PlayerSpawner: Set _currentEnergy from {oldCurrentEnergy} to {baseEnergy}");
+            }
+            else
+            {
+                Debug.LogError("PlayerSpawner: Could not find _currentEnergy field via reflection!");
+            }
 
-            Debug.Log($"PlayerSpawner: Set base stats - Health: {baseHealth}, Energy: {baseEnergy}, Currency: {startingCurrency}");
+            Debug.Log($"PlayerSpawner: AFTER reflection - Set base stats - Health: {baseHealth}, Energy: {baseEnergy}, Currency: {startingCurrency}");
+        }
+        else
+        {
+            Debug.LogError("PlayerSpawner: NetworkEntity component not found on entity object!");
         }
     }
 
