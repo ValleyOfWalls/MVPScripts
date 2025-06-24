@@ -552,7 +552,7 @@ public class HandleCardPlay : NetworkBehaviour
             case CardEffectType.ApplyBreak:
             case CardEffectType.ApplyStun:
             case CardEffectType.ApplyCurse:
-            case CardEffectType.ApplyDamageOverTime:
+            case CardEffectType.ApplyBurn:
                 shouldTrigger = true;
                 break;
             default:

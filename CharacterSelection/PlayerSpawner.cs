@@ -236,6 +236,7 @@ public class PlayerSpawner : MonoBehaviour
 
         // Set entity name
         string entityName = !string.IsNullOrEmpty(customName) ? customName : characterData.CharacterName;
+        Debug.Log($"SYNC_DEBUG: PlayerSpawner setting player entity name from '{playerEntity.EntityName.Value}' to '{entityName}'");
         playerEntity.EntityName.Value = entityName;
 
         // Log the values from CharacterData BEFORE applying them
@@ -271,6 +272,7 @@ public class PlayerSpawner : MonoBehaviour
 
         // Set entity name
         string entityName = !string.IsNullOrEmpty(customName) ? customName : petData.PetName;
+        Debug.Log($"SYNC_DEBUG: PlayerSpawner setting pet entity name from '{petEntity.EntityName.Value}' to '{entityName}'");
         petEntity.EntityName.Value = entityName;
 
         // Log the values from PetData BEFORE applying them

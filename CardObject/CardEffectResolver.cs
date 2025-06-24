@@ -230,8 +230,6 @@ public class CardEffectResolver : NetworkBehaviour
             ProcessStanceChange(sourceEntity, cardData.NewStance);
         }
         
-
-        
         // Process all effects from the Effects list
         if (cardData.HasEffects)
         {
@@ -239,7 +237,18 @@ public class CardEffectResolver : NetworkBehaviour
             
             foreach (var effect in cardData.Effects)
             {
-                Debug.Log($"CardEffectResolver: Processing effect {effect.effectType} with amount {effect.amount}, duration {effect.duration}");
+                Debug.Log($"CardEffectResolver: Processing effect {effect.effectType} with amount {effect.amount}, duration {effect.duration}, targetType {effect.targetType}");
+                
+                // Get the correct targets for this specific effect based on its targetType
+                List<NetworkEntity> effectTargets = GetTargetsForEffect(sourceEntity, effect.targetType, targetEntities);
+                
+                if (effectTargets.Count == 0)
+                {
+                    Debug.LogWarning($"CardEffectResolver: No valid targets found for effect {effect.effectType} with targetType {effect.targetType}");
+                    continue;
+                }
+                
+                Debug.Log($"CardEffectResolver: Effect {effect.effectType} targeting {effectTargets.Count} entities: {string.Join(", ", effectTargets.Select(e => e.EntityName.Value))}");
                 
                 // Apply scaling if defined on the effect
                 int amount = effect.amount;
@@ -272,7 +281,7 @@ public class CardEffectResolver : NetworkBehaviour
                 }
                 
                 Debug.Log($"CardEffectResolver: Calling ProcessSingleEffect with amount {amount}, duration {effect.duration}");
-                ProcessSingleEffect(sourceEntity, targetEntities, effect.effectType, amount, effect.duration, effect.elementalType);
+                ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, amount, effect.duration, effect.elementalType);
             }
         }
         else
@@ -293,8 +302,6 @@ public class CardEffectResolver : NetworkBehaviour
             Debug.Log($"CardEffectResolver: {sourceEntity.EntityName.Value} entered {newStance} stance");
         }
     }
-    
-
     
     /// <summary>
     /// Calculate scaling value based on tracking data
@@ -489,12 +496,12 @@ public class CardEffectResolver : NetworkBehaviour
                     ProcessStatusEffect(sourceEntity, targetEntity, "Weak", amount, duration);
                     break;
                     
-                case CardEffectType.ApplyDamageOverTime:
-                    ProcessStatusEffect(sourceEntity, targetEntity, "DamageOverTime", amount, duration);
+                case CardEffectType.ApplyBurn:
+                    ProcessStatusEffect(sourceEntity, targetEntity, "Burn", amount, 999); // High duration since it ticks down by potency
                     break;
                     
-                case CardEffectType.ApplyHealOverTime:
-                    ProcessStatusEffect(sourceEntity, targetEntity, "HealOverTime", amount, duration);
+                case CardEffectType.ApplySalve:
+                    ProcessStatusEffect(sourceEntity, targetEntity, "Salve", amount, 999); // High duration since it ticks down by potency
                     break;
                     
                 case CardEffectType.RaiseCriticalChance:

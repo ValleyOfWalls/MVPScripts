@@ -469,7 +469,7 @@ public static class CardGenerator
         // Fireball - Basic elemental attack (STARTER: Basic attack, not draftable)
         var fireball = CreateStatusCard("Fireball", CardEffectType.Damage, 20, 0, 25, CardTargetType.Opponent, CardCategory.Starter);
         fireball.Effects[0].elementalType = ElementalType.Fire;
-        var fireballUpgraded = CreateUpgradedVersion(fireball, "Inferno", 1.5f, 0, true, CardEffectType.ApplyDamageOverTime, 8);
+        var fireballUpgraded = CreateUpgradedVersion(fireball, "Inferno", 1.5f, 0, true, CardEffectType.ApplyBurn, 8);
         LinkCardUpgrade(fireball, fireballUpgraded, UpgradeConditionType.TimesPlayedThisFight, 4);
         cards.Add((fireball, fireballUpgraded));
         
@@ -551,7 +551,7 @@ public static class CardGenerator
         var poisonStrike = CreateMultiEffectCard("Poison Strike", 20, CardType.Combo, new List<(CardEffectType, int, CardTargetType, int)>
         {
             (CardEffectType.Damage, 12, CardTargetType.Opponent, 0),
-            (CardEffectType.ApplyDamageOverTime, 6, CardTargetType.Opponent, 4)
+            (CardEffectType.ApplyBurn, 6, CardTargetType.Opponent, 0)
         }, CardCategory.Draftable);
         poisonStrike.MakeComboCard();
         var poisonStrikeUpgraded = CreateUpgradedVersion(poisonStrike, "Venom Blade", 1.4f, 0, false);
@@ -618,7 +618,7 @@ public static class CardGenerator
         // Flame Burst - Basic elemental attack (STARTER: Basic attack, not draftable)
         var flameBurst = CreateDamageCard("Flame Burst", 22, 25, CardTargetType.Opponent, CardCategory.Starter);
         flameBurst.Effects[0].elementalType = ElementalType.Fire;
-        var flameBurstUpgraded = CreateUpgradedVersion(flameBurst, "Solar Flare", 1.4f, 0, true, CardEffectType.ApplyDamageOverTime, 5);
+        var flameBurstUpgraded = CreateUpgradedVersion(flameBurst, "Solar Flare", 1.4f, 0, true, CardEffectType.ApplyBurn, 5);
         LinkCardUpgrade(flameBurst, flameBurstUpgraded, UpgradeConditionType.TimesPlayedThisFight, 3);
         cards.Add((flameBurst, flameBurstUpgraded));
         
@@ -689,7 +689,7 @@ public static class CardGenerator
         
         // Savage Bite - Basic beast attack (STARTER: Basic attack, not draftable)
         var savageBite = CreateDamageCard("Savage Bite", 28, 30, CardTargetType.Opponent, CardCategory.Starter);
-        var savageBiteUpgraded = CreateUpgradedVersion(savageBite, "Primal Maw", 1.5f, 0, true, CardEffectType.ApplyDamageOverTime, 8);
+        var savageBiteUpgraded = CreateUpgradedVersion(savageBite, "Primal Maw", 1.5f, 0, true, CardEffectType.ApplyBurn, 8);
         LinkCardUpgrade(savageBite, savageBiteUpgraded, UpgradeConditionType.DamageDealtThisFight, 140);
         cards.Add((savageBite, savageBiteUpgraded));
         
@@ -779,7 +779,7 @@ public static class CardGenerator
         
         // Spirit Shield - Basic ally defense (STARTER: Basic defend ally, not draftable)
         var spiritShield = CreateStatusCard("Spirit Shield", CardEffectType.ApplyShield, 35, 0, 25, CardTargetType.Ally, CardCategory.Starter);
-        var spiritShieldUpgraded = CreateUpgradedVersion(spiritShield, "Ethereal Ward", 1.4f, 0, true, CardEffectType.ApplyHealOverTime, 8);
+        var spiritShieldUpgraded = CreateUpgradedVersion(spiritShield, "Ethereal Ward", 1.4f, 0, true, CardEffectType.ApplySalve, 8);
         LinkCardUpgrade(spiritShield, spiritShieldUpgraded, UpgradeConditionType.DamageTakenThisFight, 70);
         cards.Add((spiritShield, spiritShieldUpgraded));
         
@@ -801,7 +801,7 @@ public static class CardGenerator
             (CardEffectType.ApplyShield, 50, CardTargetType.Self, 0),
             (CardEffectType.ApplyShield, 25, CardTargetType.Ally, 0)
         }, CardCategory.Draftable);
-        var spectralFormUpgraded = CreateUpgradedVersion(spectralForm, "Phantom State", 1.2f, 0, true, CardEffectType.ApplyHealOverTime, 10);
+        var spectralFormUpgraded = CreateUpgradedVersion(spectralForm, "Phantom State", 1.2f, 0, true, CardEffectType.ApplySalve, 10);
         LinkCardUpgrade(spectralForm, spectralFormUpgraded, UpgradeConditionType.PlayedAtLowHealth, 2);
         cards.Add((spectralForm, spectralFormUpgraded));
         

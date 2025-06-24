@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _cardId: 6444
   _cardName: Primal Maw
-  _description: Deal 42 damage to opponent. Apply ApplyDamageOverTime (8) to yourself.
+  _description: Deal 42 damage to opponent. Apply 8 Burn to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 1

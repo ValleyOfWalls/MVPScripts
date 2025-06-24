@@ -2,6 +2,7 @@ using UnityEngine;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using FishNet.Connection;
+using System.Collections;
 using System.Collections.Generic;
 using Steamworks;
 
@@ -41,7 +42,7 @@ public class NetworkEntity : NetworkBehaviour
     // Stats
     [Header("Health & Energy")]
     [SerializeField] private int _maxHealth = 100;
-    [SerializeField] private int _maxEnergy = 100;
+    [SerializeField] private int _maxEnergy = 100; // Fixed: was 3 in prefab, should be 100
     [SerializeField] private int _currentHealth = 100;
     [SerializeField] private int _currentEnergy = 100;
 
@@ -82,35 +83,27 @@ public class NetworkEntity : NetworkBehaviour
         inspectorOwnerClientId = Owner?.ClientId ?? -1;
 
         // Log the serialized field values BEFORE using them
-        Debug.Log($"NetworkEntity OnStartServer: {entityType} BEFORE SyncVar assignment - _maxHealth: {_maxHealth}, _maxEnergy: {_maxEnergy}, _currentHealth: {_currentHealth}, _currentEnergy: {_currentEnergy}");
+        Debug.Log($"SYNC_DEBUG: OnStartServer - {entityType} BEFORE SyncVar assignment - _maxHealth: {_maxHealth}, _maxEnergy: {_maxEnergy}, _currentHealth: {_currentHealth}, _currentEnergy: {_currentEnergy}");
         
-        // Use serialized fields as initial values (these should be set by PlayerSpawner during character selection)
-        MaxHealth.Value = _maxHealth;
-        MaxEnergy.Value = _maxEnergy;
-        CurrentHealth.Value = _currentHealth;
-        CurrentEnergy.Value = _currentEnergy;
-
-        // Ensure current values match max values
-        CurrentHealth.Value = MaxHealth.Value;
-        CurrentEnergy.Value = MaxEnergy.Value;
-        
-        Debug.Log($"NetworkEntity OnStartServer: {entityType} AFTER SyncVar assignment - MaxHealth: {MaxHealth.Value}, MaxEnergy: {MaxEnergy.Value}, CurrentHealth: {CurrentHealth.Value}, CurrentEnergy: {CurrentEnergy.Value}");
-
-        // Set initial currency for players
-        if (entityType == EntityType.Player)
+        // DON'T initialize SyncVars here for Player/Pet entities - let PlayerSpawner handle it
+        // This prevents premature sync of default prefab values before character/pet data is applied
+        if (entityType != EntityType.Player && entityType != EntityType.Pet)
         {
-            Currency.Value = _currency; // Use the inspector value
-            Debug.Log($"NetworkEntity: Set initial currency for player {EntityName.Value} to {Currency.Value} gold");
+            // Only initialize for UI entities and hands
+            MaxHealth.Value = _maxHealth;
+            MaxEnergy.Value = _maxEnergy;
+            CurrentHealth.Value = _currentHealth;
+            CurrentEnergy.Value = _currentEnergy;
+            
+            Debug.Log($"SYNC_DEBUG: OnStartServer - {entityType} initialized with default values");
+        }
+        else
+        {
+            Debug.Log($"SYNC_DEBUG: OnStartServer - {entityType} waiting for PlayerSpawner to apply character/pet data before sync");
         }
 
-        // Set name based on type and owner
+        // Set name based on type and owner (but don't override if already set)
         SetEntityName();
-
-        // Sync serialized fields
-        _maxHealth = MaxHealth.Value;
-        _maxEnergy = MaxEnergy.Value;
-        _currentHealth = CurrentHealth.Value;
-        _currentEnergy = CurrentEnergy.Value;
     }
 
     public override void OnStartClient()
@@ -124,13 +117,71 @@ public class NetworkEntity : NetworkBehaviour
         bool isLocalConnection = Owner == FishNet.InstanceFinder.ClientManager.Connection;
         bool isHostConnection = FishNet.InstanceFinder.IsHostStarted && Owner != null && Owner.ClientId == 0;
 
-        Debug.Log($"NetworkEntity OnStartClient - Type: {entityType}, Name: {EntityName.Value}, " +
+        Debug.Log($"SYNC_DEBUG: OnStartClient - Type: {entityType}, Name: '{EntityName.Value}', " +
                   $"ID: {ObjectId}, IsOwner: {IsOwner}, HasOwner: {Owner != null}, " +
                   $"OwnerId: {(Owner != null ? Owner.ClientId : -1)}, " +
                   $"IsLocalConnection: {isLocalConnection}, IsHostConnection: {isHostConnection}");
 
+        Debug.Log($"SYNC_DEBUG: OnStartClient Stats - MaxHealth={MaxHealth.Value}, MaxEnergy={MaxEnergy.Value}, " +
+                  $"CurrentHealth={CurrentHealth.Value}, CurrentEnergy={CurrentEnergy.Value}, Currency={Currency.Value}");
+
+        // Subscribe to SyncVar changes for debugging
+        EntityName.OnChange += OnEntityNameChanged;
+        MaxHealth.OnChange += OnMaxHealthChanged;
+        MaxEnergy.OnChange += OnMaxEnergyChanged;
+        CurrentEnergy.OnChange += OnCurrentEnergyChanged;
+
         // Register with EntityVisibilityManager
         RegisterWithVisibilityManager();
+    }
+
+    public override void OnStopClient()
+    {
+        base.OnStopClient();
+        
+        // Unsubscribe from events
+        EntityName.OnChange -= OnEntityNameChanged;
+        MaxHealth.OnChange -= OnMaxHealthChanged;
+        MaxEnergy.OnChange -= OnMaxEnergyChanged;
+        CurrentEnergy.OnChange -= OnCurrentEnergyChanged;
+        
+        UnregisterFromVisibilityManager();
+    }
+
+    private void OnEntityNameChanged(string prev, string next, bool asServer)
+    {
+        Debug.Log($"SYNC_DEBUG: Name changed for {entityType} (ID: {ObjectId}) from '{prev}' to '{next}' (asServer: {asServer})");
+    }
+
+    private void OnMaxHealthChanged(int prev, int next, bool asServer)
+    {
+        Debug.Log($"SYNC_DEBUG: MaxHealth changed for {EntityName.Value} from {prev} to {next} (asServer: {asServer})");
+    }
+
+    private void OnMaxEnergyChanged(int prev, int next, bool asServer)
+    {
+        Debug.Log($"SYNC_DEBUG: MaxEnergy changed for {EntityName.Value} from {prev} to {next} (asServer: {asServer})");
+        
+        // Check if any UI controllers are listening to this entity's changes
+        if (prev != next && !asServer)
+        {
+            Debug.Log($"SYNC_DEBUG: UI_CHECK - MaxEnergy changed for {EntityName.Value}, checking for UI controllers...");
+            CheckUIControllerLinks();
+        }
+    }
+
+    private void OnCurrentEnergyChanged(int prev, int next, bool asServer)
+    {
+        Debug.Log($"SYNC_DEBUG: CurrentEnergy changed for {EntityName.Value} from {prev} to {next} (asServer: {asServer})");
+        
+        // If this is a significant change (not just 0->0 or 3->3), log it as important
+        if (prev != next && (prev == 0 || next == 100 || prev == 3))
+        {
+            Debug.Log($"SYNC_DEBUG: IMPORTANT - CurrentEnergy sync for {EntityName.Value}: {prev} -> {next}");
+            
+            // Log the actual SyncVar values after the change
+            Debug.Log($"SYNC_DEBUG: VERIFY - {EntityName.Value} SyncVar values after change: MaxEnergy={MaxEnergy.Value}, CurrentEnergy={CurrentEnergy.Value}, MaxHealth={MaxHealth.Value}");
+        }
     }
 
     private void RegisterWithVisibilityManager()
@@ -157,12 +208,6 @@ public class NetworkEntity : NetworkBehaviour
         }
     }
 
-    public override void OnStopClient()
-    {
-        base.OnStopClient();
-        UnregisterFromVisibilityManager();
-    }
-
     private void UnregisterFromVisibilityManager()
     {
         EntityVisibilityManager entityVisManager = FindFirstObjectByType<EntityVisibilityManager>();
@@ -177,15 +222,35 @@ public class NetworkEntity : NetworkBehaviour
     {
         if (entityType == EntityType.Player)
         {
-            if (Owner != null)
-                EntityName.Value = $"Player ({Owner.ClientId})";
+            // Only set generic name if no name has been set yet
+            // ApplyCharacterDataToEntity will set the proper player name later
+            if (string.IsNullOrEmpty(EntityName.Value))
+            {
+                if (Owner != null)
+                    EntityName.Value = $"Player ({Owner.ClientId})";
+                else
+                    EntityName.Value = "Player (No Owner)";
+                Debug.Log($"SYNC_DEBUG: Set temporary player name to '{EntityName.Value}'");
+            }
             else
-                EntityName.Value = "Player (No Owner)";
+            {
+                Debug.Log($"SYNC_DEBUG: Player name already set to '{EntityName.Value}', not overriding");
+            }
         }
         else // Pet
         {
-            int clientId = relationshipManager?.OwnerClientId ?? -1;
-            EntityName.Value = $"Pet ({clientId})";
+            // Only set generic name if no name has been set yet
+            // ApplyPetDataToEntity will set the proper pet name later
+            if (string.IsNullOrEmpty(EntityName.Value))
+            {
+                int clientId = relationshipManager?.OwnerClientId ?? -1;
+                EntityName.Value = $"Pet ({clientId})";
+                Debug.Log($"SYNC_DEBUG: Set temporary pet name to '{EntityName.Value}'");
+            }
+            else
+            {
+                Debug.Log($"SYNC_DEBUG: Pet name already set to '{EntityName.Value}', not overriding");
+            }
         }
     }
 
@@ -199,8 +264,8 @@ public class NetworkEntity : NetworkBehaviour
         }
 
         OwnerEntityId.Value = (uint)ownerEntity.ObjectId;
-        // Update the name to reflect ownership
-        EntityName.Value = $"Pet ({ownerEntity.Owner?.ClientId ?? -1})";
+        // Don't override the pet's actual name - it should have been set properly during ApplyPetDataToEntity
+        Debug.Log($"NetworkEntity: Set owner entity for pet '{EntityName.Value}' to player (Client ID: {ownerEntity.Owner?.ClientId ?? -1})");
     }
 
     public NetworkEntity GetOwnerEntity()
@@ -411,7 +476,7 @@ public class NetworkEntity : NetworkBehaviour
     [Server]
     public void RefreshStatsFromSerializedFields()
     {
-        Debug.Log($"NetworkEntity: RefreshStatsFromSerializedFields called for {entityType} - BEFORE refresh: MaxEnergy={MaxEnergy.Value}, _maxEnergy={_maxEnergy}");
+        Debug.Log($"SYNC_DEBUG: RefreshStatsFromSerializedFields called for {entityType} '{EntityName.Value}' - BEFORE refresh: MaxHealth={MaxHealth.Value}, MaxEnergy={MaxEnergy.Value}, _maxHealth={_maxHealth}, _maxEnergy={_maxEnergy}");
         
         // Update SyncVars from current serialized field values
         MaxHealth.Value = _maxHealth;
@@ -427,9 +492,118 @@ public class NetworkEntity : NetworkBehaviour
         if (entityType == EntityType.Player)
         {
             Currency.Value = _currency;
+            Debug.Log($"SYNC_DEBUG: Set currency for player '{EntityName.Value}' to {Currency.Value}");
         }
         
-        Debug.Log($"NetworkEntity: RefreshStatsFromSerializedFields completed for {entityType} - AFTER refresh: MaxEnergy={MaxEnergy.Value}, CurrentEnergy={CurrentEnergy.Value}");
+        // Sync serialized fields back
+        _maxHealth = MaxHealth.Value;
+        _maxEnergy = MaxEnergy.Value;
+        _currentHealth = CurrentHealth.Value;
+        _currentEnergy = CurrentEnergy.Value;
+        
+        Debug.Log($"SYNC_DEBUG: RefreshStatsFromSerializedFields completed for {entityType} '{EntityName.Value}' - AFTER refresh: MaxHealth={MaxHealth.Value}, MaxEnergy={MaxEnergy.Value}, CurrentHealth={CurrentHealth.Value}, CurrentEnergy={CurrentEnergy.Value}");
+        
+        // CRITICAL: Force sync to all clients immediately after data is applied
+        // This ensures clients get the updated values even if they connected before PlayerSpawner ran
+        StartCoroutine(ForceResyncToClientsDelayed());
+    }
+    
+    /// <summary>
+    /// Forces a resync of all SyncVars to clients with a small delay
+    /// Used after PlayerSpawner applies character/pet data to ensure clients get updated values
+    /// </summary>
+    [Server]
+    private System.Collections.IEnumerator ForceResyncToClientsDelayed()
+    {
+        // Wait one frame to ensure the SyncVar changes are processed
+        yield return null;
+        
+        Debug.Log($"SYNC_DEBUG: ForceResyncToClients (delayed) called for {entityType} '{EntityName.Value}'");
+        
+        // Store current values
+        string currentName = EntityName.Value;
+        int currentMaxHealth = MaxHealth.Value;
+        int currentMaxEnergy = MaxEnergy.Value;
+        int currentHealth = CurrentHealth.Value;
+        int currentEnergy = CurrentEnergy.Value;
+        int currentCurrency = Currency.Value;
+        
+        Debug.Log($"SYNC_DEBUG: Current values before force sync - Name: '{currentName}', MaxEnergy: {currentMaxEnergy}, CurrentEnergy: {currentEnergy}");
+        
+        // Temporarily set to different values to force dirty
+        EntityName.Value = currentName + "_temp";
+        MaxHealth.Value = currentMaxHealth + 1;
+        MaxEnergy.Value = currentMaxEnergy + 1;
+        CurrentHealth.Value = currentHealth + 1;
+        CurrentEnergy.Value = currentEnergy + 1;
+        
+        if (entityType == EntityType.Player)
+        {
+            Currency.Value = currentCurrency + 1;
+        }
+        
+        Debug.Log($"SYNC_DEBUG: Set temporary values - Name: '{EntityName.Value}', MaxEnergy: {MaxEnergy.Value}");
+        
+        // Wait another frame to ensure the temporary values are sent
+        yield return null;
+        
+        // Set back to correct values - this forces network update
+        EntityName.Value = currentName;
+        MaxHealth.Value = currentMaxHealth;
+        MaxEnergy.Value = currentMaxEnergy;
+        CurrentHealth.Value = currentHealth;
+        CurrentEnergy.Value = currentEnergy;
+        
+        if (entityType == EntityType.Player)
+        {
+            Currency.Value = currentCurrency;
+        }
+        
+        Debug.Log($"SYNC_DEBUG: Force resync completed for {entityType} '{EntityName.Value}' - final values: MaxEnergy={MaxEnergy.Value}, CurrentEnergy={CurrentEnergy.Value}");
+    }
+    
+    /// <summary>
+    /// Checks if any EntityStatsUIController instances are properly linked to this entity
+    /// </summary>
+    private void CheckUIControllerLinks()
+    {
+        EntityStatsUIController[] allControllers = FindObjectsOfType<EntityStatsUIController>(true);
+        Debug.Log($"SYNC_DEBUG: UI_CHECK - Found {allControllers.Length} EntityStatsUIController instances");
+        
+        int linkedCount = 0;
+        foreach (var controller in allControllers)
+        {
+            if (controller.IsLinked())
+            {
+                var linkedEntity = controller.GetLinkedEntity();
+                if (linkedEntity == this)
+                {
+                    linkedCount++;
+                    Debug.Log($"SYNC_DEBUG: UI_CHECK - Controller '{controller.gameObject.name}' is linked to this entity ({EntityName.Value})");
+                }
+                else if (linkedEntity != null)
+                {
+                    Debug.Log($"SYNC_DEBUG: UI_CHECK - Controller '{controller.gameObject.name}' is linked to different entity ({linkedEntity.EntityName.Value})");
+                }
+            }
+            else
+            {
+                Debug.Log($"SYNC_DEBUG: UI_CHECK - Controller '{controller.gameObject.name}' is NOT linked to any entity");
+            }
+        }
+        
+        if (linkedCount == 0)
+        {
+            Debug.LogWarning($"SYNC_DEBUG: UI_CHECK - WARNING: No UI controllers are linked to {EntityName.Value}! UI won't update!");
+            Debug.Log($"SYNC_DEBUG: UI_CHECK - Attempting to force reconnect UI controllers...");
+            
+            // Try to force reconnect UI controllers
+            EntityStatsUIController.ForceReconnectAllStatsUIControllers();
+        }
+        else
+        {
+            Debug.Log($"SYNC_DEBUG: UI_CHECK - {linkedCount} UI controllers are properly linked to {EntityName.Value}");
+        }
     }
 
     #endregion

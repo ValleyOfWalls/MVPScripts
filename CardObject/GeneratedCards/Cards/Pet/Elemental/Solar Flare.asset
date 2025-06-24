@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _cardId: 4672
   _cardName: Solar Flare
-  _description: Deal 31 damage to opponent. Apply ApplyDamageOverTime (5) to yourself.
+  _description: Deal 31 damage to opponent. Apply 5 Burn to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 1

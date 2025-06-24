@@ -64,9 +64,10 @@ public class EntityTracker : NetworkBehaviour
         _isInLimitBreak.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _comboCount.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _perfectionStreak.OnChange += (prev, next, asServer) => UpdateTrackingData();
-        _strengthStacks.OnChange += (prev, next, asServer) => 
+        _strengthStacks.OnChange += (prev, next, asServer) =>
         {
-            UpdateTrackingData();
+            Debug.Log($"EntityTracker: StrengthStacks changed for {entity.EntityName.Value} - Previous: {prev}, New: {next}, AsServer: {asServer}");
+            trackingData.strengthStacks = next;
             OnStrengthChanged?.Invoke(next);
         };
         _currentStance.OnChange += (prev, next, asServer) => 

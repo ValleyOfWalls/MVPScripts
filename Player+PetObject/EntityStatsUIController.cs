@@ -87,6 +87,8 @@ public class EntityStatsUIController : NetworkBehaviour
             return;
         }
         
+        Debug.Log($"EntityStatsUIController: Attempting to link {(statsEntity != null ? statsEntity.EntityName.Value : "unknown")} to {mainEntity.EntityName.Value}");
+        
         // Unsubscribe from previous entity if any
         UnlinkFromCurrentEntity();
         
@@ -97,6 +99,8 @@ public class EntityStatsUIController : NetworkBehaviour
         linkedEnergyHandler = linkedEntity.GetComponent<EnergyHandler>();
         linkedEffectHandler = linkedEntity.GetComponent<EffectHandler>();
         linkedEntityDeck = linkedEntity.GetComponent<NetworkEntityDeck>();
+        
+        Debug.Log($"EntityStatsUIController: Component linking results for {mainEntity.EntityName.Value} - LifeHandler: {linkedLifeHandler != null}, EnergyHandler: {linkedEnergyHandler != null}, EffectHandler: {linkedEffectHandler != null}, EntityDeck: {linkedEntityDeck != null}");
         
         // Subscribe to stat changes
         SubscribeToStatChanges();
@@ -110,7 +114,7 @@ public class EntityStatsUIController : NetworkBehaviour
         // Initial UI update
         RefreshAllStats();
         
-        Debug.Log($"EntityStatsUIController: Successfully linked {statsEntity.EntityName.Value} to {linkedEntity.EntityName.Value}");
+        Debug.Log($"EntityStatsUIController: Successfully linked {(statsEntity != null ? statsEntity.EntityName.Value : "unknown")} to {linkedEntity.EntityName.Value}");
     }
     
     /// <summary>
@@ -171,6 +175,11 @@ public class EntityStatsUIController : NetworkBehaviour
         if (linkedEffectHandler != null)
         {
             linkedEffectHandler.OnEffectsChanged += UpdateEffectsDisplay;
+            Debug.Log($"EntityStatsUIController: Subscribed to OnEffectsChanged for {linkedEntity.EntityName.Value}");
+        }
+        else
+        {
+            Debug.Log($"EntityStatsUIController: linkedEffectHandler is null for {linkedEntity.EntityName.Value}, cannot subscribe to effect changes");
         }
         
         if (linkedEntityDeck != null)
@@ -384,9 +393,15 @@ public class EntityStatsUIController : NetworkBehaviour
     
     private void UpdateEffectsDisplay()
     {
-        if (linkedEffectHandler == null) return;
+        if (linkedEffectHandler == null) 
+        {
+            Debug.Log($"EntityStatsUIController: UpdateEffectsDisplay called but linkedEffectHandler is null for {(linkedEntity != null ? linkedEntity.EntityName.Value : "unknown entity")}");
+            return;
+        }
         
         var activeEffects = linkedEffectHandler.GetAllEffects();
+        
+        Debug.Log($"EntityStatsUIController: UpdateEffectsDisplay called for {linkedEntity.EntityName.Value}, found {activeEffects.Count} effects");
         
         // Build effects text
         string effectsDisplayText = "";
@@ -401,6 +416,8 @@ public class EntityStatsUIController : NetworkBehaviour
                 if (effect.Potency > 1)
                     effectStr += $" x{effect.Potency}";
                 effectStrings.Add(effectStr);
+                
+                Debug.Log($"EntityStatsUIController: Effect - {effect.EffectName}, Potency: {effect.Potency}, Duration: {effect.RemainingDuration}");
             }
             effectsDisplayText = string.Join(", ", effectStrings);
         }
@@ -409,14 +426,25 @@ public class EntityStatsUIController : NetworkBehaviour
             effectsDisplayText = "None";
         }
         
+        Debug.Log($"EntityStatsUIController: Effects display text for {linkedEntity.EntityName.Value}: '{effectsDisplayText}'");
+        
         // Avoid unnecessary updates
-        if (effectsDisplayText == lastEffectsText) return;
+        if (effectsDisplayText == lastEffectsText) 
+        {
+            Debug.Log($"EntityStatsUIController: Effects display text unchanged for {linkedEntity.EntityName.Value}, skipping UI update");
+            return;
+        }
         
         lastEffectsText = effectsDisplayText;
         
         if (effectsText != null)
         {
             effectsText.text = effectsDisplayText;
+            Debug.Log($"EntityStatsUIController: Updated effects text UI for {linkedEntity.EntityName.Value} to: '{effectsDisplayText}'");
+        }
+        else
+        {
+            Debug.Log($"EntityStatsUIController: effectsText UI component is null for {linkedEntity.EntityName.Value}");
         }
     }
     
@@ -511,10 +539,261 @@ public class EntityStatsUIController : NetworkBehaviour
         return linkedEntity != null;
     }
     
+    /// <summary>
+    /// Manually triggers an effects display update for debugging
+    /// </summary>
+    public void ForceUpdateEffectsDisplay()
+    {
+        Debug.Log($"EntityStatsUIController: ForceUpdateEffectsDisplay called for {(linkedEntity != null ? linkedEntity.EntityName.Value : "no linked entity")}");
+        UpdateEffectsDisplay();
+    }
+    
     #endregion
     
     private void OnDestroy()
     {
         UnlinkFromCurrentEntity();
+    }
+
+    /// <summary>
+    /// Static method to manually link all unlinked EntityStatsUIController instances to their correct entities
+    /// </summary>
+    public static void ForceReconnectAllStatsUIControllers()
+    {
+        Debug.Log("=== FORCE RECONNECTING ALL STATS UI CONTROLLERS ===");
+        
+        // Find all EntityStatsUIController instances
+        EntityStatsUIController[] allControllers = FindObjectsOfType<EntityStatsUIController>(true);
+        Debug.Log($"Found {allControllers.Length} EntityStatsUIController instances (including inactive)");
+        
+        // Find all main entities (Player and Pet types)
+        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>(true);
+        var mainEntities = new List<NetworkEntity>();
+        
+        foreach (var entity in allEntities)
+        {
+            if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet)
+            {
+                mainEntities.Add(entity);
+                Debug.Log($"Found main entity: {entity.EntityName.Value} (ID: {entity.ObjectId}, Type: {entity.EntityType})");
+            }
+        }
+        
+        Debug.Log($"Found {mainEntities.Count} main entities");
+        
+        // Try to link unlinked controllers
+        foreach (var controller in allControllers)
+        {
+            if (!controller.IsLinked())
+            {
+                NetworkEntity statsEntity = controller.GetComponent<NetworkEntity>();
+                if (statsEntity == null) 
+                {
+                    Debug.LogError($"Controller on {controller.gameObject.name} has no NetworkEntity component!");
+                    continue;
+                }
+                
+                Debug.Log($"Attempting to link unlinked controller on {controller.gameObject.name} (Type: {statsEntity.EntityType})");
+                
+                // Find matching main entity based on entity type
+                EntityType targetMainEntityType = statsEntity.EntityType == EntityType.PlayerStatsUI ? EntityType.Player : EntityType.Pet;
+                
+                NetworkEntity bestMatch = null;
+                
+                // First, try to find a main entity that doesn't have a stats UI linked yet
+                foreach (var mainEntity in mainEntities)
+                {
+                    if (mainEntity.EntityType == targetMainEntityType)
+                    {
+                        RelationshipManager mainEntityRM = mainEntity.GetComponent<RelationshipManager>();
+                        if (mainEntityRM != null)
+                        {
+                            // Check if this main entity already has a working stats UI link
+                            bool hasWorkingStatsUI = false;
+                            if (mainEntityRM.StatsUIEntity != null)
+                            {
+                                NetworkEntity existingStatsUI = mainEntityRM.StatsUIEntity.GetComponent<NetworkEntity>();
+                                if (existingStatsUI != null)
+                                {
+                                    EntityStatsUIController existingController = existingStatsUI.GetComponent<EntityStatsUIController>();
+                                    if (existingController != null && existingController.IsLinked())
+                                    {
+                                        hasWorkingStatsUI = true;
+                                    }
+                                }
+                            }
+                            
+                            if (!hasWorkingStatsUI)
+                            {
+                                bestMatch = mainEntity;
+                                Debug.Log($"Found potential match: {mainEntity.EntityName.Value} (no working stats UI)");
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // If no unlinked entity found, just pick the first matching type
+                if (bestMatch == null)
+                {
+                    foreach (var mainEntity in mainEntities)
+                    {
+                        if (mainEntity.EntityType == targetMainEntityType)
+                        {
+                            bestMatch = mainEntity;
+                            Debug.Log($"Using fallback match: {mainEntity.EntityName.Value}");
+                            break;
+                        }
+                    }
+                }
+                
+                if (bestMatch != null)
+                {
+                    Debug.Log($"Linking {controller.gameObject.name} to {bestMatch.EntityName.Value}");
+                    
+                    // Set up the relationship both ways
+                    RelationshipManager statsEntityRM = controller.GetComponent<RelationshipManager>();
+                    RelationshipManager mainEntityRM = bestMatch.GetComponent<RelationshipManager>();
+                    
+                    if (statsEntityRM != null && mainEntityRM != null)
+                    {
+                        Debug.Log($"Setting up relationships: StatsUI -> Main, Main -> StatsUI");
+                        statsEntityRM.SetAlly(bestMatch);
+                        mainEntityRM.SetStatsUI(statsEntity);
+                    }
+                    else
+                    {
+                        Debug.LogError($"Missing RelationshipManager - StatsEntity: {statsEntityRM != null}, MainEntity: {mainEntityRM != null}");
+                    }
+                    
+                    // Force the controller to link
+                    Debug.Log($"Calling LinkToEntity...");
+                    controller.LinkToEntity(bestMatch);
+                    
+                    Debug.Log($"Link complete - IsLinked: {controller.IsLinked()}");
+                }
+                else
+                {
+                    Debug.LogWarning($"No suitable main entity found for controller type {targetMainEntityType}");
+                }
+            }
+            else
+            {
+                Debug.Log($"Controller on {controller.gameObject.name} is already linked to {controller.GetLinkedEntity().EntityName.Value}");
+            }
+        }
+        
+        Debug.Log("=== END FORCE RECONNECT ===");
+    }
+
+    /// <summary>
+    /// Debug method to show all relationship statuses in Inspector-friendly format
+    /// Call this during runtime to see what's linked and what's not
+    /// </summary>
+    public static void DebugAllRelationshipStatuses()
+    {
+        Debug.Log("=== RELATIONSHIP STATUS DEBUG ===");
+        
+        // Find all entities
+        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>(true);
+        var playerEntities = new List<NetworkEntity>();
+        var petEntities = new List<NetworkEntity>();
+        var statsUIEntities = new List<NetworkEntity>();
+        
+        foreach (var entity in allEntities)
+        {
+            switch (entity.EntityType)
+            {
+                case EntityType.Player:
+                    playerEntities.Add(entity);
+                    break;
+                case EntityType.Pet:
+                    petEntities.Add(entity);
+                    break;
+                case EntityType.PlayerStatsUI:
+                case EntityType.PetStatsUI:
+                    statsUIEntities.Add(entity);
+                    break;
+            }
+        }
+        
+        Debug.Log($"Found: {playerEntities.Count} Players, {petEntities.Count} Pets, {statsUIEntities.Count} Stats UIs");
+        
+        // Check Player relationships
+        Debug.Log("--- PLAYER ENTITIES ---");
+        foreach (var player in playerEntities)
+        {
+            RelationshipManager rm = player.GetComponent<RelationshipManager>();
+            if (rm != null)
+            {
+                string statsUIStatus = rm.StatsUIEntity != null ? 
+                    $"LINKED to {rm.StatsUIEntity.GetComponent<NetworkEntity>()?.EntityName.Value ?? "unknown"}" : 
+                    "NOT LINKED";
+                string allyStatus = rm.AllyEntity != null ? 
+                    $"LINKED to {rm.AllyEntity.GetComponent<NetworkEntity>()?.EntityName.Value ?? "unknown"}" : 
+                    "NOT LINKED";
+                
+                Debug.Log($"  {player.EntityName.Value} (ID: {player.ObjectId}):");
+                Debug.Log($"    StatsUI: {statsUIStatus}");
+                Debug.Log($"    Ally: {allyStatus}");
+            }
+            else
+            {
+                Debug.LogError($"  {player.EntityName.Value}: NO RelationshipManager!");
+            }
+        }
+        
+        // Check Pet relationships
+        Debug.Log("--- PET ENTITIES ---");
+        foreach (var pet in petEntities)
+        {
+            RelationshipManager rm = pet.GetComponent<RelationshipManager>();
+            if (rm != null)
+            {
+                string statsUIStatus = rm.StatsUIEntity != null ? 
+                    $"LINKED to {rm.StatsUIEntity.GetComponent<NetworkEntity>()?.EntityName.Value ?? "unknown"}" : 
+                    "NOT LINKED";
+                string allyStatus = rm.AllyEntity != null ? 
+                    $"LINKED to {rm.AllyEntity.GetComponent<NetworkEntity>()?.EntityName.Value ?? "unknown"}" : 
+                    "NOT LINKED";
+                
+                Debug.Log($"  {pet.EntityName.Value} (ID: {pet.ObjectId}):");
+                Debug.Log($"    StatsUI: {statsUIStatus}");
+                Debug.Log($"    Ally: {allyStatus}");
+            }
+            else
+            {
+                Debug.LogError($"  {pet.EntityName.Value}: NO RelationshipManager!");
+            }
+        }
+        
+        // Check Stats UI relationships
+        Debug.Log("--- STATS UI ENTITIES ---");
+        foreach (var statsUI in statsUIEntities)
+        {
+            RelationshipManager rm = statsUI.GetComponent<RelationshipManager>();
+            EntityStatsUIController controller = statsUI.GetComponent<EntityStatsUIController>();
+            
+            if (rm != null && controller != null)
+            {
+                string allyStatus = rm.AllyEntity != null ? 
+                    $"LINKED to {rm.AllyEntity.GetComponent<NetworkEntity>()?.EntityName.Value ?? "unknown"}" : 
+                    "NOT LINKED";
+                string controllerStatus = controller.IsLinked() ? 
+                    $"LINKED to {controller.GetLinkedEntity().EntityName.Value}" : 
+                    "NOT LINKED";
+                
+                Debug.Log($"  {statsUI.EntityName.Value} (ID: {statsUI.ObjectId}, Type: {statsUI.EntityType}):");
+                Debug.Log($"    RelationshipManager Ally: {allyStatus}");
+                Debug.Log($"    Controller Link: {controllerStatus}");
+                Debug.Log($"    GameObject Active: {statsUI.gameObject.activeInHierarchy}");
+            }
+            else
+            {
+                Debug.LogError($"  {statsUI.EntityName.Value}: Missing components - RM: {rm != null}, Controller: {controller != null}");
+            }
+        }
+        
+        Debug.Log("=== END RELATIONSHIP DEBUG ===");
     }
 } 

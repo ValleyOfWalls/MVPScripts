@@ -41,7 +41,7 @@ CardData infernalStrike = CardGenerator.CreateUpgradedVersion(
     upgradedName: "Infernal Strike",
     damageMultiplier: 1.5f,  // 8 -> 12 damage
     addBonusEffect: true,
-    bonusEffectType: CardEffectType.ApplyDamageOverTime,
+    bonusEffectType: CardEffectType.ApplyBurn,
     bonusAmount: 3
 );
 

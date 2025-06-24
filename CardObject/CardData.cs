@@ -384,6 +384,10 @@ public class CardData : ScriptableObject
                 return $"Apply Weak for {duration} turns";
             case CardEffectType.ApplyBreak:
                 return $"Apply Break for {duration} turns";
+            case CardEffectType.ApplyBurn:
+                return $"Apply {potency} Burn";
+            case CardEffectType.ApplySalve:
+                return $"Apply {potency} Salve";
             case CardEffectType.ApplyThorns:
                 return $"Apply {potency} Thorns until your next turn";
             case CardEffectType.ApplyShield:
@@ -405,9 +409,11 @@ public class CardData : ScriptableObject
         {
             case CardEffectType.ApplyWeak:
             case CardEffectType.ApplyBreak:
+            case CardEffectType.ApplyBurn:
             case CardEffectType.ApplyStun:
             case CardEffectType.ApplyCurse:
                 return CardTargetType.Opponent;
+            case CardEffectType.ApplySalve:
             case CardEffectType.ApplyThorns:
             case CardEffectType.ApplyShield:
             case CardEffectType.RaiseCriticalChance:
@@ -438,8 +444,8 @@ public class CardEffect
         (int)CardEffectType.Heal, 
         (int)CardEffectType.DrawCard, 
         (int)CardEffectType.RestoreEnergy,
-        (int)CardEffectType.ApplyDamageOverTime, 
-        (int)CardEffectType.ApplyHealOverTime, 
+        (int)CardEffectType.ApplyBurn, 
+        (int)CardEffectType.ApplySalve, 
         (int)CardEffectType.ApplyShield,
         (int)CardEffectType.ApplyStrength,
         (int)CardEffectType.ApplyCurse,
@@ -453,8 +459,6 @@ public class CardEffect
         (int)CardEffectType.ApplyWeak, 
         (int)CardEffectType.ApplyBreak, 
         (int)CardEffectType.ApplyStun, 
-        (int)CardEffectType.ApplyDamageOverTime, 
-        (int)CardEffectType.ApplyHealOverTime, 
         (int)CardEffectType.RaiseCriticalChance)]
     [Tooltip("Duration for status effects (turns to last)")]
     public int duration = 3;

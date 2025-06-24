@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _cardId: 4248
   _cardName: Poison Strike
-  _description: Deal 12 damage to opponent. Apply ApplyDamageOverTime (6) to opponent.
+  _description: Deal 12 damage to opponent. Apply 6 Burn to opponent.
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
   _cardType: 4

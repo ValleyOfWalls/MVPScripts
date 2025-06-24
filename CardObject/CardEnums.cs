@@ -33,8 +33,8 @@ public enum CardEffectType
     // ═══ STATUS EFFECTS ═══
     ApplyBreak,
     ApplyWeak,
-    ApplyDamageOverTime,
-    ApplyHealOverTime,
+    ApplyBurn,
+    ApplySalve,
     RaiseCriticalChance,
     ApplyThorns,
     ApplyShield,

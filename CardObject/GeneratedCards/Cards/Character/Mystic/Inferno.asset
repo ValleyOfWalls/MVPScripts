@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _cardId: 7809
   _cardName: Inferno
-  _description: Deal 30 damage to opponent. Apply ApplyDamageOverTime (8) to yourself.
+  _description: Deal 30 damage to opponent. Apply 8 Burn to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 2

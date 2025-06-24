@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _cardId: 4957
   _cardName: Venom Blade
-  _description: Deal 17 damage to opponent. Apply ApplyDamageOverTime (8) to opponent.
+  _description: Deal 17 damage to opponent. Apply 8 Burn to opponent.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 4

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _cardId: 2105
   _cardName: Ethereal Ward
-  _description: Grant 49 shield to ally. Apply ApplyHealOverTime (8) to yourself.
+  _description: Grant 49 shield to ally. Apply 8 Salve to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 2

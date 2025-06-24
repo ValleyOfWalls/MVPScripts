@@ -76,11 +76,24 @@ public class EffectHandler : NetworkBehaviour
     
     private void OnActiveEffectsChanged(SyncDictionaryOperation op, string key, string item, bool asServer)
     {
+        Debug.Log($"EffectHandler: OnActiveEffectsChanged called on {entity.EntityName.Value} - Operation: {op}, Key: {key}, Item: {item}, AsServer: {asServer}");
+        
         // Refresh our local cache whenever the network dictionary changes
         RefreshEffectCache();
         
         // Notify listeners that effects have changed
+        int listenerCount = OnEffectsChanged?.GetInvocationList()?.Length ?? 0;
+        Debug.Log($"EffectHandler: About to invoke OnEffectsChanged for {entity.EntityName.Value}, Listener count: {listenerCount}");
+        
+        // Debug stats UI controllers if no listeners found
+        if (listenerCount == 0)
+        {
+            DebugStatsUIControllers();
+        }
+        
         OnEffectsChanged?.Invoke();
+        
+        Debug.Log($"EffectHandler: OnEffectsChanged event invoked for {entity.EntityName.Value}, Active effects count: {activeEffects.Count}");
     }
     
     private void RefreshEffectCache()
@@ -134,7 +147,9 @@ public class EffectHandler : NetworkBehaviour
         {
             case "Strength":
             case "Curse":
-                // Strength and Curse don't use duration - they tick down by 1 each turn
+            case "Burn":
+            case "Salve":
+                // Strength, Curse, Burn, and Salve don't use duration - they tick down by 1 each turn
                 // If effect already exists, add to the potency
                 if (activeEffects.ContainsKey(effectName))
                 {
@@ -256,21 +271,49 @@ public class EffectHandler : NetworkBehaviour
             // Process specific effects
             switch (effectName)
             {
-                case "DamageOverTime":
+                case "Burn":
                     if (lifeHandler != null)
                     {
                         lifeHandler.TakeDamage(potency, sourceEntity);
-                        Debug.Log($"EffectHandler: Applied {potency} DoT damage to {entity.EntityName.Value}");
+                        Debug.Log($"EffectHandler: Applied {potency} Burn damage to {entity.EntityName.Value}");
                     }
-                    break;
                     
-                case "HealOverTime":
+                    // Reduce potency by 1 each turn
+                    potency--;
+                    if (potency <= 0)
+                    {
+                        activeEffects.Remove(effectKey);
+                        Debug.Log($"EffectHandler: Burn effect expired on {entity.EntityName.Value}");
+                        continue; // Skip normal duration processing
+                    }
+                    else
+                    {
+                        // Update with reduced potency
+                        activeEffects[effectKey] = $"{effectName}|{potency}|{duration}|{sourceId}";
+                        continue; // Skip normal duration processing
+                    }
+                    
+                case "Salve":
                     if (lifeHandler != null)
                     {
                         lifeHandler.Heal(potency, sourceEntity);
-                        Debug.Log($"EffectHandler: Applied {potency} HoT healing to {entity.EntityName.Value}");
+                        Debug.Log($"EffectHandler: Applied {potency} Salve healing to {entity.EntityName.Value}");
                     }
-                    break;
+                    
+                    // Reduce potency by 1 each turn
+                    potency--;
+                    if (potency <= 0)
+                    {
+                        activeEffects.Remove(effectKey);
+                        Debug.Log($"EffectHandler: Salve effect expired on {entity.EntityName.Value}");
+                        continue; // Skip normal duration processing
+                    }
+                    else
+                    {
+                        // Update with reduced potency
+                        activeEffects[effectKey] = $"{effectName}|{potency}|{duration}|{sourceId}";
+                        continue; // Skip normal duration processing
+                    }
                     
                 case "Thorns":
                     // Thorns is processed when taking damage, not at end of turn
@@ -757,6 +800,76 @@ public class EffectHandler : NetworkBehaviour
         }
         
         return netObj?.GetComponent<NetworkEntity>();
+    }
+    
+    /// <summary>
+    /// Debug method to check all EntityStatsUIController instances and their status
+    /// </summary>
+    private void DebugStatsUIControllers()
+    {
+        Debug.Log($"=== DEBUGGING STATS UI CONTROLLERS FOR {entity.EntityName.Value} (ID: {entity.ObjectId}) ===");
+        
+        // Find all EntityStatsUIController instances in the scene
+        EntityStatsUIController[] allControllers = FindObjectsOfType<EntityStatsUIController>(true);
+        Debug.Log($"Found {allControllers.Length} EntityStatsUIController instances in scene (including inactive)");
+        
+        bool foundUnlinkedControllers = false;
+        bool foundControllerForThisEntity = false;
+        
+        for (int i = 0; i < allControllers.Length; i++)
+        {
+            var controller = allControllers[i];
+            NetworkEntity linkedEntity = controller.GetLinkedEntity();
+            bool isVisible = controller.IsVisible();
+            bool isLinked = controller.IsLinked();
+            
+            // Get the stats entity (the UI entity itself)
+            NetworkEntity statsEntity = controller.GetComponent<NetworkEntity>();
+            string statsEntityInfo = statsEntity != null ? $"StatsEntity: {statsEntity.EntityName.Value} (ID: {statsEntity.ObjectId}, Type: {statsEntity.EntityType})" : "StatsEntity: NULL";
+            
+            Debug.Log($"  [{i}] Controller on {controller.gameObject.name}:");
+            Debug.Log($"      {statsEntityInfo}");
+            Debug.Log($"      Linked to: {(linkedEntity != null ? $"{linkedEntity.EntityName.Value} (ID: {linkedEntity.ObjectId})" : "NULL")}");
+            Debug.Log($"      Visible: {isVisible}, IsLinked: {isLinked}");
+            
+            if (!isLinked)
+            {
+                foundUnlinkedControllers = true;
+            }
+            
+            // Check if this controller is linked to our entity
+            if (linkedEntity != null && linkedEntity.ObjectId == entity.ObjectId)
+            {
+                foundControllerForThisEntity = true;
+                Debug.Log($"      *** THIS CONTROLLER IS LINKED TO {entity.EntityName.Value}! ***");
+                
+                // Check if it's subscribed to our EffectHandler
+                if (controller.GetComponent<EffectHandler>() != null)
+                {
+                    var effectHandler = linkedEntity.GetComponent<EffectHandler>();
+                    if (effectHandler != null)
+                    {
+                        int listenerCount = effectHandler.OnEffectsChanged?.GetInvocationList()?.Length ?? 0;
+                        Debug.Log($"      EffectHandler listener count: {listenerCount}");
+                    }
+                }
+            }
+        }
+        
+        Debug.Log($"Summary: Found controller for this entity: {foundControllerForThisEntity}, Found unlinked controllers: {foundUnlinkedControllers}");
+        
+        // If we found unlinked controllers, try to force reconnect them
+        if (foundUnlinkedControllers)
+        {
+            Debug.Log($"Found unlinked controllers, attempting force reconnect...");
+            EntityStatsUIController.ForceReconnectAllStatsUIControllers();
+        }
+        else if (!foundControllerForThisEntity)
+        {
+            Debug.Log($"No controller found for {entity.EntityName.Value} (ID: {entity.ObjectId}), but all controllers are linked. This suggests a mismatch in entity relationships.");
+        }
+        
+        Debug.Log($"=== END STATS UI DEBUG ===");
     }
 }
 
