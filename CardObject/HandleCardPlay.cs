@@ -775,7 +775,7 @@ public class HandleCardPlay : NetworkBehaviour
     /// </summary>
     public void TriggerVisualEffects(NetworkEntity sourceEntity, NetworkEntity targetEntity, CardData cardData)
     {
-        /* Debug.Log($"HandleCardPlay: TriggerVisualEffects called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Card: {cardData?.CardName}"); */
+        Debug.Log($"HandleCardPlay: TriggerVisualEffects called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Card: {cardData?.CardName}");
         
         if (sourceEntity == null || targetEntity == null || cardData == null) 
         {
@@ -786,12 +786,12 @@ public class HandleCardPlay : NetworkBehaviour
         bool hasTriggeredAttackAnimation = false;
         float maxEffectDuration = 0f;
         
-        /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Processing {cardData.Effects.Count} effects for card {cardData.CardName}"); */
+        Debug.Log($"HandleCardPlay: TriggerVisualEffects - Processing {cardData.Effects.Count} effects for card {cardData.CardName}");
         
         // Process each effect that needs visual representation
         foreach (var effect in cardData.Effects)
         {
-            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Processing effect {effect.effectType} with animation behavior {effect.animationBehavior}"); */
+            Debug.Log($"HandleCardPlay: TriggerVisualEffects - Processing effect {effect.effectType} with animation behavior {effect.animationBehavior}");
             
             if (!ShouldEffectTriggerVisual(effect, cardData))
             {
@@ -799,7 +799,7 @@ public class HandleCardPlay : NetworkBehaviour
                 continue;
             }
                 
-            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect {effect.effectType} will trigger visual"); */
+                            Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect {effect.effectType} will trigger visual");
             
             // Trigger attack animation once for any effect that needs it
             bool shouldTriggerAttackAnim = ShouldTriggerAttackAnimation(effect);
@@ -831,7 +831,7 @@ public class HandleCardPlay : NetworkBehaviour
             }
             
             // Handle the specific effect's visual behavior
-            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Triggering visual for effect {effect.effectType}"); */
+            Debug.Log($"HandleCardPlay: TriggerVisualEffects - Triggering visual for effect {effect.effectType}");
             float effectDuration = TriggerEffectVisual(sourceEntity, targetEntity, effect, cardData);
             maxEffectDuration = Mathf.Max(maxEffectDuration, effectDuration);
             /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect duration: {effectDuration}, max so far: {maxEffectDuration}"); */

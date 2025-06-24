@@ -902,7 +902,7 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     public static void TriggerNamedCustomEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, float duration = 0f)
     {
-        /* Debug.Log($"EffectAnimationManager: TriggerNamedCustomEffect called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Effect: {effectName}, Duration: {duration}"); */
+        Debug.Log($"EffectAnimationManager: TriggerNamedCustomEffect called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Effect: {effectName}, Duration: {duration}");
         
         if (Instance == null)
         {
@@ -910,7 +910,7 @@ public class EffectAnimationManager : NetworkBehaviour
             return;
         }
         
-        /* Debug.Log($"EffectAnimationManager: Instance found, IsServerStarted: {Instance.IsServerStarted}"); */
+        Debug.Log($"EffectAnimationManager: Instance found, IsServerStarted: {Instance.IsServerStarted}");
         
         if (Instance.IsServerStarted)
         {
@@ -948,14 +948,18 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     private void TriggerLocalNamedCustomEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, float duration)
     {
-        /* Debug.Log($"EffectAnimationManager: TriggerLocalNamedCustomEffect called - Effect: {effectName}"); */
+        Debug.Log($"EffectAnimationManager: TriggerLocalNamedCustomEffect called - Effect: {effectName}");
         
         // Get positions for the effect
         Vector3 sourcePosition = GetEffectPosition(sourceEntity, true);
         Vector3 targetPosition = GetEffectPosition(targetEntity, false);
         
+        Debug.Log($"EffectAnimationManager: Effect positions - Source: {sourcePosition}, Target: {targetPosition}");
+        
         if (duration <= 0f)
             duration = defaultEffectDuration;
+        
+        Debug.Log($"EffectAnimationManager: Starting local custom effect coroutine with duration: {duration}");
         
         // Start the custom visual effect locally
         StartCoroutine(PlayCustomEffectCoroutine(sourcePosition, targetPosition, effectName, duration));

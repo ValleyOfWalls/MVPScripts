@@ -173,12 +173,12 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        /* Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking if should trigger visual effects..."); */
+        Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking if should trigger visual effects...");
         
         // TRIGGER VISUAL EFFECTS BEFORE PROCESSING CARD EFFECTS
         if (targetEntities.Count > 0 && handleCardPlay != null)
         {
-            /* Debug.Log($"CardEffectResolver: Triggering visual effects for card {cardData.CardName} - calling RpcTriggerVisualEffects"); */
+            Debug.Log($"CardEffectResolver: Triggering visual effects for card {cardData.CardName} - calling RpcTriggerVisualEffects");
             // Use RPC to trigger visual effects on all clients
             RpcTriggerVisualEffects(sourceEntity.ObjectId, targetEntities[0].ObjectId, cardData.CardId);
         }
@@ -883,13 +883,13 @@ public class CardEffectResolver : NetworkBehaviour
     [ObserversRpc]
     private void RpcTriggerVisualEffects(int sourceEntityId, int targetEntityId, int cardDataId)
     {
-        /* Debug.Log($"CardEffectResolver: RpcTriggerVisualEffects called - Source: {sourceEntityId}, Target: {targetEntityId}, Card: {cardDataId}"); */
+        Debug.Log($"CardEffectResolver: RpcTriggerVisualEffects called - Source: {sourceEntityId}, Target: {targetEntityId}, Card: {cardDataId}");
         
         // Find entities
         NetworkEntity sourceEntity = FindEntityById(sourceEntityId);
         NetworkEntity targetEntity = FindEntityById(targetEntityId);
         
-        /* Debug.Log($"CardEffectResolver: Entity lookup results - Source: {(sourceEntity != null ? sourceEntity.EntityName.Value : "null")}, Target: {(targetEntity != null ? targetEntity.EntityName.Value : "null")}"); */
+        Debug.Log($"CardEffectResolver: Entity lookup results - Source: {(sourceEntity != null ? sourceEntity.EntityName.Value : "null")}, Target: {(targetEntity != null ? targetEntity.EntityName.Value : "null")}");
         
         if (sourceEntity == null || targetEntity == null)
         {
@@ -899,11 +899,11 @@ public class CardEffectResolver : NetworkBehaviour
         
         // Check if these entities are in the currently viewed fight
         bool shouldShow = ShouldShowVisualEffectsForEntities(sourceEntity, targetEntity);
-        /* Debug.Log($"CardEffectResolver: ShouldShowVisualEffectsForEntities result: {shouldShow}"); */
+        Debug.Log($"CardEffectResolver: ShouldShowVisualEffectsForEntities result: {shouldShow}");
         
         if (!shouldShow)
         {
-            /* Debug.Log($"CardEffectResolver: Skipping visual effects - entities not in currently viewed fight"); */
+            Debug.Log($"CardEffectResolver: Skipping visual effects - entities not in currently viewed fight");
             return;
         }
         
@@ -915,14 +915,14 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        /* Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking handleCardPlay..."); */
+        Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking handleCardPlay...");
         
         // Trigger visual effects
         if (handleCardPlay != null)
         {
-            /* Debug.Log($"CardEffectResolver: Calling TriggerVisualEffects for card {cardData.CardName} - Source: {sourceEntity.EntityName.Value}, Target: {targetEntity.EntityName.Value}"); */
+            Debug.Log($"CardEffectResolver: Calling TriggerVisualEffects for card {cardData.CardName} - Source: {sourceEntity.EntityName.Value}, Target: {targetEntity.EntityName.Value}");
             handleCardPlay.TriggerVisualEffects(sourceEntity, targetEntity, cardData);
-            /* Debug.Log($"CardEffectResolver: TriggerVisualEffects call completed for card {cardData.CardName}"); */
+            Debug.Log($"CardEffectResolver: TriggerVisualEffects call completed for card {cardData.CardName}");
         }
         else
         {
@@ -964,10 +964,22 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        /* Debug.Log($"CardEffectResolver: ServerResolveCardEffect for card {cardData.CardName} from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}"); */
+        Debug.Log($"CardEffectResolver: ServerResolveCardEffect for card {cardData.CardName} from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}");
         
         // Create target list
         List<NetworkEntity> targetEntities = new List<NetworkEntity> { targetEntity };
+        
+        // TRIGGER VISUAL EFFECTS BEFORE PROCESSING CARD EFFECTS (same as CmdResolveEffect)
+        if (targetEntities.Count > 0 && handleCardPlay != null)
+        {
+            Debug.Log($"CardEffectResolver: ServerResolveCardEffect - Triggering visual effects for card {cardData.CardName} - calling RpcTriggerVisualEffects");
+            // Use RPC to trigger visual effects on all clients
+            RpcTriggerVisualEffects(sourceEntity.ObjectId, targetEntities[0].ObjectId, cardData.CardId);
+        }
+        else
+        {
+            Debug.LogWarning($"CardEffectResolver: ServerResolveCardEffect - Cannot trigger visual effects - targetEntities.Count: {targetEntities.Count}, handleCardPlay: {handleCardPlay != null}");
+        }
         
         // Record card play
         RecordCardPlay(sourceEntity, cardData);
