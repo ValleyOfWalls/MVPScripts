@@ -616,6 +616,10 @@ public class PlayerSpawner : MonoBehaviour
             return;
         }
 
+        Debug.Log($"[SPAWNER_RELATIONSHIPS] Setting up stats UI relationships for client {player.Owner?.ClientId ?? -1}:");
+        Debug.Log($"[SPAWNER_RELATIONSHIPS] Player: {player.EntityName.Value} (ID: {player.ObjectId}) -> PlayerStatsUI: {playerStatsUI.EntityName.Value} (ID: {playerStatsUI.ObjectId})");
+        Debug.Log($"[SPAWNER_RELATIONSHIPS] Pet: {pet.EntityName.Value} (ID: {pet.ObjectId}) -> PetStatsUI: {petStatsUI.EntityName.Value} (ID: {petStatsUI.ObjectId})");
+
         // Get the RelationshipManager components for main entities
         var playerRelationship = player.GetComponent<RelationshipManager>();
         var petRelationship = pet.GetComponent<RelationshipManager>();
@@ -628,10 +632,12 @@ public class PlayerSpawner : MonoBehaviour
             playerStatsUIRelationship != null && petStatsUIRelationship != null)
         {
             // Link main entities to their stats UI
+            Debug.Log($"[SPAWNER_RELATIONSHIPS] Calling SetStatsUI on player and pet...");
             playerRelationship.SetStatsUI(playerStatsUI);
             petRelationship.SetStatsUI(petStatsUI);
             
             // Link stats UI back to their main entities (use ally relationship)
+            Debug.Log($"[SPAWNER_RELATIONSHIPS] Calling SetAlly on stats UI entities...");
             playerStatsUIRelationship.SetAlly(player);
             petStatsUIRelationship.SetAlly(pet);
             
@@ -639,7 +645,7 @@ public class PlayerSpawner : MonoBehaviour
             playerStatsUI.EntityName.Value = $"Player Stats UI ({player.Owner?.ClientId ?? -1})";
             petStatsUI.EntityName.Value = $"Pet Stats UI ({player.Owner?.ClientId ?? -1})";
             
-            /* Debug.Log($"Set up stats UI relationships - Player (ID: {player.ObjectId}) -> Stats UI (ID: {playerStatsUI.ObjectId}), Pet (ID: {pet.ObjectId}) -> Stats UI (ID: {petStatsUI.ObjectId})"); */
+            Debug.Log($"[SPAWNER_RELATIONSHIPS] Stats UI relationships setup complete for client {player.Owner?.ClientId ?? -1}");
         }
         else
         {

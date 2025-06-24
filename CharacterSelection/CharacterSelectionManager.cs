@@ -504,6 +504,21 @@ public class CharacterSelectionManager : NetworkBehaviour
             yield break;
         }
         
+        // Show loading screen immediately before any cleanup or phase changes
+        LoadingScreenManager loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
+        if (loadingScreenManager != null)
+        {
+            loadingScreenManager.RpcShowLoadingScreenForCombatTransition();
+            Debug.Log("CharacterSelectionManager: Loading screen activated before combat transition");
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionManager: LoadingScreenManager not found, proceeding without loading screen");
+        }
+        
+        // Small delay to ensure loading screen is visible before starting cleanup
+        yield return new WaitForSeconds(0.1f);
+        
         // Transition to combat phase
         if (gamePhaseManager != null)
         {

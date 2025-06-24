@@ -105,10 +105,26 @@ public class RelationshipManager : NetworkBehaviour
     /// </summary>
     private void OnAllyChanged(NetworkBehaviour prevAlly, NetworkBehaviour newAlly, bool asServer)
     {
+        NetworkEntity thisEntity = GetComponent<NetworkEntity>();
+        NetworkEntity prevAllyEntity = prevAlly?.GetComponent<NetworkEntity>();
+        NetworkEntity newAllyEntity = newAlly?.GetComponent<NetworkEntity>();
+        
+        Debug.Log($"[RELATIONSHIP_CHANGE] OnAllyChanged for {(thisEntity != null ? thisEntity.EntityName.Value : "unknown")} (ID: {(thisEntity != null ? thisEntity.ObjectId : 0)}, Type: {(thisEntity != null ? thisEntity.EntityType : EntityType.Player)}): {(prevAllyEntity != null ? prevAllyEntity.EntityName.Value : "null")} -> {(newAllyEntity != null ? newAllyEntity.EntityName.Value : "null")} (asServer: {asServer})");
+        
         if (!asServer) // This means the change was received from the server for a client
         {
             inspectorAllyReference = newAlly; // Update client's inspector for debugging
-    
+            
+            // If this is a stats UI entity and it has a new ally, trigger linking
+            if (thisEntity != null && (thisEntity.EntityType == EntityType.PlayerStatsUI || thisEntity.EntityType == EntityType.PetStatsUI) && newAllyEntity != null)
+            {
+                var statsUIController = thisEntity.GetComponent<EntityStatsUIController>();
+                if (statsUIController != null)
+                {
+                    Debug.Log($"[RELATIONSHIP_CHANGE] Stats UI {thisEntity.EntityName.Value} got new ally {newAllyEntity.EntityName.Value}, triggering TryLinkToMainEntity");
+                    statsUIController.TryLinkToMainEntity();
+                }
+            }
         }
         // If asServer is true, this callback is also invoked on the server when it changes the value.
         // In that case, SetAlly already updated inspectorAllyReference.
@@ -133,10 +149,26 @@ public class RelationshipManager : NetworkBehaviour
     /// </summary>
     private void OnStatsUIChanged(NetworkBehaviour prevStatsUI, NetworkBehaviour newStatsUI, bool asServer)
     {
+        NetworkEntity thisEntity = GetComponent<NetworkEntity>();
+        NetworkEntity prevStatsUIEntity = prevStatsUI?.GetComponent<NetworkEntity>();
+        NetworkEntity newStatsUIEntity = newStatsUI?.GetComponent<NetworkEntity>();
+        
+        Debug.Log($"[RELATIONSHIP_CHANGE] OnStatsUIChanged for {(thisEntity != null ? thisEntity.EntityName.Value : "unknown")} (ID: {(thisEntity != null ? thisEntity.ObjectId : 0)}): {(prevStatsUIEntity != null ? prevStatsUIEntity.EntityName.Value : "null")} -> {(newStatsUIEntity != null ? newStatsUIEntity.EntityName.Value : "null")} (asServer: {asServer})");
+        
         if (!asServer) // This means the change was received from the server for a client
         {
             inspectorStatsUIReference = newStatsUI; // Update client's inspector for debugging
-    
+            
+            // If there's a new stats UI, trigger its linking
+            if (newStatsUIEntity != null)
+            {
+                var statsUIController = newStatsUIEntity.GetComponent<EntityStatsUIController>();
+                if (statsUIController != null)
+                {
+                    Debug.Log($"[RELATIONSHIP_CHANGE] Triggering stats UI controller to link to {thisEntity.EntityName.Value}");
+                    // The controller should automatically link via TryLinkToMainEntity when the relationship changes
+                }
+            }
         }
         // If asServer is true, this callback is also invoked on the server when it changes the value.
         // In that case, SetStatsUI already updated inspectorStatsUIReference.
@@ -149,9 +181,14 @@ public class RelationshipManager : NetworkBehaviour
     public void SetAlly(NetworkBehaviour ally)
     {
         if (!IsServerInitialized) return;
-        allyEntity.Value = ally;
+        
+        NetworkEntity thisEntity = GetComponent<NetworkEntity>();
+        NetworkEntity allyEntity = ally?.GetComponent<NetworkEntity>();
+        
+        Debug.Log($"[RELATIONSHIP] SetAlly called: {(thisEntity != null ? thisEntity.EntityName.Value : "unknown")} (ID: {(thisEntity != null ? thisEntity.ObjectId : 0)}) -> Ally: {(allyEntity != null ? allyEntity.EntityName.Value : "null")} (ID: {(allyEntity != null ? allyEntity.ObjectId : 0)})");
+        
+        this.allyEntity.Value = ally;
         inspectorAllyReference = ally; // Update the server's inspector reference
-
     }
     
     /// <summary>
@@ -163,7 +200,6 @@ public class RelationshipManager : NetworkBehaviour
         if (!IsServerInitialized) return;
         handEntity.Value = hand;
         inspectorHandReference = hand; // Update the server's inspector reference
-
     }
     
     /// <summary>
@@ -173,9 +209,14 @@ public class RelationshipManager : NetworkBehaviour
     public void SetStatsUI(NetworkBehaviour statsUI)
     {
         if (!IsServerInitialized) return;
-        statsUIEntity.Value = statsUI;
+        
+        NetworkEntity thisEntity = GetComponent<NetworkEntity>();
+        NetworkEntity statsUIEntity = statsUI?.GetComponent<NetworkEntity>();
+        
+        Debug.Log($"[RELATIONSHIP] SetStatsUI called: {(thisEntity != null ? thisEntity.EntityName.Value : "unknown")} (ID: {(thisEntity != null ? thisEntity.ObjectId : 0)}) -> StatsUI: {(statsUIEntity != null ? statsUIEntity.EntityName.Value : "null")} (ID: {(statsUIEntity != null ? statsUIEntity.ObjectId : 0)})");
+        
+        this.statsUIEntity.Value = statsUI;
         inspectorStatsUIReference = statsUI; // Update the server's inspector reference
-
     }
 
     /// <summary>

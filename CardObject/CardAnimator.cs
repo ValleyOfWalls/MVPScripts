@@ -21,9 +21,9 @@ public class CardAnimator : MonoBehaviour
     [SerializeField] private float drawScaleOvershoot = 1.1f;
     
     [Header("Play Animation")]
-    [SerializeField] private Vector3 playTargetOffset = new Vector3(0, 100f, 0);
+    [SerializeField] private Vector3 playTargetOffset = new Vector3(0, 200, 0);
     [SerializeField] private Ease playEase = Ease.InBack;
-    [SerializeField] private float playFadeOutAlpha = 0f;
+    [SerializeField] private float playFadeOutAlpha = 0.3f;
     
     [Header("Failed Play Animation")]
     [SerializeField] private float dissolveOutDuration = 0.25f;
@@ -211,6 +211,25 @@ public class CardAnimator : MonoBehaviour
         }
         
         LogDebug($"Starting play success animation for {gameObject.name}");
+        
+        // Try to refresh missing component references before animating
+        if (handAnimator == null)
+        {
+            handAnimator = GetComponentInParent<HandAnimator>();
+            if (handAnimator != null)
+            {
+                LogDebug($"Refreshed HandAnimator reference for {gameObject.name}: Found");
+            }
+        }
+        
+        if (handLayoutManager == null)
+        {
+            handLayoutManager = GetComponentInParent<HandLayoutManager>();
+            if (handLayoutManager != null)
+            {
+                LogDebug($"Refreshed HandLayoutManager reference for {gameObject.name}: Found");
+            }
+        }
         
         // Clear any hover state before major animation
         if (isHovered)

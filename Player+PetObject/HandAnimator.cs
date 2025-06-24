@@ -27,7 +27,7 @@ public class HandAnimator : MonoBehaviour
     [SerializeField] private float maxAnimationWaitTime = 5f;
     
     [Header("Debug")]
-    [SerializeField] private bool debugLogEnabled = false;
+    [SerializeField] private bool debugLogEnabled = true;
     
     // Components
     private HandLayoutManager handLayoutManager;
@@ -359,12 +359,84 @@ public class HandAnimator : MonoBehaviour
     /// </summary>
     private void ScheduleLayoutUpdate()
     {
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"[HandAnimator] ScheduleLayoutUpdate called for {entityName} (ID: {entityId})");
+        LogDebug($"ScheduleLayoutUpdate called for {entityName} (ID: {entityId})");
+        
         if (layoutUpdateCoroutine != null)
         {
+            Debug.Log($"[HandAnimator] Stopping existing layout update coroutine for {entityName}");
+            LogDebug($"Stopping existing layout update coroutine for {entityName}");
             StopCoroutine(layoutUpdateCoroutine);
         }
         
+        // Check if this GameObject is active and will remain active
+        if (!gameObject.activeInHierarchy)
+        {
+            Debug.LogWarning($"[HandAnimator] GameObject {gameObject.name} is not active - forcing immediate layout update instead of delayed");
+            ForceLayoutUpdateImmediate();
+            return;
+        }
+        
+        Debug.Log($"[HandAnimator] Starting DelayedLayoutUpdate coroutine for {entityName} (ID: {entityId})");
         layoutUpdateCoroutine = StartCoroutine(DelayedLayoutUpdate());
+    }
+    
+    /// <summary>
+    /// Schedules a layout update after a card has been removed from the hand
+    /// </summary>
+    private void ScheduleLayoutUpdateAfterCardRemoval(CardAnimator cardAnimator)
+    {
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"[HandAnimator] ScheduleLayoutUpdateAfterCardRemoval called for {entityName} (ID: {entityId}) - card: {cardAnimator.gameObject.name}");
+        LogDebug($"Scheduling layout update after card removal for {entityName} (ID: {entityId}) - card: {cardAnimator.gameObject.name}");
+        
+        if (layoutUpdateCoroutine != null)
+        {
+            Debug.Log($"[HandAnimator] Stopping existing layout update coroutine for {entityName}");
+            LogDebug($"Stopping existing layout update coroutine for {entityName}");
+            StopCoroutine(layoutUpdateCoroutine);
+        }
+        
+        // Check if this GameObject is active and will remain active
+        if (!gameObject.activeInHierarchy)
+        {
+            Debug.LogWarning($"[HandAnimator] GameObject {gameObject.name} is not active - forcing immediate layout update instead of delayed");
+            ForceLayoutUpdateImmediate();
+            return;
+        }
+        
+        Debug.Log($"[HandAnimator] Starting DelayedLayoutUpdateAfterCardRemoval coroutine for {entityName} (ID: {entityId})");
+        layoutUpdateCoroutine = StartCoroutine(DelayedLayoutUpdateAfterCardRemoval(cardAnimator));
+    }
+    
+    /// <summary>
+    /// Forces an immediate layout update without delay (fallback for inactive GameObjects)
+    /// </summary>
+    private void ForceLayoutUpdateImmediate()
+    {
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        
+        Debug.Log($"[HandAnimator] ForceLayoutUpdateImmediate called for {entityName}");
+        
+        if (handLayoutManager != null)
+        {
+            Debug.Log($"[HandAnimator] Performing immediate layout update for {entityName}");
+            handLayoutManager.UpdateLayout();
+        }
+        else
+        {
+            Debug.Log($"[HandAnimator] Cannot perform immediate layout update - no HandLayoutManager found for {entityName}");
+        }
     }
     
     /// <summary>
@@ -372,12 +444,108 @@ public class HandAnimator : MonoBehaviour
     /// </summary>
     private IEnumerator DelayedLayoutUpdate()
     {
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"[HandAnimator] DelayedLayoutUpdate starting - about to wait {layoutUpdateDelay}s for {entityName} (ID: {entityId})");
+        LogDebug($"DelayedLayoutUpdate waiting {layoutUpdateDelay}s for {entityName} (ID: {entityId})");
+        
         yield return new WaitForSeconds(layoutUpdateDelay);
+        
+        Debug.Log($"[HandAnimator] DelayedLayoutUpdate wait completed for {entityName} (ID: {entityId})");
+        
+        // Check if GameObject is still active after the wait
+        if (!gameObject.activeInHierarchy)
+        {
+            Debug.LogWarning($"[HandAnimator] GameObject {gameObject.name} became inactive during wait - cannot perform layout update");
+            layoutUpdateCoroutine = null;
+            yield break;
+        }
         
         if (handLayoutManager != null)
         {
-            LogDebug("Performing delayed layout update");
+            Debug.Log($"[HandAnimator] Performing delayed layout update for {entityName} (ID: {entityId})");
+            LogDebug($"Performing delayed layout update for {entityName} (ID: {entityId})");
             handLayoutManager.UpdateLayout();
+        }
+        else
+        {
+            Debug.Log($"[HandAnimator] Cannot perform layout update - no HandLayoutManager found for {entityName}");
+            LogDebug($"Cannot perform layout update - no HandLayoutManager found for {entityName}");
+        }
+        
+        layoutUpdateCoroutine = null;
+    }
+    
+    /// <summary>
+    /// Performs layout update after waiting for a card to be removed from hand
+    /// </summary>
+    private IEnumerator DelayedLayoutUpdateAfterCardRemoval(CardAnimator cardAnimator)
+    {
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"[HandAnimator] DelayedLayoutUpdateAfterCardRemoval starting - waiting for card {cardAnimator.gameObject.name} to be removed from {entityName} (ID: {entityId})");
+        LogDebug($"DelayedLayoutUpdateAfterCardRemoval waiting for card removal for {entityName} (ID: {entityId})");
+        
+        // Wait for the card to be removed from the hand transform hierarchy
+        // The card cleanup happens through ServerRPC which may take a frame or two
+        int maxWaitFrames = 30; // Wait up to 30 frames (about 0.5 seconds at 60fps)
+        int waitedFrames = 0;
+        
+        while (waitedFrames < maxWaitFrames)
+        {
+            // Check if the card is still in the hand transform
+            if (cardAnimator == null || cardAnimator.transform.parent != handLayoutManager.transform)
+            {
+                Debug.Log($"[HandAnimator] Card {cardAnimator?.gameObject.name ?? "null"} removed from hand after {waitedFrames} frames");
+                break;
+            }
+            
+            // Also check if the card's container has been changed to discard
+            Card cardComponent = cardAnimator.GetComponent<Card>();
+            if (cardComponent != null && cardComponent.CurrentContainer != CardLocation.Hand)
+            {
+                Debug.Log($"[HandAnimator] Card {cardAnimator.gameObject.name} container changed to {cardComponent.CurrentContainer} after {waitedFrames} frames");
+                break;
+            }
+            
+            waitedFrames++;
+            yield return null; // Wait one frame
+        }
+        
+        if (waitedFrames >= maxWaitFrames)
+        {
+            Debug.LogWarning($"[HandAnimator] Timeout waiting for card {cardAnimator?.gameObject.name ?? "null"} to be removed from hand - proceeding with layout update anyway");
+        }
+        
+        // Additional small delay to ensure all network synchronization is complete
+        yield return new WaitForSeconds(0.1f);
+        
+        Debug.Log($"[HandAnimator] DelayedLayoutUpdateAfterCardRemoval wait completed for {entityName} (ID: {entityId})");
+        
+        // Check if GameObject is still active after the wait
+        if (!gameObject.activeInHierarchy)
+        {
+            Debug.LogWarning($"[HandAnimator] GameObject {gameObject.name} became inactive during wait - cannot perform layout update");
+            layoutUpdateCoroutine = null;
+            yield break;
+        }
+        
+        if (handLayoutManager != null)
+        {
+            Debug.Log($"[HandAnimator] Performing delayed layout update after card removal for {entityName} (ID: {entityId})");
+            LogDebug($"Performing delayed layout update after card removal for {entityName} (ID: {entityId})");
+            handLayoutManager.UpdateLayout();
+        }
+        else
+        {
+            Debug.Log($"[HandAnimator] Cannot perform layout update - no HandLayoutManager found for {entityName}");
+            LogDebug($"Cannot perform layout update - no HandLayoutManager found for {entityName}");
         }
         
         layoutUpdateCoroutine = null;
@@ -500,13 +668,38 @@ public class HandAnimator : MonoBehaviour
     /// </summary>
     public void OnCardPlayed(CardAnimator cardAnimator)
     {
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"[HandAnimator] OnCardPlayed called for {entityName} (ID: {entityId}) - card: {cardAnimator.gameObject.name}");
         LogDebug($"Card played successfully: {cardAnimator.gameObject.name}");
         
         // Remove from animating list if present
         RemoveAnimatingCard(cardAnimator);
         
-        // Trigger layout update after a brief delay
-        ScheduleLayoutUpdate();
+        Debug.Log($"[HandAnimator] About to call ScheduleLayoutUpdateAfterCardRemoval for {entityName} (ID: {entityId})");
+        // Trigger layout update after the card has been removed from hand
+        ScheduleLayoutUpdateAfterCardRemoval(cardAnimator);
+        Debug.Log($"[HandAnimator] ScheduleLayoutUpdateAfterCardRemoval call completed for {entityName} (ID: {entityId})");
+    }
+
+    /// <summary>
+    /// Called when a card is successfully played (alternative name for consistency)
+    /// </summary>
+    public void OnCardPlaySuccessful(CardAnimator cardAnimator)
+    {
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"[HandAnimator] OnCardPlaySuccessful called for {entityName} (ID: {entityId}) - card: {cardAnimator.gameObject.name}");
+        LogDebug($"OnCardPlaySuccessful called for {entityName} (ID: {entityId}) - card: {cardAnimator.gameObject.name}");
+        
+        // Delegate to the main OnCardPlayed method
+        OnCardPlayed(cardAnimator);
     }
     
     /// <summary>

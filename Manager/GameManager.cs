@@ -26,8 +26,8 @@ public class GameManager : NetworkBehaviour
     private int petInitialDraw = 3;
     [SerializeField, Tooltip("Target number of cards in pet's hand after drawing each round")]
     private int petHandTarget = 3;
-
-
+    [SerializeField, Tooltip("Delay in seconds between each card played by opponent pets")]
+    private float petCardPlayDelay = 1.0f;
 
     [Header("Game Rules")]
     [SerializeField, Tooltip("If true, players will automatically be set to ready when they join the lobby.")]
@@ -74,6 +74,9 @@ public class GameManager : NetworkBehaviour
     // Target hand sizes for each round - how many cards entities should have after drawing
     public readonly SyncVar<int> PlayerTargetHandSize = new SyncVar<int>();
     public readonly SyncVar<int> PetTargetHandSize = new SyncVar<int>();
+    
+    // Pet AI settings
+    public readonly SyncVar<float> PetCardPlayDelay = new SyncVar<float>();
     
     // Damage modifier SyncVars
     public readonly SyncVar<bool> CriticalHitsEnabled = new SyncVar<bool>();
@@ -224,6 +227,9 @@ public class GameManager : NetworkBehaviour
         ShopSize.Value = shopSize;
         ShopMinCardCost.Value = shopMinCardCost;
         ShopMaxCardCost.Value = shopMaxCardCost;
+        
+        // Initialize Pet AI settings
+        PetCardPlayDelay.Value = petCardPlayDelay;
         
         /* Debug.Log("GameManager started on Server. Initializing game rules."); */
         /* Debug.Log($"Player settings - Initial Draw: {PlayerDrawAmount.Value}, Target Hand: {PlayerTargetHandSize.Value}, Max Energy: {PlayerMaxEnergy.Value}, Max Health: {PlayerMaxHealth.Value}"); */

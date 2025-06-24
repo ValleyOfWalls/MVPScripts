@@ -9,6 +9,9 @@ using System;
 /// Controls the UI display of entity stats (health, energy, effects, etc.)
 /// This is attached to the separate stats UI prefab that gets linked to main entities
 /// Attach to: EntityStatsUI prefab
+/// 
+/// DEBUG: Added extensive logging with [STATS_UI_LINK] prefix to track linking issues.
+/// Look for these logs to see which stats UI is linking to which entity.
 /// </summary>
 public class EntityStatsUIController : NetworkBehaviour
 {
@@ -87,7 +90,7 @@ public class EntityStatsUIController : NetworkBehaviour
             return;
         }
         
-        /* Debug.Log($"EntityStatsUIController: Attempting to link {(statsEntity != null ? statsEntity.EntityName.Value : "unknown")} to {mainEntity.EntityName.Value}"); */
+        Debug.Log($"[STATS_UI_LINK] Attempting to link {(statsEntity != null ? statsEntity.EntityName.Value : "unknown")} to {mainEntity.EntityName.Value} (ID: {mainEntity.ObjectId}, Owner: {mainEntity.Owner?.ClientId ?? -1})");
         
         // Unsubscribe from previous entity if any
         UnlinkFromCurrentEntity();
@@ -100,7 +103,7 @@ public class EntityStatsUIController : NetworkBehaviour
         linkedEffectHandler = linkedEntity.GetComponent<EffectHandler>();
         linkedEntityDeck = linkedEntity.GetComponent<NetworkEntityDeck>();
         
-        /* Debug.Log($"EntityStatsUIController: Component linking results for {mainEntity.EntityName.Value} - LifeHandler: {linkedLifeHandler != null}, EnergyHandler: {linkedEnergyHandler != null}, EffectHandler: {linkedEffectHandler != null}, EntityDeck: {linkedEntityDeck != null}"); */
+        Debug.Log($"[STATS_UI_LINK] Component linking results for {mainEntity.EntityName.Value} - LifeHandler: {linkedLifeHandler != null}, EnergyHandler: {linkedEnergyHandler != null}, EffectHandler: {linkedEffectHandler != null}, EntityDeck: {linkedEntityDeck != null}");
         
         // Subscribe to stat changes
         SubscribeToStatChanges();
@@ -114,13 +117,13 @@ public class EntityStatsUIController : NetworkBehaviour
         // Initial UI update
         RefreshAllStats();
         
-        /* Debug.Log($"EntityStatsUIController: Successfully linked {(statsEntity != null ? statsEntity.EntityName.Value : "unknown")} to {linkedEntity.EntityName.Value}"); */
+        Debug.Log($"[STATS_UI_LINK] Successfully linked {(statsEntity != null ? statsEntity.EntityName.Value : "unknown")} to {linkedEntity.EntityName.Value}");
     }
     
     /// <summary>
     /// Attempts to find and link to the main entity via RelationshipManager
     /// </summary>
-    private void TryLinkToMainEntity()
+    public void TryLinkToMainEntity()
     {
         if (relationshipManager == null)
         {
@@ -128,14 +131,25 @@ public class EntityStatsUIController : NetworkBehaviour
             return;
         }
         
+        Debug.Log($"[STATS_UI_LINK] TryLinkToMainEntity called for {(statsEntity != null ? statsEntity.EntityName.Value : "unknown stats UI")}");
+        
         // The ally entity should be set to the main entity that owns this stats UI
         if (relationshipManager.AllyEntity != null)
         {
             NetworkEntity mainEntity = relationshipManager.AllyEntity.GetComponent<NetworkEntity>();
             if (mainEntity != null)
             {
+                Debug.Log($"[STATS_UI_LINK] Found ally entity: {mainEntity.EntityName.Value} (ID: {mainEntity.ObjectId})");
                 LinkToEntity(mainEntity);
             }
+            else
+            {
+                Debug.LogError($"[STATS_UI_LINK] AllyEntity exists but has no NetworkEntity component!");
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[STATS_UI_LINK] No ally entity set for {(statsEntity != null ? statsEntity.EntityName.Value : "unknown stats UI")} - cannot link");
         }
     }
     
@@ -410,11 +424,54 @@ public class EntityStatsUIController : NetworkBehaviour
             List<string> effectStrings = new List<string>();
             foreach (var effect in activeEffects)
             {
-                string effectStr = effect.EffectName;
-                if (effect.RemainingDuration > 0)
-                    effectStr += $" ({effect.RemainingDuration})";
-                if (effect.Potency > 1)
-                    effectStr += $" x{effect.Potency}";
+                string effectStr;
+                
+                // Format based on effect type mechanics (matching EffectHandler.GetActiveEffects logic)
+                switch (effect.EffectName)
+                {
+                    case "Strength":
+                    case "Curse":
+                    case "Burn":
+                    case "Salve":
+                        // Always show potency for damage modifiers and DoT/HoT effects
+                        effectStr = $"{effect.EffectName} ({effect.Potency})";
+                        break;
+                        
+                    case "Break":
+                    case "Weak":
+                        // Show duration only (they don't have meaningful potency)
+                        effectStr = effect.RemainingDuration > 1 ? 
+                            $"{effect.EffectName} ({effect.RemainingDuration})" : 
+                            effect.EffectName;
+                        break;
+                        
+                    case "Thorns":
+                        // Always show potency for Thorns since the amount is important
+                        effectStr = $"{effect.EffectName} ({effect.Potency})";
+                        break;
+                        
+                    case "Shield":
+                        // Always show potency for Shield since the amount is important
+                        effectStr = $"{effect.EffectName} ({effect.Potency})";
+                        break;
+                        
+                    default:
+                        // For other effects, show potency if > 0, otherwise show duration if > 1
+                        if (effect.Potency > 1)
+                        {
+                            effectStr = $"{effect.EffectName} ({effect.Potency})";
+                        }
+                        else if (effect.RemainingDuration > 1)
+                        {
+                            effectStr = $"{effect.EffectName} ({effect.RemainingDuration})";
+                        }
+                        else
+                        {
+                            effectStr = effect.EffectName;
+                        }
+                        break;
+                }
+                
                 effectStrings.Add(effectStr);
                 
                 /* Debug.Log($"EntityStatsUIController: Effect - {effect.EffectName}, Potency: {effect.Potency}, Duration: {effect.RemainingDuration}"); */

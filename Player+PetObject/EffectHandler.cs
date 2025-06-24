@@ -700,6 +700,12 @@ public class EffectHandler : NetworkBehaviour
                         effectDisplay = $"{effect.EffectName} ({effect.Potency})";
                         break;
                         
+                    case "Burn":
+                    case "Salve":
+                        // Always show potency for DoT/HoT effects (they tick down by potency)
+                        effectDisplay = $"{effect.EffectName} ({effect.Potency})";
+                        break;
+                        
                     case "Break":
                     case "Weak":
                         // Show duration only (they don't have meaningful potency)

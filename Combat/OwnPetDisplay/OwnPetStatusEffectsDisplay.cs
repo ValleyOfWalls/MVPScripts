@@ -166,23 +166,64 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
     {
         if (effect == null) return "";
         
-        // Choose format based on settings
-        if (showEffectPotency && showEffectDuration)
+        // Format based on effect type mechanics (matching EffectHandler.GetActiveEffects logic)
+        string effectDisplay;
+        
+        switch (effect.EffectName)
         {
-            return string.Format(effectFullFormat, effect.EffectName, effect.Potency, effect.RemainingDuration);
+            case "Strength":
+            case "Curse":
+            case "Burn":
+            case "Salve":
+                // Always show potency for damage modifiers and DoT/HoT effects
+                effectDisplay = string.Format(effectWithPotencyFormat, effect.EffectName, effect.Potency);
+                break;
+                
+            case "Break":
+            case "Weak":
+                // Show duration only (they don't have meaningful potency)
+                if (effect.RemainingDuration > 1)
+                {
+                    effectDisplay = string.Format(effectWithDurationFormat, effect.EffectName, effect.RemainingDuration);
+                }
+                else
+                {
+                    effectDisplay = string.Format(effectFormat, effect.EffectName);
+                }
+                break;
+                
+            case "Thorns":
+                // Always show potency for Thorns since the amount is important
+                effectDisplay = string.Format(effectWithPotencyFormat, effect.EffectName, effect.Potency);
+                break;
+                
+            case "Shield":
+                // Always show potency for Shield since the amount is important
+                effectDisplay = string.Format(effectWithPotencyFormat, effect.EffectName, effect.Potency);
+                break;
+                
+            default:
+                // For other effects, use the display settings
+                if (showEffectPotency && showEffectDuration)
+                {
+                    effectDisplay = string.Format(effectFullFormat, effect.EffectName, effect.Potency, effect.RemainingDuration);
+                }
+                else if (showEffectPotency && effect.Potency > 1)
+                {
+                    effectDisplay = string.Format(effectWithPotencyFormat, effect.EffectName, effect.Potency);
+                }
+                else if (showEffectDuration && effect.RemainingDuration > 1)
+                {
+                    effectDisplay = string.Format(effectWithDurationFormat, effect.EffectName, effect.RemainingDuration);
+                }
+                else
+                {
+                    effectDisplay = string.Format(effectFormat, effect.EffectName);
+                }
+                break;
         }
-        else if (showEffectPotency)
-        {
-            return string.Format(effectWithPotencyFormat, effect.EffectName, effect.Potency);
-        }
-        else if (showEffectDuration)
-        {
-            return string.Format(effectWithDurationFormat, effect.EffectName, effect.RemainingDuration);
-        }
-        else
-        {
-            return string.Format(effectFormat, effect.EffectName);
-        }
+        
+        return effectDisplay;
     }
     
     /// <summary>

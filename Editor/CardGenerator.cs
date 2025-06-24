@@ -161,8 +161,8 @@ public static class CardGenerator
         // Add damage effect
         card.AddEffect(CardEffectType.Damage, damage, target);
         
-        // Set description
-        SetCardDescription(card, $"Deal {damage} damage to {GetTargetDescription(target)}.");
+        // Generate complete description including all mechanics
+        SetCardDescription(card, GenerateCompleteCardDescription(card));
         
         return card;
     }
@@ -178,8 +178,8 @@ public static class CardGenerator
         // Add heal effect
         card.AddEffect(CardEffectType.Heal, healing, target);
         
-        // Set description
-        SetCardDescription(card, $"Heal {healing} health to {GetTargetDescription(target)}.");
+        // Generate complete description including all mechanics
+        SetCardDescription(card, GenerateCompleteCardDescription(card));
         
         return card;
     }
@@ -205,8 +205,8 @@ public static class CardGenerator
         
         card.Effects.Add(statusEffect);
         
-        // Set description based on status type
-        SetCardDescription(card, GetStatusDescription(statusType, potency, duration, target));
+        // Generate complete description including all mechanics
+        SetCardDescription(card, GenerateCompleteCardDescription(card));
         
         return card;
     }
@@ -220,8 +220,6 @@ public static class CardGenerator
     {
         CardData card = CreateBaseCard(cardName, energyCost, cardType, category);
         
-        List<string> descriptions = new List<string>();
-        
         foreach (var effect in effects)
         {
             CardEffect cardEffect = new CardEffect
@@ -234,10 +232,10 @@ public static class CardGenerator
             };
             
             card.Effects.Add(cardEffect);
-            descriptions.Add(GetEffectDescription(effect.type, effect.amount, effect.target, effect.duration));
         }
         
-        SetCardDescription(card, string.Join(". ", descriptions) + ".");
+        // Generate complete description including all mechanics
+        SetCardDescription(card, GenerateCompleteCardDescription(card));
         
         return card;
     }
@@ -408,6 +406,7 @@ public static class CardGenerator
             (CardEffectType.ApplyStrength, 3, CardTargetType.Self, 0)
         }, CardCategory.Draftable);
         berserkerRage.ChangeStance(StanceType.Berserker);
+        SetCardDescription(berserkerRage, GenerateCompleteCardDescription(berserkerRage)); // Regenerate with stance info
         var berserkerRageUpgraded = CreateUpgradedVersion(berserkerRage, "Primal Fury", 1.3f, 0, true, CardEffectType.DrawCard, 1);
         LinkCardUpgrade(berserkerRage, berserkerRageUpgraded, UpgradeConditionType.PlayedInStance, 3);
         cards.Add((berserkerRage, berserkerRageUpgraded));
@@ -427,6 +426,7 @@ public static class CardGenerator
             (CardEffectType.ApplyThorns, 10, CardTargetType.Self, 0)
         }, CardCategory.Draftable);
         guardianStance.ChangeStance(StanceType.Guardian);
+        SetCardDescription(guardianStance, GenerateCompleteCardDescription(guardianStance)); // Regenerate with stance info
         var guardianStanceUpgraded = CreateUpgradedVersion(guardianStance, "Aegis Form", 1.2f, -5, false);
         LinkCardUpgrade(guardianStance, guardianStanceUpgraded, UpgradeConditionType.TimesPlayedThisFight, 2);
         cards.Add((guardianStance, guardianStanceUpgraded));
@@ -469,6 +469,7 @@ public static class CardGenerator
         // Fireball - Basic elemental attack (STARTER: Basic attack, not draftable)
         var fireball = CreateStatusCard("Fireball", CardEffectType.Damage, 20, 0, 25, CardTargetType.Opponent, CardCategory.Starter);
         fireball.Effects[0].elementalType = ElementalType.Fire;
+        SetCardDescription(fireball, GenerateCompleteCardDescription(fireball)); // Regenerate with elemental info
         var fireballUpgraded = CreateUpgradedVersion(fireball, "Inferno", 1.5f, 0, true, CardEffectType.ApplyBurn, 8);
         LinkCardUpgrade(fireball, fireballUpgraded, UpgradeConditionType.TimesPlayedThisFight, 4);
         cards.Add((fireball, fireballUpgraded));
@@ -480,6 +481,7 @@ public static class CardGenerator
             (CardEffectType.RestoreEnergy, 15, CardTargetType.Self, 0)
         }, CardCategory.Draftable);
         lightningBolt.Effects[0].elementalType = ElementalType.Lightning;
+        SetCardDescription(lightningBolt, GenerateCompleteCardDescription(lightningBolt)); // Regenerate with elemental info
         var lightningBoltUpgraded = CreateUpgradedVersion(lightningBolt, "Chain Lightning", 1.3f, 0, true, CardEffectType.DrawCard, 1);
         LinkCardUpgrade(lightningBolt, lightningBoltUpgraded, UpgradeConditionType.ZeroCostCardsThisFight, 3);
         cards.Add((lightningBolt, lightningBoltUpgraded));
@@ -493,6 +495,7 @@ public static class CardGenerator
             (CardEffectType.ApplyWeak, 1, CardTargetType.Opponent, 3)
         }, CardCategory.Starter);
         iceShield.Effects[0].elementalType = ElementalType.Ice;
+        SetCardDescription(iceShield, GenerateCompleteCardDescription(iceShield)); // Regenerate with elemental info
         var iceShieldUpgraded = CreateUpgradedVersion(iceShield, "Frozen Barrier", 1.4f, 0, true, CardEffectType.ApplyStun, 1);
         LinkCardUpgrade(iceShield, iceShieldUpgraded, UpgradeConditionType.HealingReceivedThisFight, 50);
         cards.Add((iceShield, iceShieldUpgraded));
@@ -504,6 +507,7 @@ public static class CardGenerator
             (CardEffectType.DrawCard, 1, CardTargetType.Self, 0)
         }, CardCategory.Draftable);
         mysticStance.ChangeStance(StanceType.Mystic);
+        SetCardDescription(mysticStance, GenerateCompleteCardDescription(mysticStance)); // Regenerate with stance info
         var mysticStanceUpgraded = CreateUpgradedVersion(mysticStance, "Arcane Focus", 1.5f, 0, false);
         LinkCardUpgrade(mysticStance, mysticStanceUpgraded, UpgradeConditionType.TimesPlayedThisFight, 4);
         cards.Add((mysticStance, mysticStanceUpgraded));
@@ -514,6 +518,7 @@ public static class CardGenerator
         var manaBurn = CreateDamageCard("Mana Burn", 10, 35, CardTargetType.Opponent, CardCategory.Draftable);
         manaBurn.Effects[0].scalingType = ScalingType.CurrentHealth; // Placeholder for energy scaling
         manaBurn.Effects[0].scalingMultiplier = 0.3f;
+        SetCardDescription(manaBurn, GenerateCompleteCardDescription(manaBurn)); // Regenerate with scaling info
         var manaBurnUpgraded = CreateUpgradedVersion(manaBurn, "Void Drain", 1.5f, 0, true, CardEffectType.RestoreEnergy, 20);
         LinkCardUpgrade(manaBurn, manaBurnUpgraded, UpgradeConditionType.TimesPlayedThisFight, 3);
         cards.Add((manaBurn, manaBurnUpgraded));
@@ -522,6 +527,7 @@ public static class CardGenerator
         var elementalMastery = CreateDamageCard("Elemental Mastery", 5, 40, CardTargetType.Opponent, CardCategory.Draftable);
         elementalMastery.Effects[0].scalingType = ScalingType.CardsPlayedThisTurn;
         elementalMastery.Effects[0].scalingMultiplier = 8.0f;
+        SetCardDescription(elementalMastery, GenerateCompleteCardDescription(elementalMastery)); // Regenerate with scaling info
         var elementalMasteryUpgraded = CreateUpgradedVersion(elementalMastery, "Arcane Supremacy", 1.2f, -10, true, CardEffectType.DrawCard, 2);
         LinkCardUpgrade(elementalMastery, elementalMasteryUpgraded, UpgradeConditionType.PlayedMultipleTimesInTurn, 2);
         cards.Add((elementalMastery, elementalMasteryUpgraded));
@@ -543,6 +549,7 @@ public static class CardGenerator
         // Quick Strike - Basic combo attack (STARTER: Basic attack, not draftable)
         var quickStrike = CreateDamageCard("Quick Strike", 15, 15, CardTargetType.Opponent, CardCategory.Starter);
         quickStrike.MakeComboCard();
+        SetCardDescription(quickStrike, GenerateCompleteCardDescription(quickStrike)); // Regenerate with combo info
         var quickStrikeUpgraded = CreateUpgradedVersion(quickStrike, "Swift Blade", 1.3f, -5, true, CardEffectType.DrawCard, 1);
         LinkCardUpgrade(quickStrike, quickStrikeUpgraded, UpgradeConditionType.TimesPlayedThisFight, 6);
         cards.Add((quickStrike, quickStrikeUpgraded));
@@ -554,6 +561,7 @@ public static class CardGenerator
             (CardEffectType.ApplyBurn, 6, CardTargetType.Opponent, 0)
         }, CardCategory.Draftable);
         poisonStrike.MakeComboCard();
+        SetCardDescription(poisonStrike, GenerateCompleteCardDescription(poisonStrike)); // Regenerate with combo info
         var poisonStrikeUpgraded = CreateUpgradedVersion(poisonStrike, "Venom Blade", 1.4f, 0, false);
         LinkCardUpgrade(poisonStrike, poisonStrikeUpgraded, UpgradeConditionType.ComboCountReached, 5);
         cards.Add((poisonStrike, poisonStrikeUpgraded));
@@ -587,6 +595,7 @@ public static class CardGenerator
         assassinate.RequireCombo(3);
         assassinate.Effects[0].scalingType = ScalingType.ComboCount;
         assassinate.Effects[0].scalingMultiplier = 15.0f;
+        SetCardDescription(assassinate, GenerateCompleteCardDescription(assassinate)); // Regenerate with combo + scaling info
         var assassinateUpgraded = CreateUpgradedVersion(assassinate, "Death Strike", 1.3f, -10, true, CardEffectType.DrawCard, 2);
         LinkCardUpgrade(assassinate, assassinateUpgraded, UpgradeConditionType.DefeatedOpponentWithCard, 1);
         cards.Add((assassinate, assassinateUpgraded));
@@ -618,6 +627,7 @@ public static class CardGenerator
         // Flame Burst - Basic elemental attack (STARTER: Basic attack, not draftable)
         var flameBurst = CreateDamageCard("Flame Burst", 22, 25, CardTargetType.Opponent, CardCategory.Starter);
         flameBurst.Effects[0].elementalType = ElementalType.Fire;
+        SetCardDescription(flameBurst, GenerateCompleteCardDescription(flameBurst)); // Regenerate with elemental info
         var flameBurstUpgraded = CreateUpgradedVersion(flameBurst, "Solar Flare", 1.4f, 0, true, CardEffectType.ApplyBurn, 5);
         LinkCardUpgrade(flameBurst, flameBurstUpgraded, UpgradeConditionType.TimesPlayedThisFight, 3);
         cards.Add((flameBurst, flameBurstUpgraded));
@@ -629,6 +639,7 @@ public static class CardGenerator
             (CardEffectType.ApplyWeak, 1, CardTargetType.Opponent, 2)
         }, CardCategory.Draftable);
         frostBolt.Effects[0].elementalType = ElementalType.Ice;
+        SetCardDescription(frostBolt, GenerateCompleteCardDescription(frostBolt)); // Regenerate with elemental info
         var frostBoltUpgraded = CreateUpgradedVersion(frostBolt, "Blizzard Strike", 1.3f, 0, true, CardEffectType.ApplyStun, 1);
         LinkCardUpgrade(frostBolt, frostBoltUpgraded, UpgradeConditionType.DamageDealtThisFight, 120);
         cards.Add((frostBolt, frostBoltUpgraded));
@@ -658,6 +669,7 @@ public static class CardGenerator
         elementalFusion.Effects[0].scalingType = ScalingType.CardsPlayedThisTurn;
         elementalFusion.Effects[0].scalingMultiplier = 6.0f;
         elementalFusion.Effects[0].elementalType = ElementalType.Void;
+        SetCardDescription(elementalFusion, GenerateCompleteCardDescription(elementalFusion)); // Regenerate with scaling + elemental info
         var elementalFusionUpgraded = CreateUpgradedVersion(elementalFusion, "Primal Convergence", 1.5f, 0, true, CardEffectType.DrawCard, 2);
         LinkCardUpgrade(elementalFusion, elementalFusionUpgraded, UpgradeConditionType.PlayedMultipleTimesInTurn, 2);
         cards.Add((elementalFusion, elementalFusionUpgraded));
@@ -669,6 +681,7 @@ public static class CardGenerator
             (CardEffectType.RestoreEnergy, 30, CardTargetType.Ally, 0)
         }, CardCategory.Draftable);
         stormCall.Effects[0].elementalType = ElementalType.Lightning;
+        SetCardDescription(stormCall, GenerateCompleteCardDescription(stormCall)); // Regenerate with elemental info
         var stormCallUpgraded = CreateUpgradedVersion(stormCall, "Tempest", 1.2f, -5, true, CardEffectType.DrawCard, 1);
         LinkCardUpgrade(stormCall, stormCallUpgraded, UpgradeConditionType.TimesPlayedThisFight, 2);
         cards.Add((stormCall, stormCallUpgraded));
@@ -727,6 +740,7 @@ public static class CardGenerator
         var feralRage = CreateDamageCard("Feral Rage", 15, 30, CardTargetType.Opponent, CardCategory.Draftable);
         feralRage.Effects[0].scalingType = ScalingType.MissingHealth;
         feralRage.Effects[0].scalingMultiplier = 0.4f;
+        SetCardDescription(feralRage, GenerateCompleteCardDescription(feralRage)); // Regenerate with scaling info
         var feralRageUpgraded = CreateUpgradedVersion(feralRage, "Berserk Fury", 1.2f, 0, true, CardEffectType.ApplyStrength, 3);
         LinkCardUpgrade(feralRage, feralRageUpgraded, UpgradeConditionType.PlayedAtLowHealth, 3);
         cards.Add((feralRage, feralRageUpgraded));
@@ -946,22 +960,236 @@ public static class CardGenerator
     private static void GenerateUpgradedDescription(CardData upgradedCard, CardData baseCard, 
         bool addedBonusEffect, CardEffectType bonusType, int bonusAmount)
     {
-        string description = "";
-        
-        // Generate description based on effects
-        for (int i = 0; i < upgradedCard.Effects.Count; i++)
-        {
-            var effect = upgradedCard.Effects[i];
-            
-            if (i > 0) description += ". ";
-            description += GetEffectDescription(effect.effectType, effect.amount, effect.targetType, effect.duration);
-        }
-        
-        SetCardDescription(upgradedCard, description + ".");
+        // Use the comprehensive description generation that includes all mechanics
+        SetCardDescription(upgradedCard, GenerateCompleteCardDescription(upgradedCard));
     }
 
     /// <summary>
-    /// Gets user-friendly description for card effects
+    /// Generates a complete description for a card including all mechanics
+    /// </summary>
+    private static string GenerateCompleteCardDescription(CardData card)
+    {
+        if (card == null) return "Invalid card";
+
+        List<string> descriptionParts = new List<string>();
+
+        // Basic effects from the card's effect list
+        if (card.HasEffects)
+        {
+            foreach (var effect in card.Effects)
+            {
+                string effectDesc = GetEffectDescriptionWithScaling(effect);
+                descriptionParts.Add(effectDesc);
+            }
+        }
+
+        // Stance changes
+        if (card.ChangesStance)
+        {
+            descriptionParts.Add($"Enter {card.NewStance} stance");
+        }
+
+        // Combo mechanics
+        if (card.BuildsCombo)
+        {
+            descriptionParts.Add("Builds combo");
+        }
+
+        if (card.RequiresCombo)
+        {
+            string comboText = card.RequiredComboAmount == 1 ? "combo" : $"{card.RequiredComboAmount} combo";
+            descriptionParts.Add($"Requires {comboText}");
+        }
+
+        // Additional targeting
+        List<string> additionalTargets = new List<string>();
+        if (card.CanAlsoTargetSelf) additionalTargets.Add("self");
+        if (card.CanAlsoTargetAllies) additionalTargets.Add("allies");
+        if (card.CanAlsoTargetOpponent) additionalTargets.Add("opponent");
+        
+        if (additionalTargets.Count > 0)
+        {
+            descriptionParts.Add($"Can also target: {string.Join(", ", additionalTargets)}");
+        }
+
+        // Combine all parts
+        if (descriptionParts.Count == 0)
+        {
+            return "No effect";
+        }
+
+        return string.Join(". ", descriptionParts) + ".";
+    }
+
+    /// <summary>
+    /// Gets effect description including scaling and conditional mechanics
+    /// </summary>
+    private static string GetEffectDescriptionWithScaling(CardEffect effect)
+    {
+        string baseDescription = GetEffectDescription(effect.effectType, effect.amount, effect.targetType, effect.duration);
+
+        List<string> modifiers = new List<string>();
+
+        // Add scaling information
+        if (effect.scalingType != ScalingType.None)
+        {
+            string scalingDesc = GetScalingDescription(effect.scalingType, effect.scalingMultiplier);
+            modifiers.Add(scalingDesc);
+        }
+
+        // Add elemental information
+        if (effect.elementalType != ElementalType.None)
+        {
+            modifiers.Add($"({effect.elementalType})");
+        }
+
+        // Add conditional effects
+        if (effect.hasAlternativeEffect && effect.conditionType != ConditionalType.None)
+        {
+            string conditionDesc = GetConditionalDescription(effect.conditionType, effect.conditionValue, 
+                effect.alternativeEffectType, effect.alternativeEffectAmount, effect.alternativeLogic);
+            modifiers.Add(conditionDesc);
+        }
+
+        // Combine base description with modifiers
+        if (modifiers.Count > 0)
+        {
+            return $"{baseDescription} ({string.Join(", ", modifiers)})";
+        }
+
+        return baseDescription;
+    }
+
+    /// <summary>
+    /// Gets scaling description for effects
+    /// </summary>
+    private static string GetScalingDescription(ScalingType scalingType, float multiplier)
+    {
+        string baseScaling = multiplier.ToString("F1");
+        
+        switch (scalingType)
+        {
+            case ScalingType.ZeroCostCardsThisTurn:
+                return $"+{baseScaling} per zero-cost card this turn";
+            case ScalingType.ZeroCostCardsThisFight:
+                return $"+{baseScaling} per zero-cost card this fight";
+            case ScalingType.CardsPlayedThisTurn:
+                return $"+{baseScaling} per card played this turn";
+            case ScalingType.CardsPlayedThisFight:
+                return $"+{baseScaling} per card played this fight";
+            case ScalingType.DamageDealtThisTurn:
+                return $"+{baseScaling} per damage dealt this turn";
+            case ScalingType.DamageDealtThisFight:
+                return $"+{baseScaling} per damage dealt this fight";
+            case ScalingType.CurrentHealth:
+                return $"+{baseScaling} per current health";
+            case ScalingType.MissingHealth:
+                return $"+{baseScaling} per missing health";
+            case ScalingType.ComboCount:
+                return $"+{baseScaling} per combo";
+            case ScalingType.HandSize:
+                return $"+{baseScaling} per card in hand";
+            default:
+                return $"scales with {scalingType}";
+        }
+    }
+
+    /// <summary>
+    /// Gets conditional effect description
+    /// </summary>
+    private static string GetConditionalDescription(ConditionalType conditionType, int conditionValue, 
+        CardEffectType altEffectType, int altAmount, AlternativeEffectLogic logicType)
+    {
+        string conditionDesc = GetConditionDescription(conditionType, conditionValue);
+        string altEffectDesc = GetSimpleEffectDescription(altEffectType, altAmount);
+        
+        switch (logicType)
+        {
+            case AlternativeEffectLogic.Replace:
+                return $"if {conditionDesc}: {altEffectDesc} instead";
+            case AlternativeEffectLogic.Additional:
+                return $"if {conditionDesc}: also {altEffectDesc}";
+            default:
+                return $"conditional: {altEffectDesc}";
+        }
+    }
+
+    /// <summary>
+    /// Gets condition description for conditional effects
+    /// </summary>
+    private static string GetConditionDescription(ConditionalType conditionType, int value)
+    {
+        switch (conditionType)
+        {
+            case ConditionalType.IfTargetHealthBelow:
+                return $"target health < {value}%";
+            case ConditionalType.IfTargetHealthAbove:
+                return $"target health > {value}%";
+            case ConditionalType.IfSourceHealthBelow:
+                return $"your health < {value}%";
+            case ConditionalType.IfSourceHealthAbove:
+                return $"your health > {value}%";
+            case ConditionalType.IfCardsInHand:
+                return $"{value}+ cards in hand";
+            case ConditionalType.IfCardsInDeck:
+                return $"{value}+ cards in deck";
+            case ConditionalType.IfCardsInDiscard:
+                return $"{value}+ cards in discard";
+            case ConditionalType.IfTimesPlayedThisFight:
+                return $"played {value}+ times this fight";
+            case ConditionalType.IfComboCount:
+                return $"{value}+ combo";
+            case ConditionalType.IfZeroCostCardsThisTurn:
+                return $"{value}+ zero-cost cards this turn";
+            case ConditionalType.IfZeroCostCardsThisFight:
+                return $"{value}+ zero-cost cards this fight";
+            case ConditionalType.IfInStance:
+                return $"in {(StanceType)value} stance";
+            case ConditionalType.IfEnergyRemaining:
+                return $"{value}+ energy remaining";
+            default:
+                return $"condition {conditionType}";
+        }
+    }
+
+    /// <summary>
+    /// Gets simple effect description for conditional alternatives
+    /// </summary>
+    private static string GetSimpleEffectDescription(CardEffectType effectType, int amount)
+    {
+        switch (effectType)
+        {
+            case CardEffectType.Damage:
+                return $"deal {amount} damage";
+            case CardEffectType.Heal:
+                return $"heal {amount} health";
+            case CardEffectType.DrawCard:
+                return amount == 1 ? "draw a card" : $"draw {amount} cards";
+            case CardEffectType.RestoreEnergy:
+                return $"restore {amount} energy";
+            case CardEffectType.ApplyShield:
+                return $"grant {amount} shield";
+            case CardEffectType.ApplyStrength:
+                return $"grant {amount} Strength";
+            case CardEffectType.ApplyThorns:
+                return $"grant {amount} Thorns";
+            case CardEffectType.ApplyBurn:
+                return $"apply {amount} Burn";
+            case CardEffectType.ApplySalve:
+                return $"apply {amount} Salve";
+            case CardEffectType.ApplyWeak:
+                return "apply Weak";
+            case CardEffectType.ApplyBreak:
+                return "apply Break";
+            case CardEffectType.ApplyStun:
+                return "apply Stun";
+            default:
+                return $"apply {effectType}";
+        }
+    }
+
+    /// <summary>
+    /// Gets user-friendly description for card effects with full mechanic information
     /// </summary>
     private static string GetEffectDescription(CardEffectType effectType, int amount, CardTargetType target, int duration)
     {
@@ -989,6 +1217,10 @@ public static class CardGenerator
                 return $"Grant {amount} Strength to {targetDesc}";
             case CardEffectType.ApplyThorns:
                 return $"Grant {amount} Thorns to {targetDesc}";
+            case CardEffectType.ApplyBurn:
+                return $"Apply {amount} Burn to {targetDesc}";
+            case CardEffectType.ApplySalve:
+                return $"Apply {amount} Salve to {targetDesc}";
             default:
                 return $"Apply {effectType} ({amount}) to {targetDesc}";
         }

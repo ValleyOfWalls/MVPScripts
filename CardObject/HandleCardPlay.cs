@@ -27,6 +27,9 @@ public class HandleCardPlay : NetworkBehaviour
     // Flag to prevent double processing of the same card play
     private bool isProcessingCardPlay = false;
     
+    // Flag to track if energy has already been deducted (to prevent double deduction)
+    private bool energyAlreadyDeducted = false;
+    
     // Static tracking to prevent multiple damage animations on the same target
     private static Dictionary<int, Coroutine> activeDamageAnimations = new Dictionary<int, Coroutine>();
     
@@ -66,7 +69,7 @@ public class HandleCardPlay : NetworkBehaviour
     }
 
     /// <summary>
-    /// Called when the player attempts to play this card
+    /// Called when a card play is attempted
     /// </summary>
     public void OnCardPlayAttempt()
     {
@@ -76,7 +79,11 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
 
-        /* Debug.Log($"HandleCardPlay: Playing card {card.CardData?.CardName}"); */
+        Debug.Log($"HandleCardPlay: OnCardPlayAttempt - Playing card {card.CardData?.CardName}");
+        
+        // TRIGGER CARD PLAY ANIMATION - Do this at the start so the card animates out immediately
+        // The animation completion callback will handle the cleanup
+        TriggerCardPlayAnimationWithCleanup();
         
         // Check if TestCombat return-to-hand mode is enabled
         #if UNITY_EDITOR
@@ -94,7 +101,7 @@ public class HandleCardPlay : NetworkBehaviour
         }
         #endif
         
-        // Normal card play processing
+        // Normal card play processing - effects are resolved, but cleanup is delayed until animation completes
         if (cardEffectResolver != null)
         {
             cardEffectResolver.ResolveCardEffect();
@@ -104,8 +111,8 @@ public class HandleCardPlay : NetworkBehaviour
             Debug.LogError("HandleCardPlay: Cannot resolve effect - missing CardEffectResolver");
         }
         
-        // After resolving effects, handle card cleanup (deduct energy and discard)
-        ProcessCardPlayCleanup();
+        // NOTE: ProcessCardPlayCleanup() is now called from the animation completion callback
+        // instead of immediately, so the card can animate out before being discarded
     }
 
     /// <summary>
@@ -256,7 +263,16 @@ public class HandleCardPlay : NetworkBehaviour
     [ServerRpc(RequireOwnership = false)]
     public void ServerPlayCard(NetworkConnection conn = null)
     {
-        /* Debug.Log($"HandleCardPlay: ServerPlayCard called for card {card?.CardData?.CardName}"); */
+        Debug.Log($"HandleCardPlay: ServerPlayCard called for card GameObject: {gameObject.name}");
+        
+        if (card?.CardData != null)
+        {
+            Debug.Log($"HandleCardPlay: Card data found - CardName: {card.CardData.CardName}");
+        }
+        else
+        {
+            Debug.LogWarning($"HandleCardPlay: Card or CardData is null for GameObject: {gameObject.name}");
+        }
         
         // Validate on server side as well
         if (!CanPlayCard())
@@ -266,7 +282,11 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
 
-        /* Debug.Log($"HandleCardPlay: Server validation passed for card {card?.CardData?.CardName}"); */
+        Debug.Log($"HandleCardPlay: Server validation passed for GameObject: {gameObject.name}");
+
+        // TRIGGER CARD PLAY ANIMATION - Do this BEFORE processing effects so the card animates out immediately
+        // The animation completion callback will handle the discard
+        TriggerCardPlayAnimationWithCleanup();
 
         // FIXED: Deduct energy cost BEFORE processing effects (was happening after)
         // This ensures restore energy effects work correctly with the proper order
@@ -275,8 +295,9 @@ public class HandleCardPlay : NetworkBehaviour
             var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
             int energyCost = card.CardData.EnergyCost;
             
-            // Deduct energy cost first
+            // Deduct energy cost first and mark as deducted
             sourceEntity.ChangeEnergy(-energyCost);
+            energyAlreadyDeducted = true;
             /* Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value} before applying effects"); */
         }
 
@@ -321,25 +342,201 @@ public class HandleCardPlay : NetworkBehaviour
             Debug.LogError($"HandleCardPlay: cardEffectResolver is null!");
         }
         
-        // Handle card discarding after effects are processed
-        if (sourceAndTargetIdentifier?.SourceEntity != null && card?.CardData != null)
+        // Schedule delayed card discarding on server to allow animation to play first
+        // This ensures pet cards are properly discarded even when ownership check fails
+        if (sourceAndTargetIdentifier?.SourceEntity != null)
         {
-            var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
+            StartCoroutine(DelayedServerCardDiscard());
+        }
+        
+        Debug.Log($"HandleCardPlay: ServerPlayCard completed for card {card?.CardData?.CardName}");
+    }
+
+    /// <summary>
+    /// Triggers card play animation on all clients
+    /// </summary>
+    private void TriggerCardPlayAnimation()
+    {
+        Debug.Log($"HandleCardPlay: TriggerCardPlayAnimation called for GameObject: {gameObject.name}");
+        
+        // Trigger the animation on all clients
+        ClientTriggerCardPlayAnimation();
+    }
+
+    /// <summary>
+    /// Triggers card play animation and schedules cleanup after animation completes
+    /// </summary>
+    private void TriggerCardPlayAnimationWithCleanup()
+    {
+        Debug.Log($"HandleCardPlay: TriggerCardPlayAnimationWithCleanup called for GameObject: {gameObject.name}");
+        
+        if (IsServerInitialized)
+        {
+            // Server: Use RPC to trigger animation on all clients
+            ClientTriggerCardPlayAnimationWithCleanup();
+        }
+        else
+        {
+            // Client: Trigger animation directly (no RPC needed)
+            Debug.Log($"HandleCardPlay: Client calling animation directly for GameObject: {gameObject.name}");
+            TriggerCardPlayAnimationDirectly();
+        }
+    }
+
+    /// <summary>
+    /// Triggers card play animation directly without RPC (for client-side calls)
+    /// </summary>
+    private void TriggerCardPlayAnimationDirectly()
+    {
+        Debug.Log($"HandleCardPlay: TriggerCardPlayAnimationDirectly called for GameObject: {gameObject.name}");
+        
+        // Get the CardAnimator component
+        CardAnimator cardAnimator = GetComponent<CardAnimator>();
+        if (cardAnimator != null)
+        {
+            Debug.Log($"HandleCardPlay: Found CardAnimator, triggering play success animation directly for GameObject: {gameObject.name}");
             
-            // Find the hand manager and discard the card
-            HandManager handManager = GetHandManagerForEntity(sourceEntity);
-            if (handManager != null)
+            // Trigger the play success animation with cleanup callback
+            cardAnimator.AnimatePlaySuccess(null, () => {
+                // Animation complete callback
+                Debug.Log($"HandleCardPlay: Play animation completed for GameObject: {gameObject.name} - calling HandAnimator callback");
+                
+                // Notify the HandAnimator that this card played successfully
+                HandAnimator handAnimator = cardAnimator.GetComponentInParent<HandAnimator>();
+                if (handAnimator != null)
+                {
+                    Debug.Log($"HandleCardPlay: Found HandAnimator on GameObject: {handAnimator.gameObject.name}, calling OnCardPlaySuccessful for card: {gameObject.name}");
+                    handAnimator.OnCardPlaySuccessful(cardAnimator);
+                    Debug.Log($"HandleCardPlay: OnCardPlaySuccessful call completed for card: {gameObject.name}");
+                }
+                else
+                {
+                    Debug.LogWarning($"HandleCardPlay: No HandAnimator found for GameObject: {gameObject.name}");
+                }
+                
+                // Only call cleanup on the card owner to prevent ServerRPC errors on clients
+                if (IsOwner)
+                {
+                    Debug.Log($"HandleCardPlay: Card owner calling cleanup for GameObject: {gameObject.name}");
+                    ProcessCardPlayCleanup();
+                }
+                else
+                {
+                    Debug.Log($"HandleCardPlay: Non-owner client skipping cleanup for GameObject: {gameObject.name}");
+                }
+            });
+        }
+        else
+        {
+            Debug.LogWarning($"HandleCardPlay: No CardAnimator found on GameObject: {gameObject.name}");
+            // If no animator, only call cleanup if we're the owner
+            if (IsOwner)
             {
-                handManager.DiscardCard(gameObject);
-                /* Debug.Log($"HandleCardPlay: Discarded card {card?.CardData?.CardName} to discard pile"); */
+                Debug.Log($"HandleCardPlay: Card owner calling immediate cleanup for GameObject: {gameObject.name}");
+                ProcessCardPlayCleanup();
             }
             else
             {
-                Debug.LogError($"HandleCardPlay: Could not find HandManager for entity {sourceEntity.EntityName.Value}");
+                Debug.Log($"HandleCardPlay: Non-owner client skipping immediate cleanup for GameObject: {gameObject.name}");
             }
         }
+    }
+
+    /// <summary>
+    /// Client RPC to trigger card play animation
+    /// </summary>
+    [ObserversRpc]
+    private void ClientTriggerCardPlayAnimation()
+    {
+        Debug.Log($"HandleCardPlay: ClientTriggerCardPlayAnimation RPC received for GameObject: {gameObject.name}");
         
-        /* Debug.Log($"HandleCardPlay: ServerPlayCard completed for card {card?.CardData?.CardName}"); */
+        // Get the CardAnimator component
+        CardAnimator cardAnimator = GetComponent<CardAnimator>();
+        if (cardAnimator != null)
+        {
+            Debug.Log($"HandleCardPlay: Found CardAnimator, triggering play success animation for GameObject: {gameObject.name}");
+            
+            // Trigger the play success animation
+            cardAnimator.AnimatePlaySuccess(null, () => {
+                // Animation complete callback
+                Debug.Log($"HandleCardPlay: Play animation completed for GameObject: {gameObject.name}");
+                
+                // Notify the HandAnimator that this card played successfully
+                HandAnimator handAnimator = cardAnimator.GetComponentInParent<HandAnimator>();
+                if (handAnimator != null)
+                {
+                    handAnimator.OnCardPlaySuccessful(cardAnimator);
+                }
+                else
+                {
+                    Debug.LogWarning($"HandleCardPlay: No HandAnimator found for GameObject: {gameObject.name}");
+                }
+            });
+        }
+        else
+        {
+            Debug.LogWarning($"HandleCardPlay: No CardAnimator found on GameObject: {gameObject.name} - cannot trigger play animation");
+        }
+    }
+
+    /// <summary>
+    /// Client RPC to trigger card play animation with cleanup after completion
+    /// </summary>
+    [ObserversRpc]
+    private void ClientTriggerCardPlayAnimationWithCleanup()
+    {
+        Debug.Log($"HandleCardPlay: ClientTriggerCardPlayAnimationWithCleanup RPC received for GameObject: {gameObject.name}");
+        
+        // Get the CardAnimator component
+        CardAnimator cardAnimator = GetComponent<CardAnimator>();
+        if (cardAnimator != null)
+        {
+            Debug.Log($"HandleCardPlay: Found CardAnimator, triggering play success animation with cleanup for GameObject: {gameObject.name}");
+            
+            // Trigger the play success animation with cleanup callback
+            cardAnimator.AnimatePlaySuccess(null, () => {
+                // Animation complete callback
+                Debug.Log($"HandleCardPlay: Play animation completed for GameObject: {gameObject.name} - calling HandAnimator callback");
+                
+                // Notify the HandAnimator that this card played successfully
+                HandAnimator handAnimator = cardAnimator.GetComponentInParent<HandAnimator>();
+                if (handAnimator != null)
+                {
+                    Debug.Log($"HandleCardPlay: Found HandAnimator on GameObject: {handAnimator.gameObject.name}, calling OnCardPlaySuccessful for card: {gameObject.name}");
+                    handAnimator.OnCardPlaySuccessful(cardAnimator);
+                    Debug.Log($"HandleCardPlay: OnCardPlaySuccessful call completed for card: {gameObject.name}");
+                }
+                else
+                {
+                    Debug.LogWarning($"HandleCardPlay: No HandAnimator found for GameObject: {gameObject.name}");
+                }
+                
+                // Only call cleanup on the card owner to prevent ServerRPC errors on clients
+                if (IsOwner)
+                {
+                    Debug.Log($"HandleCardPlay: Card owner calling cleanup for GameObject: {gameObject.name}");
+                    ProcessCardPlayCleanup();
+                }
+                else
+                {
+                    Debug.Log($"HandleCardPlay: Non-owner client skipping cleanup for GameObject: {gameObject.name}");
+                }
+            });
+        }
+        else
+        {
+            Debug.LogWarning($"HandleCardPlay: No CardAnimator found on GameObject: {gameObject.name}");
+            // If no animator, only call cleanup if we're the owner
+            if (IsOwner)
+            {
+                Debug.Log($"HandleCardPlay: Card owner calling immediate cleanup for GameObject: {gameObject.name}");
+                ProcessCardPlayCleanup();
+            }
+            else
+            {
+                Debug.Log($"HandleCardPlay: Non-owner client skipping immediate cleanup for GameObject: {gameObject.name}");
+            }
+        }
     }
 
     /// <summary>
@@ -426,9 +623,16 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
         
-        // Deduct energy cost
-        sourceEntity.ChangeEnergy(-energyCost);
-        /* Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value}"); */
+        // Only deduct energy if it hasn't been deducted already (for player cards vs pet cards)
+        if (!energyAlreadyDeducted)
+        {
+            sourceEntity.ChangeEnergy(-energyCost);
+            /* Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value} during cleanup"); */
+        }
+        else
+        {
+            /* Debug.Log($"HandleCardPlay: Energy already deducted for {sourceEntity.EntityName.Value}, skipping deduction in cleanup"); */
+        }
         
         // Find the hand manager and discard the card
         HandManager handManager = GetHandManagerForEntity(sourceEntity);
@@ -1028,4 +1232,27 @@ public class HandleCardPlay : NetworkBehaviour
         }
     }
     #endif
+    
+    /// <summary>
+    /// Delayed server-side card discarding to allow animation to complete first
+    /// </summary>
+    private System.Collections.IEnumerator DelayedServerCardDiscard()
+    {
+        // Wait for the card play animation to complete (typical duration is 0.4s)
+        yield return new WaitForSeconds(0.5f);
+        
+        if (sourceAndTargetIdentifier?.SourceEntity != null)
+        {
+            HandManager handManager = GetHandManagerForEntity(sourceAndTargetIdentifier.SourceEntity);
+            if (handManager != null)
+            {
+                handManager.DiscardCard(gameObject);
+                Debug.Log($"HandleCardPlay: Server discarded card {card?.CardData?.CardName} to discard pile after animation delay");
+            }
+            else
+            {
+                Debug.LogError($"HandleCardPlay: Could not find HandManager for entity {sourceAndTargetIdentifier.SourceEntity.EntityName.Value}");
+            }
+        }
+    }
 } 

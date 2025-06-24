@@ -55,17 +55,25 @@ public class HandManager : NetworkBehaviour
     public void DrawCards()
     {
         if (!IsServerInitialized) return;
+        
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"HandManager: DrawCards called for {entityName} (ID: {entityId}), HandManager instance: {GetInstanceID()}");
+        
         if (verboseLogging) /* Debug.Log($"HandManager: Drawing cards for {gameObject.name}"); */
 
         // Check if transforms are available
         if (deckTransform == null || handTransform == null)
         {
-            Debug.LogError($"HandManager: Missing deck or hand transform for {gameObject.name}");
+            Debug.LogError($"HandManager: Missing deck or hand transform for {entityName}");
             return;
         }
 
-        // Get the entity type to determine draw amount
-        NetworkEntity entity = GetComponent<NetworkEntity>();
+        Debug.Log($"HandManager: Transforms validated for {entityName} (ID: {entityId})");
+
         if (entity == null)
         {
             Debug.LogError($"HandManager: Missing NetworkEntity component on {gameObject.name}");
@@ -75,13 +83,17 @@ public class HandManager : NetworkBehaviour
         // DEBUG: Check GameManager instance and values
         if (GameManager.Instance == null)
         {
-            Debug.LogError($"HandManager: GameManager.Instance is NULL for {gameObject.name}");
+            Debug.LogError($"HandManager: GameManager.Instance is NULL for {entityName}");
             return;
         }
+        
+        Debug.Log($"HandManager: GameManager validated for {entityName} (ID: {entityId})");
         
         // Get current hand size to determine if this is initial draw
         List<GameObject> currentHand = GetCardsInTransform(handTransform);
         int currentHandSize = currentHand.Count;
+
+        Debug.Log($"HandManager: Current hand size for {entityName} (ID: {entityId}): {currentHandSize}");
 
         // FIXED: Use initial draw amount for first draw (empty hand), target hand size for subsequent draws
         int targetHandSize;
@@ -150,41 +162,238 @@ public class HandManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Discards all cards from hand
+    /// Discards all cards from hand with animation
     /// </summary>
     [Server]
     public void DiscardHand()
     {
         if (!IsServerInitialized) return;
+        
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"HandManager: DiscardHand called for {entityName} (ID: {entityId})");
+        
         // Check if transforms are available
         if (handTransform == null || discardTransform == null)
         {
-            Debug.LogError($"HandManager: Missing hand or discard transform for {gameObject.name}");
+            Debug.LogError($"HandManager: Missing hand or discard transform for {entityName}");
             return;
         }
+
+        Debug.Log($"HandManager: Transforms validated for discard operation on {entityName} (ID: {entityId})");
 
         // Get all card objects in hand transform
         List<GameObject> handCards = GetCardsInTransform(handTransform);
         
+        Debug.Log($"HandManager: Found {handCards.Count} cards in hand to discard for {entityName} (ID: {entityId})");
+        
         if (handCards.Count == 0)
         {
+            Debug.Log($"HandManager: No cards to discard for {entityName} (ID: {entityId}), returning early");
             return;
         }
         
-        // Move each card to discard and disable it
+        Debug.Log($"HandManager: Starting animated discard of {handCards.Count} cards for {entityName} (ID: {entityId})");
+        
+        // Trigger animations on all clients (including server)
+        List<int> cardNetObjIds = new List<int>();
         foreach (GameObject card in handCards)
         {
-            if (card == null)
+            if (card != null)
             {
-                Debug.LogError($"HandManager: Null card found in hand for {gameObject.name}");
-                continue;
+                NetworkObject cardNetObj = card.GetComponent<NetworkObject>();
+                if (cardNetObj != null)
+                {
+                    cardNetObjIds.Add(cardNetObj.ObjectId);
+                    Debug.Log($"HandManager: Added card {card.name} (ID: {cardNetObj.ObjectId}) to discard list for {entityName}");
+                }
+                else
+                {
+                    Debug.LogError($"HandManager: Card {card.name} missing NetworkObject for {entityName}");
+                }
             }
-            
-            /* Debug.Log($"HandManager: Moving card {card.name} to discard for {gameObject.name}"); */
-            MoveCardToDiscard(card);
+            else
+            {
+                Debug.LogError($"HandManager: Found null card in hand for {entityName}");
+            }
         }
         
-        /* Debug.Log($"HandManager: Finished discarding {handCards.Count} cards for {gameObject.name}"); */
+        Debug.Log($"HandManager: Prepared {cardNetObjIds.Count} cards for RPC discard animation for {entityName} (ID: {entityId})");
+        
+        // Start animations on all clients
+        RpcStartDiscardAnimations(cardNetObjIds.ToArray());
+        
+        // Start the server-side discard sequence (handles actual card movement without additional animations)
+        StartCoroutine(ServerDiscardHandSequence(handCards));
+    }
+    
+    /// <summary>
+    /// RPC to trigger discard animations on all clients
+    /// </summary>
+    [ObserversRpc]
+    private void RpcStartDiscardAnimations(int[] cardNetObjIds)
+    {
+        /* Debug.Log($"HandManager (RPC): Starting discard animations for {cardNetObjIds.Length} cards"); */
+        
+        StartCoroutine(ClientAnimateDiscardSequence(cardNetObjIds));
+    }
+    
+    /// <summary>
+    /// Client-side coroutine to animate cards dissolving out
+    /// </summary>
+    private System.Collections.IEnumerator ClientAnimateDiscardSequence(int[] cardNetObjIds)
+    {
+        if (cardNetObjIds == null || cardNetObjIds.Length == 0)
+        {
+            yield break;
+        }
+        
+        /* Debug.Log($"HandManager (Client): Animating discard sequence for {cardNetObjIds.Length} cards"); */
+        
+        // Start animations for all cards with staggered timing
+        foreach (int cardNetObjId in cardNetObjIds)
+        {
+            // Find the card NetworkObject
+            NetworkObject cardNetObj = null;
+            bool foundCard = false;
+            
+            if (NetworkManager.IsServerStarted)
+            {
+                foundCard = NetworkManager.ServerManager.Objects.Spawned.TryGetValue(cardNetObjId, out cardNetObj);
+            }
+            else if (NetworkManager.IsClientStarted)
+            {
+                foundCard = NetworkManager.ClientManager.Objects.Spawned.TryGetValue(cardNetObjId, out cardNetObj);
+            }
+            
+            if (foundCard && cardNetObj != null)
+            {
+                GameObject card = cardNetObj.gameObject;
+                CardAnimator cardAnimator = card.GetComponent<CardAnimator>();
+                
+                if (cardAnimator != null)
+                {
+                    // Animate the card dissolving out (no callback needed on clients)
+                    cardAnimator.AnimateDissolveOut();
+                    /* Debug.Log($"HandManager (Client): Started animation for card {card.name}"); */
+                }
+                else
+                {
+                    /* Debug.Log($"HandManager (Client): Card {card.name} has no CardAnimator"); */
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"HandManager (Client): Could not find card with NetworkObject ID {cardNetObjId}");
+            }
+            
+            // Small delay between starting each card animation for staggered effect
+            yield return new WaitForSeconds(0.05f);
+        }
+        
+        /* Debug.Log($"HandManager (Client): Finished starting discard animations"); */
+    }
+    
+    /// <summary>
+    /// Server-side coroutine to handle card movement without additional animations (animations are handled by RPC)
+    /// </summary>
+    [Server]
+    private System.Collections.IEnumerator ServerDiscardHandSequence(List<GameObject> cardsToDiscard)
+    {
+        if (cardsToDiscard == null || cardsToDiscard.Count == 0)
+        {
+            yield break;
+        }
+        
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+        int entityId = entity != null ? entity.ObjectId : -999;
+        
+        Debug.Log($"HandManager: ServerDiscardHandSequence starting for {entityName} (ID: {entityId}) with {cardsToDiscard.Count} cards");
+        
+        // Wait for animations to start and progress
+        // The dissolve animation duration is typically 0.3 seconds in CardAnimator
+        yield return new WaitForSeconds(0.35f);
+        
+        Debug.Log($"HandManager: ServerDiscardHandSequence proceeding to move cards for {entityName} (ID: {entityId})");
+        
+        // Move all cards to discard immediately (animations are handled by RPC)
+        int successfullyMoved = 0;
+        foreach (GameObject card in cardsToDiscard)
+        {
+            if (card != null)
+            {
+                Debug.Log($"HandManager: Moving card {card.name} to discard for {entityName} (ID: {entityId})");
+                MoveCardToDiscardImmediate(card);
+                successfullyMoved++;
+            }
+            else
+            {
+                Debug.LogError($"HandManager: Found null card during discard sequence for {entityName} (ID: {entityId})");
+            }
+        }
+        
+        Debug.Log($"HandManager: ServerDiscardHandSequence completed for {entityName} (ID: {entityId}) - moved {successfullyMoved}/{cardsToDiscard.Count} cards");
+        
+        // Verify hand is actually empty after discard
+        List<GameObject> remainingHandCards = GetCardsInTransform(handTransform);
+        Debug.Log($"HandManager: After discard, {entityName} (ID: {entityId}) has {remainingHandCards.Count} cards remaining in hand");
+        
+        if (remainingHandCards.Count > 0)
+        {
+            Debug.LogError($"HandManager: ERROR - {entityName} (ID: {entityId}) still has {remainingHandCards.Count} cards in hand after discard!");
+            foreach (GameObject remainingCard in remainingHandCards)
+            {
+                if (remainingCard != null)
+                {
+                    Debug.LogError($"HandManager: Remaining card: {remainingCard.name}");
+                }
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Immediately moves card to discard without animation (used after animation completes)
+    /// </summary>
+    [Server]
+    private void MoveCardToDiscardImmediate(GameObject card)
+    {
+        if (!IsServerInitialized || card == null) return;
+        
+        // This is the same logic as MoveCardToDiscard but without triggering additional animations
+        NetworkObject cardNetObj = card.GetComponent<NetworkObject>();
+        if (cardNetObj == null)
+        {
+            Debug.LogError($"HandManager: Card {card.name} is missing NetworkObject component for {gameObject.name}");
+            return;
+        }
+
+        // Update Card's CurrentContainer
+        Card cardComponent = card.GetComponent<Card>();
+        if (cardComponent != null)
+        {
+            cardComponent.SetCurrentContainer(CardLocation.Discard);
+        }
+
+        NetworkObject parentEntityNetObj = discardTransform.GetComponentInParent<NetworkObject>();
+        if (parentEntityNetObj == null)
+        {
+            Debug.LogError($"HandManager: Discard transform has no parent with NetworkObject component for {gameObject.name}");
+            return;
+        }
+
+        // Direct server-side manipulation
+        card.SetActive(false);
+        card.transform.SetParent(discardTransform);
+        card.transform.localPosition = Vector3.zero;
+
+        // RPCs for clients only
+        RpcSetCardEnabled(cardNetObj.ObjectId, false);
+        RpcSetCardParent(cardNetObj.ObjectId, parentEntityNetObj.ObjectId, "Discard");
     }
 
     /// <summary>
@@ -327,6 +536,22 @@ public class HandManager : NetworkBehaviour
         card.SetActive(true);
         card.transform.SetParent(handTransform);
         
+        // Reset card visual state for redraw
+        CanvasGroup cardCanvasGroup = card.GetComponent<CanvasGroup>();
+        if (cardCanvasGroup != null)
+        {
+            cardCanvasGroup.alpha = 1.0f; // Reset alpha from previous play animation
+            /* Debug.Log($"HandManager: Reset alpha to 1.0 for redrawn card {card.name}"); */
+        }
+        
+        // Reset CardAnimator state if present
+        CardAnimator cardAnimator = card.GetComponent<CardAnimator>();
+        if (cardAnimator != null)
+        {
+            cardAnimator.StoreOriginalState(); // Store fresh state with alpha = 1.0
+            /* Debug.Log($"HandManager: Refreshed CardAnimator state for redrawn card {card.name}"); */
+        }
+        
         // Only reset position if no HandLayoutManager is present to avoid interfering with custom layouts
         HandLayoutManager handLayoutManager = handTransform.GetComponent<HandLayoutManager>();
         if (handLayoutManager == null)
@@ -342,6 +567,7 @@ public class HandManager : NetworkBehaviour
         // RPCs for clients only
         RpcSetCardEnabled(cardNetObj.ObjectId, true); 
         RpcSetCardParent(cardNetObj.ObjectId, parentEntityNetObj.ObjectId, "Hand");
+        RpcResetCardVisualState(cardNetObj.ObjectId); // Reset alpha and visual state on clients
     }
 
     [Server]
@@ -668,6 +894,46 @@ public class HandManager : NetworkBehaviour
         else
         {
             /* Debug.Log($"HandManager (Client RPC): Skipped position reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
+        }
+    }
+
+    /// <summary>
+    /// RPC to reset card visual state on clients (alpha, scale, etc.) when moving to hand
+    /// </summary>
+    [ObserversRpc(ExcludeServer = true)]
+    private void RpcResetCardVisualState(int cardNetObjId)
+    {
+        // Find the card NetworkObject
+        NetworkObject cardNetObj = null;
+        bool foundCard = false;
+        
+        if (NetworkManager.IsClientStarted)
+        {
+            foundCard = NetworkManager.ClientManager.Objects.Spawned.TryGetValue(cardNetObjId, out cardNetObj);
+        }
+        
+        if (!foundCard || cardNetObj == null)
+        {
+            Debug.LogError($"HandManager (Client RPC): RpcResetCardVisualState - Failed to find card NetworkObject with ID {cardNetObjId}");
+            return;
+        }
+        
+        GameObject cardObject = cardNetObj.gameObject;
+        
+        // Reset card visual state for redraw - same logic as server-side MoveCardToHand
+        CanvasGroup cardCanvasGroup = cardObject.GetComponent<CanvasGroup>();
+        if (cardCanvasGroup != null)
+        {
+            cardCanvasGroup.alpha = 1.0f; // Reset alpha from previous play animation
+            /* Debug.Log($"HandManager (Client RPC): Reset alpha to 1.0 for redrawn card {cardObject.name}"); */
+        }
+        
+        // Reset CardAnimator state if present
+        CardAnimator cardAnimator = cardObject.GetComponent<CardAnimator>();
+        if (cardAnimator != null)
+        {
+            cardAnimator.StoreOriginalState(); // Store fresh state with alpha = 1.0
+            /* Debug.Log($"HandManager (Client RPC): Refreshed CardAnimator state for redrawn card {cardObject.name}"); */
         }
     }
 

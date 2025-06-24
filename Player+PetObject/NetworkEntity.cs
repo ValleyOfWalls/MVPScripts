@@ -104,6 +104,27 @@ public class NetworkEntity : NetworkBehaviour
 
         // Set name based on type and owner (but don't override if already set)
         SetEntityName();
+        
+        // Subscribe to SyncVar changes for inspector field updates (server side)
+        EntityName.OnChange += OnEntityNameChanged;
+        MaxHealth.OnChange += OnMaxHealthChanged;
+        MaxEnergy.OnChange += OnMaxEnergyChanged;
+        CurrentHealth.OnChange += OnCurrentHealthChanged;
+        CurrentEnergy.OnChange += OnCurrentEnergyChanged;
+        Currency.OnChange += OnCurrencySyncVarChanged;
+    }
+
+    public override void OnStopServer()
+    {
+        base.OnStopServer();
+        
+        // Unsubscribe from events (server side)
+        EntityName.OnChange -= OnEntityNameChanged;
+        MaxHealth.OnChange -= OnMaxHealthChanged;
+        MaxEnergy.OnChange -= OnMaxEnergyChanged;
+        CurrentHealth.OnChange -= OnCurrentHealthChanged;
+        CurrentEnergy.OnChange -= OnCurrentEnergyChanged;
+        Currency.OnChange -= OnCurrencySyncVarChanged;
     }
 
     public override void OnStartClient()
@@ -125,11 +146,13 @@ public class NetworkEntity : NetworkBehaviour
         Debug.Log($"SYNC_DEBUG: OnStartClient Stats - MaxHealth={MaxHealth.Value}, MaxEnergy={MaxEnergy.Value}, " +
                   $"CurrentHealth={CurrentHealth.Value}, CurrentEnergy={CurrentEnergy.Value}, Currency={Currency.Value}");
 
-        // Subscribe to SyncVar changes for debugging
+        // Subscribe to SyncVar changes for debugging and inspector field updates
         EntityName.OnChange += OnEntityNameChanged;
         MaxHealth.OnChange += OnMaxHealthChanged;
         MaxEnergy.OnChange += OnMaxEnergyChanged;
+        CurrentHealth.OnChange += OnCurrentHealthChanged;
         CurrentEnergy.OnChange += OnCurrentEnergyChanged;
+        Currency.OnChange += OnCurrencySyncVarChanged;
 
         // Register with EntityVisibilityManager
         RegisterWithVisibilityManager();
@@ -143,7 +166,9 @@ public class NetworkEntity : NetworkBehaviour
         EntityName.OnChange -= OnEntityNameChanged;
         MaxHealth.OnChange -= OnMaxHealthChanged;
         MaxEnergy.OnChange -= OnMaxEnergyChanged;
+        CurrentHealth.OnChange -= OnCurrentHealthChanged;
         CurrentEnergy.OnChange -= OnCurrentEnergyChanged;
+        Currency.OnChange -= OnCurrencySyncVarChanged;
         
         UnregisterFromVisibilityManager();
     }
@@ -156,11 +181,17 @@ public class NetworkEntity : NetworkBehaviour
     private void OnMaxHealthChanged(int prev, int next, bool asServer)
     {
         Debug.Log($"SYNC_DEBUG: MaxHealth changed for {EntityName.Value} from {prev} to {next} (asServer: {asServer})");
+        
+        // Update serialized field for inspector display
+        _maxHealth = next;
     }
 
     private void OnMaxEnergyChanged(int prev, int next, bool asServer)
     {
         /* Debug.Log($"SYNC_DEBUG: MaxEnergy changed for {EntityName.Value} from {prev} to {next} (asServer: {asServer})"); */
+        
+        // Update serialized field for inspector display
+        _maxEnergy = next;
         
         // Check if any UI controllers are listening to this entity's changes
         if (prev != next && !asServer)
@@ -170,9 +201,20 @@ public class NetworkEntity : NetworkBehaviour
         }
     }
 
+    private void OnCurrentHealthChanged(int prev, int next, bool asServer)
+    {
+        Debug.Log($"SYNC_DEBUG: CurrentHealth changed for {EntityName.Value} from {prev} to {next} (asServer: {asServer})");
+        
+        // Update serialized field for inspector display
+        _currentHealth = next;
+    }
+
     private void OnCurrentEnergyChanged(int prev, int next, bool asServer)
     {
         /* Debug.Log($"SYNC_DEBUG: CurrentEnergy changed for {EntityName.Value} from {prev} to {next} (asServer: {asServer})"); */
+        
+        // Update serialized field for inspector display
+        _currentEnergy = next;
         
         // If this is a significant change (not just 0->0 or 3->3), log it as important
         if (prev != next && (prev == 0 || next == 100 || prev == 3))
@@ -182,6 +224,17 @@ public class NetworkEntity : NetworkBehaviour
             // Log the actual SyncVar values after the change
             Debug.Log($"SYNC_DEBUG: VERIFY - {EntityName.Value} SyncVar values after change: MaxEnergy={MaxEnergy.Value}, CurrentEnergy={CurrentEnergy.Value}, MaxHealth={MaxHealth.Value}");
         }
+    }
+
+    private void OnCurrencySyncVarChanged(int prev, int next, bool asServer)
+    {
+        Debug.Log($"SYNC_DEBUG: Currency changed for {EntityName.Value} from {prev} to {next} (asServer: {asServer})");
+        
+        // Update serialized field for inspector display
+        _currency = next;
+        
+        // Invoke the event for UI updates
+        OnCurrencyChanged?.Invoke(next);
     }
 
     private void RegisterWithVisibilityManager()

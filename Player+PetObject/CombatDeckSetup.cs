@@ -219,6 +219,20 @@ public class CombatDeckSetup : NetworkBehaviour
             yield break;
         }
 
+        // SHUFFLE THE DECK: Randomize card order for combat
+        System.Random rng = new System.Random();
+        int n = cardIds.Count;
+        /* Debug.Log($"CombatDeckSetup: Shuffling {n} cards for {gameObject.name}"); */
+        while (n > 1)
+        {
+            n--;
+            int k = rng.Next(n + 1);
+            int temp = cardIds[k];
+            cardIds[k] = cardIds[n];
+            cardIds[n] = temp;
+        }
+        /* Debug.Log($"CombatDeckSetup: Finished shuffling deck for {gameObject.name}"); */
+
         /* Debug.Log($"Spawning {cardIds.Count} cards for {gameObject.name}"); */
 
         // Spawn each card

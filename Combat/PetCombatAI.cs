@@ -14,7 +14,6 @@ public class PetCombatAI : NetworkBehaviour
     [SerializeField] private NetworkEntity petEntity;
 
     [Header("AI Settings")]
-    [SerializeField] private float delayBetweenActions = 1.0f;
     [SerializeField] private float delayBeforeFirstAction = 0.5f;
 
     // Track turn state
@@ -152,7 +151,8 @@ public class PetCombatAI : NetworkBehaviour
 
                 
                 // Add delay between card plays
-                yield return new WaitForSeconds(delayBetweenActions);
+                float cardPlayDelay = GameManager.Instance != null ? GameManager.Instance.PetCardPlayDelay.Value : 1.0f;
+                yield return new WaitForSeconds(cardPlayDelay);
             }
             else
             {
@@ -162,7 +162,8 @@ public class PetCombatAI : NetworkBehaviour
         }
 
         // Final delay before ending turn
-        yield return new WaitForSeconds(delayBetweenActions);
+        float finalDelay = GameManager.Instance != null ? GameManager.Instance.PetCardPlayDelay.Value : 1.0f;
+        yield return new WaitForSeconds(finalDelay);
         
 
         hasFinishedTurn = true;

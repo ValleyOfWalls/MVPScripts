@@ -168,6 +168,13 @@ public class CombatSetup : NetworkBehaviour
         
         /* Debug.Log("CombatSetup: All clients ready, starting fight preview before combat"); */
         
+        // Notify loading screen that setup is complete - all clients are ready
+        if (loadingScreenManager != null)
+        {
+            /* Debug.Log("CombatSetup: All clients ready, notifying loading screen that setup is complete"); */
+            RpcNotifyLoadingScreenSetupComplete();
+        }
+        
         // Start the fight preview interstitial instead of going directly to combat
         if (fightPreviewManager != null)
         {
@@ -264,13 +271,6 @@ public class CombatSetup : NetworkBehaviour
         
         isSetupComplete.Value = true; // Mark setup as complete
         /* Debug.Log("CombatSetup: Setup completed successfully, waiting for client readiness checks"); */
-
-        // Notify loading screen that setup is complete
-        if (loadingScreenManager != null)
-        {
-            /* Debug.Log("CombatSetup: Notifying loading screen that setup is complete"); */
-            RpcNotifyLoadingScreenSetupComplete();
-        }
 
         // Instead of starting combat immediately, notify clients to check their setup
         RpcCheckClientSetup();
@@ -744,6 +744,13 @@ public class CombatSetup : NetworkBehaviour
             {
                 Debug.LogWarning("CombatSetup: LoadingScreenManager not found, cannot hide loading screen");
             }
+        }
+        
+        // After hiding loading screen, trigger initial card drawing (server only)
+        if (IsServerInitialized && combatManager != null)
+        {
+            Debug.Log("CombatSetup: Loading screen hidden, now drawing initial hands");
+            combatManager.DrawInitialHands();
         }
     }
 } 

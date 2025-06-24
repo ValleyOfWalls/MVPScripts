@@ -102,6 +102,33 @@ public class CombatManager : NetworkBehaviour
 
         /* Debug.Log("CombatManager: Combat initialization complete!"); */
     }
+    
+    /// <summary>
+    /// Draws initial hands for all active fights - called after loading screen is hidden
+    /// </summary>
+    [Server]
+    public void DrawInitialHands()
+    {
+        if (!IsServerInitialized) return;
+        
+        Debug.Log("CombatManager: Drawing initial hands for all active fights");
+        
+        foreach (var fight in activeFights)
+        {
+            NetworkEntity player = fight.Key;
+            NetworkEntity pet = fight.Value;
+            
+            if (player != null && pet != null)
+            {
+                Debug.Log($"CombatManager: Drawing initial cards for player {player.EntityName.Value}");
+                DrawCardsForEntity(player);
+                Debug.Log($"CombatManager: Drawing initial cards for pet {pet.EntityName.Value}");
+                DrawCardsForEntity(pet);
+            }
+        }
+        
+        Debug.Log("CombatManager: Finished drawing initial hands for all fights");
+    }
 
     private List<NetworkEntity> GetAllSpawnedEntities()
     {
@@ -158,11 +185,20 @@ public class CombatManager : NetworkBehaviour
         // Notify clients to refresh energy for their local fight
         RpcStartNewRound(player.ObjectId, pet.ObjectId, fightRounds[player]);
 
-        // Draw cards for both entities in this specific fight
-        /* Debug.Log($"CombatManager: Drawing cards for player {player.EntityName.Value}"); */
-        DrawCardsForEntity(player);
-        /* Debug.Log($"CombatManager: Drawing cards for pet {pet.EntityName.Value}"); */
-        DrawCardsForEntity(pet);
+        // Draw cards for both entities - but only after the first round (initial hands are drawn separately)
+        int currentRound = fightRounds[player];
+        if (currentRound > 1)
+        {
+            Debug.Log($"CombatManager: Drawing cards for round {currentRound} - player {player.EntityName.Value}");
+            DrawCardsForEntity(player);
+            Debug.Log($"CombatManager: Drawing cards for round {currentRound} - pet {pet.EntityName.Value}");
+            DrawCardsForEntity(pet);
+            Debug.Log($"CombatManager: Finished drawing cards for round {currentRound}");
+        }
+        else
+        {
+            Debug.Log($"CombatManager: Skipping card draw for round {currentRound} (initial hands drawn separately)");
+        }
 
         // Set turn to player for this fight
         /* Debug.Log($"CombatManager: Setting turn to PlayerTurn for fight: {player.EntityName.Value} vs {pet.EntityName.Value}"); */
@@ -235,10 +271,12 @@ public class CombatManager : NetworkBehaviour
             return;
         }
 
+        Debug.Log($"CombatManager: DrawCardsForEntity called for {entity.EntityName.Value} (ID: {entity.ObjectId})");
+
         HandManager handManager = GetHandManagerForEntity(entity);
         if (handManager != null)
         {
-            Debug.Log($"CombatManager: Found HandManager for {entity.EntityName.Value}, calling DrawCards()");
+            Debug.Log($"CombatManager: Found HandManager for {entity.EntityName.Value}, calling DrawCards() on HandManager instance {handManager.GetInstanceID()}");
             handManager.DrawCards();
         }
         else
@@ -254,6 +292,8 @@ public class CombatManager : NetworkBehaviour
     {
         if (entity == null) return null;
 
+        Debug.Log($"CombatManager: GetHandManagerForEntity called for {entity.EntityName.Value} (ID: {entity.ObjectId})");
+
         // Find the hand entity through RelationshipManager
         var relationshipManager = entity.GetComponent<RelationshipManager>();
         if (relationshipManager == null)
@@ -262,11 +302,15 @@ public class CombatManager : NetworkBehaviour
             return null;
         }
 
+        Debug.Log($"CombatManager: Found RelationshipManager for {entity.EntityName.Value}");
+
         if (relationshipManager.HandEntity == null)
         {
             Debug.LogError($"CombatManager: No hand entity found for entity {entity.EntityName.Value}");
             return null;
         }
+
+        Debug.Log($"CombatManager: HandEntity found for {entity.EntityName.Value}");
 
         var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
         if (handEntity == null)
@@ -275,6 +319,8 @@ public class CombatManager : NetworkBehaviour
             return null;
         }
 
+        Debug.Log($"CombatManager: Hand NetworkEntity found for {entity.EntityName.Value}: {handEntity.EntityName.Value} (ID: {handEntity.ObjectId})");
+
         var handManager = handEntity.GetComponent<HandManager>();
         if (handManager == null)
         {
@@ -282,6 +328,7 @@ public class CombatManager : NetworkBehaviour
             return null;
         }
 
+        Debug.Log($"CombatManager: HandManager found for {entity.EntityName.Value} -> Hand entity: {handEntity.EntityName.Value} (ID: {handEntity.ObjectId}), HandManager object: {handManager.GetInstanceID()}");
         return handManager;
     }
 
@@ -434,6 +481,30 @@ public class CombatManager : NetworkBehaviour
         {
             Debug.Log($"CombatManager: Pet {pet.EntityName.Value} discarding hand.");
             handManager.DiscardHand();
+            
+            // Wait for discard to actually complete - give it enough time for the animation + processing
+            Debug.Log($"CombatManager: Waiting for pet {pet.EntityName.Value} discard to complete...");
+            yield return new WaitForSeconds(0.5f); // Slightly longer than HandManager's 0.35f wait
+            
+            // Verify discard actually completed
+            List<GameObject> remainingCards = handManager.GetCardsInHand();
+            if (remainingCards.Count > 0)
+            {
+                Debug.LogError($"CombatManager: ERROR - Pet {pet.EntityName.Value} still has {remainingCards.Count} cards after discard wait!");
+                // Force clear the hand if needed
+                foreach (GameObject card in remainingCards)
+                {
+                    if (card != null)
+                    {
+                        Debug.LogError($"CombatManager: Force discarding remaining card: {card.name}");
+                        handManager.DiscardCard(card);
+                    }
+                }
+            }
+            else
+            {
+                Debug.Log($"CombatManager: Pet {pet.EntityName.Value} discard completed successfully - hand is empty");
+            }
         }
         else
         {

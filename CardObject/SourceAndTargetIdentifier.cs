@@ -681,6 +681,31 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
 
         /* Debug.Log($"SourceAndTargetIdentifier: Attempting to show preview on {target.EntityName.Value} (Type: {target.EntityType})"); */
 
+        // Check if this target should be visible to the current client
+        // This prevents damage previews from showing on wrong clients (e.g., host damage showing on client's pet UI)
+        if (target.EntityType == EntityType.Pet || target.EntityType == EntityType.Player)
+        {
+            EntityVisibilityManager visibilityManager = EntityVisibilityManager.Instance;
+            if (visibilityManager != null)
+            {
+                // For pets, check if the pet's stats UI should be visible
+                if (target.EntityType == EntityType.Pet)
+                {
+                    var relationshipManager = target.GetComponent<RelationshipManager>();
+                    if (relationshipManager?.StatsUIEntity != null)
+                    {
+                        var statsUIController = relationshipManager.StatsUIEntity.GetComponent<EntityStatsUIController>();
+                        if (statsUIController != null && !statsUIController.IsVisible())
+                        {
+                            /* Debug.Log($"SourceAndTargetIdentifier: Skipping damage preview for {target.EntityName.Value} - stats UI not visible to this client"); */
+                            return;
+                        }
+                    }
+                }
+                // For players, similar check could be added if needed
+            }
+        }
+
         // Check if this is an ally pet (different from opponent pets)
         bool isAllyPet = IsAllyPet(target);
 

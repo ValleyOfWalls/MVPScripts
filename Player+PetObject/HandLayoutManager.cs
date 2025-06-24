@@ -38,7 +38,7 @@ public class HandLayoutManager : MonoBehaviour
     [SerializeField] private bool enableLayoutAnimation = true;
     
     [Header("Debug")]
-    [SerializeField] private bool debugLogEnabled = false;
+    [SerializeField] private bool debugLogEnabled = true;
     [SerializeField] private bool showGizmos = false;
     
     // Internal state
@@ -194,22 +194,31 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     public void UpdateLayout()
     {
+        Debug.Log($"[HandLayoutManager] UpdateLayout called on {gameObject.name}");
+        
         if (layoutCoroutine != null)
         {
+            Debug.Log($"[HandLayoutManager] Stopping existing layout coroutine on {gameObject.name}");
             StopCoroutine(layoutCoroutine);
         }
         
         // Refresh card list
+        Debug.Log($"[HandLayoutManager] Refreshing card list on {gameObject.name}");
         RefreshCardList();
+        Debug.Log($"[HandLayoutManager] Found {cardTransforms.Count} cards to layout on {gameObject.name}");
         
         if (enableLayoutAnimation && Application.isPlaying)
         {
+            Debug.Log($"[HandLayoutManager] Starting animated layout update on {gameObject.name}");
             layoutCoroutine = StartCoroutine(AnimateLayoutUpdate());
         }
         else
         {
+            Debug.Log($"[HandLayoutManager] Applying immediate layout update on {gameObject.name}");
             ApplyLayoutImmediate();
         }
+        
+        Debug.Log($"[HandLayoutManager] UpdateLayout completed on {gameObject.name}");
     }
     
     /// <summary>
@@ -239,6 +248,7 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private void RefreshCardList()
     {
+        Debug.Log($"[HandLayoutManager] RefreshCardList called on {gameObject.name} - {transform.childCount} children");
         cardTransforms.Clear();
         
         // Get all child RectTransforms that have Card components
@@ -254,6 +264,7 @@ public class HandLayoutManager : MonoBehaviour
                 if (cardComponent != null)
                 {
                     cardTransforms.Add(childRect);
+                    Debug.Log($"[HandLayoutManager] Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
                     LogDebug($"Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
                 }
             }
@@ -262,6 +273,7 @@ public class HandLayoutManager : MonoBehaviour
         // Sort by sibling index to maintain consistent order
         cardTransforms = cardTransforms.OrderBy(c => c.GetSiblingIndex()).ToList();
         
+        Debug.Log($"[HandLayoutManager] Refreshed card list: {cardTransforms.Count} cards found on {gameObject.name}");
         LogDebug($"Refreshed card list: {cardTransforms.Count} cards found");
     }
     
@@ -419,7 +431,16 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private IEnumerator AnimateLayoutUpdateForCards(List<RectTransform> cardsToLayout)
     {
+        Debug.Log($"[HandLayoutManager] AnimateLayoutUpdateForCards starting on {gameObject.name} with {cardsToLayout.Count} cards");
+        
         CalculateCardLayoutData(cardsToLayout);
+        
+        if (cardsToLayout.Count == 0)
+        {
+            Debug.Log($"[HandLayoutManager] No cards to animate on {gameObject.name} - ending early");
+            layoutCoroutine = null;
+            yield break;
+        }
         
         // Store starting positions/scales/rotations
         Dictionary<RectTransform, Vector3> startPositions = new Dictionary<RectTransform, Vector3>();
@@ -433,16 +454,20 @@ public class HandLayoutManager : MonoBehaviour
                 startPositions[cardRect] = cardRect.localPosition;
                 startScales[cardRect] = cardRect.localScale;
                 startRotations[cardRect] = cardRect.localRotation;
+                Debug.Log($"[HandLayoutManager] Card {cardRect.name} start pos: {cardRect.localPosition}, target: {(cardLayoutData.ContainsKey(cardRect) ? cardLayoutData[cardRect].targetPosition.ToString() : "no data")}");
             }
         }
         
+        Debug.Log($"[HandLayoutManager] Starting animation loop on {gameObject.name} - duration: {layoutAnimationDuration}s");
         float elapsed = 0f;
+        int frameCount = 0;
         
         while (elapsed < layoutAnimationDuration)
         {
             elapsed += Time.deltaTime;
             float t = elapsed / layoutAnimationDuration;
             float curveValue = layoutAnimationCurve.Evaluate(t);
+            frameCount++;
             
             foreach (var cardRect in cardsToLayout)
             {
@@ -459,6 +484,8 @@ public class HandLayoutManager : MonoBehaviour
             yield return null;
         }
         
+        Debug.Log($"[HandLayoutManager] Animation loop completed on {gameObject.name} - {frameCount} frames processed");
+        
         // Ensure final positions are exact
         foreach (var cardRect in cardsToLayout)
         {
@@ -468,10 +495,16 @@ public class HandLayoutManager : MonoBehaviour
                 cardRect.localPosition = data.targetPosition;
                 cardRect.localScale = data.targetScale;
                 cardRect.localRotation = data.targetRotation;
+                Debug.Log($"[HandLayoutManager] Card {cardRect.name} final pos: {cardRect.localPosition}");
             }
         }
         
+        Debug.Log($"[HandLayoutManager] AnimateLayoutUpdateForCards completed on {gameObject.name}");
         layoutCoroutine = null;
+        
+        // Force canvas update to ensure visual changes are applied (especially important on server/host)
+        Canvas.ForceUpdateCanvases();
+        Debug.Log($"[HandLayoutManager] Forced canvas update on {gameObject.name}");
     }
     
     /// <summary>

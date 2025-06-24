@@ -359,11 +359,48 @@ public class CardEffectResolver : NetworkBehaviour
                 if (ally != null)
                     effectTargets.Add(ally);
                 break;
-            // Removed AllPlayers, AllPets, and Everyone targeting options
-            // These were replaced with more specific targeting through the "can also target" system
+            case CardTargetType.Opponent:
+                // Find the opponent for this source entity
+                FightManager fightManager = FindFirstObjectByType<FightManager>();
+                if (fightManager != null)
+                {
+                    NetworkEntity opponent = null;
+                    if (sourceEntity.EntityType == EntityType.Player)
+                    {
+                        opponent = fightManager.GetOpponentForPlayer(sourceEntity);
+                    }
+                    else if (sourceEntity.EntityType == EntityType.Pet)
+                    {
+                        opponent = fightManager.GetOpponentForPet(sourceEntity);
+                    }
+                    
+                    if (opponent != null)
+                    {
+                        effectTargets.Add(opponent);
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"CardEffectResolver: Could not find opponent for {sourceEntity.EntityName.Value} ({sourceEntity.EntityType})");
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"CardEffectResolver: FightManager not found, cannot determine opponent for effect targeting");
+                }
+                break;
+            case CardTargetType.Random:
+                // Get all possible targets and pick one randomly
+                List<NetworkEntity> allTargets = GetAllPossibleTargetsForEntity(sourceEntity);
+                if (allTargets.Count > 0)
+                {
+                    int randomIndex = UnityEngine.Random.Range(0, allTargets.Count);
+                    effectTargets.Add(allTargets[randomIndex]);
+                }
+                break;
             default:
-                // Use original targets for other types
+                // Use original targets for any other types (should be rare)
                 effectTargets.AddRange(originalTargets);
+                Debug.LogWarning($"CardEffectResolver: Unhandled targetType {targetType}, using originalTargets");
                 break;
         }
         
@@ -784,6 +821,44 @@ public class CardEffectResolver : NetworkBehaviour
         }
 
         return null;
+    }
+    
+    /// <summary>
+    /// Gets all possible target entities for random targeting
+    /// </summary>
+    private List<NetworkEntity> GetAllPossibleTargetsForEntity(NetworkEntity sourceEntity)
+    {
+        List<NetworkEntity> allTargets = new List<NetworkEntity>();
+        
+        if (sourceEntity == null) return allTargets;
+
+        // Add self
+        allTargets.Add(sourceEntity);
+        
+        // Add ally if exists
+        NetworkEntity ally = GetAllyForEntity(sourceEntity);
+        if (ally != null)
+            allTargets.Add(ally);
+            
+        // Add opponent
+        FightManager fightManager = FindFirstObjectByType<FightManager>();
+        if (fightManager != null)
+        {
+            NetworkEntity opponent = null;
+            if (sourceEntity.EntityType == EntityType.Player)
+            {
+                opponent = fightManager.GetOpponentForPlayer(sourceEntity);
+            }
+            else if (sourceEntity.EntityType == EntityType.Pet)
+            {
+                opponent = fightManager.GetOpponentForPet(sourceEntity);
+            }
+            
+            if (opponent != null)
+                allTargets.Add(opponent);
+        }
+
+        return allTargets;
     }
     
     private NetworkEntity FindEntityById(int entityId)

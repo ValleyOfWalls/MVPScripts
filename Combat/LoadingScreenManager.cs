@@ -145,6 +145,16 @@ public class LoadingScreenManager : NetworkBehaviour
     }
     
     /// <summary>
+    /// Shows the loading screen immediately for combat transition, called before phase change
+    /// </summary>
+    [ObserversRpc]
+    public void RpcShowLoadingScreenForCombatTransition()
+    {
+        Debug.Log("LoadingScreenManager: Showing loading screen for combat transition");
+        ShowLoadingScreen();
+    }
+    
+    /// <summary>
     /// Hides the loading screen and transitions to combat
     /// </summary>
     public void HideLoadingScreen()
