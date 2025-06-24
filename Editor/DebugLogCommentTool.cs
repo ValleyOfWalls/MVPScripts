@@ -32,8 +32,8 @@ namespace MVPScripts.Editor
                          EditorGUILayout.HelpBox(
                  "This tool will:\n" +
                  "1. Create backups of all C# scripts (if enabled)\n" +
-                 "2. Comment out Debug.Log statements using /* */ block comments\n" +
-                 "3. Only comment the Debug.Log statement itself, preserving other code on the same line\n" +
+                 "2. Comment out ONLY Debug.Log statements (NOT warnings, errors, or exceptions)\n" +
+                 "3. Use /* */ block comments to preserve other code on the same line\n" +
                  "4. Process all subfolders if enabled\n" +
                  "5. Handle multiple Debug.Log statements on the same line",
                  MessageType.Info);
@@ -126,14 +126,14 @@ namespace MVPScripts.Editor
                     
                                          if (changes.Count > 0)
                      {
-                         int totalMatches = changes.Sum(c => c.Matches.Count);
+                         int totalMatches = changes.Sum(c => c.DebugLogPositions.Count);
                          Debug.Log($"\n{filePath} - {totalMatches} Debug.Log statements found:");
                          foreach (var change in changes)
                          {
                              Debug.Log($"  Line {change.LineNumber}: {change.OriginalLine.Trim()}");
-                             foreach (var match in change.Matches)
+                             foreach (var position in change.DebugLogPositions)
                              {
-                                 Debug.Log($"    -> {match.Value}");
+                                 Debug.Log($"    -> {position.Statement}");
                              }
                          }
                          processedFiles.Add($"{Path.GetFileName(filePath)} ({totalMatches} changes)");
@@ -176,7 +176,7 @@ namespace MVPScripts.Editor
                     
                                          if (changes.Count > 0)
                      {
-                         int totalMatches = changes.Sum(c => c.Matches.Count);
+                         int totalMatches = changes.Sum(c => c.DebugLogPositions.Count);
                          
                          // Create backup if enabled
                          if (createBackups)
@@ -283,11 +283,6 @@ namespace MVPScripts.Editor
             var changes = new List<DebugLogChange>();
             string[] lines = content.Split('\n');
             
-            // Regex pattern to match Debug.Log statements and capture the full statement
-            // This pattern looks for Debug.Log, Debug.LogError, Debug.LogWarning, etc.
-            string pattern = @"(Debug\.(Log|LogError|LogWarning|LogException)\s*\([^)]*\)\s*;?)";
-            Regex debugLogRegex = new Regex(pattern, RegexOptions.IgnoreCase);
-            
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i];
@@ -296,8 +291,8 @@ namespace MVPScripts.Editor
                 if (line.TrimStart().StartsWith("//"))
                     continue;
                 
-                // Find all Debug.Log matches in this line
-                MatchCollection matches = debugLogRegex.Matches(line);
+                // Find all Debug.Log matches in this line using a more robust method
+                var matches = FindDebugLogInLine(line);
                 
                 if (matches.Count > 0)
                 {
@@ -305,12 +300,94 @@ namespace MVPScripts.Editor
                     {
                         LineNumber = i + 1,
                         OriginalLine = line,
-                        Matches = matches.Cast<Match>().ToList()
+                        DebugLogPositions = matches
                     });
                 }
             }
             
             return changes;
+        }
+        
+        private List<DebugLogPosition> FindDebugLogInLine(string line)
+        {
+            var positions = new List<DebugLogPosition>();
+            
+            // Only look for Debug.Log (not warnings, errors, or exceptions)
+            string[] debugMethods = { "Debug.Log(" };
+            
+            foreach (string method in debugMethods)
+            {
+                int searchStart = 0;
+                while (true)
+                {
+                    int startIndex = line.IndexOf(method, searchStart, StringComparison.OrdinalIgnoreCase);
+                    if (startIndex == -1)
+                        break;
+                    
+                    // Find the matching closing parenthesis
+                    int parenCount = 1;
+                    int currentIndex = startIndex + method.Length;
+                    bool inString = false;
+                    bool inChar = false;
+                    bool escaped = false;
+                    
+                    while (currentIndex < line.Length && parenCount > 0)
+                    {
+                        char c = line[currentIndex];
+                        
+                        if (escaped)
+                        {
+                            escaped = false;
+                        }
+                        else if (c == '\\')
+                        {
+                            escaped = true;
+                        }
+                        else if (!inChar && c == '"' && !escaped)
+                        {
+                            inString = !inString;
+                        }
+                        else if (!inString && c == '\'' && !escaped)
+                        {
+                            inChar = !inChar;
+                        }
+                        else if (!inString && !inChar)
+                        {
+                            if (c == '(')
+                                parenCount++;
+                            else if (c == ')')
+                                parenCount--;
+                        }
+                        
+                        currentIndex++;
+                    }
+                    
+                    // If we found a complete Debug.Log statement
+                    if (parenCount == 0)
+                    {
+                        // Check if there's a semicolon right after
+                        int endIndex = currentIndex;
+                        if (endIndex < line.Length && line[endIndex] == ';')
+                            endIndex++;
+                        
+                        positions.Add(new DebugLogPosition
+                        {
+                            StartIndex = startIndex,
+                            EndIndex = endIndex,
+                            Statement = line.Substring(startIndex, endIndex - startIndex)
+                        });
+                        
+                        searchStart = endIndex;
+                    }
+                    else
+                    {
+                        // Incomplete statement, skip this occurrence
+                        searchStart = startIndex + method.Length;
+                    }
+                }
+            }
+            
+            return positions;
         }
         
         private string ApplyChanges(string content, List<DebugLogChange> changes)
@@ -325,15 +402,15 @@ namespace MVPScripts.Editor
                     string line = lines[lineIndex];
                     string modifiedLine = line;
                     
-                    // Process matches in reverse order to maintain string positions
-                    var sortedMatches = change.Matches.OrderByDescending(m => m.Index).ToList();
+                    // Process positions in reverse order to maintain string positions
+                    var sortedPositions = change.DebugLogPositions.OrderByDescending(p => p.StartIndex).ToList();
                     
-                    foreach (Match match in sortedMatches)
+                    foreach (var position in sortedPositions)
                     {
                         // Comment out just the Debug.Log statement
-                        string beforeDebug = modifiedLine.Substring(0, match.Index);
-                        string debugStatement = match.Value;
-                        string afterDebug = modifiedLine.Substring(match.Index + match.Length);
+                        string beforeDebug = modifiedLine.Substring(0, position.StartIndex);
+                        string debugStatement = position.Statement;
+                        string afterDebug = modifiedLine.Substring(position.EndIndex);
                         
                         // Replace the Debug statement with commented version
                         modifiedLine = beforeDebug + "/* " + debugStatement + " */" + afterDebug;
@@ -375,7 +452,14 @@ namespace MVPScripts.Editor
         {
             public int LineNumber { get; set; }
             public string OriginalLine { get; set; }
-            public List<Match> Matches { get; set; } = new List<Match>();
+            public List<DebugLogPosition> DebugLogPositions { get; set; } = new List<DebugLogPosition>();
+        }
+        
+        private class DebugLogPosition
+        {
+            public int StartIndex { get; set; }
+            public int EndIndex { get; set; }
+            public string Statement { get; set; }
         }
     }
 } 
