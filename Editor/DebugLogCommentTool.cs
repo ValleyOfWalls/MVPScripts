@@ -32,11 +32,12 @@ namespace MVPScripts.Editor
                          EditorGUILayout.HelpBox(
                  "This tool will:\n" +
                  "1. Create backups of all C# scripts (if enabled)\n" +
-                 "2. Comment out ONLY Debug.Log statements (NOT warnings, errors, or exceptions)\n" +
-                 "3. Use /* */ block comments to preserve other code on the same line\n" +
-                 "4. Skip Debug.Log statements that are part of single-line if/while/for statements\n" +
-                 "5. Process all subfolders if enabled\n" +
-                 "6. Handle multiple Debug.Log statements on the same line",
+                 "2. Comment out ONLY complete Debug.Log statements ending with semicolons\n" +
+                 "3. Skip Debug.Log statements that are part of single-line control statements\n" +
+                 "4. Skip Debug.Log statements near class/namespace endings\n" +
+                 "5. Skip multi-line or incomplete Debug.Log statements\n" +
+                 "6. Use /* */ block comments to preserve other code on the same line\n" +
+                 "7. Process all subfolders if enabled",
                  MessageType.Info);
             
             GUILayout.Space(10);
@@ -296,6 +297,10 @@ namespace MVPScripts.Editor
                 if (IsSingleLineControlStatement(lines, i))
                     continue;
                 
+                // Check if this line is near the end of a class/namespace (potential structural issue)
+                if (IsNearStructuralEnd(lines, i))
+                    continue;
+                
                 // Find all Debug.Log matches in this line using a more robust method
                 var matches = FindDebugLogInLine(line);
                 
@@ -311,6 +316,50 @@ namespace MVPScripts.Editor
             }
             
             return changes;
+        }
+        
+        private bool IsNearStructuralEnd(string[] lines, int currentLineIndex)
+        {
+            // Look ahead a few lines to see if we're near the end of a class or namespace
+            int lookAheadLines = Math.Min(5, lines.Length - currentLineIndex - 1);
+            
+            for (int i = 1; i <= lookAheadLines; i++)
+            {
+                if (currentLineIndex + i >= lines.Length)
+                    break;
+                
+                string nextLine = lines[currentLineIndex + i].Trim();
+                
+                // If we find a closing brace that's likely the end of a class/namespace
+                if (nextLine == "}" || nextLine == "} " || nextLine.StartsWith("} "))
+                {
+                    // Check if this seems to be a major structural closing (not just a method)
+                    // Look for signs this might be a class/namespace end
+                    bool hasMethodsOrPropertiesBefore = false;
+                    int checkBackLines = Math.Min(20, currentLineIndex);
+                    
+                    for (int j = 1; j <= checkBackLines; j++)
+                    {
+                        if (currentLineIndex - j < 0)
+                            break;
+                        
+                        string prevLine = lines[currentLineIndex - j].Trim();
+                        if (prevLine.Contains("public ") || prevLine.Contains("private ") || 
+                            prevLine.Contains("protected ") || prevLine.Contains("class ") ||
+                            prevLine.Contains("namespace "))
+                        {
+                            hasMethodsOrPropertiesBefore = true;
+                            break;
+                        }
+                    }
+                    
+                    // If this looks like it might be near a structural end, be conservative
+                    if (hasMethodsOrPropertiesBefore)
+                        return true;
+                }
+            }
+            
+            return false;
         }
         
         private bool IsSingleLineControlStatement(string[] lines, int currentLineIndex)
@@ -416,32 +465,96 @@ namespace MVPScripts.Editor
                         currentIndex++;
                     }
                     
-                    // If we found a complete Debug.Log statement
+                    // Only process if we found a complete Debug.Log statement that ends with semicolon
                     if (parenCount == 0)
                     {
                         // Check if there's a semicolon right after
                         int endIndex = currentIndex;
                         if (endIndex < line.Length && line[endIndex] == ';')
-                            endIndex++;
-                        
-                        positions.Add(new DebugLogPosition
                         {
-                            StartIndex = startIndex,
-                            EndIndex = endIndex,
-                            Statement = line.Substring(startIndex, endIndex - startIndex)
-                        });
+                            endIndex++;
+                            
+                            // Additional safety check: make sure this looks like a complete statement
+                            string statement = line.Substring(startIndex, endIndex - startIndex);
+                            if (IsCompleteDebugLogStatement(statement))
+                            {
+                                positions.Add(new DebugLogPosition
+                                {
+                                    StartIndex = startIndex,
+                                    EndIndex = endIndex,
+                                    Statement = statement
+                                });
+                            }
+                        }
                         
                         searchStart = endIndex;
                     }
                     else
                     {
-                        // Incomplete statement, skip this occurrence
+                        // Incomplete statement (likely multi-line), skip this occurrence
                         searchStart = startIndex + method.Length;
                     }
                 }
             }
             
             return positions;
+        }
+        
+        private bool IsCompleteDebugLogStatement(string statement)
+        {
+            // Basic validation to ensure this looks like a complete Debug.Log statement
+            if (string.IsNullOrWhiteSpace(statement))
+                return false;
+            
+            // Must start with Debug.Log
+            if (!statement.TrimStart().StartsWith("Debug.Log(", StringComparison.OrdinalIgnoreCase))
+                return false;
+            
+            // Must end with semicolon
+            if (!statement.TrimEnd().EndsWith(";"))
+                return false;
+            
+            // Count parentheses to ensure they're balanced
+            int openParens = 0;
+            bool inString = false;
+            bool inChar = false;
+            bool escaped = false;
+            
+            foreach (char c in statement)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+                
+                if (c == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+                
+                if (!inChar && c == '"')
+                {
+                    inString = !inString;
+                    continue;
+                }
+                
+                if (!inString && c == '\'')
+                {
+                    inChar = !inChar;
+                    continue;
+                }
+                
+                if (!inString && !inChar)
+                {
+                    if (c == '(') openParens++;
+                    else if (c == ')') openParens--;
+                }
+            }
+            
+            // Parentheses must be balanced
+            return openParens == 0;
         }
         
         private string ApplyChanges(string content, List<DebugLogChange> changes)
