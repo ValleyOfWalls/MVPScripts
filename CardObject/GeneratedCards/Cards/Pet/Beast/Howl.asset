@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Howl
   m_EditorClassIdentifier: 
-  _cardId: 6516
+  _cardId: 2655
   _cardName: Howl
   _description: Apply Weak for 3 turns to opponent. Grant 2 Strength to yourself.
   _cardArtwork: {fileID: 0}

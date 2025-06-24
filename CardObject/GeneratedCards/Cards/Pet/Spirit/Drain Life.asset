@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Drain Life
   m_EditorClassIdentifier: 
-  _cardId: 1323
+  _cardId: 9837
   _cardName: Drain Life
   _description: Deal 15 damage to opponent. Heal 20 health to ally.
   _cardArtwork: {fileID: 0}

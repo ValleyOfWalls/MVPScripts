@@ -652,7 +652,7 @@ public class PlayerSpawner : MonoBehaviour
             Debug.LogError("SetupStatsUIRelationships: Missing RelationshipManager components");
         }
     }
-
+//
     public void DespawnEntitiesForConnection(NetworkConnection conn)
     {
         if (fishNetManager == null || !fishNetManager.ServerManager.Started)
@@ -664,7 +664,7 @@ public class PlayerSpawner : MonoBehaviour
         Debug.Log($"PlayerSpawner: DespawnEntitiesForConnection called for {conn.ClientId}. FishNet will handle owned object despawn.");
     }
 }
-
+////
 /// <summary>
 /// Data structure to hold information about spawned entities
 /// </summary>

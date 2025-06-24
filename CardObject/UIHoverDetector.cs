@@ -138,35 +138,37 @@ public class UIHoverDetector : MonoBehaviour, IPointerEnterHandler, IPointerExit
         
         LogDebug($"Processing hover enter for {gameObject.name} - isSelfOwned: {isSelfOwned}");
         
-        // Only process hover for self-owned cards
-        if (!isSelfOwned)
+        // Always handle card layering (bring to front) regardless of ownership
+        // This allows enemy cards to pop to top when hovered
+        HandAnimator currentHandAnimator = FindHandAnimator();
+        if (currentHandAnimator != null && cardAnimator != null)
         {
-            LogDebug($"Ignoring hover enter for {gameObject.name} - not self-owned");
-            return;
+            LogDebug($"Delegating hover enter to HandAnimator for card layering - {gameObject.name} (owner: {isSelfOwned})");
+            currentHandAnimator.BringCardToFront(cardAnimator);
         }
         
-        // Ensure CardAnimator has up-to-date HandLayoutManager reference
+        // Ensure CardAnimator has up-to-date HandLayoutManager reference for all cards
         if (cardAnimator != null)
         {
             cardAnimator.RefreshLayoutManager();
         }
         
-        // Delegate to HandAnimator for card layering (bring to front) - now using Canvas sorting order
-        HandAnimator currentHandAnimator = FindHandAnimator();
-        if (currentHandAnimator != null && cardAnimator != null)
-        {
-            LogDebug($"Delegating hover enter to HandAnimator for card layering - {gameObject.name}");
-            currentHandAnimator.BringCardToFront(cardAnimator);
-        }
-        
-        // Delegate to CardAnimator for visual hover effects
+        // Always handle card animations regardless of ownership
+        // This allows enemy cards to animate on hover
         if (cardAnimator != null)
         {
-            LogDebug($"Delegating hover enter to CardAnimator for {gameObject.name}");
+            LogDebug($"Delegating hover enter to CardAnimator for {gameObject.name} (owner: {isSelfOwned})");
             cardAnimator.AnimateHoverEnter();
         }
         
-        // Delegate to SourceAndTargetIdentifier for targeting/damage preview
+        // Only process targeting/damage preview for self-owned cards
+        if (!isSelfOwned)
+        {
+            LogDebug($"Skipping targeting effects for {gameObject.name} - not self-owned (but handled layering and animation)");
+            return;
+        }
+        
+        // Delegate to SourceAndTargetIdentifier for targeting/damage preview (self-owned cards only)
         if (sourceAndTargetIdentifier != null)
         {
             LogDebug($"Delegating hover enter to SourceAndTargetIdentifier for {gameObject.name}");
@@ -180,33 +182,35 @@ public class UIHoverDetector : MonoBehaviour, IPointerEnterHandler, IPointerExit
         
         LogDebug($"Processing hover exit for {gameObject.name} - isSelfOwned: {isSelfOwned}");
         
-        // Only process hover for self-owned cards
-        if (!isSelfOwned)
+        // Always handle card layering (restore position) regardless of ownership
+        // This restores enemy cards to original position when hover ends
+        HandAnimator currentHandAnimator = FindHandAnimator();
+        if (currentHandAnimator != null && cardAnimator != null)
         {
-            LogDebug($"Ignoring hover exit for {gameObject.name} - not self-owned");
-            return;
+            LogDebug($"Delegating hover exit to HandAnimator for card layering - {gameObject.name} (owner: {isSelfOwned})");
+            currentHandAnimator.RestoreCardPosition(cardAnimator);
         }
         
-        // Delegate to CardAnimator for visual hover effects
+        // Always handle card animations regardless of ownership
+        // This allows enemy cards to animate on hover exit
         if (cardAnimator != null)
         {
-            LogDebug($"Delegating hover exit to CardAnimator for {gameObject.name}");
+            LogDebug($"Delegating hover exit to CardAnimator for {gameObject.name} (owner: {isSelfOwned})");
             cardAnimator.AnimateHoverExit();
         }
         
-        // Delegate to SourceAndTargetIdentifier for targeting/damage preview
+        // Only process targeting/damage preview for self-owned cards
+        if (!isSelfOwned)
+        {
+            LogDebug($"Skipping targeting effects for {gameObject.name} - not self-owned (but handled layering and animation)");
+            return;
+        }
+        
+        // Delegate to SourceAndTargetIdentifier for targeting/damage preview (self-owned cards only)
         if (sourceAndTargetIdentifier != null)
         {
             LogDebug($"Delegating hover exit to SourceAndTargetIdentifier for {gameObject.name}");
             sourceAndTargetIdentifier.HandlePointerExit();
-        }
-        
-        // Delegate to HandAnimator for card layering (restore position) - now using Canvas sorting order
-        HandAnimator currentHandAnimator = FindHandAnimator();
-        if (currentHandAnimator != null && cardAnimator != null)
-        {
-            LogDebug($"Delegating hover exit to HandAnimator for card layering - {gameObject.name}");
-            currentHandAnimator.RestoreCardPosition(cardAnimator);
         }
     }
     

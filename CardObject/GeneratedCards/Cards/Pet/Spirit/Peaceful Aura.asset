@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Peaceful Aura
   m_EditorClassIdentifier: 
-  _cardId: 5304
+  _cardId: 3041
   _cardName: Peaceful Aura
   _description: Heal 32 health to ally. Restore 26 energy. Draw a card.
   _cardArtwork: {fileID: 0}

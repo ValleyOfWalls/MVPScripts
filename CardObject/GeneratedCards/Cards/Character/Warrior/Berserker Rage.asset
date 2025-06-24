@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Berserker Rage
   m_EditorClassIdentifier: 
-  _cardId: 9623
+  _cardId: 2680
   _cardName: Berserker Rage
-  _description: Deal 20 damage to opponent. Grant 3 Strength to yourself.
+  _description: Deal 20 damage to opponent. Grant 3 Strength to yourself. Enter Berserker
+    stance.
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
   _cardType: 6

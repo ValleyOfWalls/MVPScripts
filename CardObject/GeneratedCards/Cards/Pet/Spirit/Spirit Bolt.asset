@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Spirit Bolt
   m_EditorClassIdentifier: 
-  _cardId: 4236
+  _cardId: 3910
   _cardName: Spirit Bolt
   _description: Deal 18 damage to opponent. Restore 15 energy.
   _cardArtwork: {fileID: 0}

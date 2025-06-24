@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Challenge
   m_EditorClassIdentifier: 
-  _cardId: 2412
+  _cardId: 4691
   _cardName: Challenge
   _description: Grant 45 shield to yourself. Apply Weak for 2 turns to opponent.
     Stun yourself for 3 turns.

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Eternal Bond
   m_EditorClassIdentifier: 
-  _cardId: 2857
+  _cardId: 7398
   _cardName: Eternal Bond
   _description: Heal 30 health to yourself. Heal 30 health to ally. Restore 22 energy.
     Draw a card.

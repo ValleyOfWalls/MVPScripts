@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Quick Strike
   m_EditorClassIdentifier: 
-  _cardId: 1343
+  _cardId: 3084
   _cardName: Quick Strike
-  _description: Deal 15 damage to opponent.
+  _description: Deal 15 damage to opponent. Builds combo.
   _cardArtwork: {fileID: 0}
   _cardCategory: 0
   _cardType: 4

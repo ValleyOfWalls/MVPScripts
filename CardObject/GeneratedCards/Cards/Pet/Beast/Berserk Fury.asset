@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Berserk Fury
   m_EditorClassIdentifier: 
-  _cardId: 7551
+  _cardId: 3008
   _cardName: Berserk Fury
-  _description: Deal 18 damage to opponent. Grant 3 Strength to yourself.
+  _description: Deal 18 damage to opponent (+0.4 per missing health). Grant 3 Strength
+    to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 1

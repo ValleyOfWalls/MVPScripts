@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Earth Shield
   m_EditorClassIdentifier: 
-  _cardId: 5108
+  _cardId: 8870
   _cardName: Earth Shield
-  _description: Grant 38 shield to yourself
+  _description: Grant 38 shield to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 0
   _cardType: 2

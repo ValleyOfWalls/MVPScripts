@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Death Strike
   m_EditorClassIdentifier: 
-  _cardId: 1254
+  _cardId: 9778
   _cardName: Death Strike
-  _description: Deal 58 damage to opponent. Draw 2 cards.
+  _description: Deal 58 damage to opponent (+15.0 per combo). Draw 2 cards.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 5

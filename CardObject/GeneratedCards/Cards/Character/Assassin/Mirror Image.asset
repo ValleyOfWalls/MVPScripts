@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Mirror Image
   m_EditorClassIdentifier: 
-  _cardId: 1248
+  _cardId: 2820
   _cardName: Mirror Image
   _description: Draw 2 cards. Restore 20 energy. Draw a card.
   _cardArtwork: {fileID: 0}

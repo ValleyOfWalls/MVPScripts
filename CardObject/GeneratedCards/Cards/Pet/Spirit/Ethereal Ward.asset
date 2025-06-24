@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Ethereal Ward
   m_EditorClassIdentifier: 
-  _cardId: 2105
+  _cardId: 9908
   _cardName: Ethereal Ward
   _description: Grant 49 shield to ally. Apply 8 Salve to yourself.
   _cardArtwork: {fileID: 0}

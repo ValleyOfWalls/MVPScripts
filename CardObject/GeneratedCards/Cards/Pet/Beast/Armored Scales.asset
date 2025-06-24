@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Armored Scales
   m_EditorClassIdentifier: 
-  _cardId: 9042
+  _cardId: 7214
   _cardName: Armored Scales
   _description: Grant 58 shield to yourself. Grant 10 Thorns to yourself.
   _cardArtwork: {fileID: 0}

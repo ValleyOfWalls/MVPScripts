@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Smoke Bomb
   m_EditorClassIdentifier: 
-  _cardId: 4818
+  _cardId: 4944
   _cardName: Smoke Bomb
   _description: Grant 25 shield to yourself. Apply Weak for 3 turns to opponent.
   _cardArtwork: {fileID: 0}

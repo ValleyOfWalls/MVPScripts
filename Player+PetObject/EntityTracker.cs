@@ -128,9 +128,9 @@ public class EntityTracker : NetworkBehaviour
         {
             _comboCount.Value++;
         }
-        else if (cardType != CardType.Combo && cardType != CardType.Finisher)
+        else if (cardType != CardType.Combo)
         {
-            // Non-combo cards reset the combo (except finishers)
+            // Non-combo cards reset the combo (including finishers)
             _comboCount.Value = 0;
         }
 

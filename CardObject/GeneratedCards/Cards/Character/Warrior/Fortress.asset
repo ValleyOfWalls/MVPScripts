@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Fortress
   m_EditorClassIdentifier: 
-  _cardId: 7341
+  _cardId: 1687
   _cardName: Fortress
   _description: Grant 60 shield to yourself. Grant 8 Thorns to yourself.
   _cardArtwork: {fileID: 0}

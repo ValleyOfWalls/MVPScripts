@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Soul Link
   m_EditorClassIdentifier: 
-  _cardId: 4683
+  _cardId: 9592
   _cardName: Soul Link
   _description: Heal 20 health to yourself. Heal 20 health to ally. Restore 15 energy.
   _cardArtwork: {fileID: 0}

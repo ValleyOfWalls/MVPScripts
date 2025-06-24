@@ -102,12 +102,16 @@ public class DamageCalculator : MonoBehaviour
             /* Debug.Log($"DamageCalculator: Source damage multiplier {damageMultiplier}, damage is now {modifiedDamage}"); */
         }
         
-        // Check for Strength effect (positive damage bonus)
-        if (sourceEffects.HasEffect("Strength"))
+        // Check for Strength effect (positive damage bonus) - use EntityTracker for consistency
+        EntityTracker sourceTracker = source.GetComponent<EntityTracker>();
+        if (sourceTracker != null)
         {
-            int strengthValue = sourceEffects.GetEffectPotency("Strength");
-            modifiedDamage += strengthValue;
-            /* Debug.Log($"DamageCalculator: Source has Strength {strengthValue}, damage increased to {modifiedDamage}"); */
+            int strengthValue = sourceTracker.StrengthStacks;
+            if (strengthValue > 0)
+            {
+                modifiedDamage += strengthValue;
+                /* Debug.Log($"DamageCalculator: Source has Strength {strengthValue}, damage increased to {modifiedDamage}"); */
+            }
         }
         
         return modifiedDamage;

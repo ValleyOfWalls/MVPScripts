@@ -887,15 +887,15 @@ public static class CardGenerator
         }
         
         // Save the deck
-        SaveDeckAsAsset(deck, deckFolderPath);
+        SaveDeckAsAsset(deck, deckFolderPath, cardFolderPath);
         
         /* Debug.Log($"Created deck '{deckName}' with {deckCards.Count} cards"); */
     }
 
     /// <summary>
-    /// Saves a DeckData as a ScriptableObject asset
+    /// Saves a DeckData as a ScriptableObject asset (overwrites if exists while preserving references)
     /// </summary>
-    public static void SaveDeckAsAsset(DeckData deck, string folderPath)
+    public static void SaveDeckAsAsset(DeckData deck, string folderPath, string cardFolderPath = null)
     {
         if (deck == null) return;
 
@@ -905,15 +905,78 @@ public static class CardGenerator
             Directory.CreateDirectory(folderPath);
         }
 
-        // Create unique asset path
-        string assetPath = AssetDatabase.GenerateUniqueAssetPath($"{folderPath}/{deck.DeckName}.asset");
+        // Create asset path (will overwrite if exists)
+        string assetPath = $"{folderPath}/{deck.DeckName}.asset";
         
-        // Create and save asset
-        AssetDatabase.CreateAsset(deck, assetPath);
+        // Check if asset already exists and update it instead of replacing
+        DeckData existingDeck = AssetDatabase.LoadAssetAtPath<DeckData>(assetPath);
+        if (existingDeck != null)
+        {
+            // Copy data from new deck to existing deck to preserve references
+            var deckNameField = typeof(DeckData).GetField("_deckName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var cardsField = typeof(DeckData).GetField("_cardsInDeck", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            deckNameField?.SetValue(existingDeck, deck.DeckName);
+            
+            // Load the actual saved card assets instead of using the temporary ones
+            List<CardData> savedCardsList = new List<CardData>();
+            foreach (CardData tempCard in deck.CardsInDeck)
+            {
+                if (tempCard != null)
+                {
+                    CardData savedCard = null;
+                    
+                    // Try to find the saved card asset
+                    if (!string.IsNullOrEmpty(cardFolderPath))
+                    {
+                        // Use provided card folder path
+                        string cardAssetPath = $"{cardFolderPath}/{tempCard.CardName}.asset";
+                        savedCard = AssetDatabase.LoadAssetAtPath<CardData>(cardAssetPath);
+                    }
+                    
+                    if (savedCard == null)
+                    {
+                        // Fallback: search for the card by name in the entire project
+                        string[] guids = AssetDatabase.FindAssets($"{tempCard.CardName} t:CardData");
+                        foreach (string guid in guids)
+                        {
+                            string path = AssetDatabase.GUIDToAssetPath(guid);
+                            CardData foundCard = AssetDatabase.LoadAssetAtPath<CardData>(path);
+                            if (foundCard != null && foundCard.CardName == tempCard.CardName)
+                            {
+                                savedCard = foundCard;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (savedCard != null)
+                    {
+                        savedCardsList.Add(savedCard);
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"Could not find saved card asset for: {tempCard.CardName}");
+                        // Fallback to the temporary card if saved version not found
+                        savedCardsList.Add(tempCard);
+                    }
+                }
+            }
+            
+            cardsField?.SetValue(existingDeck, savedCardsList);
+            
+            EditorUtility.SetDirty(existingDeck);
+            Debug.Log($"Updated existing deck asset (preserving references): {assetPath} with {savedCardsList.Count} cards");
+        }
+        else
+        {
+            // Create new asset if it doesn't exist
+            AssetDatabase.CreateAsset(deck, assetPath);
+            Debug.Log($"Created new deck asset: {assetPath}");
+        }
+        
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-
-        Debug.Log($"Saved deck asset: {assetPath}");
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1324,7 +1387,7 @@ public static class CardGenerator
     }
 
     /// <summary>
-    /// Saves a CardData as a ScriptableObject asset
+    /// Saves a CardData as a ScriptableObject asset (overwrites if exists while preserving references)
     /// </summary>
     public static void SaveCardAsAsset(CardData card, string folderPath)
     {
@@ -1336,15 +1399,43 @@ public static class CardGenerator
             Directory.CreateDirectory(folderPath);
         }
 
-        // Create unique asset path
-        string assetPath = AssetDatabase.GenerateUniqueAssetPath($"{folderPath}/{card.CardName}.asset");
+        // Create asset path (will overwrite if exists)
+        string assetPath = $"{folderPath}/{card.CardName}.asset";
         
-        // Create and save asset
-        AssetDatabase.CreateAsset(card, assetPath);
+        // Check if asset already exists and update it instead of replacing
+        CardData existingCard = AssetDatabase.LoadAssetAtPath<CardData>(assetPath);
+        if (existingCard != null)
+        {
+            // Copy all data from new card to existing card to preserve references
+            var cardIdField = typeof(CardData).GetField("_cardId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var cardNameField = typeof(CardData).GetField("_cardName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var energyCostField = typeof(CardData).GetField("_energyCost", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var cardTypeField = typeof(CardData).GetField("_cardType", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var categoryField = typeof(CardData).GetField("_cardCategory", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var effectsField = typeof(CardData).GetField("_effects", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var descriptionField = typeof(CardData).GetField("_description", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            // Copy all the basic properties
+            cardIdField?.SetValue(existingCard, card.CardId);
+            cardNameField?.SetValue(existingCard, card.CardName);
+            energyCostField?.SetValue(existingCard, card.EnergyCost);
+            cardTypeField?.SetValue(existingCard, card.CardType);
+            categoryField?.SetValue(existingCard, card.CardCategory);
+            effectsField?.SetValue(existingCard, card.Effects);
+            descriptionField?.SetValue(existingCard, card.Description);
+            
+            EditorUtility.SetDirty(existingCard);
+            Debug.Log($"Updated existing card asset (preserving references): {assetPath}");
+        }
+        else
+        {
+            // Create new asset if it doesn't exist
+            AssetDatabase.CreateAsset(card, assetPath);
+            Debug.Log($"Created new card asset: {assetPath}");
+        }
+        
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-
-        Debug.Log($"Saved card asset: {assetPath}");
     }
 }
 

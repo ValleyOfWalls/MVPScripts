@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Mana Burn
   m_EditorClassIdentifier: 
-  _cardId: 3806
+  _cardId: 8851
   _cardName: Mana Burn
-  _description: Deal 10 damage to opponent.
+  _description: Deal 10 damage to opponent (+0.3 per current health).
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
   _cardType: 1

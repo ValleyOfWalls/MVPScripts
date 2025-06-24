@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Venom Blade
   m_EditorClassIdentifier: 
-  _cardId: 4957
+  _cardId: 5782
   _cardName: Venom Blade
   _description: Deal 17 damage to opponent. Apply 8 Burn to opponent.
   _cardArtwork: {fileID: 0}
@@ -46,7 +46,7 @@ MonoBehaviour:
     instantEffectPrefab: {fileID: 0}
   - effectType: 6
     amount: 8
-    duration: 4
+    duration: 0
     targetType: 1
     elementalType: 0
     conditionType: 0

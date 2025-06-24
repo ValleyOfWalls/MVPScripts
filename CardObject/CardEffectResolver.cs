@@ -190,8 +190,45 @@ public class CardEffectResolver : NetworkBehaviour
         // Record card play in tracking systems
         RecordCardPlay(sourceEntity, cardData);
         
-        // Process the effect based on the card type
-        ProcessCardEffects(sourceEntity, targetEntities, cardData);
+        // Get tracking data for scaling calculations
+        EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
+        EntityTrackingData trackingData = sourceTracker?.GetTrackingDataForScaling() ?? new EntityTrackingData();
+        
+        // Process stance effects if card changes stance
+        if (cardData.ChangesStance)
+        {
+            ProcessStanceChange(sourceEntity, cardData.NewStance);
+        }
+        
+        // Process all effects from the Effects list
+        if (cardData.HasEffects)
+        {
+            Debug.Log($"CardEffectResolver: Processing {cardData.Effects.Count} effects for card {cardData.CardName}");
+            
+            // Separate conditional and non-conditional effects
+            var conditionalEffects = cardData.Effects.Where(e => e.conditionType != ConditionalType.None).ToList();
+            var nonConditionalEffects = cardData.Effects.Where(e => e.conditionType == ConditionalType.None).ToList();
+            
+            Debug.Log($"CardEffectResolver: Found {nonConditionalEffects.Count} non-conditional effects and {conditionalEffects.Count} conditional effects");
+            
+            // Process non-conditional effects first (these always execute)
+            foreach (var effect in nonConditionalEffects)
+            {
+                Debug.Log($"CardEffectResolver: Processing non-conditional effect {effect.effectType} with amount {effect.amount}");
+                ProcessSingleEffectWithScaling(sourceEntity, targetEntities, effect, trackingData);
+            }
+            
+            // Process conditional effects with proper conditional logic
+            foreach (var effect in conditionalEffects)
+            {
+                Debug.Log($"CardEffectResolver: Processing conditional effect {effect.effectType} with condition {effect.conditionType}");
+                ProcessConditionalEffectSingle(sourceEntity, targetEntities, effect, trackingData);
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"CardEffectResolver: Card {cardData.CardName} has no effects defined");
+        }
         
         /* Debug.Log($"CardEffectResolver: CmdResolveEffect completed for card {cardData.CardName}"); */
     }
@@ -233,55 +270,26 @@ public class CardEffectResolver : NetworkBehaviour
         // Process all effects from the Effects list
         if (cardData.HasEffects)
         {
-            /* Debug.Log($"CardEffectResolver: Processing {cardData.Effects.Count} effects for card {cardData.CardName}"); */
+            Debug.Log($"CardEffectResolver: Processing {cardData.Effects.Count} effects for card {cardData.CardName}");
             
-            foreach (var effect in cardData.Effects)
+            // Separate conditional and non-conditional effects
+            var conditionalEffects = cardData.Effects.Where(e => e.conditionType != ConditionalType.None).ToList();
+            var nonConditionalEffects = cardData.Effects.Where(e => e.conditionType == ConditionalType.None).ToList();
+            
+            Debug.Log($"CardEffectResolver: Found {nonConditionalEffects.Count} non-conditional effects and {conditionalEffects.Count} conditional effects");
+            
+            // Process non-conditional effects first (these always execute)
+            foreach (var effect in nonConditionalEffects)
             {
-                /* Debug.Log($"CardEffectResolver: Processing effect {effect.effectType} with amount {effect.amount}, duration {effect.duration}, targetType {effect.targetType}"); */
-                
-                // Get the correct targets for this specific effect based on its targetType
-                List<NetworkEntity> effectTargets = GetTargetsForEffect(sourceEntity, effect.targetType, targetEntities);
-                
-                if (effectTargets.Count == 0)
-                {
-                    Debug.LogWarning($"CardEffectResolver: No valid targets found for effect {effect.effectType} with targetType {effect.targetType}");
-                    continue;
-                }
-                
-                /* Debug.Log($"CardEffectResolver: Effect {effect.effectType} targeting {effectTargets.Count} entities: {string.Join(", ", effectTargets.Select(e => e.EntityName.Value))}"); */
-                
-                // Apply scaling if defined on the effect
-                int amount = effect.amount;
-                if (effect.scalingType != ScalingType.None && trackingData != null)
-                {
-                    int scalingValue = GetScalingValue(effect.scalingType, trackingData);
-                    int scalingBonus = Mathf.FloorToInt(scalingValue * effect.scalingMultiplier);
-                    int scaledAmount = amount + scalingBonus;
-                    
-                    /* Debug.Log($"CardEffectResolver: Scaling details - scalingType: {effect.scalingType}, scalingValue: {scalingValue}, multiplier: {effect.scalingMultiplier}, bonus: {scalingBonus}, maxScaling: {effect.maxScaling}"); */
-                    
-                    // Only apply max scaling if it's higher than the base amount
-                    // This prevents maxScaling from reducing the base effect
-                    if (effect.maxScaling > effect.amount)
-                    {
-                        amount = Mathf.Min(scaledAmount, effect.maxScaling);
-                        /* Debug.Log($"CardEffectResolver: Applied max scaling cap - final amount: {amount}"); */
-                    }
-                    else
-                    {
-                        amount = scaledAmount;
-                        /* Debug.Log($"CardEffectResolver: Max scaling ({effect.maxScaling}) lower than base amount ({effect.amount}), ignoring cap - final amount: {amount}"); */
-                    }
-                    
-                    /* Debug.Log($"CardEffectResolver: Scaling applied - original: {effect.amount}, scaled: {amount}"); */
-                }
-                else if (effect.scalingType != ScalingType.None)
-                {
-                    /* Debug.Log($"CardEffectResolver: Effect has scaling type {effect.scalingType} but no tracking data available"); */
-                }
-                
-                /* Debug.Log($"CardEffectResolver: Calling ProcessSingleEffect with amount {amount}, duration {effect.duration}"); */
-                ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, amount, effect.duration, effect.elementalType);
+                Debug.Log($"CardEffectResolver: Processing non-conditional effect {effect.effectType} with amount {effect.amount}");
+                ProcessSingleEffectWithScaling(sourceEntity, targetEntities, effect, trackingData);
+            }
+            
+            // Process conditional effects with proper conditional logic
+            foreach (var effect in conditionalEffects)
+            {
+                Debug.Log($"CardEffectResolver: Processing conditional effect {effect.effectType} with condition {effect.conditionType}");
+                ProcessConditionalEffectSingle(sourceEntity, targetEntities, effect, trackingData);
             }
         }
         else
@@ -300,6 +308,125 @@ public class CardEffectResolver : NetworkBehaviour
         {
             sourceTracker.SetStance(newStance);
             Debug.Log($"CardEffectResolver: {sourceEntity.EntityName.Value} entered {newStance} stance");
+        }
+    }
+    
+    /// <summary>
+    /// Processes a single effect with scaling and targeting
+    /// </summary>
+    private void ProcessSingleEffectWithScaling(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardEffect effect, EntityTrackingData trackingData)
+    {
+        /* Debug.Log($"CardEffectResolver: Processing effect {effect.effectType} with amount {effect.amount}, duration {effect.duration}, targetType {effect.targetType}"); */
+        
+        // Get the correct targets for this specific effect based on its targetType
+        List<NetworkEntity> effectTargets = GetTargetsForEffect(sourceEntity, effect.targetType, targetEntities);
+        
+        if (effectTargets.Count == 0)
+        {
+            Debug.LogWarning($"CardEffectResolver: No valid targets found for effect {effect.effectType} with targetType {effect.targetType}");
+            return;
+        }
+        
+        /* Debug.Log($"CardEffectResolver: Effect {effect.effectType} targeting {effectTargets.Count} entities: {string.Join(", ", effectTargets.Select(e => e.EntityName.Value))}"); */
+        
+        // Apply scaling if defined on the effect
+        int amount = effect.amount;
+        if (effect.scalingType != ScalingType.None && trackingData != null)
+        {
+            int scalingValue = GetScalingValue(effect.scalingType, trackingData);
+            int scalingBonus = Mathf.FloorToInt(scalingValue * effect.scalingMultiplier);
+            int scaledAmount = amount + scalingBonus;
+            
+            /* Debug.Log($"CardEffectResolver: Scaling details - scalingType: {effect.scalingType}, scalingValue: {scalingValue}, multiplier: {effect.scalingMultiplier}, bonus: {scalingBonus}, maxScaling: {effect.maxScaling}"); */
+            
+            // Only apply max scaling if it's higher than the base amount
+            // This prevents maxScaling from reducing the base effect
+            if (effect.maxScaling > effect.amount)
+            {
+                amount = Mathf.Min(scaledAmount, effect.maxScaling);
+                /* Debug.Log($"CardEffectResolver: Applied max scaling cap - final amount: {amount}"); */
+            }
+            else
+            {
+                amount = scaledAmount;
+                /* Debug.Log($"CardEffectResolver: Max scaling ({effect.maxScaling}) lower than base amount ({effect.amount}), ignoring cap - final amount: {amount}"); */
+            }
+            
+            /* Debug.Log($"CardEffectResolver: Scaling applied - original: {effect.amount}, scaled: {amount}"); */
+        }
+        else if (effect.scalingType != ScalingType.None)
+        {
+            /* Debug.Log($"CardEffectResolver: Effect has scaling type {effect.scalingType} but no tracking data available"); */
+        }
+        
+        /* Debug.Log($"CardEffectResolver: Calling ProcessSingleEffect with amount {amount}, duration {effect.duration}"); */
+        ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, amount, effect.duration, effect.elementalType);
+    }
+    
+    /// <summary>
+    /// Processes a single conditional effect based on its condition and alternative logic
+    /// </summary>
+    private void ProcessConditionalEffectSingle(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardEffect effect, EntityTrackingData trackingData)
+    {
+        Debug.Log($"CardEffectResolver: Processing conditional effect {effect.effectType} with condition {effect.conditionType}, hasAlternativeEffect: {effect.hasAlternativeEffect}, alternativeLogic: {effect.alternativeLogic}");
+        
+        // Get the correct targets for this specific effect
+        List<NetworkEntity> effectTargets = GetTargetsForEffect(sourceEntity, effect.targetType, targetEntities);
+        
+        if (effectTargets.Count == 0)
+        {
+            Debug.LogWarning($"CardEffectResolver: No valid targets found for conditional effect {effect.effectType} with targetType {effect.targetType}");
+            return;
+        }
+        
+        // Check the condition
+        bool conditionMet = CheckConditionForEffect(sourceEntity, effectTargets, effect);
+        Debug.Log($"CardEffectResolver: Condition {effect.conditionType} for effect {effect.effectType}: {(conditionMet ? "MET" : "NOT MET")}");
+        
+        if (conditionMet)
+        {
+            // Condition is met - execute alternative effect if using Replace logic, or both if using Additional logic
+            if (effect.hasAlternativeEffect && effect.alternativeLogic == AlternativeEffectLogic.Replace)
+            {
+                // Replace logic: execute only alternative effect when condition is met
+                Debug.Log($"CardEffectResolver: Condition MET with Replace logic - executing alternative effect {effect.alternativeEffectType} with amount {effect.alternativeEffectAmount} INSTEAD of main effect");
+                ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, 0, ElementalType.None);
+            }
+            else
+            {
+                // No alternative effect or Additional logic: execute main effect
+                int mainAmount = effect.amount;
+                
+                // Apply scaling if the effect uses it
+                if (effect.scalingType != ScalingType.None)
+                {
+                    mainAmount = CalculateScaledAmountFromEffect(effect, trackingData);
+                }
+                
+                Debug.Log($"CardEffectResolver: Condition MET - executing main effect {effect.effectType} with amount {mainAmount}");
+                ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, mainAmount, effect.duration, effect.elementalType);
+                
+                // If has alternative effect with "Additional" logic, also execute alternative
+                if (effect.hasAlternativeEffect && effect.alternativeLogic == AlternativeEffectLogic.Additional)
+                {
+                    Debug.Log($"CardEffectResolver: Also executing additional alternative effect {effect.alternativeEffectType} with amount {effect.alternativeEffectAmount}");
+                    ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, 0, ElementalType.None);
+                }
+            }
+        }
+        else
+        {
+            // Condition not met - execute main effect (alternative only triggers when condition IS met)
+            int mainAmount = effect.amount;
+            
+            // Apply scaling to main effect if it uses it
+            if (effect.scalingType != ScalingType.None)
+            {
+                mainAmount = CalculateScaledAmountFromEffect(effect, trackingData);
+            }
+            
+            Debug.Log($"CardEffectResolver: Condition NOT MET - executing main effect {effect.effectType} with amount {mainAmount}");
+            ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, mainAmount, effect.duration, effect.elementalType);
         }
     }
     
@@ -408,69 +535,6 @@ public class CardEffectResolver : NetworkBehaviour
     }
     
     /// <summary>
-    /// Processes conditional effects based on current game state
-    /// </summary>
-    private void ProcessConditionalEffect(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardData cardData, EntityTrackingData trackingData)
-    {
-        // Process all effects that have conditions
-        foreach (var effect in cardData.Effects.Where(e => e.conditionType != ConditionalType.None))
-        {
-            bool conditionMet = CheckConditionForEffect(sourceEntity, targetEntities, effect);
-            
-            if (conditionMet)
-            {
-                int effectAmount = effect.amount;
-                
-                // Apply scaling if the effect uses it
-                if (effect.scalingType != ScalingType.None)
-                {
-                    effectAmount = CalculateScaledAmountFromEffect(effect, trackingData);
-                }
-                
-                // Always execute the main effect when condition is met
-                ProcessSingleEffect(sourceEntity, targetEntities, effect.effectType, 
-                    effectAmount, effect.duration, effect.elementalType);
-                
-                // If has alternative effect with "Additional" logic, also execute alternative
-                if (effect.hasAlternativeEffect && effect.alternativeLogic == AlternativeEffectLogic.Additional)
-                {
-                    ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
-                        effect.alternativeEffectAmount, 0, ElementalType.None);
-                    /* Debug.Log($"CardEffectResolver: Conditional met - executed both main effect ({effect.effectType}) AND alternative effect ({effect.alternativeEffectType})"); */
-                }
-            }
-            else if (effect.hasAlternativeEffect)
-            {
-                // Condition not met - handle based on logic type
-                if (effect.alternativeLogic == AlternativeEffectLogic.Replace)
-                {
-                    // Replace logic: execute only alternative effect
-                    ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
-                        effect.alternativeEffectAmount, 0, ElementalType.None);
-                    /* Debug.Log($"CardEffectResolver: Conditional failed - executed alternative effect ({effect.alternativeEffectType}) INSTEAD of main effect"); */
-                }
-                else if (effect.alternativeLogic == AlternativeEffectLogic.Additional)
-                {
-                    // Additional logic: execute main effect + alternative effect
-                    int effectAmount = effect.amount;
-                    
-                    // Apply scaling to main effect if it uses it
-                    if (effect.scalingType != ScalingType.None)
-                    {
-                        effectAmount = CalculateScaledAmountFromEffect(effect, trackingData);
-                    }
-                    
-                    ProcessSingleEffect(sourceEntity, targetEntities, effect.effectType, 
-                        effectAmount, effect.duration, effect.elementalType);
-                    ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
-                        effect.alternativeEffectAmount, 0, ElementalType.None);
-                    /* Debug.Log($"CardEffectResolver: Conditional failed - executed main effect ({effect.effectType}) AND alternative effect ({effect.alternativeEffectType})"); */
-                }
-            }
-        }
-    }
-    
-    /// <summary>
     /// Checks if a conditional effect's condition is met
     /// </summary>
     private bool CheckConditionForEffect(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardEffect effect)
@@ -478,20 +542,51 @@ public class CardEffectResolver : NetworkBehaviour
         switch (effect.conditionType)
         {
             case ConditionalType.IfSourceHealthBelow:
-                return sourceEntity.CurrentHealth.Value < effect.conditionValue;
+                bool sourceHealthBelow = sourceEntity.CurrentHealth.Value < effect.conditionValue;
+                Debug.Log($"CardEffectResolver: IfSourceHealthBelow - Current: {sourceEntity.CurrentHealth.Value}, Condition: < {effect.conditionValue}, Result: {sourceHealthBelow}");
+                return sourceHealthBelow;
+                
             case ConditionalType.IfSourceHealthAbove:
-                return sourceEntity.CurrentHealth.Value > effect.conditionValue;
+                bool sourceHealthAbove = sourceEntity.CurrentHealth.Value > effect.conditionValue;
+                Debug.Log($"CardEffectResolver: IfSourceHealthAbove - Current: {sourceEntity.CurrentHealth.Value}, Condition: > {effect.conditionValue}, Result: {sourceHealthAbove}");
+                return sourceHealthAbove;
+                
             case ConditionalType.IfTargetHealthBelow:
-                return targetEntities.Count > 0 && targetEntities[0].CurrentHealth.Value < effect.conditionValue;
+                if (targetEntities.Count > 0)
+                {
+                    bool targetHealthBelow = targetEntities[0].CurrentHealth.Value < effect.conditionValue;
+                    Debug.Log($"CardEffectResolver: IfTargetHealthBelow - Target: {targetEntities[0].EntityName.Value}, Current: {targetEntities[0].CurrentHealth.Value}, Condition: < {effect.conditionValue}, Result: {targetHealthBelow}");
+                    return targetHealthBelow;
+                }
+                else
+                {
+                    Debug.Log($"CardEffectResolver: IfTargetHealthBelow - No target entities, returning false");
+                    return false;
+                }
+                
             case ConditionalType.IfTargetHealthAbove:
-                return targetEntities.Count > 0 && targetEntities[0].CurrentHealth.Value > effect.conditionValue;
+                if (targetEntities.Count > 0)
+                {
+                    bool targetHealthAbove = targetEntities[0].CurrentHealth.Value > effect.conditionValue;
+                    Debug.Log($"CardEffectResolver: IfTargetHealthAbove - Target: {targetEntities[0].EntityName.Value}, Current: {targetEntities[0].CurrentHealth.Value}, Condition: > {effect.conditionValue}, Result: {targetHealthAbove}");
+                    return targetHealthAbove;
+                }
+                else
+                {
+                    Debug.Log($"CardEffectResolver: IfTargetHealthAbove - No target entities, returning false");
+                    return false;
+                }
+                
             default:
                 // For more complex conditions, delegate to tracking systems
                 EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
                 if (sourceTracker != null)
                 {
-                    return sourceTracker.CheckCondition(effect.conditionType, effect.conditionValue);
+                    bool trackingResult = sourceTracker.CheckCondition(effect.conditionType, effect.conditionValue);
+                    Debug.Log($"CardEffectResolver: Delegated condition {effect.conditionType} to EntityTracker, result: {trackingResult}");
+                    return trackingResult;
                 }
+                Debug.Log($"CardEffectResolver: Unknown condition type {effect.conditionType} and no EntityTracker, returning false");
                 return false;
         }
     }
@@ -600,62 +695,18 @@ public class CardEffectResolver : NetworkBehaviour
         int strengthBonus = sourceTracker != null ? sourceTracker.StrengthStacks : 0;
         int totalDamage = amount + strengthBonus;
         
-        // Get damage calculator from CombatManager
-        if (damageCalculator == null)
-        {
-            CombatManager combatManager = FindFirstObjectByType<CombatManager>();
-            damageCalculator = combatManager?.GetComponent<DamageCalculator>();
-            
-            if (damageCalculator == null)
-            {
-                Debug.LogError("CardEffectResolver: Could not find DamageCalculator on CombatManager!");
-                return;
-            }
-        }
-        
-        // Get the original card data from the card component
-        CardData originalCardData = card?.CardData;
-        if (originalCardData == null)
-        {
-            Debug.LogError("CardEffectResolver: Could not find CardData on card component!");
-            return;
-        }
-        
-        // Debug card data information
-        /* Debug.Log($"CardEffectResolver: Processing damage for card '{originalCardData.CardName}'"); */
-        /* Debug.Log($"CardEffectResolver: Input amount parameter: {amount}"); */
-        /* Debug.Log($"CardEffectResolver: Strength bonus: {strengthBonus}"); */
-        /* Debug.Log($"CardEffectResolver: Total damage calculation: {totalDamage}"); */
-        
-        if (originalCardData.HasEffects && originalCardData.Effects.Count > 0)
-        {
-            var firstEffect = originalCardData.Effects[0];
-            /* Debug.Log($"CardEffectResolver: First effect type: {firstEffect.effectType}, amount: {firstEffect.amount}"); */
-        }
-        
-        // Calculate damage based on card and status effects using the original CardData
-        int finalDamage = damageCalculator.CalculateDamage(sourceEntity, targetEntity, originalCardData);
-        
-        // If the calculated damage is 0 but we have an amount, apply the amount directly
-        // This handles cases where DamageCalculator might not be working as expected
-        if (finalDamage == 0 && totalDamage > 0)
-        {
-            Debug.LogWarning($"CardEffectResolver: DamageCalculator returned 0 damage, using direct amount {totalDamage}");
-            finalDamage = totalDamage;
-        }
-        
-        /* Debug.Log($"CardEffectResolver: Final damage to apply: {finalDamage}"); */
+        Debug.Log($"CardEffectResolver: ProcessDamageEffect - Base amount: {amount}, Strength bonus: {strengthBonus}, Total: {totalDamage}");
         
         // Apply the damage through the life handler
         LifeHandler targetLifeHandler = targetEntity.GetComponent<LifeHandler>();
         if (targetLifeHandler != null)
         {
-            targetLifeHandler.TakeDamage(finalDamage, sourceEntity);
+            targetLifeHandler.TakeDamage(totalDamage, sourceEntity);
             
             // Record damage dealt in source entity tracker
             if (sourceTracker != null)
             {
-                sourceTracker.RecordDamageDealt(finalDamage);
+                sourceTracker.RecordDamageDealt(totalDamage);
             }
         }
         else

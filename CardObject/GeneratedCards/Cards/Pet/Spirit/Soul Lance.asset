@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Soul Lance
   m_EditorClassIdentifier: 
-  _cardId: 8690
+  _cardId: 2322
   _cardName: Soul Lance
   _description: Deal 25 damage to opponent. Restore 21 energy. Draw a card.
   _cardArtwork: {fileID: 0}

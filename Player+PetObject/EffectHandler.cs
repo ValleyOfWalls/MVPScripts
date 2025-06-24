@@ -199,6 +199,24 @@ public class EffectHandler : NetworkBehaviour
                 // Thorns lasts until start of entity's next turn - give it 1 turn duration
                 duration = 1;
                 break;
+                
+            case "Shield":
+                // Shield stacks with existing Shield effects
+                // If effect already exists, add to the potency
+                if (activeEffects.ContainsKey(effectName))
+                {
+                    string existingData = activeEffects[effectName];
+                    string[] parts = existingData.Split('|');
+                    if (parts.Length >= 4)
+                    {
+                        int existingPotency = int.Parse(parts[1]);
+                        potency += existingPotency; // Stack the effect
+                        /* Debug.Log($"EffectHandler: Stacking {effectName} potency, new total: {potency}"); */
+                    }
+                }
+                // Shield lasts until consumed or manually removed
+                duration = 999; // High duration since it's consumed by damage
+                break;
         }
         
         // Format effect data as a string for syncing
@@ -317,8 +335,9 @@ public class EffectHandler : NetworkBehaviour
                     
                 case "Thorns":
                     // Thorns is processed when taking damage, not at end of turn
+                    // Thorns should last until start of entity's next turn, so skip duration processing
                     /* Debug.Log($"EffectHandler: {entity.EntityName.Value} has Thorns ({potency}) active"); */
-                    break;
+                    continue; // Skip normal duration processing - thorns is removed at start of turn instead
                     
                 case "Shield":
                     // Shield persists, no end-of-turn processing needed
@@ -472,6 +491,9 @@ public class EffectHandler : NetworkBehaviour
     {
         if (!IsServerInitialized || attacker == null) return;
         
+        // Refresh effect cache to ensure we have the latest data
+        RefreshEffectCache();
+        
         if (HasEffect("Thorns"))
         {
             int thornsPotency = GetEffectPotency("Thorns");
@@ -484,6 +506,14 @@ public class EffectHandler : NetworkBehaviour
                 attackerLifeHandler.TakeDamage(reflectedDamage, entity);
                 Debug.Log($"EffectHandler: {entity.EntityName.Value} reflected {reflectedDamage} thorns damage to {attacker.EntityName.Value} (took {damageAmount} damage, thorns potency: {thornsPotency})");
             }
+            else
+            {
+                Debug.LogError($"EffectHandler: Could not find LifeHandler on attacker {attacker.EntityName.Value} for thorns reflection");
+            }
+        }
+        else
+        {
+            Debug.Log($"EffectHandler: {entity.EntityName.Value} does not have Thorns effect when processing reflection (damage taken: {damageAmount})");
         }
     }
     
@@ -549,6 +579,13 @@ public class EffectHandler : NetworkBehaviour
         
         /* Debug.Log($"EffectHandler: Processing start of turn effects for {entity.EntityName.Value}"); */
         
+        // Remove Shield at the start of the entity's turn
+        if (HasEffect("Shield"))
+        {
+            RemoveEffect("Shield");
+            Debug.Log($"EffectHandler: Removed Shield from {entity.EntityName.Value} at start of turn");
+        }
+        
         // Remove Thorns at the start of the entity's turn (they only last until start of next turn)
         if (HasEffect("Thorns"))
         {
@@ -569,8 +606,8 @@ public class EffectHandler : NetworkBehaviour
         
         Debug.Log($"EffectHandler: Processing start of round effects for {entity.EntityName.Value}");
         
-        // Similar to ProcessEndOfTurnEffects but for start-of-round effects
-        // Implement as needed for your game mechanics
+        // Process start-of-round effects here as needed for your game mechanics
+        // Note: Shield removal now happens at start of individual entity turns
     }
     
     /// <summary>
@@ -606,6 +643,9 @@ public class EffectHandler : NetworkBehaviour
     /// </summary>
     public bool HasEffect(string effectName)
     {
+        // Refresh cache to ensure we have the latest data
+        RefreshEffectCache();
+        
         if (activeEffects.ContainsKey(effectName))
         {
             return true;
@@ -684,6 +724,27 @@ public class EffectHandler : NetworkBehaviour
     {
         RefreshEffectCache();
         List<string> effectNames = new List<string>();
+        
+        // Add current stance if not None
+        EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+        if (entityTracker != null)
+        {
+            StanceType currentStance = entityTracker.CurrentStance;
+            Debug.Log($"EffectHandler: GetActiveEffects for {entity.EntityName.Value} - Current stance: {currentStance}");
+            if (currentStance != StanceType.None)
+            {
+                effectNames.Add($"Stance: {currentStance}");
+                Debug.Log($"EffectHandler: Added stance '{currentStance}' to effect list for {entity.EntityName.Value}");
+            }
+            else
+            {
+                Debug.Log($"EffectHandler: Stance is None for {entity.EntityName.Value}, not adding to effect list");
+            }
+        }
+        else
+        {
+            Debug.Log($"EffectHandler: No EntityTracker found on {entity.EntityName.Value}");
+        }
         
         foreach (var effect in effectCache.Values)
         {

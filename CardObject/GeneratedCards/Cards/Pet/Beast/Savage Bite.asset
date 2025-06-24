@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Savage Bite
   m_EditorClassIdentifier: 
-  _cardId: 4824
+  _cardId: 2287
   _cardName: Savage Bite
   _description: Deal 28 damage to opponent.
   _cardArtwork: {fileID: 0}

@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Fireball
   m_EditorClassIdentifier: 
-  _cardId: 4823
+  _cardId: 3592
   _cardName: Fireball
-  _description: Deal 20 damage to opponent
+  _description: Deal 20 damage to opponent ((Fire)).
   _cardArtwork: {fileID: 0}
   _cardCategory: 0
   _cardType: 2

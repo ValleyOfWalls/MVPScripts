@@ -182,6 +182,21 @@ public class CombatManager : NetworkBehaviour
             petTracker.ResetTurnData();
         }
         
+        // Process start of round effects (Shield clearing, etc.) for both entities
+        EffectHandler playerEffectHandler = player.GetComponent<EffectHandler>();
+        if (playerEffectHandler != null)
+        {
+            playerEffectHandler.ProcessStartOfRoundEffects();
+            Debug.Log($"CombatManager: Processed start of round effects for player {player.EntityName.Value}");
+        }
+        
+        EffectHandler petEffectHandler = pet.GetComponent<EffectHandler>();
+        if (petEffectHandler != null)
+        {
+            petEffectHandler.ProcessStartOfRoundEffects();
+            Debug.Log($"CombatManager: Processed start of round effects for pet {pet.EntityName.Value}");
+        }
+        
         // Notify clients to refresh energy for their local fight
         RpcStartNewRound(player.ObjectId, pet.ObjectId, fightRounds[player]);
 

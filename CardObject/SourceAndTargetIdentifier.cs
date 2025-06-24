@@ -632,28 +632,24 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
 
         if (card?.CardData?.Effects == null) return (0, 0);
 
-        // Check if card has any damage effects
-        bool hasDamageEffects = false;
-        foreach (var effect in card.CardData.Effects)
-        {
-            if (effect.effectType == CardEffectType.Damage)
-            {
-                hasDamageEffects = true;
-                break;
-            }
-        }
+        // Get source entity's strength for damage calculations
+        EntityTracker sourceTracker = sourceEntity?.GetComponent<EntityTracker>();
+        int strengthBonus = sourceTracker != null ? sourceTracker.StrengthStacks : 0;
 
-        // Calculate total damage using DamageCalculator if card has damage effects
-        if (hasDamageEffects && damageCalculator != null)
-        {
-            damageAmount = damageCalculator.CalculateDamage(sourceEntity, target, card.CardData);
-        }
+        /* Debug.Log($"SourceAndTargetIdentifier: Calculating damage for {card.CardData.CardName} - Strength bonus: {strengthBonus}"); */
 
-        // Calculate heal amounts by summing heal effects
+        // Calculate damage by processing each effect individually (matching CardEffectResolver behavior)
         foreach (var effect in card.CardData.Effects)
         {
             switch (effect.effectType)
             {
+                case CardEffectType.Damage:
+                    // Apply strength to each damage effect individually (matching actual processing)
+                    int effectDamage = effect.amount + strengthBonus;
+                    damageAmount += effectDamage;
+                    /* Debug.Log($"SourceAndTargetIdentifier: Damage effect - Base: {effect.amount}, +Strength: {strengthBonus}, Total: {effectDamage}, Running total: {damageAmount}"); */
+                    break;
+
                 case CardEffectType.Heal:
                     healAmount += effect.amount;
                     break;

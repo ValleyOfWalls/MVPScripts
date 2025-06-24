@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Solar Flare
   m_EditorClassIdentifier: 
-  _cardId: 4672
+  _cardId: 4646
   _cardName: Solar Flare
-  _description: Deal 31 damage to opponent. Apply 5 Burn to yourself.
+  _description: Deal 31 damage to opponent ((Fire)). Apply 5 Burn to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 1

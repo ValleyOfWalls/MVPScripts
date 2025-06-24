@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Blizzard Strike
   m_EditorClassIdentifier: 
-  _cardId: 4926
+  _cardId: 7672
   _cardName: Blizzard Strike
-  _description: Deal 23 damage to opponent. Apply Weak for 2 turns to opponent. Stun
-    yourself for 3 turns.
+  _description: Deal 23 damage to opponent ((Ice)). Apply Weak for 2 turns to opponent.
+    Stun yourself for 3 turns.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 3

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Blood Bond
   m_EditorClassIdentifier: 
-  _cardId: 7271
+  _cardId: 7221
   _cardName: Blood Bond
   _description: Deal 20 damage to opponent. Heal 15 health to ally.
   _cardArtwork: {fileID: 0}

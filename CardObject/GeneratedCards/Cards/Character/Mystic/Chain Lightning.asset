@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Chain Lightning
   m_EditorClassIdentifier: 
-  _cardId: 5069
+  _cardId: 3779
   _cardName: Chain Lightning
-  _description: Deal 23 damage to opponent. Restore 20 energy. Draw a card.
+  _description: Deal 23 damage to opponent ((Lightning)). Restore 20 energy. Draw
+    a card.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 3

@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Thick Hide
   m_EditorClassIdentifier: 
-  _cardId: 2830
+  _cardId: 7692
   _cardName: Thick Hide
-  _description: Grant 45 shield to yourself
+  _description: Grant 45 shield to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 0
   _cardType: 2

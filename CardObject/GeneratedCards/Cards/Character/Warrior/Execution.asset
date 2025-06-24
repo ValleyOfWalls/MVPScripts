@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Execution
   m_EditorClassIdentifier: 
-  _cardId: 4743
+  _cardId: 8134
   _cardName: Execution
-  _description: Deal 15 damage to opponent. Deal 15 damage to opponent. Draw a card.
+  _description: 'Deal 15 damage to opponent. Deal 15 damage to opponent (if target
+    health < 30%: deal 60 damage instead). Draw a card.'
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 1

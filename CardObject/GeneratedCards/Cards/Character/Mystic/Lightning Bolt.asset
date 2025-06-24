@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Lightning Bolt
   m_EditorClassIdentifier: 
-  _cardId: 4545
+  _cardId: 5083
   _cardName: Lightning Bolt
-  _description: Deal 18 damage to opponent. Restore 15 energy.
+  _description: Deal 18 damage to opponent ((Lightning)). Restore 15 energy.
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
   _cardType: 3

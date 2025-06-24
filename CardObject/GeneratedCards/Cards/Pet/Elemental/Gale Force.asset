@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Gale Force
   m_EditorClassIdentifier: 
-  _cardId: 8672
+  _cardId: 5383
   _cardName: Gale Force
   _description: Grant 39 shield to yourself. Restore 17 energy. Draw a card.
   _cardArtwork: {fileID: 0}

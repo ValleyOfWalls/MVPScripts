@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Spectral Form
   m_EditorClassIdentifier: 
-  _cardId: 2956
+  _cardId: 1326
   _cardName: Spectral Form
   _description: Grant 50 shield to yourself. Grant 25 shield to ally.
   _cardArtwork: {fileID: 0}

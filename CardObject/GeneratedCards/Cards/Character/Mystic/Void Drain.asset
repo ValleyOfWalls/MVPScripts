@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Void Drain
   m_EditorClassIdentifier: 
-  _cardId: 9510
+  _cardId: 8509
   _cardName: Void Drain
-  _description: Deal 15 damage to opponent. Restore 20 energy.
+  _description: Deal 15 damage to opponent (+0.3 per current health). Restore 20
+    energy.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 1

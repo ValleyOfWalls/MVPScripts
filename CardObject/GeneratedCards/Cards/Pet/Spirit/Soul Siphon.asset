@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Soul Siphon
   m_EditorClassIdentifier: 
-  _cardId: 9208
+  _cardId: 1527
   _cardName: Soul Siphon
   _description: Deal 22 damage to opponent. Heal 30 health to ally.
   _cardArtwork: {fileID: 0}

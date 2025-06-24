@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Pack Hunt
   m_EditorClassIdentifier: 
-  _cardId: 9455
+  _cardId: 2902
   _cardName: Pack Hunt
   _description: Deal 20 damage to opponent. Grant 2 Strength to ally.
   _cardArtwork: {fileID: 0}

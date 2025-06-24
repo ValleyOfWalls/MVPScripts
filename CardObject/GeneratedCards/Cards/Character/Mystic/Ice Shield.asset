@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Ice Shield
   m_EditorClassIdentifier: 
-  _cardId: 9541
+  _cardId: 6852
   _cardName: Ice Shield
-  _description: Grant 35 shield to yourself. Apply Weak for 3 turns to opponent.
+  _description: Grant 35 shield to yourself ((Ice)). Apply Weak for 3 turns to opponent.
   _cardArtwork: {fileID: 0}
   _cardCategory: 0
   _cardType: 3

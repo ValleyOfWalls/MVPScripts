@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Calming Presence
   m_EditorClassIdentifier: 
-  _cardId: 6861
+  _cardId: 6520
   _cardName: Calming Presence
   _description: Heal 25 health to ally. Restore 20 energy.
   _cardArtwork: {fileID: 0}

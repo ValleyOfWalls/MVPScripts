@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Wind Barrier
   m_EditorClassIdentifier: 
-  _cardId: 4477
+  _cardId: 3077
   _cardName: Wind Barrier
   _description: Grant 28 shield to yourself. Restore 12 energy.
   _cardArtwork: {fileID: 0}

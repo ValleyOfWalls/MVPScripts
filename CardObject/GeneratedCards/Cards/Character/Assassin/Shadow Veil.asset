@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Shadow Veil
   m_EditorClassIdentifier: 
-  _cardId: 8249
+  _cardId: 3744
   _cardName: Shadow Veil
   _description: Grant 32 shield to yourself. Apply Weak for 3 turns to opponent.
     Stun yourself for 3 turns.

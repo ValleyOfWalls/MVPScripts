@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Terrifying Roar
   m_EditorClassIdentifier: 
-  _cardId: 5835
+  _cardId: 9517
   _cardName: Terrifying Roar
   _description: Apply Weak for 3 turns to opponent. Grant 3 Strength to yourself.
     Stun yourself for 3 turns.

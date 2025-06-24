@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Devastating Strike
   m_EditorClassIdentifier: 
-  _cardId: 7441
+  _cardId: 5836
   _cardName: Devastating Strike
   _description: Deal 35 damage to opponent. Grant 2 Strength to yourself.
   _cardArtwork: {fileID: 0}

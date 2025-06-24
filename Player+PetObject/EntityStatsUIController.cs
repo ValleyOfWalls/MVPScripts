@@ -48,6 +48,7 @@ public class EntityStatsUIController : NetworkBehaviour
     private EnergyHandler linkedEnergyHandler;
     private EffectHandler linkedEffectHandler;
     private NetworkEntityDeck linkedEntityDeck;
+    private EntityTracker linkedEntityTracker;
     
     // Track current values to avoid unnecessary updates
     private int lastHealth = -1;
@@ -56,6 +57,7 @@ public class EntityStatsUIController : NetworkBehaviour
     private int lastMaxEnergy = -1;
     private int lastCurrency = -1;
     private string lastEffectsText = "";
+    private int lastComboCount = -1;
 
     private void Awake()
     {
@@ -102,8 +104,9 @@ public class EntityStatsUIController : NetworkBehaviour
         linkedEnergyHandler = linkedEntity.GetComponent<EnergyHandler>();
         linkedEffectHandler = linkedEntity.GetComponent<EffectHandler>();
         linkedEntityDeck = linkedEntity.GetComponent<NetworkEntityDeck>();
+        linkedEntityTracker = linkedEntity.GetComponent<EntityTracker>();
         
-        Debug.Log($"[STATS_UI_LINK] Component linking results for {mainEntity.EntityName.Value} - LifeHandler: {linkedLifeHandler != null}, EnergyHandler: {linkedEnergyHandler != null}, EffectHandler: {linkedEffectHandler != null}, EntityDeck: {linkedEntityDeck != null}");
+        Debug.Log($"[STATS_UI_LINK] Component linking results for {mainEntity.EntityName.Value} - LifeHandler: {linkedLifeHandler != null}, EnergyHandler: {linkedEnergyHandler != null}, EffectHandler: {linkedEffectHandler != null}, EntityDeck: {linkedEntityDeck != null}, EntityTracker: {linkedEntityTracker != null}");
         
         // Subscribe to stat changes
         SubscribeToStatChanges();
@@ -200,6 +203,12 @@ public class EntityStatsUIController : NetworkBehaviour
         {
             linkedEntityDeck.OnDeckChanged += UpdateDeckDisplay;
         }
+        
+        if (linkedEntityTracker != null)
+        {
+            linkedEntityTracker.OnComboChanged += OnComboChanged;
+            linkedEntityTracker.OnStanceChanged += OnStanceChanged;
+        }
     }
     
     /// <summary>
@@ -244,6 +253,12 @@ public class EntityStatsUIController : NetworkBehaviour
         {
             linkedEntityDeck.OnDeckChanged -= UpdateDeckDisplay;
         }
+        
+        if (linkedEntityTracker != null)
+        {
+            linkedEntityTracker.OnComboChanged -= OnComboChanged;
+            linkedEntityTracker.OnStanceChanged -= OnStanceChanged;
+        }
     }
     
     /// <summary>
@@ -259,6 +274,7 @@ public class EntityStatsUIController : NetworkBehaviour
             linkedEnergyHandler = null;
             linkedEffectHandler = null;
             linkedEntityDeck = null;
+            linkedEntityTracker = null;
         }
     }
     
@@ -326,6 +342,17 @@ public class EntityStatsUIController : NetworkBehaviour
     {
         // Could add energy gaining animation or effects here
         UpdateEnergyUI();
+    }
+    
+    private void OnComboChanged(int newComboCount)
+    {
+        UpdateEffectsDisplay();
+    }
+    
+    private void OnStanceChanged(StanceType oldStance, StanceType newStance)
+    {
+        Debug.Log($"EntityStatsUIController: OnStanceChanged called for {(linkedEntity != null ? linkedEntity.EntityName.Value : "unknown entity")} - Old: {oldStance}, New: {newStance}");
+        UpdateEffectsDisplay();
     }
     
     #endregion
@@ -415,13 +442,40 @@ public class EntityStatsUIController : NetworkBehaviour
         
         var activeEffects = linkedEffectHandler.GetAllEffects();
         
-        /* Debug.Log($"EntityStatsUIController: UpdateEffectsDisplay called for {linkedEntity.EntityName.Value}, found {activeEffects.Count} effects"); */
+        Debug.Log($"EntityStatsUIController: UpdateEffectsDisplay called for {linkedEntity.EntityName.Value}, found {activeEffects.Count} effects");
         
         // Build effects text
         string effectsDisplayText = "";
+        List<string> effectStrings = new List<string>();
+        
+        // Add current stance if not None
+        if (linkedEntityTracker != null)
+        {
+            StanceType currentStance = linkedEntityTracker.CurrentStance;
+            Debug.Log($"EntityStatsUIController: UpdateEffectsDisplay for {linkedEntity.EntityName.Value} - Current stance: {currentStance}");
+            if (currentStance != StanceType.None)
+            {
+                effectStrings.Add($"Stance: {currentStance}");
+                Debug.Log($"EntityStatsUIController: Added stance '{currentStance}' to effect list for {linkedEntity.EntityName.Value}");
+            }
+            else
+            {
+                Debug.Log($"EntityStatsUIController: Stance is None for {linkedEntity.EntityName.Value}, not adding to effect list");
+            }
+        }
+        else
+        {
+            Debug.Log($"EntityStatsUIController: No linkedEntityTracker found for {linkedEntity.EntityName.Value}");
+        }
+        
+        // Add combo count if greater than 0
+        if (linkedEntityTracker != null && linkedEntityTracker.ComboCount > 0)
+        {
+            effectStrings.Add($"Combo ({linkedEntityTracker.ComboCount})");
+        }
+        
         if (activeEffects.Count > 0)
         {
-            List<string> effectStrings = new List<string>();
             foreach (var effect in activeEffects)
             {
                 string effectStr;
@@ -476,6 +530,10 @@ public class EntityStatsUIController : NetworkBehaviour
                 
                 /* Debug.Log($"EntityStatsUIController: Effect - {effect.EffectName}, Potency: {effect.Potency}, Duration: {effect.RemainingDuration}"); */
             }
+        }
+        
+        if (effectStrings.Count > 0)
+        {
             effectsDisplayText = string.Join(", ", effectStrings);
         }
         else
@@ -497,11 +555,11 @@ public class EntityStatsUIController : NetworkBehaviour
         if (effectsText != null)
         {
             effectsText.text = effectsDisplayText;
-            /* Debug.Log($"EntityStatsUIController: Updated effects text UI for {linkedEntity.EntityName.Value} to: '{effectsDisplayText}'"); */
+            Debug.Log($"EntityStatsUIController: Updated effects text UI for {linkedEntity.EntityName.Value} to: '{effectsDisplayText}'");
         }
         else
         {
-            /* Debug.Log($"EntityStatsUIController: effectsText UI component is null for {linkedEntity.EntityName.Value}"); */
+            Debug.Log($"EntityStatsUIController: effectsText UI component is null for {linkedEntity.EntityName.Value}");
         }
     }
     

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Alpha Strike
   m_EditorClassIdentifier: 
-  _cardId: 9157
+  _cardId: 5996
   _cardName: Alpha Strike
   _description: Deal 26 damage to opponent. Grant 3 Strength to ally. Draw a card.
   _cardArtwork: {fileID: 0}

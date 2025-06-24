@@ -32,6 +32,7 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
     // Current pet being displayed
     private NetworkEntity currentPet;
     private EffectHandler currentEffectHandler;
+    private EntityTracker currentEntityTracker;
     
     private void Awake()
     {
@@ -64,11 +65,13 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
         
         currentPet = pet;
         currentEffectHandler = null;
+        currentEntityTracker = null;
         
         if (pet != null)
         {
             // Get the pet's EffectHandler component
             currentEffectHandler = pet.GetComponent<EffectHandler>();
+            currentEntityTracker = pet.GetComponent<EntityTracker>();
             
             if (currentEffectHandler != null)
             {
@@ -129,16 +132,32 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
         // Get all active effects from the EffectHandler
         List<EffectHandler.StatusEffect> activeEffects = currentEffectHandler.GetAllEffects();
         
+        // Build the effects text
+        StringBuilder effectsText = new StringBuilder();
+        int effectsShown = 0;
+        
+        // Add combo count if greater than 0
+        if (currentEntityTracker != null && currentEntityTracker.ComboCount > 0)
+        {
+            string comboLine = string.Format(effectFormat, $"Combo ({currentEntityTracker.ComboCount})");
+            effectsText.AppendLine(comboLine);
+            effectsShown++;
+        }
+        
         if (activeEffects == null || activeEffects.Count == 0)
         {
+            // If no effects but we have combo, show what we have
+            if (effectsShown > 0)
+            {
+                statusEffectsText.text = effectsText.ToString().TrimEnd();
+                LogDebug($"Updated status effects display: {effectsShown} effects shown (combo only)");
+                return;
+            }
+            
             statusEffectsText.text = noEffectsText;
             LogDebug("No active effects to display");
             return;
         }
-        
-        // Build the effects text
-        StringBuilder effectsText = new StringBuilder();
-        int effectsShown = 0;
         
         foreach (var effect in activeEffects)
         {
@@ -258,6 +277,12 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
             currentEffectHandler.OnEffectsChanged += OnEffectsChanged;
             LogDebug("Subscribed to EffectHandler events");
         }
+        
+        if (currentEntityTracker != null)
+        {
+            currentEntityTracker.OnComboChanged += OnComboChanged;
+            LogDebug("Subscribed to EntityTracker combo events");
+        }
     }
     
     /// <summary>
@@ -270,6 +295,12 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
             currentEffectHandler.OnEffectsChanged -= OnEffectsChanged;
             LogDebug("Unsubscribed from EffectHandler events");
         }
+        
+        if (currentEntityTracker != null)
+        {
+            currentEntityTracker.OnComboChanged -= OnComboChanged;
+            LogDebug("Unsubscribed from EntityTracker combo events");
+        }
     }
     
     /// <summary>
@@ -279,6 +310,15 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
     {
         UpdateStatusEffectsDisplay();
         LogDebug("Effects changed - updated display");
+    }
+    
+    /// <summary>
+    /// Called when the pet's combo count changes
+    /// </summary>
+    private void OnComboChanged(int newComboCount)
+    {
+        UpdateStatusEffectsDisplay();
+        LogDebug($"Combo changed to {newComboCount} - updated display");
     }
     
     /// <summary>

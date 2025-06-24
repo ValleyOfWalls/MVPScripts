@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Poison Strike
   m_EditorClassIdentifier: 
-  _cardId: 4248
+  _cardId: 1709
   _cardName: Poison Strike
-  _description: Deal 12 damage to opponent. Apply 6 Burn to opponent.
+  _description: Deal 12 damage to opponent. Apply 6 Burn to opponent. Builds combo.
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
   _cardType: 4
@@ -46,7 +46,7 @@ MonoBehaviour:
     instantEffectPrefab: {fileID: 0}
   - effectType: 6
     amount: 6
-    duration: 4
+    duration: 0
     targetType: 1
     elementalType: 0
     conditionType: 0

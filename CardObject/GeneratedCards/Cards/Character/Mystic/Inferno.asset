@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Inferno
   m_EditorClassIdentifier: 
-  _cardId: 7809
+  _cardId: 2999
   _cardName: Inferno
-  _description: Deal 30 damage to opponent. Apply 8 Burn to yourself.
+  _description: Deal 30 damage to opponent ((Fire)). Apply 8 Burn to yourself.
   _cardArtwork: {fileID: 0}
   _cardCategory: 2
   _cardType: 2

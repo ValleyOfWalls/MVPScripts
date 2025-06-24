@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Spirit Shield
   m_EditorClassIdentifier: 
-  _cardId: 3334
+  _cardId: 2596
   _cardName: Spirit Shield
-  _description: Grant 35 shield to ally
+  _description: Grant 35 shield to ally.
   _cardArtwork: {fileID: 0}
   _cardCategory: 0
   _cardType: 2

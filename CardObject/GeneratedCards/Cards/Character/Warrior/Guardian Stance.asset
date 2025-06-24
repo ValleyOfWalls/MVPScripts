@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Guardian Stance
   m_EditorClassIdentifier: 
-  _cardId: 5996
+  _cardId: 4449
   _cardName: Guardian Stance
-  _description: Grant 25 shield to yourself. Grant 10 Thorns to yourself.
+  _description: Grant 25 shield to yourself. Grant 10 Thorns to yourself. Enter Guardian
+    stance.
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
   _cardType: 6

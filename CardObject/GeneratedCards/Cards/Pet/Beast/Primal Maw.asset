@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
   m_Name: Primal Maw
   m_EditorClassIdentifier: 
-  _cardId: 6444
+  _cardId: 2602
   _cardName: Primal Maw
   _description: Deal 42 damage to opponent. Apply 8 Burn to yourself.
   _cardArtwork: {fileID: 0}
