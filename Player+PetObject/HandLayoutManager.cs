@@ -8,6 +8,13 @@ using System.Collections;
 /// Manages the layout of cards in a hand using custom arc/fan positioning.
 /// Replaces the horizontal layout group with more sophisticated card arrangement.
 /// Attach to: Hand transform GameObject (the parent of card objects).
+/// 
+/// OPTIMIZATION NOTES:
+/// - Implements debouncing to prevent duplicate layout updates during initialization
+/// - Skips layout updates when hand is empty to avoid unnecessary calculations
+/// - Defers initial layout until Start() to prevent OnEnable/Start duplication
+/// - Only processes layout updates after initialization is complete
+/// - External systems should use RequestLayoutUpdate() for safe layout requests
 /// </summary>
 public class HandLayoutManager : MonoBehaviour
 {
@@ -48,6 +55,11 @@ public class HandLayoutManager : MonoBehaviour
     private bool layoutUpdatePending = false;
     private Coroutine layoutCoroutine;
     
+    // Debouncing variables
+    private bool isInitialized = false;
+    private float lastLayoutUpdateTime = 0f;
+    private const float LAYOUT_UPDATE_DEBOUNCE_TIME = 0.1f;
+    
     // Drag state tracking
     private RectTransform draggedCard;
     private CardLayoutData draggedCardOriginalData;
@@ -82,13 +94,34 @@ public class HandLayoutManager : MonoBehaviour
     
     private void Start()
     {
-        // Initial layout update
-        UpdateLayout();
+        // Mark as initialized and only update layout if we have cards
+        isInitialized = true;
+        
+        // Defer initial layout update - only update if hand has cards
+        RefreshCardList();
+        if (cardTransforms.Count > 0)
+        {
+            UpdateLayout();
+        }
+        else
+        {
+            LogDebug("Skipping initial layout update - hand is empty");
+        }
     }
     
     private void OnEnable()
     {
-        UpdateLayout();
+        // Skip layout update on OnEnable - let Start() handle initialization
+        // This prevents duplicate calls during spawning
+        if (isInitialized)
+        {
+            // Only update if we're already initialized and have cards
+            RefreshCardList();
+            if (cardTransforms.Count > 0)
+            {
+                UpdateLayoutWithDebounce();
+            }
+        }
     }
     
     /// <summary>
@@ -183,9 +216,53 @@ public class HandLayoutManager : MonoBehaviour
             RefreshCardList();
             
             // Force immediate layout update to ensure all cards are properly positioned
-            ForceUpdateLayout();
+            // Only if we have cards to layout
+            if (cardTransforms.Count > 0)
+            {
+                ForceUpdateLayout();
+            }
             
             LogDebug($"Completed layout restoration for {cardTransform.name}");
+        }
+    }
+    
+    /// <summary>
+    /// Updates the layout of all cards in the hand with debouncing
+    /// </summary>
+    public void UpdateLayoutWithDebounce()
+    {
+        // Check if enough time has passed since last update to prevent spam
+        float currentTime = Time.time;
+        if (currentTime - lastLayoutUpdateTime < LAYOUT_UPDATE_DEBOUNCE_TIME)
+        {
+            LogDebug($"Debouncing layout update - too soon since last update ({currentTime - lastLayoutUpdateTime:F3}s ago)");
+            return;
+        }
+        
+        UpdateLayout();
+    }
+    
+    /// <summary>
+    /// Safely requests a layout update (public API for external systems)
+    /// This method should be used by external systems instead of calling UpdateLayout directly
+    /// </summary>
+    public void RequestLayoutUpdate()
+    {
+        // Only update if initialized and we have cards
+        if (!isInitialized)
+        {
+            LogDebug("Layout update requested but HandLayoutManager not yet initialized - skipping");
+            return;
+        }
+        
+        RefreshCardList();
+        if (cardTransforms.Count > 0)
+        {
+            UpdateLayoutWithDebounce();
+        }
+        else
+        {
+            LogDebug("Layout update requested but hand is empty - skipping");
         }
     }
     
@@ -195,6 +272,9 @@ public class HandLayoutManager : MonoBehaviour
     public void UpdateLayout()
     {
         Debug.Log($"[HandLayoutManager] UpdateLayout called on {gameObject.name}");
+        
+        // Update debounce timestamp
+        lastLayoutUpdateTime = Time.time;
         
         if (layoutCoroutine != null)
         {
@@ -206,6 +286,14 @@ public class HandLayoutManager : MonoBehaviour
         Debug.Log($"[HandLayoutManager] Refreshing card list on {gameObject.name}");
         RefreshCardList();
         Debug.Log($"[HandLayoutManager] Found {cardTransforms.Count} cards to layout on {gameObject.name}");
+        
+        // Skip layout if hand is empty
+        if (cardTransforms.Count == 0)
+        {
+            Debug.Log($"[HandLayoutManager] Skipping layout update - hand is empty on {gameObject.name}");
+            LogDebug("Skipping layout update - hand is empty");
+            return;
+        }
         
         if (enableLayoutAnimation && Application.isPlaying)
         {
@@ -512,6 +600,9 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     public void ForceUpdateLayout()
     {
+        // Update debounce timestamp since this is a forced update
+        lastLayoutUpdateTime = Time.time;
+        
         if (layoutCoroutine != null)
         {
             StopCoroutine(layoutCoroutine);
@@ -520,9 +611,17 @@ public class HandLayoutManager : MonoBehaviour
         
         // Refresh card list before applying layout
         RefreshCardList();
-        ApplyLayoutImmediate();
         
-        LogDebug($"Forced layout update complete for {cardTransforms.Count} cards");
+        // Only apply layout if we have cards
+        if (cardTransforms.Count > 0)
+        {
+            ApplyLayoutImmediate();
+            LogDebug($"Forced layout update complete for {cardTransforms.Count} cards");
+        }
+        else
+        {
+            LogDebug("Forced layout update skipped - hand is empty");
+        }
     }
     
     /// <summary>
@@ -563,8 +662,8 @@ public class HandLayoutManager : MonoBehaviour
         // Recalculate layout for all cards
         CalculateCardLayoutData(cardTransforms);
         
-        // Apply layout to the specific card
-        if (cardLayoutData.ContainsKey(cardTransform))
+        // Apply layout to the specific card only if we have cards
+        if (cardTransforms.Count > 0 && cardLayoutData.ContainsKey(cardTransform))
         {
             var data = cardLayoutData[cardTransform];
             cardTransform.localPosition = data.targetPosition;
@@ -572,6 +671,10 @@ public class HandLayoutManager : MonoBehaviour
             cardTransform.localRotation = data.targetRotation;
             
             LogDebug($"Manually positioned card {cardTransform.name} at {data.targetPosition}");
+        }
+        else if (cardTransforms.Count == 0)
+        {
+            LogDebug("Skipping manual card positioning - hand is empty");
         }
     }
     
@@ -640,6 +743,13 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private void OnTransformChildrenChanged()
     {
+        // Only trigger layout updates if we're initialized
+        if (!isInitialized)
+        {
+            LogDebug("Skipping OnTransformChildrenChanged - not yet initialized");
+            return;
+        }
+        
         // Delay update slightly to ensure all changes are processed
         if (!layoutUpdatePending)
         {
@@ -652,7 +762,17 @@ public class HandLayoutManager : MonoBehaviour
     {
         yield return null; // Wait one frame
         layoutUpdatePending = false;
-        UpdateLayout();
+        
+        // Use debounced update and only if we have cards
+        RefreshCardList();
+        if (cardTransforms.Count > 0)
+        {
+            UpdateLayoutWithDebounce();
+        }
+        else
+        {
+            LogDebug("Skipping delayed layout update - hand is empty");
+        }
     }
     
     #endregion

@@ -408,7 +408,7 @@ public class CardAnimator : MonoBehaviour
                 if (handLayoutManager != null)
                 {
                     LogDebug($"Triggering early layout update for other cards while {gameObject.name} dissolves in");
-                    handLayoutManager.UpdateLayout();
+                    handLayoutManager.UpdateLayoutWithDebounce();
                 }
             }
         });

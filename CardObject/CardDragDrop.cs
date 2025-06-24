@@ -980,7 +980,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 if (handLayoutManager != null)
                 {
                     /* Debug.Log($"[CardDragDrop] Final layout update triggered after animation complete"); */
-                    handLayoutManager.UpdateLayout();
+                    handLayoutManager.UpdateLayoutWithDebounce();
                 }
                 
                 // Clean up drag canvas state
