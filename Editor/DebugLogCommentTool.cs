@@ -34,8 +34,9 @@ namespace MVPScripts.Editor
                  "1. Create backups of all C# scripts (if enabled)\n" +
                  "2. Comment out ONLY Debug.Log statements (NOT warnings, errors, or exceptions)\n" +
                  "3. Use /* */ block comments to preserve other code on the same line\n" +
-                 "4. Process all subfolders if enabled\n" +
-                 "5. Handle multiple Debug.Log statements on the same line",
+                 "4. Skip Debug.Log statements that are part of single-line if/while/for statements\n" +
+                 "5. Process all subfolders if enabled\n" +
+                 "6. Handle multiple Debug.Log statements on the same line",
                  MessageType.Info);
             
             GUILayout.Space(10);
@@ -291,6 +292,10 @@ namespace MVPScripts.Editor
                 if (line.TrimStart().StartsWith("//"))
                     continue;
                 
+                // Check if this line is part of a single-line if/else/while/for statement
+                if (IsSingleLineControlStatement(lines, i))
+                    continue;
+                
                 // Find all Debug.Log matches in this line using a more robust method
                 var matches = FindDebugLogInLine(line);
                 
@@ -306,6 +311,55 @@ namespace MVPScripts.Editor
             }
             
             return changes;
+        }
+        
+        private bool IsSingleLineControlStatement(string[] lines, int currentLineIndex)
+        {
+            if (currentLineIndex == 0) return false;
+            
+            string currentLine = lines[currentLineIndex].Trim();
+            string previousLine = lines[currentLineIndex - 1].Trim();
+            
+            // Check if current line contains only a Debug.Log statement (no other code)
+            if (!currentLine.StartsWith("Debug.Log(", StringComparison.OrdinalIgnoreCase))
+                return false;
+            
+            // Check if previous line is a control statement without braces
+            if (IsControlStatementWithoutBraces(previousLine))
+                return true;
+            
+            return false;
+        }
+        
+        private bool IsControlStatementWithoutBraces(string line)
+        {
+            line = line.Trim();
+            
+            // Check for if statements
+            if (line.StartsWith("if ") && line.EndsWith(")") && !line.Contains("{"))
+                return true;
+            
+            // Check for else if statements
+            if (line.StartsWith("else if ") && line.EndsWith(")") && !line.Contains("{"))
+                return true;
+            
+            // Check for else statements
+            if (line == "else" || (line.StartsWith("else") && !line.Contains("{")))
+                return true;
+            
+            // Check for while statements
+            if (line.StartsWith("while ") && line.EndsWith(")") && !line.Contains("{"))
+                return true;
+            
+            // Check for for statements
+            if (line.StartsWith("for ") && line.EndsWith(")") && !line.Contains("{"))
+                return true;
+            
+            // Check for foreach statements
+            if (line.StartsWith("foreach ") && line.EndsWith(")") && !line.Contains("{"))
+                return true;
+            
+            return false;
         }
         
         private List<DebugLogPosition> FindDebugLogInLine(string line)
