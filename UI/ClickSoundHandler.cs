@@ -359,7 +359,7 @@ public class ClickSoundHandler : MonoBehaviour, IPointerClickHandler, IPointerEn
         
         if (debugMode)
         {
-            Debug.Log($"ClickSoundHandler: Playing fallback {soundType} sound {clip.name} on {gameObject.name}");
+            /* Debug.Log($"ClickSoundHandler: Playing fallback {soundType} sound {clip.name} on {gameObject.name}"); */
         }
     }
     

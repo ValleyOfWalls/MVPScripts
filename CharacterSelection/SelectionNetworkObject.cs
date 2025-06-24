@@ -25,7 +25,7 @@ public class SelectionNetworkObject : MonoBehaviour
         // Optional: Add any initialization logic here
         if (isCharacterSelectionObject)
         {
-            Debug.Log($"SelectionNetworkObject: Marked {gameObject.name} as character selection object (Index: {selectionIndex}, IsCharacter: {isCharacter})");
+            /* Debug.Log($"SelectionNetworkObject: Marked {gameObject.name} as character selection object (Index: {selectionIndex}, IsCharacter: {isCharacter})"); */
             
             // For clients, immediately try to find and set the correct parent
             if (!FishNet.InstanceFinder.IsServerStarted)

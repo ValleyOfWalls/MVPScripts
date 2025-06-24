@@ -323,7 +323,7 @@ public class FightPreviewUIManager : NetworkBehaviour
 
     private void HandleAnimationCompleted()
     {
-        Debug.Log("FightPreviewUIManager: Preview animation completed");
+        /* Debug.Log("FightPreviewUIManager: Preview animation completed"); */
         
         // Hide the canvas
         if (fightPreviewCanvas != null)

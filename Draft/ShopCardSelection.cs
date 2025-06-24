@@ -71,7 +71,7 @@ public class ShopCardSelection : MonoBehaviour
             return;
         }
         
-        Debug.Log($"ShopCardSelection: Card {gameObject.name} selected for purchase");
+        /* Debug.Log($"ShopCardSelection: Card {gameObject.name} selected for purchase"); */
         
         // Notify the draft manager about the card purchase attempt
         if (draftManager != null)
@@ -110,12 +110,12 @@ public class ShopCardSelection : MonoBehaviour
             return false;
         }
         
-        Debug.Log($"ShopCardSelection: CanLocalPlayerAffordCard - localPlayer found: {localPlayer.EntityName.Value}");
-        Debug.Log($"ShopCardSelection: Player currency: {localPlayer.Currency.Value}, Card cost: {card.PurchaseCost}");
+        /* Debug.Log($"ShopCardSelection: CanLocalPlayerAffordCard - localPlayer found: {localPlayer.EntityName.Value}"); */
+        /* Debug.Log($"ShopCardSelection: Player currency: {localPlayer.Currency.Value}, Card cost: {card.PurchaseCost}"); */
         
         // Check if player has enough currency
         bool canAfford = localPlayer.Currency.Value >= card.PurchaseCost;
-        Debug.Log($"ShopCardSelection: CanLocalPlayerAffordCard - can afford: {canAfford}");
+        /* Debug.Log($"ShopCardSelection: CanLocalPlayerAffordCard - can afford: {canAfford}"); */
         
         return canAfford;
     }

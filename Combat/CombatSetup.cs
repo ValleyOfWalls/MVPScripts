@@ -144,16 +144,16 @@ public class CombatSetup : NetworkBehaviour
         if (allReady && connectedClientIds.Count > 0 && !allClientsReady) // Ensure there's at least one client and we haven't already set allClientsReady
         {
             allClientsReady = true;
-            Debug.Log("CombatSetup: All clients are ready, starting combat");
+            /* Debug.Log("CombatSetup: All clients are ready, starting combat"); */
             StartCombat();
         }
         else if (!allReady)
         {
-            Debug.Log("CombatSetup: Not all clients are ready yet, waiting...");
+            /* Debug.Log("CombatSetup: Not all clients are ready yet, waiting..."); */
         }
         else if (connectedClientIds.Count == 0 && !allClientsReady)
         {
-            Debug.Log("CombatSetup: No clients connected, waiting for connections or manual start if applicable.");
+            /* Debug.Log("CombatSetup: No clients connected, waiting for connections or manual start if applicable."); */
         }
     }
 
@@ -166,12 +166,12 @@ public class CombatSetup : NetworkBehaviour
             return;
         }
         
-        Debug.Log("CombatSetup: All clients ready, starting fight preview before combat");
+        /* Debug.Log("CombatSetup: All clients ready, starting fight preview before combat"); */
         
         // Start the fight preview interstitial instead of going directly to combat
         if (fightPreviewManager != null)
         {
-            Debug.Log("CombatSetup: Starting fight preview sequence");
+            /* Debug.Log("CombatSetup: Starting fight preview sequence"); */
             fightPreviewManager.StartFightPreview();
             
             // Note: The FightPreviewManager will handle calling combatManager.StartCombat() after the preview
@@ -187,7 +187,7 @@ public class CombatSetup : NetworkBehaviour
             {
                 isCombatActive = true;
                 combatManager.StartCombat();
-                Debug.Log("CombatSetup: Combat started directly (no preview)");
+                /* Debug.Log("CombatSetup: Combat started directly (no preview)"); */
             }
             else
             {
@@ -226,15 +226,15 @@ public class CombatSetup : NetworkBehaviour
             return;
         }
         
-        Debug.Log("CombatSetup: Starting combat initialization from draft transition...");
+        /* Debug.Log("CombatSetup: Starting combat initialization from draft transition..."); */
         
         // Reset client ready states for new combat round
         readyClients.Clear();
         allClientsReady = false;
-        Debug.Log("CombatSetup: Reset client ready states");
+        /* Debug.Log("CombatSetup: Reset client ready states"); */
         
         ResolveReferences();
-        Debug.Log("CombatSetup: References resolved");
+        /* Debug.Log("CombatSetup: References resolved"); */
 
         if (!AreRequiredComponentsAvailable())
         {
@@ -242,33 +242,33 @@ public class CombatSetup : NetworkBehaviour
             return;
         }
         
-        Debug.Log("CombatSetup: All required components available, proceeding with setup");
+        /* Debug.Log("CombatSetup: All required components available, proceeding with setup"); */
         
-        Debug.Log("CombatSetup: Resetting entity health and energy...");
+        /* Debug.Log("CombatSetup: Resetting entity health and energy..."); */
         ResetEntityHealthAndEnergy();
         
-        Debug.Log("CombatSetup: Setting up combat decks...");
+        /* Debug.Log("CombatSetup: Setting up combat decks..."); */
         SetupCombatDecks();
         
-        Debug.Log("CombatSetup: Assigning fights...");
+        /* Debug.Log("CombatSetup: Assigning fights..."); */
         AssignFights();
         
-        Debug.Log("CombatSetup: Ensuring players are observers...");
+        /* Debug.Log("CombatSetup: Ensuring players are observers..."); */
         EnsurePlayersAreObservers();
         
-        Debug.Log("CombatSetup: Transitioning to combat phase (after fight assignments)...");
+        /* Debug.Log("CombatSetup: Transitioning to combat phase (after fight assignments)..."); */
         TransitionToPhase();
         
-        Debug.Log("CombatSetup: Triggering combat canvas setup...");
+        /* Debug.Log("CombatSetup: Triggering combat canvas setup..."); */
         RpcTriggerCombatCanvasManagerSetup();
         
         isSetupComplete.Value = true; // Mark setup as complete
-        Debug.Log("CombatSetup: Setup completed successfully, waiting for client readiness checks");
+        /* Debug.Log("CombatSetup: Setup completed successfully, waiting for client readiness checks"); */
 
         // Notify loading screen that setup is complete
         if (loadingScreenManager != null)
         {
-            Debug.Log("CombatSetup: Notifying loading screen that setup is complete");
+            /* Debug.Log("CombatSetup: Notifying loading screen that setup is complete"); */
             RpcNotifyLoadingScreenSetupComplete();
         }
 
@@ -289,7 +289,7 @@ public class CombatSetup : NetworkBehaviour
     {
         if (gamePhaseManager != null)
         {
-            Debug.Log("CombatSetup: Setting combat phase on server");
+            /* Debug.Log("CombatSetup: Setting combat phase on server"); */
             gamePhaseManager.SetCombatPhase();
             
             // Network the phase change to all clients using PhaseNetworker
@@ -348,7 +348,7 @@ public class CombatSetup : NetworkBehaviour
     {
         if (!IsServerInitialized) return;
 
-        Debug.Log("CombatSetup: Resetting all entity health and energy to maximum");
+        /* Debug.Log("CombatSetup: Resetting all entity health and energy to maximum"); */
 
         // Get all spawned entities
         List<NetworkEntity> entities = GetAllSpawnedEntities<NetworkEntity>();
@@ -367,7 +367,7 @@ public class CombatSetup : NetworkBehaviour
             }
         }
         
-        Debug.Log("CombatSetup: Entity health and energy reset completed");
+        /* Debug.Log("CombatSetup: Entity health and energy reset completed"); */
     }
 
     [Server]
@@ -449,11 +449,11 @@ public class CombatSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcTriggerCombatCanvasManagerSetup()
     {
-        Debug.Log("CombatSetup: RpcTriggerCombatCanvasManagerSetup called on client");
+        /* Debug.Log("CombatSetup: RpcTriggerCombatCanvasManagerSetup called on client"); */
         
         if (combatCanvasManager != null)
         {
-            Debug.Log("CombatSetup: Found CombatCanvasManager, proceeding with setup");
+            /* Debug.Log("CombatSetup: Found CombatCanvasManager, proceeding with setup"); */
             
             // Ensure draft canvas is disabled before enabling combat canvas
             DraftCanvasManager draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
@@ -471,16 +471,16 @@ public class CombatSetup : NetworkBehaviour
             // Enable the combat canvas
             if (combatCanvas != null)
             {
-                Debug.Log("CombatSetup: Enabling combat canvas");
+                /* Debug.Log("CombatSetup: Enabling combat canvas"); */
                 combatCanvas.SetActive(true);
-                Debug.Log("CombatSetup: Combat canvas enabled successfully");
+                /* Debug.Log("CombatSetup: Combat canvas enabled successfully"); */
             }
             else
             {
                 Debug.LogError("CombatSetup: Combat canvas reference is missing");
             }
             
-            Debug.Log("CombatSetup: Starting combat UI setup with delay");
+            /* Debug.Log("CombatSetup: Starting combat UI setup with delay"); */
             StartCoroutine(SetupCombatUIWithDelay());
         }
         else
@@ -492,7 +492,7 @@ public class CombatSetup : NetworkBehaviour
     private IEnumerator SetupCombatUIWithDelay()
     {
         yield return null;
-        Debug.Log("[COMBAT_SETUP] Setting up combat UI after delay");
+        /* Debug.Log("[COMBAT_SETUP] Setting up combat UI after delay"); */
         
         // Ensure canvas is enabled before setting up UI
         if (combatCanvas != null && !combatCanvas.activeSelf)
@@ -534,7 +534,7 @@ public class CombatSetup : NetworkBehaviour
         // Notify clients about combat setup
         RpcNotifyCombatSetup();
 
-        Debug.Log($"Combat setup complete between {player1.EntityName.Value} & {pet1.EntityName.Value} vs {player2.EntityName.Value} & {pet2.EntityName.Value}");
+        /* Debug.Log($"Combat setup complete between {player1.EntityName.Value} & {pet1.EntityName.Value} vs {player2.EntityName.Value} & {pet2.EntityName.Value}"); */
     }
 
     private bool ValidateEntities(NetworkEntity player1, NetworkEntity pet1, NetworkEntity player2, NetworkEntity pet2)
@@ -643,7 +643,7 @@ public class CombatSetup : NetworkBehaviour
             yield break;
         }
 
-        Debug.Log($"Client {LocalConnection.ClientId}: Monitoring {requiredSetups.Count} CombatDeckSetup components for completion...");
+        /* Debug.Log($"Client {LocalConnection.ClientId}: Monitoring {requiredSetups.Count} CombatDeckSetup components for completion..."); */
 
         // Monitor until all setups are complete
         bool allComplete = false;
@@ -674,7 +674,7 @@ public class CombatSetup : NetworkBehaviour
                 // Log status every 2 seconds while waiting
                 if (Mathf.FloorToInt(Time.time - startTime) % 2 == 0 && Time.time - startTime > 1f)
                 {
-                    Debug.Log(statusUpdate);
+                    /* Debug.Log(statusUpdate); */
                 }
                 yield return new WaitForSeconds(0.1f); // Check every 100ms
             }
@@ -682,7 +682,7 @@ public class CombatSetup : NetworkBehaviour
 
         if (allComplete)
         {
-            Debug.Log($"Client {LocalConnection.ClientId} combat setup check passed! All entities ready. Notifying server.");
+            /* Debug.Log($"Client {LocalConnection.ClientId} combat setup check passed! All entities ready. Notifying server."); */
             ServerSetClientReady(LocalConnection);
         }
         else
@@ -694,7 +694,7 @@ public class CombatSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcUpdateGamePhaseToCombat()
     {
-        Debug.Log("CombatSetup: RpcUpdateGamePhaseToCombat called on client");
+        /* Debug.Log("CombatSetup: RpcUpdateGamePhaseToCombat called on client"); */
         
         if (gamePhaseManager != null)
         {
@@ -724,7 +724,7 @@ public class CombatSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcNotifyLoadingScreenSetupComplete()
     {
-        Debug.Log("CombatSetup: RpcNotifyLoadingScreenSetupComplete called on client");
+        /* Debug.Log("CombatSetup: RpcNotifyLoadingScreenSetupComplete called on client"); */
         
         if (loadingScreenManager != null)
         {

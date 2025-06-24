@@ -116,7 +116,7 @@ public class GameManager : NetworkBehaviour
 
     private void ApplyDisplaySettings()
     {
-        Debug.Log($"GameManager: ApplyDisplaySettings called - maxFrameRate: {maxFrameRate}, enableVSync: {enableVSync}");
+        /* Debug.Log($"GameManager: ApplyDisplaySettings called - maxFrameRate: {maxFrameRate}, enableVSync: {enableVSync}"); */
         
         // When using frame rate limiting, VSync must be disabled
         if (maxFrameRate > 0)
@@ -139,14 +139,14 @@ public class GameManager : NetworkBehaviour
                 // Use VSync for unlimited but synchronized frame rate
                 QualitySettings.vSyncCount = 1;
                 Application.targetFrameRate = -1;
-                Debug.Log("GameManager: VSync enabled with unlimited frame rate");
+                /* Debug.Log("GameManager: VSync enabled with unlimited frame rate"); */
             }
             else
             {
                 // True unlimited frame rate
                 QualitySettings.vSyncCount = 0;
                 Application.targetFrameRate = -1;
-                Debug.Log("GameManager: Frame rate set to unlimited (VSync disabled)");
+                /* Debug.Log("GameManager: Frame rate set to unlimited (VSync disabled)"); */
             }
         }
         else // maxFrameRate == 0 (platform default)
@@ -155,18 +155,18 @@ public class GameManager : NetworkBehaviour
             {
                 QualitySettings.vSyncCount = 1;
                 Application.targetFrameRate = 0;
-                Debug.Log("GameManager: VSync enabled with platform default frame rate");
+                /* Debug.Log("GameManager: VSync enabled with platform default frame rate"); */
             }
             else
             {
                 QualitySettings.vSyncCount = 0;
                 Application.targetFrameRate = 0;
-                Debug.Log("GameManager: Frame rate set to platform default (VSync disabled)");
+                /* Debug.Log("GameManager: Frame rate set to platform default (VSync disabled)"); */
             }
         }
         
         // Log final settings for debugging
-        Debug.Log($"GameManager: Final settings - VSync: {QualitySettings.vSyncCount}, TargetFrameRate: {Application.targetFrameRate}");
+        /* Debug.Log($"GameManager: Final settings - VSync: {QualitySettings.vSyncCount}, TargetFrameRate: {Application.targetFrameRate}"); */
         
         // Force a frame to ensure settings take effect
         Canvas.ForceUpdateCanvases();
@@ -184,9 +184,9 @@ public class GameManager : NetworkBehaviour
     [ContextMenu("Log Current Display Settings")]
     public void LogCurrentDisplaySettings()
     {
-        Debug.Log($"GameManager: Current Runtime Settings:");
-        Debug.Log($"  - QualitySettings.vSyncCount: {QualitySettings.vSyncCount}");
-        Debug.Log($"  - Application.targetFrameRate: {Application.targetFrameRate}");
+        /* Debug.Log($"GameManager: Current Runtime Settings:"); */
+        /* Debug.Log($"  - QualitySettings.vSyncCount: {QualitySettings.vSyncCount}"); */
+        /* Debug.Log($"  - Application.targetFrameRate: {Application.targetFrameRate}"); */
         Debug.Log($"  - Time.deltaTime: {Time.deltaTime}");
         Debug.Log($"  - Calculated FPS: {1.0f / Time.deltaTime:F1}");
         Debug.Log($"GameManager: Inspector Settings:");
@@ -198,9 +198,9 @@ public class GameManager : NetworkBehaviour
     {
         base.OnStartServer();
         
-        Debug.Log($"GameManager: OnStartServer - About to initialize SyncVars");
-        Debug.Log($"GameManager: Serialized field values - playerInitialDraw: {playerInitialDraw}, playerHandTarget: {playerHandTarget}");
-        Debug.Log($"GameManager: Serialized field values - petInitialDraw: {petInitialDraw}, petHandTarget: {petHandTarget}");
+        /* Debug.Log($"GameManager: OnStartServer - About to initialize SyncVars"); */
+        /* Debug.Log($"GameManager: Serialized field values - playerInitialDraw: {playerInitialDraw}, playerHandTarget: {playerHandTarget}"); */
+        /* Debug.Log($"GameManager: Serialized field values - petInitialDraw: {petInitialDraw}, petHandTarget: {petHandTarget}"); */
         
         // Initialize SyncVars from serialized fields
         PlayerDrawAmount.Value = playerInitialDraw;
@@ -225,12 +225,12 @@ public class GameManager : NetworkBehaviour
         ShopMinCardCost.Value = shopMinCardCost;
         ShopMaxCardCost.Value = shopMaxCardCost;
         
-        Debug.Log("GameManager started on Server. Initializing game rules.");
-        Debug.Log($"Player settings - Initial Draw: {PlayerDrawAmount.Value}, Target Hand: {PlayerTargetHandSize.Value}, Max Energy: {PlayerMaxEnergy.Value}, Max Health: {PlayerMaxHealth.Value}");
-        Debug.Log($"Pet settings - Initial Draw: {PetDrawAmount.Value}, Target Hand: {PetTargetHandSize.Value}, Max Energy: {PetMaxEnergy.Value}, Max Health: {PetMaxHealth.Value}");
-        Debug.Log($"Damage Modifiers - Crits Enabled: {CriticalHitsEnabled.Value}, Base Crit Chance: {BaseCriticalChance.Value}, Crit Multiplier: {CriticalHitModifier.Value}, Weak Modifier: {WeakStatusModifier.Value}, Break Modifier: {BreakStatusModifier.Value}");
-        Debug.Log($"Draft Settings - Pack Size: {DraftPackSize.Value}");
-        Debug.Log($"Shop Settings - Size: {ShopSize.Value}, Cost Range: {ShopMinCardCost.Value}-{ShopMaxCardCost.Value}");
+        /* Debug.Log("GameManager started on Server. Initializing game rules."); */
+        /* Debug.Log($"Player settings - Initial Draw: {PlayerDrawAmount.Value}, Target Hand: {PlayerTargetHandSize.Value}, Max Energy: {PlayerMaxEnergy.Value}, Max Health: {PlayerMaxHealth.Value}"); */
+        /* Debug.Log($"Pet settings - Initial Draw: {PetDrawAmount.Value}, Target Hand: {PetTargetHandSize.Value}, Max Energy: {PetMaxEnergy.Value}, Max Health: {PetMaxHealth.Value}"); */
+        /* Debug.Log($"Damage Modifiers - Crits Enabled: {CriticalHitsEnabled.Value}, Base Crit Chance: {BaseCriticalChance.Value}, Crit Multiplier: {CriticalHitModifier.Value}, Weak Modifier: {WeakStatusModifier.Value}, Break Modifier: {BreakStatusModifier.Value}"); */
+        /* Debug.Log($"Draft Settings - Pack Size: {DraftPackSize.Value}"); */
+        /* Debug.Log($"Shop Settings - Size: {ShopSize.Value}, Cost Range: {ShopMinCardCost.Value}-{ShopMaxCardCost.Value}"); */
     }
 
     public override void OnStartClient()

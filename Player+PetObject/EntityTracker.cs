@@ -66,7 +66,7 @@ public class EntityTracker : NetworkBehaviour
         _perfectionStreak.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _strengthStacks.OnChange += (prev, next, asServer) =>
         {
-            Debug.Log($"EntityTracker: StrengthStacks changed for {entity.EntityName.Value} - Previous: {prev}, New: {next}, AsServer: {asServer}");
+            /* Debug.Log($"EntityTracker: StrengthStacks changed for {entity.EntityName.Value} - Previous: {prev}, New: {next}, AsServer: {asServer}"); */
             trackingData.strengthStacks = next;
             OnStrengthChanged?.Invoke(next);
         };
@@ -136,7 +136,7 @@ public class EntityTracker : NetworkBehaviour
 
         OnComboChanged?.Invoke(_comboCount.Value);
         
-        Debug.Log($"EntityTracker: {entity.EntityName.Value} played card {cardId}. Combo: {_comboCount.Value}, ZeroCost this turn: {_zeroCostCardsThisTurn.Value}");
+        /* Debug.Log($"EntityTracker: {entity.EntityName.Value} played card {cardId}. Combo: {_comboCount.Value}, ZeroCost this turn: {_zeroCostCardsThisTurn.Value}"); */
     }
 
     /// <summary>
@@ -382,7 +382,7 @@ public class EntityTracker : NetworkBehaviour
         // Process stance turn-start effects
         ProcessStanceTurnEffects(true);
         
-        Debug.Log($"EntityTracker: Turn start for {entity.EntityName.Value}. Turn: {trackingData.currentTurnNumber}, Battle Turn: {trackingData.battleTurnCount}, Perfection: {_perfectionStreak.Value}");
+        /* Debug.Log($"EntityTracker: Turn start for {entity.EntityName.Value}. Turn: {trackingData.currentTurnNumber}, Battle Turn: {trackingData.battleTurnCount}, Perfection: {_perfectionStreak.Value}"); */
     }
 
     /// <summary>
@@ -415,12 +415,12 @@ public class EntityTracker : NetworkBehaviour
         if (currentStance != StanceType.None)
         {
             _stanceDuration.Value++;
-            Debug.Log($"EntityTracker: {entity.EntityName.Value} has been in {currentStance} stance for {_stanceDuration.Value} turn(s)");
+            /* Debug.Log($"EntityTracker: {entity.EntityName.Value} has been in {currentStance} stance for {_stanceDuration.Value} turn(s)"); */
             
             // Clear stance if held for 2 consecutive turns
             if (_stanceDuration.Value >= 2)
             {
-                Debug.Log($"EntityTracker: {entity.EntityName.Value} has held {currentStance} stance for 2 turns, clearing to None");
+                /* Debug.Log($"EntityTracker: {entity.EntityName.Value} has held {currentStance} stance for 2 turns, clearing to None"); */
                 SetStance(StanceType.None);
             }
         }
@@ -431,7 +431,7 @@ public class EntityTracker : NetworkBehaviour
             CardUpgradeManager.Instance.OnTurnEnd(entity);
         }
         
-        Debug.Log($"EntityTracker: Turn end for {entity.EntityName.Value}");
+        /* Debug.Log($"EntityTracker: Turn end for {entity.EntityName.Value}"); */
     }
 
     /// <summary>
@@ -556,7 +556,7 @@ public class EntityTracker : NetworkBehaviour
         // Reset turn data
         ResetTurnData();
 
-        Debug.Log($"EntityTracker: Reset fight data for {entity.EntityName.Value}");
+        /* Debug.Log($"EntityTracker: Reset fight data for {entity.EntityName.Value}"); */
     }
 
     /// <summary>
@@ -640,7 +640,7 @@ public class EntityTracker : NetworkBehaviour
             CardUpgradeManager.Instance.UpdatePersistentEntityTracking(entity.ObjectId, victory, trackingData.battleTurnCount, trackingData.hadPerfectTurnThisFight ? 1 : 0, trackingData.survivedStatusEffects.Count);
         }
         
-        Debug.Log($"EntityTracker: {entity.EntityName.Value} fight outcome: {(victory ? "Victory" : "Defeat")}. Lifetime: {trackingData.totalFightsWon}W/{trackingData.totalFightsLost}L");
+        /* Debug.Log($"EntityTracker: {entity.EntityName.Value} fight outcome: {(victory ? "Victory" : "Defeat")}. Lifetime: {trackingData.totalFightsWon}W/{trackingData.totalFightsLost}L"); */
     }
 
     /// <summary>

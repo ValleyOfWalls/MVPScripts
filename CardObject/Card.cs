@@ -97,7 +97,7 @@ public class Card : NetworkBehaviour
         CardTracker cardTracker = GetComponent<CardTracker>();
         if (cardTracker == null)
         {
-            Debug.Log($"Card {gameObject.name}: Adding missing CardTracker component");
+            /* Debug.Log($"Card {gameObject.name}: Adding missing CardTracker component"); */
             cardTracker = gameObject.AddComponent<CardTracker>();
         }
         
@@ -105,7 +105,7 @@ public class Card : NetworkBehaviour
         CardDragDrop cardDragDrop = GetComponent<CardDragDrop>();
         if (cardDragDrop == null)
         {
-            Debug.Log($"Card {gameObject.name}: Adding missing CardDragDrop component");
+            /* Debug.Log($"Card {gameObject.name}: Adding missing CardDragDrop component"); */
             cardDragDrop = gameObject.AddComponent<CardDragDrop>();
         }
         
@@ -121,7 +121,7 @@ public class Card : NetworkBehaviour
                 // CardDragDrop uses UI events, so we don't need mouse colliders when it's present
                 if (cardDragDrop == null)
                 {
-                    Debug.Log($"Card {gameObject.name}: Adding missing BoxCollider2D for mouse interactions");
+                    /* Debug.Log($"Card {gameObject.name}: Adding missing BoxCollider2D for mouse interactions"); */
                     cardCollider = gameObject.AddComponent<BoxCollider2D>();
                     // Set appropriate size
                     cardCollider.size = new Vector2(2f, 3f); // Default card size, adjust as needed
@@ -129,7 +129,7 @@ public class Card : NetworkBehaviour
                 }
                 else
                 {
-                    Debug.Log($"Card {gameObject.name}: CardDragDrop present - both UI events and mouse hover enabled");
+                    /* Debug.Log($"Card {gameObject.name}: CardDragDrop present - both UI events and mouse hover enabled"); */
                 }
             }
         }
@@ -137,7 +137,7 @@ public class Card : NetworkBehaviour
         {
             // Keep CardDragDrop and BoxCollider2D both enabled
             // CardDragDrop will handle UI events, BoxCollider2D will handle mouse hover for damage previews
-            Debug.Log($"Card {gameObject.name}: CardDragDrop present - both UI events and mouse hover enabled");
+            /* Debug.Log($"Card {gameObject.name}: CardDragDrop present - both UI events and mouse hover enabled"); */
         }
         
         // If CardDragDrop is present, ensure we have UI components for proper event handling
@@ -147,7 +147,7 @@ public class Card : NetworkBehaviour
             RectTransform rectTransform = GetComponent<RectTransform>();
             if (rectTransform == null)
             {
-                Debug.Log($"Card {gameObject.name}: CardDragDrop present but no RectTransform - adding RectTransform for UI events");
+                /* Debug.Log($"Card {gameObject.name}: CardDragDrop present but no RectTransform - adding RectTransform for UI events"); */
                 // Convert the Transform to a RectTransform if needed
                 gameObject.AddComponent<RectTransform>();
             }
@@ -156,7 +156,7 @@ public class Card : NetworkBehaviour
             CanvasGroup canvasGroup = GetComponent<CanvasGroup>();
             if (canvasGroup == null)
             {
-                Debug.Log($"Card {gameObject.name}: Adding CanvasGroup for drag and drop visual effects");
+                /* Debug.Log($"Card {gameObject.name}: Adding CanvasGroup for drag and drop visual effects"); */
                 canvasGroup = gameObject.AddComponent<CanvasGroup>();
             }
         }
@@ -202,7 +202,7 @@ public class Card : NetworkBehaviour
         // Initialize the HandleCardPlay component with this card data
         if (handleCardPlay != null)
         {
-            Debug.Log($"Card {gameObject.name}: Initializing HandleCardPlay with card data");
+            /* Debug.Log($"Card {gameObject.name}: Initializing HandleCardPlay with card data"); */
             handleCardPlay.Initialize(data);
         }
     }
@@ -222,7 +222,7 @@ public class Card : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"Card {gameObject.name} (Server): BEGIN SetOwnerEntity - Target: {entity.EntityName.Value}");
+        /* Debug.Log($"Card {gameObject.name} (Server): BEGIN SetOwnerEntity - Target: {entity.EntityName.Value}"); */
         
         // Set the reference directly for server-side use
         ownerEntity = entity;
@@ -234,14 +234,14 @@ public class Card : NetworkBehaviour
         // This will trigger the OnChange event on clients if the value changes
         _ownerEntityId.Value = entityObjectId; 
         
-        Debug.Log($"Card {gameObject.name} (Server): - _ownerEntityId.Value set to {_ownerEntityId.Value}");
-        Debug.Log($"Card {gameObject.name} (Server): END SetOwnerEntity");
+        /* Debug.Log($"Card {gameObject.name} (Server): - _ownerEntityId.Value set to {_ownerEntityId.Value}"); */
+        /* Debug.Log($"Card {gameObject.name} (Server): END SetOwnerEntity"); */
     }
 
     // SyncVar hook called when _ownerEntityId changes
     private void OnOwnerEntityIdChanged(int oldValue, int newValue, bool asServer)
     {
-        Debug.Log($"Card {gameObject.name}: OnOwnerEntityIdChanged from {oldValue} to {newValue}, asServer: {asServer}");
+        /* Debug.Log($"Card {gameObject.name}: OnOwnerEntityIdChanged from {oldValue} to {newValue}, asServer: {asServer}"); */
         
         // On clients, when the ID changes (and it's not 0), try to find the entity reference.
         if (!asServer && newValue != 0)
@@ -303,7 +303,7 @@ public class Card : NetworkBehaviour
                 {
                     DestroyImmediate(shopSelection);
                 }
-                Debug.Log($"Card {gameObject.name}: Removed ShopCardSelection component (purchasable = {purchasable})");
+                /* Debug.Log($"Card {gameObject.name}: Removed ShopCardSelection component (purchasable = {purchasable})"); */
             }
         }
     }
@@ -339,7 +339,7 @@ public class Card : NetworkBehaviour
                 {
                     DestroyImmediate(draftSelection);
                 }
-                Debug.Log($"Card {gameObject.name}: Removed DraftCardSelection component (draftable = {draftable})");
+                /* Debug.Log($"Card {gameObject.name}: Removed DraftCardSelection component (draftable = {draftable})"); */
             }
         }
     }
@@ -377,10 +377,10 @@ public class Card : NetworkBehaviour
         // Update inspector network owner ID
         inspectorNetworkOwnerClientId = Owner?.ClientId ?? -1;
 
-        Debug.Log($"Card {gameObject.name} (Client): OnStartClient BEGIN - Network Owner: {(Owner != null ? Owner.ClientId.ToString() : "null")}, IsNetworkOwner: {IsOwner}");
-        Debug.Log($"Card {gameObject.name} (Client): - Current logical ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}");
-        Debug.Log($"Card {gameObject.name} (Client): - Current _ownerEntityId.Value is {_ownerEntityId.Value}");
-        Debug.Log($"Card {gameObject.name} (Client): - Current _currentContainer.Value is {_currentContainer.Value}");
+        /* Debug.Log($"Card {gameObject.name} (Client): OnStartClient BEGIN - Network Owner: {(Owner != null ? Owner.ClientId.ToString() : "null")}, IsNetworkOwner: {IsOwner}"); */
+        /* Debug.Log($"Card {gameObject.name} (Client): - Current logical ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}"); */
+        /* Debug.Log($"Card {gameObject.name} (Client): - Current _ownerEntityId.Value is {_ownerEntityId.Value}"); */
+        /* Debug.Log($"Card {gameObject.name} (Client): - Current _currentContainer.Value is {_currentContainer.Value}"); */
 
         // The OnChange event should handle finding the entity.
         // However, if the value was already set before this client connected (e.g. late join),
@@ -392,7 +392,7 @@ public class Card : NetworkBehaviour
         }
         else if (_ownerEntityId.Value != 0 && ownerEntity != null && ownerEntity.GetComponent<NetworkObject>().ObjectId != _ownerEntityId.Value)
         {
-             Debug.Log($"Card {gameObject.name} (Client): OnStartClient - Mismatch! _ownerEntityId is {_ownerEntityId.Value} but current ownerEntity is {ownerEntity.GetComponent<NetworkObject>().ObjectId}. Attempting re-find.");
+             /* Debug.Log($"Card {gameObject.name} (Client): OnStartClient - Mismatch! _ownerEntityId is {_ownerEntityId.Value} but current ownerEntity is {ownerEntity.GetComponent<NetworkObject>().ObjectId}. Attempting re-find."); */
              FindOwnerEntityById(_ownerEntityId.Value);
         }
 
@@ -407,7 +407,7 @@ public class Card : NetworkBehaviour
             }
         }
 
-        Debug.Log($"Card {gameObject.name} (Client): OnStartClient END - Final logical ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}");
+        /* Debug.Log($"Card {gameObject.name} (Client): OnStartClient END - Final logical ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}"); */
     }
 
     private void FindOwnerEntityById(int entityObjectId)
@@ -419,7 +419,7 @@ public class Card : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"Card {gameObject.name}: FindOwnerEntityById BEGIN - Looking for entity with ObjectId: {entityObjectId}");
+        /* Debug.Log($"Card {gameObject.name}: FindOwnerEntityById BEGIN - Looking for entity with ObjectId: {entityObjectId}"); */
         
         NetworkObject ownerObj = null;
         // It's safer to use InstanceFinder.ClientManager.Objects or ServerManager.Objects
@@ -446,7 +446,7 @@ public class Card : NetworkBehaviour
             if (foundEntity != null)
             {
                 ownerEntity = foundEntity;
-                Debug.Log($"Card {gameObject.name}: - SUCCESS - Found and set ownerEntity to {ownerEntity.EntityName.Value} (GameObject: {ownerEntity.gameObject.name})");
+                /* Debug.Log($"Card {gameObject.name}: - SUCCESS - Found and set ownerEntity to {ownerEntity.EntityName.Value} (GameObject: {ownerEntity.gameObject.name})"); */
             }
             else
             {
@@ -460,7 +460,7 @@ public class Card : NetworkBehaviour
             ownerEntity = null; // Ensure ownerEntity is null if object is not found
         }
 
-        Debug.Log($"Card {gameObject.name}: FindOwnerEntityById END - Final ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}");
+        /* Debug.Log($"Card {gameObject.name}: FindOwnerEntityById END - Final ownerEntity is {(ownerEntity != null ? $"SET to {ownerEntity.EntityName.Value}" : "NULL")}"); */
     }
 
     private void OnMouseEnter()
@@ -474,7 +474,7 @@ public class Card : NetworkBehaviour
 
     public void OnMouseDown()
     {
-        Debug.Log($"Card {gameObject.name}: OnMouseDown called - Starting input handling");
+        /* Debug.Log($"Card {gameObject.name}: OnMouseDown called - Starting input handling"); */
         
         // Check the current game phase to determine container requirements
         GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
@@ -485,21 +485,21 @@ public class Card : NetworkBehaviour
         {
             Debug.Log($"Card {gameObject.name}: OnMouseDown - Current phase: {gamePhaseManager.GetCurrentPhase()}");
         }
-        Debug.Log($"Card {gameObject.name}: OnMouseDown - isDraftPhase: {isDraftPhase}");
-        Debug.Log($"Card {gameObject.name}: OnMouseDown - IsDraftable: {IsDraftable}");
-        Debug.Log($"Card {gameObject.name}: OnMouseDown - IsPurchasable: {IsPurchasable}");
-        Debug.Log($"Card {gameObject.name}: OnMouseDown - CurrentContainer: {CurrentContainer}");
+        /* Debug.Log($"Card {gameObject.name}: OnMouseDown - isDraftPhase: {isDraftPhase}"); */
+        /* Debug.Log($"Card {gameObject.name}: OnMouseDown - IsDraftable: {IsDraftable}"); */
+        /* Debug.Log($"Card {gameObject.name}: OnMouseDown - IsPurchasable: {IsPurchasable}"); */
+        /* Debug.Log($"Card {gameObject.name}: OnMouseDown - CurrentContainer: {CurrentContainer}"); */
         
         // Priority 1: Handle shop cards in draft phase
         if (isDraftPhase && IsPurchasable)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is purchasable. Delegating to ShopCardSelection.");
+            /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is purchasable. Delegating to ShopCardSelection."); */
             
             // For shop cards, delegate to the ShopCardSelection component
             ShopCardSelection shopSelection = GetComponent<ShopCardSelection>();
             if (shopSelection != null)
             {
-                Debug.Log($"Card {gameObject.name}: OnMouseDown - Calling ShopCardSelection.OnCardClicked()");
+                /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Calling ShopCardSelection.OnCardClicked()"); */
                 shopSelection.OnCardClicked();
             }
             else
@@ -512,13 +512,13 @@ public class Card : NetworkBehaviour
         // Priority 2: Handle draft cards in draft phase
         if (isDraftPhase && IsDraftable)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is draftable. Delegating to DraftCardSelection.");
+            /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Draft phase detected, card is draftable. Delegating to DraftCardSelection."); */
             
             // For draft cards, delegate to the DraftCardSelection component
             DraftCardSelection draftSelection = GetComponent<DraftCardSelection>();
             if (draftSelection != null)
             {
-                Debug.Log($"Card {gameObject.name}: OnMouseDown - Calling DraftCardSelection.OnCardClicked()");
+                /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Calling DraftCardSelection.OnCardClicked()"); */
                 draftSelection.OnCardClicked();
             }
             else
@@ -532,29 +532,29 @@ public class Card : NetworkBehaviour
         CardDragDrop cardDragDrop = GetComponent<CardDragDrop>();
         if (cardDragDrop != null)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - CardDragDrop component present, delegating input handling");
+            /* Debug.Log($"Card {gameObject.name}: OnMouseDown - CardDragDrop component present, delegating input handling"); */
             return;
         }
         
         // Priority 4: Handle normal card play
-        Debug.Log($"Card {gameObject.name}: OnMouseDown - Continuing with normal ownership validation");
+        /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Continuing with normal ownership validation"); */
         
         // First check if card is in the correct container
         // In draft phase, draftable cards can be clicked regardless of container
         // In combat phase, cards must be in hand
         if (!isDraftPhase && CurrentContainer != CardLocation.Hand) 
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. CurrentContainer: {CurrentContainer}. Expected Hand.");
+            /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. CurrentContainer: {CurrentContainer}. Expected Hand."); */
             return;
         }
         else if (isDraftPhase && !IsDraftable && !IsPurchasable)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot select in draft. Card is neither draftable nor purchasable.");
+            /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot select in draft. Card is neither draftable nor purchasable."); */
             return;
         }
         
         // For non-draft cards, continue with normal ownership validation
-        Debug.Log($"Card {gameObject.name}: OnMouseDown - Continuing with normal ownership validation for non-draft card");
+        /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Continuing with normal ownership validation for non-draft card"); */
         
         // Check logical owner (who the card belongs to in game terms)
         if (ownerEntity == null)
@@ -564,7 +564,7 @@ public class Card : NetworkBehaviour
             // Try to refresh the owner entity in case it wasn't properly initialized
             if (_ownerEntityId.Value != 0)
             {
-                Debug.Log($"Card {gameObject.name}: Attempting to refresh ownerEntity from _ownerEntityId: {_ownerEntityId.Value}");
+                /* Debug.Log($"Card {gameObject.name}: Attempting to refresh ownerEntity from _ownerEntityId: {_ownerEntityId.Value}"); */
                 FindOwnerEntityById(_ownerEntityId.Value);
                 
                 // If we found it, continue with the check
@@ -634,11 +634,11 @@ public class Card : NetworkBehaviour
             ownershipStatus = $"Neither card network ownership nor logical owner authority. Card IsOwner: {IsOwner}, ownerEntity.IsOwner: {ownerEntity.IsOwner}";
         }
         
-        Debug.Log($"Card {gameObject.name}: OnMouseDown - Ownership check: {ownershipStatus}");
+        /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Ownership check: {ownershipStatus}"); */
         
         if (!canPlay)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. {ownershipStatus}");
+            /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Cannot play. {ownershipStatus}"); */
             
             // Log additional debug info for failed attempts
             LogOwnershipDebugInfo();
@@ -647,12 +647,12 @@ public class Card : NetworkBehaviour
         
         if (handleCardPlay != null)
         {
-            Debug.Log($"Card {gameObject.name}: OnMouseDown - Ownership validated. Calling handleCardPlay.OnCardPlayAttempt()");
+            /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Ownership validated. Calling handleCardPlay.OnCardPlayAttempt()"); */
             
             // Ensure source and target are updated before playing the card
             if (sourceAndTargetIdentifier != null)
             {
-                Debug.Log($"Card {gameObject.name}: OnMouseDown - Updating source and target before card play");
+                /* Debug.Log($"Card {gameObject.name}: OnMouseDown - Updating source and target before card play"); */
                 sourceAndTargetIdentifier.UpdateSourceAndTarget();
             }
             
@@ -746,13 +746,13 @@ public class Card : NetworkBehaviour
     /// </summary>
     public void LogOwnershipDebugInfo()
     {
-        Debug.Log($"=== Card Ownership Debug Info for {gameObject.name} ===");
-        Debug.Log($"CurrentContainer: {CurrentContainer}");
-        Debug.Log($"Card NetworkObject IsOwner: {IsOwner}");
-        Debug.Log($"Card NetworkObject Owner ClientId: {(Owner != null ? Owner.ClientId.ToString() : "null")}");
-        Debug.Log($"ownerEntity: {(ownerEntity != null ? ownerEntity.EntityName.Value : "null")}");
-        Debug.Log($"ownerEntity IsOwner: {(ownerEntity != null ? ownerEntity.IsOwner.ToString() : "N/A")}");
-        Debug.Log($"ownerEntity Owner ClientId: {(ownerEntity?.Owner != null ? ownerEntity.Owner.ClientId.ToString() : "null")}");
+        /* Debug.Log($"=== Card Ownership Debug Info for {gameObject.name} ==="); */
+        /* Debug.Log($"CurrentContainer: {CurrentContainer}"); */
+        /* Debug.Log($"Card NetworkObject IsOwner: {IsOwner}"); */
+        /* Debug.Log($"Card NetworkObject Owner ClientId: {(Owner != null ? Owner.ClientId.ToString() : "null")}"); */
+        /* Debug.Log($"ownerEntity: {(ownerEntity != null ? ownerEntity.EntityName.Value : "null")}"); */
+        /* Debug.Log($"ownerEntity IsOwner: {(ownerEntity != null ? ownerEntity.IsOwner.ToString() : "N/A")}"); */
+        /* Debug.Log($"ownerEntity Owner ClientId: {(ownerEntity?.Owner != null ? ownerEntity.Owner.ClientId.ToString() : "null")}"); */
         
         NetworkEntity localPlayer = GetLocalPlayer();
         Debug.Log($"Local Player: {(localPlayer != null ? localPlayer.EntityName.Value : "null")}");
@@ -763,7 +763,7 @@ public class Card : NetworkBehaviour
 
     private void OnDraftableChanged(bool oldValue, bool newValue, bool asServer)
     {
-        Debug.Log($"Card {gameObject.name}: OnDraftableChanged from {oldValue} to {newValue}, asServer: {asServer}");
+        /* Debug.Log($"Card {gameObject.name}: OnDraftableChanged from {oldValue} to {newValue}, asServer: {asServer}"); */
         
         // Add or remove DraftCardSelection component based on draftable state
         if (newValue)
@@ -788,7 +788,7 @@ public class Card : NetworkBehaviour
                 {
                     DestroyImmediate(draftSelection);
                 }
-                Debug.Log($"Card {gameObject.name}: Removed DraftCardSelection component via OnDraftableChanged (asServer: {asServer})");
+                /* Debug.Log($"Card {gameObject.name}: Removed DraftCardSelection component via OnDraftableChanged (asServer: {asServer})"); */
             }
         }
     }

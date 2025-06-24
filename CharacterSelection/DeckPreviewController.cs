@@ -64,7 +64,7 @@ public class DeckPreviewController : MonoBehaviour
     /// </summary>
     public void ShowCharacterDeck(int characterIndex, bool isReady = false)
     {
-        Debug.Log($"DeckPreviewController: ShowCharacterDeck({characterIndex}) called - isReady: {isReady}");
+        /* Debug.Log($"DeckPreviewController: ShowCharacterDeck({characterIndex}) called - isReady: {isReady}"); */
         
         if (isReady)
         {
@@ -84,7 +84,7 @@ public class DeckPreviewController : MonoBehaviour
         }
         else
         {
-            Debug.Log("DeckPreviewController: Showing character deck normally");
+            /* Debug.Log("DeckPreviewController: Showing character deck normally"); */
             ShowCharacterDeckInternal();
         }
     }
@@ -94,7 +94,7 @@ public class DeckPreviewController : MonoBehaviour
     /// </summary>
     public void ShowPetDeck(int petIndex, bool isReady = false)
     {
-        Debug.Log($"DeckPreviewController: ShowPetDeck({petIndex}) called - isReady: {isReady}");
+        /* Debug.Log($"DeckPreviewController: ShowPetDeck({petIndex}) called - isReady: {isReady}"); */
         
         if (isReady)
         {
@@ -114,7 +114,7 @@ public class DeckPreviewController : MonoBehaviour
         }
         else
         {
-            Debug.Log("DeckPreviewController: Showing pet deck normally");
+            /* Debug.Log("DeckPreviewController: Showing pet deck normally"); */
             ShowPetDeckInternal();
         }
     }
@@ -124,7 +124,7 @@ public class DeckPreviewController : MonoBehaviour
     /// </summary>
     public void HideAllDeckPreviews()
     {
-        Debug.Log("DeckPreviewController: HideAllDeckPreviews() called");
+        /* Debug.Log("DeckPreviewController: HideAllDeckPreviews() called"); */
         
         ClearAllDeckPreviews();
         
@@ -184,7 +184,7 @@ public class DeckPreviewController : MonoBehaviour
     
     private void ShowCharacterDeckInternal()
     {
-        Debug.Log($"DeckPreviewController: ShowCharacterDeckInternal() called for character index {currentCharacterIndex}");
+        /* Debug.Log($"DeckPreviewController: ShowCharacterDeckInternal() called for character index {currentCharacterIndex}"); */
         
         // Clear existing character deck preview
         ClearCharacterDeckPreview();
@@ -203,13 +203,13 @@ public class DeckPreviewController : MonoBehaviour
         if (characterDeckTitle != null)
         {
             characterDeckTitle.text = deckTitle;
-            Debug.Log($"DeckPreviewController: Set character deck title to: {deckTitle}");
+            /* Debug.Log($"DeckPreviewController: Set character deck title to: {deckTitle}"); */
         }
         
         // Create character deck preview items
         if (deckToShow != null && deckToShow.CardsInDeck != null)
         {
-            Debug.Log($"DeckPreviewController: Creating {deckToShow.CardsInDeck.Count} character card previews");
+            /* Debug.Log($"DeckPreviewController: Creating {deckToShow.CardsInDeck.Count} character card previews"); */
             foreach (CardData card in deckToShow.CardsInDeck)
             {
                 if (card != null)
@@ -218,17 +218,17 @@ public class DeckPreviewController : MonoBehaviour
                     if (previewItem != null)
                     {
                         characterDeckItems.Add(previewItem);
-                        Debug.Log($"DeckPreviewController: Created character card preview for {card.CardName}");
+                        /* Debug.Log($"DeckPreviewController: Created character card preview for {card.CardName}"); */
                     }
                 }
             }
-            Debug.Log($"DeckPreviewController: Total character deck items created: {characterDeckItems.Count}");
+            /* Debug.Log($"DeckPreviewController: Total character deck items created: {characterDeckItems.Count}"); */
         }
         
         // Show the character deck panel with animation
         if (uiAnimator != null)
         {
-            Debug.Log("DeckPreviewController: Calling uiAnimator.ShowCharacterDeckPanel()");
+            /* Debug.Log("DeckPreviewController: Calling uiAnimator.ShowCharacterDeckPanel()"); */
             uiAnimator.ShowCharacterDeckPanel();
         }
         else
@@ -239,7 +239,7 @@ public class DeckPreviewController : MonoBehaviour
     
     private void ShowPetDeckInternal()
     {
-        Debug.Log($"DeckPreviewController: ShowPetDeckInternal() called for pet index {currentPetIndex}");
+        /* Debug.Log($"DeckPreviewController: ShowPetDeckInternal() called for pet index {currentPetIndex}"); */
         
         // Clear existing pet deck preview
         ClearPetDeckPreview();
@@ -258,13 +258,13 @@ public class DeckPreviewController : MonoBehaviour
         if (petDeckTitle != null)
         {
             petDeckTitle.text = deckTitle;
-            Debug.Log($"DeckPreviewController: Set pet deck title to: {deckTitle}");
+            /* Debug.Log($"DeckPreviewController: Set pet deck title to: {deckTitle}"); */
         }
         
         // Create pet deck preview items
         if (deckToShow != null && deckToShow.CardsInDeck != null)
         {
-            Debug.Log($"DeckPreviewController: Creating {deckToShow.CardsInDeck.Count} pet card previews");
+            /* Debug.Log($"DeckPreviewController: Creating {deckToShow.CardsInDeck.Count} pet card previews"); */
             foreach (CardData card in deckToShow.CardsInDeck)
             {
                 if (card != null)
@@ -273,17 +273,17 @@ public class DeckPreviewController : MonoBehaviour
                     if (previewItem != null)
                     {
                         petDeckItems.Add(previewItem);
-                        Debug.Log($"DeckPreviewController: Created pet card preview for {card.CardName}");
+                        /* Debug.Log($"DeckPreviewController: Created pet card preview for {card.CardName}"); */
                     }
                 }
             }
-            Debug.Log($"DeckPreviewController: Total pet deck items created: {petDeckItems.Count}");
+            /* Debug.Log($"DeckPreviewController: Total pet deck items created: {petDeckItems.Count}"); */
         }
         
         // Show the pet deck panel with animation
         if (uiAnimator != null)
         {
-            Debug.Log("DeckPreviewController: Calling uiAnimator.ShowPetDeckPanel()");
+            /* Debug.Log("DeckPreviewController: Calling uiAnimator.ShowPetDeckPanel()"); */
             uiAnimator.ShowPetDeckPanel();
         }
         else
@@ -360,7 +360,7 @@ public class DeckPreviewController : MonoBehaviour
     
     private void PopulateCharacterDeckContent()
     {
-        Debug.Log($"DeckPreviewController: PopulateCharacterDeckContent() called for character index {currentCharacterIndex}");
+        /* Debug.Log($"DeckPreviewController: PopulateCharacterDeckContent() called for character index {currentCharacterIndex}"); */
         
         // Clear existing character deck preview
         ClearCharacterDeckPreview();
@@ -379,13 +379,13 @@ public class DeckPreviewController : MonoBehaviour
         if (characterDeckTitle != null)
         {
             characterDeckTitle.text = deckTitle;
-            Debug.Log($"DeckPreviewController: Set character deck title to: {deckTitle}");
+            /* Debug.Log($"DeckPreviewController: Set character deck title to: {deckTitle}"); */
         }
         
         // Create character deck preview items
         if (deckToShow != null && deckToShow.CardsInDeck != null)
         {
-            Debug.Log($"DeckPreviewController: Creating {deckToShow.CardsInDeck.Count} character card previews");
+            /* Debug.Log($"DeckPreviewController: Creating {deckToShow.CardsInDeck.Count} character card previews"); */
             foreach (CardData card in deckToShow.CardsInDeck)
             {
                 if (card != null)
@@ -394,17 +394,17 @@ public class DeckPreviewController : MonoBehaviour
                     if (previewItem != null)
                     {
                         characterDeckItems.Add(previewItem);
-                        Debug.Log($"DeckPreviewController: Created character card preview for {card.CardName}");
+                        /* Debug.Log($"DeckPreviewController: Created character card preview for {card.CardName}"); */
                     }
                 }
             }
-            Debug.Log($"DeckPreviewController: Total character deck items created: {characterDeckItems.Count}");
+            /* Debug.Log($"DeckPreviewController: Total character deck items created: {characterDeckItems.Count}"); */
         }
     }
     
     private void PopulatePetDeckContent()
     {
-        Debug.Log($"DeckPreviewController: PopulatePetDeckContent() called for pet index {currentPetIndex}");
+        /* Debug.Log($"DeckPreviewController: PopulatePetDeckContent() called for pet index {currentPetIndex}"); */
         
         // Clear existing pet deck preview
         ClearPetDeckPreview();
@@ -423,13 +423,13 @@ public class DeckPreviewController : MonoBehaviour
         if (petDeckTitle != null)
         {
             petDeckTitle.text = deckTitle;
-            Debug.Log($"DeckPreviewController: Set pet deck title to: {deckTitle}");
+            /* Debug.Log($"DeckPreviewController: Set pet deck title to: {deckTitle}"); */
         }
         
         // Create pet deck preview items
         if (deckToShow != null && deckToShow.CardsInDeck != null)
         {
-            Debug.Log($"DeckPreviewController: Creating {deckToShow.CardsInDeck.Count} pet card previews");
+            /* Debug.Log($"DeckPreviewController: Creating {deckToShow.CardsInDeck.Count} pet card previews"); */
             foreach (CardData card in deckToShow.CardsInDeck)
             {
                 if (card != null)
@@ -438,11 +438,11 @@ public class DeckPreviewController : MonoBehaviour
                     if (previewItem != null)
                     {
                         petDeckItems.Add(previewItem);
-                        Debug.Log($"DeckPreviewController: Created pet card preview for {card.CardName}");
+                        /* Debug.Log($"DeckPreviewController: Created pet card preview for {card.CardName}"); */
                     }
                 }
             }
-            Debug.Log($"DeckPreviewController: Total pet deck items created: {petDeckItems.Count}");
+            /* Debug.Log($"DeckPreviewController: Total pet deck items created: {petDeckItems.Count}"); */
         }
     }
     
@@ -473,7 +473,7 @@ public class DeckPreviewController : MonoBehaviour
         if (cardComponent != null)
         {
             cardComponent.Initialize(cardData);
-            Debug.Log($"DeckPreviewController: Initialized card preview for {cardData.CardName}");
+            /* Debug.Log($"DeckPreviewController: Initialized card preview for {cardData.CardName}"); */
         }
         else
         {
@@ -498,7 +498,7 @@ public class DeckPreviewController : MonoBehaviour
         if (dragDrop != null)
         {
             dragDrop.enabled = false;
-            Debug.Log($"  Disabled CardDragDrop component");
+            /* Debug.Log($"  Disabled CardDragDrop component"); */
         }
         
         // Disable any colliders to prevent unwanted interactions
@@ -506,10 +506,10 @@ public class DeckPreviewController : MonoBehaviour
         if (cardCollider != null)
         {
             cardCollider.enabled = false;
-            Debug.Log($"  Disabled Collider2D component");
+            /* Debug.Log($"  Disabled Collider2D component"); */
         }
         
-        Debug.Log($"DeckPreviewController: Created preview card {cardData.CardName}, active: {item.activeInHierarchy}");
+        /* Debug.Log($"DeckPreviewController: Created preview card {cardData.CardName}, active: {item.activeInHierarchy}"); */
         
         return item;
     }

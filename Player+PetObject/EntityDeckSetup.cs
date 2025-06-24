@@ -122,7 +122,7 @@ public class EntityDeckSetup : NetworkBehaviour
                 }
             }
             
-            Debug.Log($"Initialized starter deck for {gameObject.name} ({entityType}) with {deckToUse.CardsInDeck.Count} cards from {deckSource} deck '{deckToUse.DeckName}'");
+            /* Debug.Log($"Initialized starter deck for {gameObject.name} ({entityType}) with {deckToUse.CardsInDeck.Count} cards from {deckSource} deck '{deckToUse.DeckName}'"); */
         }
         else
         {

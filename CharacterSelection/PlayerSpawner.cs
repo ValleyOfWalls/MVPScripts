@@ -127,7 +127,7 @@ public class PlayerSpawner : MonoBehaviour
             return null;
         }
 
-        Debug.Log($"PlayerSpawner: Spawning entities for client {conn.ClientId} with character '{characterData.CharacterName}' and pet '{petData.PetName}'");
+        /* Debug.Log($"PlayerSpawner: Spawning entities for client {conn.ClientId} with character '{characterData.CharacterName}' and pet '{petData.PetName}'"); */
 
         // Use generic prefabs - character/pet data provides visual configuration instead of separate prefabs
         NetworkObject characterPrefabToSpawn = playerPrefab;
@@ -198,7 +198,7 @@ public class PlayerSpawner : MonoBehaviour
         {
             petEntity.SetOwnerEntity(playerEntity);
             SetupPlayerPetRelationship(playerEntity, petEntity);
-            Debug.Log($"Connected pet (ID: {petEntity.ObjectId}) to player (ID: {playerEntity.ObjectId})");
+            /* Debug.Log($"Connected pet (ID: {petEntity.ObjectId}) to player (ID: {playerEntity.ObjectId})"); */
         }
 
         // Set up hand relationships
@@ -223,7 +223,7 @@ public class PlayerSpawner : MonoBehaviour
             petData = petData
         };
 
-        Debug.Log($"PlayerSpawner: Successfully spawned and configured all entities for client {conn.ClientId}");
+        /* Debug.Log($"PlayerSpawner: Successfully spawned and configured all entities for client {conn.ClientId}"); */
         return entitiesData;
     }
 
@@ -236,11 +236,11 @@ public class PlayerSpawner : MonoBehaviour
 
         // Set entity name
         string entityName = !string.IsNullOrEmpty(customName) ? customName : characterData.CharacterName;
-        Debug.Log($"SYNC_DEBUG: PlayerSpawner setting player entity name from '{playerEntity.EntityName.Value}' to '{entityName}'");
+        /* Debug.Log($"SYNC_DEBUG: PlayerSpawner setting player entity name from '{playerEntity.EntityName.Value}' to '{entityName}'"); */
         playerEntity.EntityName.Value = entityName;
 
         // Log the values from CharacterData BEFORE applying them
-        Debug.Log($"PlayerSpawner: ApplyCharacterDataToEntity - CharacterData values: Health={characterData.BaseHealth}, Energy={characterData.BaseEnergy}, Currency={characterData.StartingCurrency}");
+        /* Debug.Log($"PlayerSpawner: ApplyCharacterDataToEntity - CharacterData values: Health={characterData.BaseHealth}, Energy={characterData.BaseEnergy}, Currency={characterData.StartingCurrency}"); */
 
         // Apply base stats using reflection to set NetworkEntity's private fields
         SetEntityBaseStats(playerEntity.gameObject, characterData.BaseHealth, characterData.BaseEnergy, characterData.StartingCurrency);
@@ -272,11 +272,11 @@ public class PlayerSpawner : MonoBehaviour
 
         // Set entity name
         string entityName = !string.IsNullOrEmpty(customName) ? customName : petData.PetName;
-        Debug.Log($"SYNC_DEBUG: PlayerSpawner setting pet entity name from '{petEntity.EntityName.Value}' to '{entityName}'");
+        /* Debug.Log($"SYNC_DEBUG: PlayerSpawner setting pet entity name from '{petEntity.EntityName.Value}' to '{entityName}'"); */
         petEntity.EntityName.Value = entityName;
 
         // Log the values from PetData BEFORE applying them
-        Debug.Log($"PlayerSpawner: ApplyPetDataToEntity - PetData values: Health={petData.BaseHealth}, Energy={petData.BaseEnergy}");
+        /* Debug.Log($"PlayerSpawner: ApplyPetDataToEntity - PetData values: Health={petData.BaseHealth}, Energy={petData.BaseEnergy}"); */
 
         // Apply base stats using reflection to set NetworkEntity's private fields
         SetEntityBaseStats(petEntity.gameObject, petData.BaseHealth, petData.BaseEnergy, 0); // Pets don't have currency
@@ -335,7 +335,7 @@ public class PlayerSpawner : MonoBehaviour
             animator.runtimeAnimatorController = animatorController;
         }
 
-        Debug.Log($"PlayerSpawner: Configured visual appearance for {entityObj.name}");
+        /* Debug.Log($"PlayerSpawner: Configured visual appearance for {entityObj.name}"); */
     }
 
     /// <summary>
@@ -348,7 +348,7 @@ public class PlayerSpawner : MonoBehaviour
         if (networkEntity != null)
         {
             // Log the values BEFORE setting them
-            Debug.Log($"PlayerSpawner: BEFORE reflection - Health: {baseHealth}, Energy: {baseEnergy}, Currency: {startingCurrency}");
+            /* Debug.Log($"PlayerSpawner: BEFORE reflection - Health: {baseHealth}, Energy: {baseEnergy}, Currency: {startingCurrency}"); */
             
             // Set the serialized fields directly
             var type = typeof(NetworkEntity);
@@ -370,7 +370,7 @@ public class PlayerSpawner : MonoBehaviour
             {
                 object oldEnergy = energyField.GetValue(networkEntity);
                 energyField.SetValue(networkEntity, baseEnergy);
-                Debug.Log($"PlayerSpawner: Set _maxEnergy from {oldEnergy} to {baseEnergy}");
+                /* Debug.Log($"PlayerSpawner: Set _maxEnergy from {oldEnergy} to {baseEnergy}"); */
             }
             else
             {
@@ -382,7 +382,7 @@ public class PlayerSpawner : MonoBehaviour
             {
                 object oldCurrency = currencyField.GetValue(networkEntity);
                 currencyField.SetValue(networkEntity, startingCurrency);
-                Debug.Log($"PlayerSpawner: Set _currency from {oldCurrency} to {startingCurrency}");
+                /* Debug.Log($"PlayerSpawner: Set _currency from {oldCurrency} to {startingCurrency}"); */
             }
             else
             {
@@ -395,7 +395,7 @@ public class PlayerSpawner : MonoBehaviour
             {
                 object oldCurrentHealth = currentHealthField.GetValue(networkEntity);
                 currentHealthField.SetValue(networkEntity, baseHealth);
-                Debug.Log($"PlayerSpawner: Set _currentHealth from {oldCurrentHealth} to {baseHealth}");
+                /* Debug.Log($"PlayerSpawner: Set _currentHealth from {oldCurrentHealth} to {baseHealth}"); */
             }
             else
             {
@@ -407,14 +407,14 @@ public class PlayerSpawner : MonoBehaviour
             {
                 object oldCurrentEnergy = currentEnergyField.GetValue(networkEntity);
                 currentEnergyField.SetValue(networkEntity, baseEnergy);
-                Debug.Log($"PlayerSpawner: Set _currentEnergy from {oldCurrentEnergy} to {baseEnergy}");
+                /* Debug.Log($"PlayerSpawner: Set _currentEnergy from {oldCurrentEnergy} to {baseEnergy}"); */
             }
             else
             {
                 Debug.LogError("PlayerSpawner: Could not find _currentEnergy field via reflection!");
             }
 
-            Debug.Log($"PlayerSpawner: AFTER reflection - Set base stats - Health: {baseHealth}, Energy: {baseEnergy}, Currency: {startingCurrency}");
+            /* Debug.Log($"PlayerSpawner: AFTER reflection - Set base stats - Health: {baseHealth}, Energy: {baseEnergy}, Currency: {startingCurrency}"); */
         }
         else
         {
@@ -526,7 +526,7 @@ public class PlayerSpawner : MonoBehaviour
         // Set the selection data
         playerEntity.SetCharacterSelection(characterIndex, prefabPath);
         
-        Debug.Log($"PlayerSpawner: Set character selection data for '{playerName}' - Index: {characterIndex}, Prefab: {prefabPath}");
+        /* Debug.Log($"PlayerSpawner: Set character selection data for '{playerName}' - Index: {characterIndex}, Prefab: {prefabPath}"); */
     }
     
     /// <summary>
@@ -568,7 +568,7 @@ public class PlayerSpawner : MonoBehaviour
         // Set the selection data
         petEntity.SetPetSelection(petIndex, prefabPath);
         
-        Debug.Log($"PlayerSpawner: Set pet selection data for '{petName}' - Index: {petIndex}, Prefab: {prefabPath}");
+        /* Debug.Log($"PlayerSpawner: Set pet selection data for '{petName}' - Index: {petIndex}, Prefab: {prefabPath}"); */
     }
 
     private void SetupHandRelationships(NetworkEntity player, NetworkEntity playerHand, NetworkEntity pet, NetworkEntity petHand)
@@ -639,7 +639,7 @@ public class PlayerSpawner : MonoBehaviour
             playerStatsUI.EntityName.Value = $"Player Stats UI ({player.Owner?.ClientId ?? -1})";
             petStatsUI.EntityName.Value = $"Pet Stats UI ({player.Owner?.ClientId ?? -1})";
             
-            Debug.Log($"Set up stats UI relationships - Player (ID: {player.ObjectId}) -> Stats UI (ID: {playerStatsUI.ObjectId}), Pet (ID: {pet.ObjectId}) -> Stats UI (ID: {petStatsUI.ObjectId})");
+            /* Debug.Log($"Set up stats UI relationships - Player (ID: {player.ObjectId}) -> Stats UI (ID: {playerStatsUI.ObjectId}), Pet (ID: {pet.ObjectId}) -> Stats UI (ID: {petStatsUI.ObjectId})"); */
         }
         else
         {

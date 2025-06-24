@@ -70,7 +70,7 @@ public class CardEffectResolver : NetworkBehaviour
     /// </summary>
     public void ResolveCardEffect()
     {
-        Debug.Log($"CardEffectResolver: ResolveCardEffect called for card {gameObject.name}");
+        /* Debug.Log($"CardEffectResolver: ResolveCardEffect called for card {gameObject.name}"); */
         
         if (!IsOwner)
         {
@@ -78,13 +78,13 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"CardEffectResolver: Network ownership validated for card {gameObject.name}");
+        /* Debug.Log($"CardEffectResolver: Network ownership validated for card {gameObject.name}"); */
         
         // Make sure we have source and target entities
         var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
         var allTargets = sourceAndTargetIdentifier.AllTargets;
         
-        Debug.Log($"CardEffectResolver: Source entity: {(sourceEntity != null ? sourceEntity.EntityName.Value : "null")}, Target count: {allTargets?.Count ?? 0}");
+        /* Debug.Log($"CardEffectResolver: Source entity: {(sourceEntity != null ? sourceEntity.EntityName.Value : "null")}, Target count: {allTargets?.Count ?? 0}"); */
         
         if (sourceEntity == null || allTargets.Count == 0)
         {
@@ -100,18 +100,18 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}");
+        /* Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}"); */
         
         // Get tracking data for combo check
         EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
         
         // Check sequence requirements (combo system)
         bool canPlay = cardData.CanPlayWithCombo(sourceTracker?.ComboCount ?? 0);
-        Debug.Log($"CardEffectResolver: Combo check - Can play: {canPlay}, Combo count: {sourceTracker?.ComboCount ?? 0}, Required: {cardData.RequiredComboAmount}");
+        /* Debug.Log($"CardEffectResolver: Combo check - Can play: {canPlay}, Combo count: {sourceTracker?.ComboCount ?? 0}, Required: {cardData.RequiredComboAmount}"); */
         
         if (!canPlay)
         {
-            Debug.Log($"CardEffectResolver: Card {cardData.CardName} cannot be played - combo requirement not met");
+            /* Debug.Log($"CardEffectResolver: Card {cardData.CardName} cannot be played - combo requirement not met"); */
             return;
         }
         
@@ -122,18 +122,18 @@ public class CardEffectResolver : NetworkBehaviour
             if (target != null)
             {
                 targetIds.Add(target.ObjectId);
-                Debug.Log($"CardEffectResolver: Added target {target.EntityName.Value} (ID: {target.ObjectId}) to target list");
+                /* Debug.Log($"CardEffectResolver: Added target {target.EntityName.Value} (ID: {target.ObjectId}) to target list"); */
             }
         }
         
-        Debug.Log($"CardEffectResolver: Calling CmdResolveEffect with source {sourceEntity.ObjectId}, {targetIds.Count} targets, card {cardData.CardId}");
+        /* Debug.Log($"CardEffectResolver: Calling CmdResolveEffect with source {sourceEntity.ObjectId}, {targetIds.Count} targets, card {cardData.CardId}"); */
         CmdResolveEffect(sourceEntity.ObjectId, targetIds.ToArray(), cardData.CardId);
     }
     
     [ServerRpc]
     private void CmdResolveEffect(int sourceEntityId, int[] targetEntityIds, int cardDataId)
     {
-        Debug.Log($"CardEffectResolver: CmdResolveEffect called - Card: {cardDataId}, Source: {sourceEntityId}, Targets: [{string.Join(", ", targetEntityIds)}]");
+        /* Debug.Log($"CardEffectResolver: CmdResolveEffect called - Card: {cardDataId}, Source: {sourceEntityId}, Targets: [{string.Join(", ", targetEntityIds)}]"); */
         
         // Find the source entity
         NetworkEntity sourceEntity = FindEntityById(sourceEntityId);
@@ -173,12 +173,12 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking if should trigger visual effects...");
+        /* Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking if should trigger visual effects..."); */
         
         // TRIGGER VISUAL EFFECTS BEFORE PROCESSING CARD EFFECTS
         if (targetEntities.Count > 0 && handleCardPlay != null)
         {
-            Debug.Log($"CardEffectResolver: Triggering visual effects for card {cardData.CardName} - calling RpcTriggerVisualEffects");
+            /* Debug.Log($"CardEffectResolver: Triggering visual effects for card {cardData.CardName} - calling RpcTriggerVisualEffects"); */
             // Use RPC to trigger visual effects on all clients
             RpcTriggerVisualEffects(sourceEntity.ObjectId, targetEntities[0].ObjectId, cardData.CardId);
         }
@@ -193,7 +193,7 @@ public class CardEffectResolver : NetworkBehaviour
         // Process the effect based on the card type
         ProcessCardEffects(sourceEntity, targetEntities, cardData);
         
-        Debug.Log($"CardEffectResolver: CmdResolveEffect completed for card {cardData.CardName}");
+        /* Debug.Log($"CardEffectResolver: CmdResolveEffect completed for card {cardData.CardName}"); */
     }
     
     /// <summary>
@@ -233,11 +233,11 @@ public class CardEffectResolver : NetworkBehaviour
         // Process all effects from the Effects list
         if (cardData.HasEffects)
         {
-            Debug.Log($"CardEffectResolver: Processing {cardData.Effects.Count} effects for card {cardData.CardName}");
+            /* Debug.Log($"CardEffectResolver: Processing {cardData.Effects.Count} effects for card {cardData.CardName}"); */
             
             foreach (var effect in cardData.Effects)
             {
-                Debug.Log($"CardEffectResolver: Processing effect {effect.effectType} with amount {effect.amount}, duration {effect.duration}, targetType {effect.targetType}");
+                /* Debug.Log($"CardEffectResolver: Processing effect {effect.effectType} with amount {effect.amount}, duration {effect.duration}, targetType {effect.targetType}"); */
                 
                 // Get the correct targets for this specific effect based on its targetType
                 List<NetworkEntity> effectTargets = GetTargetsForEffect(sourceEntity, effect.targetType, targetEntities);
@@ -248,7 +248,7 @@ public class CardEffectResolver : NetworkBehaviour
                     continue;
                 }
                 
-                Debug.Log($"CardEffectResolver: Effect {effect.effectType} targeting {effectTargets.Count} entities: {string.Join(", ", effectTargets.Select(e => e.EntityName.Value))}");
+                /* Debug.Log($"CardEffectResolver: Effect {effect.effectType} targeting {effectTargets.Count} entities: {string.Join(", ", effectTargets.Select(e => e.EntityName.Value))}"); */
                 
                 // Apply scaling if defined on the effect
                 int amount = effect.amount;
@@ -258,29 +258,29 @@ public class CardEffectResolver : NetworkBehaviour
                     int scalingBonus = Mathf.FloorToInt(scalingValue * effect.scalingMultiplier);
                     int scaledAmount = amount + scalingBonus;
                     
-                    Debug.Log($"CardEffectResolver: Scaling details - scalingType: {effect.scalingType}, scalingValue: {scalingValue}, multiplier: {effect.scalingMultiplier}, bonus: {scalingBonus}, maxScaling: {effect.maxScaling}");
+                    /* Debug.Log($"CardEffectResolver: Scaling details - scalingType: {effect.scalingType}, scalingValue: {scalingValue}, multiplier: {effect.scalingMultiplier}, bonus: {scalingBonus}, maxScaling: {effect.maxScaling}"); */
                     
                     // Only apply max scaling if it's higher than the base amount
                     // This prevents maxScaling from reducing the base effect
                     if (effect.maxScaling > effect.amount)
                     {
                         amount = Mathf.Min(scaledAmount, effect.maxScaling);
-                        Debug.Log($"CardEffectResolver: Applied max scaling cap - final amount: {amount}");
+                        /* Debug.Log($"CardEffectResolver: Applied max scaling cap - final amount: {amount}"); */
                     }
                     else
                     {
                         amount = scaledAmount;
-                        Debug.Log($"CardEffectResolver: Max scaling ({effect.maxScaling}) lower than base amount ({effect.amount}), ignoring cap - final amount: {amount}");
+                        /* Debug.Log($"CardEffectResolver: Max scaling ({effect.maxScaling}) lower than base amount ({effect.amount}), ignoring cap - final amount: {amount}"); */
                     }
                     
-                    Debug.Log($"CardEffectResolver: Scaling applied - original: {effect.amount}, scaled: {amount}");
+                    /* Debug.Log($"CardEffectResolver: Scaling applied - original: {effect.amount}, scaled: {amount}"); */
                 }
                 else if (effect.scalingType != ScalingType.None)
                 {
-                    Debug.Log($"CardEffectResolver: Effect has scaling type {effect.scalingType} but no tracking data available");
+                    /* Debug.Log($"CardEffectResolver: Effect has scaling type {effect.scalingType} but no tracking data available"); */
                 }
                 
-                Debug.Log($"CardEffectResolver: Calling ProcessSingleEffect with amount {amount}, duration {effect.duration}");
+                /* Debug.Log($"CardEffectResolver: Calling ProcessSingleEffect with amount {amount}, duration {effect.duration}"); */
                 ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, amount, effect.duration, effect.elementalType);
             }
         }
@@ -399,7 +399,7 @@ public class CardEffectResolver : NetworkBehaviour
                 {
                     ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
                         effect.alternativeEffectAmount, 0, ElementalType.None);
-                    Debug.Log($"CardEffectResolver: Conditional met - executed both main effect ({effect.effectType}) AND alternative effect ({effect.alternativeEffectType})");
+                    /* Debug.Log($"CardEffectResolver: Conditional met - executed both main effect ({effect.effectType}) AND alternative effect ({effect.alternativeEffectType})"); */
                 }
             }
             else if (effect.hasAlternativeEffect)
@@ -410,7 +410,7 @@ public class CardEffectResolver : NetworkBehaviour
                     // Replace logic: execute only alternative effect
                     ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
                         effect.alternativeEffectAmount, 0, ElementalType.None);
-                    Debug.Log($"CardEffectResolver: Conditional failed - executed alternative effect ({effect.alternativeEffectType}) INSTEAD of main effect");
+                    /* Debug.Log($"CardEffectResolver: Conditional failed - executed alternative effect ({effect.alternativeEffectType}) INSTEAD of main effect"); */
                 }
                 else if (effect.alternativeLogic == AlternativeEffectLogic.Additional)
                 {
@@ -427,7 +427,7 @@ public class CardEffectResolver : NetworkBehaviour
                         effectAmount, effect.duration, effect.elementalType);
                     ProcessSingleEffect(sourceEntity, targetEntities, effect.alternativeEffectType, 
                         effect.alternativeEffectAmount, 0, ElementalType.None);
-                    Debug.Log($"CardEffectResolver: Conditional failed - executed main effect ({effect.effectType}) AND alternative effect ({effect.alternativeEffectType})");
+                    /* Debug.Log($"CardEffectResolver: Conditional failed - executed main effect ({effect.effectType}) AND alternative effect ({effect.alternativeEffectType})"); */
                 }
             }
         }
@@ -464,7 +464,7 @@ public class CardEffectResolver : NetworkBehaviour
     /// </summary>
     private void ProcessSingleEffect(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardEffectType effectType, int amount, int duration, ElementalType elementalType)
     {
-        Debug.Log($"CardEffectResolver: ProcessSingleEffect called with type={effectType}, amount={amount}, duration={duration}");
+        /* Debug.Log($"CardEffectResolver: ProcessSingleEffect called with type={effectType}, amount={amount}, duration={duration}"); */
         
         foreach (NetworkEntity targetEntity in targetEntities)
         {
@@ -509,7 +509,7 @@ public class CardEffectResolver : NetworkBehaviour
                     break;
                     
                 case CardEffectType.ApplyThorns:
-                    Debug.Log($"CardEffectResolver: ApplyThorns case - passing amount={amount}, duration={duration}");
+                    /* Debug.Log($"CardEffectResolver: ApplyThorns case - passing amount={amount}, duration={duration}"); */
                     ProcessStatusEffect(sourceEntity, targetEntity, "Thorns", amount, duration);
                     break;
                     
@@ -585,15 +585,15 @@ public class CardEffectResolver : NetworkBehaviour
         }
         
         // Debug card data information
-        Debug.Log($"CardEffectResolver: Processing damage for card '{originalCardData.CardName}'");
-        Debug.Log($"CardEffectResolver: Input amount parameter: {amount}");
-        Debug.Log($"CardEffectResolver: Strength bonus: {strengthBonus}");
-        Debug.Log($"CardEffectResolver: Total damage calculation: {totalDamage}");
+        /* Debug.Log($"CardEffectResolver: Processing damage for card '{originalCardData.CardName}'"); */
+        /* Debug.Log($"CardEffectResolver: Input amount parameter: {amount}"); */
+        /* Debug.Log($"CardEffectResolver: Strength bonus: {strengthBonus}"); */
+        /* Debug.Log($"CardEffectResolver: Total damage calculation: {totalDamage}"); */
         
         if (originalCardData.HasEffects && originalCardData.Effects.Count > 0)
         {
             var firstEffect = originalCardData.Effects[0];
-            Debug.Log($"CardEffectResolver: First effect type: {firstEffect.effectType}, amount: {firstEffect.amount}");
+            /* Debug.Log($"CardEffectResolver: First effect type: {firstEffect.effectType}, amount: {firstEffect.amount}"); */
         }
         
         // Calculate damage based on card and status effects using the original CardData
@@ -607,7 +607,7 @@ public class CardEffectResolver : NetworkBehaviour
             finalDamage = totalDamage;
         }
         
-        Debug.Log($"CardEffectResolver: Final damage to apply: {finalDamage}");
+        /* Debug.Log($"CardEffectResolver: Final damage to apply: {finalDamage}"); */
         
         // Apply the damage through the life handler
         LifeHandler targetLifeHandler = targetEntity.GetComponent<LifeHandler>();
@@ -671,7 +671,7 @@ public class CardEffectResolver : NetworkBehaviour
     
     private void ProcessStatusEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, int potency, int duration)
     {
-        Debug.Log($"CardEffectResolver: ProcessStatusEffect called with effectName={effectName}, potency={potency}, duration={duration}");
+        /* Debug.Log($"CardEffectResolver: ProcessStatusEffect called with effectName={effectName}, potency={potency}, duration={duration}"); */
         
         EffectHandler targetEffectHandler = targetEntity.GetComponent<EffectHandler>();
         if (targetEffectHandler != null)
@@ -808,13 +808,13 @@ public class CardEffectResolver : NetworkBehaviour
     [ObserversRpc]
     private void RpcTriggerVisualEffects(int sourceEntityId, int targetEntityId, int cardDataId)
     {
-        Debug.Log($"CardEffectResolver: RpcTriggerVisualEffects called - Source: {sourceEntityId}, Target: {targetEntityId}, Card: {cardDataId}");
+        /* Debug.Log($"CardEffectResolver: RpcTriggerVisualEffects called - Source: {sourceEntityId}, Target: {targetEntityId}, Card: {cardDataId}"); */
         
         // Find entities
         NetworkEntity sourceEntity = FindEntityById(sourceEntityId);
         NetworkEntity targetEntity = FindEntityById(targetEntityId);
         
-        Debug.Log($"CardEffectResolver: Entity lookup results - Source: {(sourceEntity != null ? sourceEntity.EntityName.Value : "null")}, Target: {(targetEntity != null ? targetEntity.EntityName.Value : "null")}");
+        /* Debug.Log($"CardEffectResolver: Entity lookup results - Source: {(sourceEntity != null ? sourceEntity.EntityName.Value : "null")}, Target: {(targetEntity != null ? targetEntity.EntityName.Value : "null")}"); */
         
         if (sourceEntity == null || targetEntity == null)
         {
@@ -824,11 +824,11 @@ public class CardEffectResolver : NetworkBehaviour
         
         // Check if these entities are in the currently viewed fight
         bool shouldShow = ShouldShowVisualEffectsForEntities(sourceEntity, targetEntity);
-        Debug.Log($"CardEffectResolver: ShouldShowVisualEffectsForEntities result: {shouldShow}");
+        /* Debug.Log($"CardEffectResolver: ShouldShowVisualEffectsForEntities result: {shouldShow}"); */
         
         if (!shouldShow)
         {
-            Debug.Log($"CardEffectResolver: Skipping visual effects - entities not in currently viewed fight");
+            /* Debug.Log($"CardEffectResolver: Skipping visual effects - entities not in currently viewed fight"); */
             return;
         }
         
@@ -840,14 +840,14 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking handleCardPlay...");
+        /* Debug.Log($"CardEffectResolver: Found card data for {cardData.CardName}, checking handleCardPlay..."); */
         
         // Trigger visual effects
         if (handleCardPlay != null)
         {
-            Debug.Log($"CardEffectResolver: Calling TriggerVisualEffects for card {cardData.CardName} - Source: {sourceEntity.EntityName.Value}, Target: {targetEntity.EntityName.Value}");
+            /* Debug.Log($"CardEffectResolver: Calling TriggerVisualEffects for card {cardData.CardName} - Source: {sourceEntity.EntityName.Value}, Target: {targetEntity.EntityName.Value}"); */
             handleCardPlay.TriggerVisualEffects(sourceEntity, targetEntity, cardData);
-            Debug.Log($"CardEffectResolver: TriggerVisualEffects call completed for card {cardData.CardName}");
+            /* Debug.Log($"CardEffectResolver: TriggerVisualEffects call completed for card {cardData.CardName}"); */
         }
         else
         {
@@ -889,7 +889,7 @@ public class CardEffectResolver : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"CardEffectResolver: ServerResolveCardEffect for card {cardData.CardName} from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}");
+        /* Debug.Log($"CardEffectResolver: ServerResolveCardEffect for card {cardData.CardName} from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}"); */
         
         // Create target list
         List<NetworkEntity> targetEntities = new List<NetworkEntity> { targetEntity };

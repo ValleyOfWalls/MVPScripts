@@ -84,7 +84,7 @@ public class CardParenter : NetworkBehaviour
 
         // NOTE: Removed GiveOwnership call - the card should already have correct ownership from CardSpawner
         // The CardSpawner.SpawnCardInternal method already spawns with the correct owner
-        Debug.Log($"CardParenter: Card {cardObject.name} already has ownership - Owner ClientId: {cardNetObj.Owner?.ClientId ?? -1}");
+        /* Debug.Log($"CardParenter: Card {cardObject.name} already has ownership - Owner ClientId: {cardNetObj.Owner?.ClientId ?? -1}"); */
 
         // Parent to deck transform
         cardObject.transform.SetParent(parentTransform);
@@ -99,18 +99,18 @@ public class CardParenter : NetworkBehaviour
         }
         else
         {
-            Debug.Log($"CardParenter: Skipped scale reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+            /* Debug.Log($"CardParenter: Skipped scale reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
         }
 
         // NOTE: Removed ServerManager.Spawn call - the card should already be spawned by CardSpawner
         // The CardSpawner.SpawnCardInternal method already handles network spawning
-        Debug.Log($"CardParenter: Card {cardObject.name} already spawned - IsSpawned: {cardNetObj.IsSpawned}");
+        /* Debug.Log($"CardParenter: Card {cardObject.name} already spawned - IsSpawned: {cardNetObj.IsSpawned}"); */
 
         // Sync state to all clients
         int cardNetworkId = cardNetObj.ObjectId;
         int parentNetworkId = parentTransform.GetComponentInParent<NetworkObject>()?.ObjectId ?? -1;
         
-        Debug.Log($"Server: Setting up card with NetworkID {cardNetworkId}, parent transform NetworkID: {parentNetworkId}");
+        /* Debug.Log($"Server: Setting up card with NetworkID {cardNetworkId}, parent transform NetworkID: {parentNetworkId}"); */
         
         ObserversSyncState(cardNetworkId, parentNetworkId, cardObject.name, false);
     }
@@ -118,8 +118,8 @@ public class CardParenter : NetworkBehaviour
     [ObserversRpc]
     private void ObserversSyncState(int cardNetObjId, int parentNetObjId, string cardName, bool isActive)
     {
-        Debug.Log($"CardParenter.ObserversSyncState called on {(IsServerInitialized ? "Server" : "Client")} - Card NOB ID: {cardNetObjId}, Expected Parent Entity NOB ID: {parentNetObjId}, Card Name: {cardName}, SetActive: {isActive}");
-        Debug.Log($"CardParenter.ObserversSyncState - This CardParenter is on entity {gameObject.name} with NOB ID: {this.NetworkObject.ObjectId}");
+        /* Debug.Log($"CardParenter.ObserversSyncState called on {(IsServerInitialized ? "Server" : "Client")} - Card NOB ID: {cardNetObjId}, Expected Parent Entity NOB ID: {parentNetObjId}, Card Name: {cardName}, SetActive: {isActive}"); */
+        /* Debug.Log($"CardParenter.ObserversSyncState - This CardParenter is on entity {gameObject.name} with NOB ID: {this.NetworkObject.ObjectId}"); */
         
         NetworkObject cardNetObj = null;
         bool foundCard = false;
@@ -143,24 +143,24 @@ public class CardParenter : NetworkBehaviour
         cardObject.name = cardName;
 
         // FIRST VALIDATION: Ensure this CardParenter instance matches the intended parent entity
-        Debug.Log($"CardParenter.ObserversSyncState - VALIDATION 1: this.NetworkObject.ObjectId ({this.NetworkObject.ObjectId}) vs parentNetObjId ({parentNetObjId})");
+        /* Debug.Log($"CardParenter.ObserversSyncState - VALIDATION 1: this.NetworkObject.ObjectId ({this.NetworkObject.ObjectId}) vs parentNetObjId ({parentNetObjId})"); */
         if (this.NetworkObject.ObjectId != parentNetObjId)
         {
-            Debug.Log($"CardParenter.ObserversSyncState on {gameObject.name} (Entity NOB ID: {this.NetworkObject.ObjectId}): Received parentNetObjId {parentNetObjId} which does not match this entity. Card {cardName} belongs to a different entity - ignoring.");
+            /* Debug.Log($"CardParenter.ObserversSyncState on {gameObject.name} (Entity NOB ID: {this.NetworkObject.ObjectId}): Received parentNetObjId {parentNetObjId} which does not match this entity. Card {cardName} belongs to a different entity - ignoring."); */
             // Don't parent cards that belong to other entities
             return;
         }
 
         // SECOND VALIDATION: Check if the card actually belongs to this entity
         Card card = cardObject.GetComponent<Card>();
-        Debug.Log($"CardParenter.ObserversSyncState - VALIDATION 2: Card component found: {card != null}");
+        /* Debug.Log($"CardParenter.ObserversSyncState - VALIDATION 2: Card component found: {card != null}"); */
         if (card != null && card.OwnerEntity != null)
         {
             NetworkObject cardOwnerNetObj = card.OwnerEntity.GetComponent<NetworkObject>();
-            Debug.Log($"CardParenter.ObserversSyncState - VALIDATION 2: Card.OwnerEntity = {card.OwnerEntity.EntityName.Value}, cardOwnerNetObj.ObjectId = {cardOwnerNetObj?.ObjectId ?? -1}, this.NetworkObject.ObjectId = {this.NetworkObject.ObjectId}");
+            /* Debug.Log($"CardParenter.ObserversSyncState - VALIDATION 2: Card.OwnerEntity = {card.OwnerEntity.EntityName.Value}, cardOwnerNetObj.ObjectId = {cardOwnerNetObj?.ObjectId ?? -1}, this.NetworkObject.ObjectId = {this.NetworkObject.ObjectId}"); */
             if (cardOwnerNetObj != null && cardOwnerNetObj.ObjectId != this.NetworkObject.ObjectId)
             {
-                Debug.Log($"CardParenter.ObserversSyncState on {gameObject.name}: Card {cardName} belongs to entity {card.OwnerEntity.EntityName.Value} (NOB ID: {cardOwnerNetObj.ObjectId}), not this entity (NOB ID: {this.NetworkObject.ObjectId}). Ignoring.");
+                /* Debug.Log($"CardParenter.ObserversSyncState on {gameObject.name}: Card {cardName} belongs to entity {card.OwnerEntity.EntityName.Value} (NOB ID: {cardOwnerNetObj.ObjectId}), not this entity (NOB ID: {this.NetworkObject.ObjectId}). Ignoring."); */
                 return;
             }
         }
@@ -182,7 +182,7 @@ public class CardParenter : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"CardParenter on {gameObject.name} (Client): VALIDATION PASSED - Parenting card {cardName} (NOB ID: {cardNetObjId}) to deckTransform: {deckTransform.name} (Path: {GetTransformPath(deckTransform)})");
+        /* Debug.Log($"CardParenter on {gameObject.name} (Client): VALIDATION PASSED - Parenting card {cardName} (NOB ID: {cardNetObjId}) to deckTransform: {deckTransform.name} (Path: {GetTransformPath(deckTransform)})"); */
         cardObject.transform.SetParent(deckTransform, false); // worldPositionStays = false to correctly apply local transforms
         cardObject.transform.localPosition = Vector3.zero;
         cardObject.transform.localRotation = Quaternion.identity;
@@ -195,7 +195,7 @@ public class CardParenter : NetworkBehaviour
         }
         else
         {
-            Debug.Log($"CardParenter: Skipped scale reset for {cardName} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+            /* Debug.Log($"CardParenter: Skipped scale reset for {cardName} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
         }
         
         // Use EntityVisibilityManager for proper visibility filtering

@@ -101,7 +101,7 @@ namespace CharacterSelection
             
             if (showDebugLogs)
             {
-                Debug.Log($"ModelOutlineHover: Initialized outline system for {renderers.Length} renderers on {gameObject.name}");
+                /* Debug.Log($"ModelOutlineHover: Initialized outline system for {renderers.Length} renderers on {gameObject.name}"); */
             }
         }
         

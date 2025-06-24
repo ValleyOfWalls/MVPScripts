@@ -121,7 +121,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
             Debug.LogWarning($"NetworkEntityAnimator on {gameObject.name}: Defeated trigger '{defeatedAnimationTrigger}' not found in Animator Controller.");
         }
 
-        Debug.Log($"NetworkEntityAnimator: Animation setup validated for {networkEntity?.EntityName.Value}");
+        /* Debug.Log($"NetworkEntityAnimator: Animation setup validated for {networkEntity?.EntityName.Value}"); */
     }
 
     private bool HasAnimatorParameter(string paramName, AnimatorControllerParameterType paramType)
@@ -143,7 +143,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
     /// </summary>
     public void PlayAttackAnimation()
     {
-        Debug.Log($"NetworkEntityAnimator: PlayAttackAnimation called for {networkEntity?.EntityName.Value}");
+        /* Debug.Log($"NetworkEntityAnimator: PlayAttackAnimation called for {networkEntity?.EntityName.Value}"); */
         
         if (!isAnimationInitialized || modelAnimator == null) 
         {
@@ -167,7 +167,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
         
         if (HasAnimatorParameter(attackAnimationTrigger, AnimatorControllerParameterType.Trigger))
         {
-            Debug.Log($"NetworkEntityAnimator: Triggering attack animation '{attackAnimationTrigger}' for {networkEntity?.EntityName.Value}");
+            /* Debug.Log($"NetworkEntityAnimator: Triggering attack animation '{attackAnimationTrigger}' for {networkEntity?.EntityName.Value}"); */
             
             // Cancel any existing return-to-idle coroutine
             if (attackReturnToIdleCoroutine != null)
@@ -197,7 +197,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
 
     public void PlayTakeDamageAnimation()
     {
-        Debug.Log($"NetworkEntityAnimator: PlayTakeDamageAnimation called for {networkEntity?.EntityName.Value}");
+        /* Debug.Log($"NetworkEntityAnimator: PlayTakeDamageAnimation called for {networkEntity?.EntityName.Value}"); */
         
         if (!isAnimationInitialized || modelAnimator == null) 
         {
@@ -221,7 +221,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
         
         if (HasAnimatorParameter(takeDamageAnimationTrigger, AnimatorControllerParameterType.Trigger))
         {
-            Debug.Log($"NetworkEntityAnimator: Triggering take damage animation '{takeDamageAnimationTrigger}' for {networkEntity?.EntityName.Value}");
+            /* Debug.Log($"NetworkEntityAnimator: Triggering take damage animation '{takeDamageAnimationTrigger}' for {networkEntity?.EntityName.Value}"); */
             
             // Cancel any existing return-to-idle coroutine
             if (damageReturnToIdleCoroutine != null)
@@ -251,7 +251,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
 
     public void PlayIdleAnimation()
     {
-        Debug.Log($"NetworkEntityAnimator: PlayIdleAnimation called for {networkEntity?.EntityName.Value}");
+        /* Debug.Log($"NetworkEntityAnimator: PlayIdleAnimation called for {networkEntity?.EntityName.Value}"); */
         
         if (!isAnimationInitialized || modelAnimator == null) 
         {
@@ -272,7 +272,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
 
     public void PlayDefeatedAnimation()
     {
-        Debug.Log($"NetworkEntityAnimator: PlayDefeatedAnimation called for {networkEntity?.EntityName.Value}");
+        /* Debug.Log($"NetworkEntityAnimator: PlayDefeatedAnimation called for {networkEntity?.EntityName.Value}"); */
         
         if (!isAnimationInitialized || modelAnimator == null) 
         {
@@ -308,14 +308,14 @@ public class NetworkEntityAnimator : NetworkBehaviour
             stateName = clipInfos[0].clip.name;
         }
         
-        Debug.Log($"NetworkEntityAnimator [{context}]: Current clip: '{stateName}', State Hash: {stateInfo.fullPathHash}, NormalizedTime: {stateInfo.normalizedTime:F2}");
-        Debug.Log($"NetworkEntityAnimator [{context}]: Length: {stateInfo.length}s, Speed: {stateInfo.speed}, Loop: {stateInfo.loop}");
+        /* Debug.Log($"NetworkEntityAnimator [{context}]: Current clip: '{stateName}', State Hash: {stateInfo.fullPathHash}, NormalizedTime: {stateInfo.normalizedTime:F2}"); */
+        /* Debug.Log($"NetworkEntityAnimator [{context}]: Length: {stateInfo.length}s, Speed: {stateInfo.speed}, Loop: {stateInfo.loop}"); */
         
         // Check for transition issues
         if (modelAnimator.IsInTransition(0))
         {
             AnimatorTransitionInfo transitionInfo = modelAnimator.GetAnimatorTransitionInfo(0);
-            Debug.Log($"NetworkEntityAnimator [{context}]: In transition - Duration: {transitionInfo.duration}s, Progress: {transitionInfo.normalizedTime:F2}");
+            /* Debug.Log($"NetworkEntityAnimator [{context}]: In transition - Duration: {transitionInfo.duration}s, Progress: {transitionInfo.normalizedTime:F2}"); */
         }
         
         // Warn about potential issues
@@ -449,7 +449,7 @@ public class NetworkEntityAnimator : NetworkBehaviour
     [ContextMenu("Diagnose Animator Setup")]
     public void DiagnoseAnimatorSetup()
     {
-        Debug.Log($"=== Animator Diagnosis for {networkEntity?.EntityName.Value} ===");
+        /* Debug.Log($"=== Animator Diagnosis for {networkEntity?.EntityName.Value} ==="); */
         
         if (modelAnimator == null)
         {
@@ -463,16 +463,16 @@ public class NetworkEntityAnimator : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"Animator enabled: {modelAnimator.enabled}");
-        Debug.Log($"GameObject active: {modelAnimator.gameObject.activeInHierarchy}");
-        Debug.Log($"Controller: {modelAnimator.runtimeAnimatorController.name}");
-        Debug.Log($"Layer count: {modelAnimator.layerCount}");
+        /* Debug.Log($"Animator enabled: {modelAnimator.enabled}"); */
+        /* Debug.Log($"GameObject active: {modelAnimator.gameObject.activeInHierarchy}"); */
+        /* Debug.Log($"Controller: {modelAnimator.runtimeAnimatorController.name}"); */
+        /* Debug.Log($"Layer count: {modelAnimator.layerCount}"); */
         
         // Check parameters
-        Debug.Log($"Parameters ({modelAnimator.parameters.Length}):");
+        /* Debug.Log($"Parameters ({modelAnimator.parameters.Length}):"); */
         foreach (var param in modelAnimator.parameters)
         {
-            Debug.Log($"  - {param.name} ({param.type})");
+            /* Debug.Log($"  - {param.name} ({param.type})"); */
         }
         
         // Check specific triggers
@@ -481,21 +481,21 @@ public class NetworkEntityAnimator : NetworkBehaviour
         bool hasTakeDamage = HasAnimatorParameter(takeDamageAnimationTrigger, AnimatorControllerParameterType.Trigger);
         bool hasDefeated = HasAnimatorParameter(defeatedAnimationTrigger, AnimatorControllerParameterType.Trigger);
         
-        Debug.Log($"Required Triggers:");
-        Debug.Log($"  - {idleAnimationTrigger}: {hasIdle}");
-        Debug.Log($"  - {attackAnimationTrigger}: {hasAttack}");
-        Debug.Log($"  - {takeDamageAnimationTrigger}: {hasTakeDamage}");
-        Debug.Log($"  - {defeatedAnimationTrigger}: {hasDefeated}");
+        /* Debug.Log($"Required Triggers:"); */
+        /* Debug.Log($"  - {idleAnimationTrigger}: {hasIdle}"); */
+        /* Debug.Log($"  - {attackAnimationTrigger}: {hasAttack}"); */
+        /* Debug.Log($"  - {takeDamageAnimationTrigger}: {hasTakeDamage}"); */
+        /* Debug.Log($"  - {defeatedAnimationTrigger}: {hasDefeated}"); */
         
         // Current state info
         LogAnimatorState("Diagnosis");
         
-        Debug.Log($"=== SETUP INSTRUCTIONS ===");
-        Debug.Log($"1. Add FishNet's NetworkAnimator component to your 3D model GameObject");
-        Debug.Log($"2. Ensure your Animator Controller has proper transitions from Idle to Attack/TakeDamage states");
-        Debug.Log($"3. Verify transition conditions use the correct trigger names");
-        Debug.Log($"4. Test animations using the context menu options above");
-        Debug.Log($"========================");
+        /* Debug.Log($"=== SETUP INSTRUCTIONS ==="); */
+        /* Debug.Log($"1. Add FishNet's NetworkAnimator component to your 3D model GameObject"); */
+        /* Debug.Log($"2. Ensure your Animator Controller has proper transitions from Idle to Attack/TakeDamage states"); */
+        /* Debug.Log($"3. Verify transition conditions use the correct trigger names"); */
+        /* Debug.Log($"4. Test animations using the context menu options above"); */
+        /* Debug.Log($"========================"); */
     }
 
     #endregion

@@ -220,7 +220,7 @@ public class EntityVisibilityManager : MonoBehaviour
     
     private void UpdateVisibilityForCombat()
     {
-        Debug.Log("[ENTITY_VISIBILITY] UpdateVisibilityForCombat called");
+        /* Debug.Log("[ENTITY_VISIBILITY] UpdateVisibilityForCombat called"); */
         TryFindFightManager();
         if (fightManager == null)
         {
@@ -231,7 +231,7 @@ public class EntityVisibilityManager : MonoBehaviour
         
         // Get all fight assignments for debugging
         var allFights = fightManager.GetAllFightAssignments();
-        Debug.Log($"[ENTITY_VISIBILITY] Total fight assignments: {allFights.Count}");
+        /* Debug.Log($"[ENTITY_VISIBILITY] Total fight assignments: {allFights.Count}"); */
         
         // Don't update visibility if there are no fight assignments yet - FightManager will notify us when ready
         if (allFights.Count == 0)
@@ -271,7 +271,7 @@ public class EntityVisibilityManager : MonoBehaviour
             if (entity != null)
             {
                 visibleEntityIds.Add((uint)entity.ObjectId);
-                Debug.Log($"[ENTITY_VISIBILITY] Entity in viewed fight: {entity.EntityName.Value} (ID: {entity.ObjectId}, Type: {entity.EntityType})");
+                /* Debug.Log($"[ENTITY_VISIBILITY] Entity in viewed fight: {entity.EntityName.Value} (ID: {entity.ObjectId}, Type: {entity.EntityType})"); */
             }
         }
         
@@ -288,7 +288,7 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void OnFightManagerReady()
     {
-        Debug.Log("[ENTITY_VISIBILITY] OnFightManagerReady called - updating combat visibility");
+        /* Debug.Log("[ENTITY_VISIBILITY] OnFightManagerReady called - updating combat visibility"); */
         LogDebug("FightManager is ready - updating combat visibility");
         
         if (currentGameState == GameState.Combat)
@@ -303,7 +303,7 @@ public class EntityVisibilityManager : MonoBehaviour
     
     private void UpdateEntitiesVisibilityForCombat(HashSet<uint> visibleEntityIds)
     {
-        Debug.Log($"[ENTITY_VISIBILITY] UpdateEntitiesVisibilityForCombat - Processing {allEntities.Count} entities for visibility. Visible entities: {string.Join(", ", visibleEntityIds)}");
+        /* Debug.Log($"[ENTITY_VISIBILITY] UpdateEntitiesVisibilityForCombat - Processing {allEntities.Count} entities for visibility. Visible entities: {string.Join(", ", visibleEntityIds)}"); */
         
         // Get the local player to identify which pet is their own (should be hidden in favor of OwnPetView)
         NetworkEntity localPlayer = GetLocalPlayer();
@@ -382,7 +382,7 @@ public class EntityVisibilityManager : MonoBehaviour
                 if (statsUIController != null)
                 {
                     statsUIController.SetVisible(shouldBeVisible);
-                    Debug.Log($"[ENTITY_VISIBILITY] {entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}): -> {(shouldBeVisible ? "Visible" : "Hidden")} ({visibilityReason}) [via EntityStatsUIController]");
+                    /* Debug.Log($"[ENTITY_VISIBILITY] {entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}): -> {(shouldBeVisible ? "Visible" : "Hidden")} ({visibilityReason}) [via EntityStatsUIController]"); */
                     LogDebug($"{entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}): {(shouldBeVisible ? "Visible" : "Hidden")}");
                 }
                 else
@@ -397,7 +397,7 @@ public class EntityVisibilityManager : MonoBehaviour
                 if (entityUI != null)
                 {
                     entityUI.SetVisible(shouldBeVisible);
-                    Debug.Log($"[ENTITY_VISIBILITY] {entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}, IsOwner: {entity.IsOwner}, Position: {entity.transform.position}): -> {(shouldBeVisible ? "Visible" : "Hidden")} ({visibilityReason})");
+                    /* Debug.Log($"[ENTITY_VISIBILITY] {entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}, IsOwner: {entity.IsOwner}, Position: {entity.transform.position}): -> {(shouldBeVisible ? "Visible" : "Hidden")} ({visibilityReason})"); */
                     LogDebug($"{entity.EntityType} {entity.EntityName.Value} (ID: {entity.ObjectId}): {(shouldBeVisible ? "Visible" : "Hidden")}");
                 }
                 else
@@ -407,7 +407,7 @@ public class EntityVisibilityManager : MonoBehaviour
             }
         }
         
-        Debug.Log($"[ENTITY_VISIBILITY] UpdateEntitiesVisibilityForCombat completed for {allEntities.Count} entities");
+        /* Debug.Log($"[ENTITY_VISIBILITY] UpdateEntitiesVisibilityForCombat completed for {allEntities.Count} entities"); */
     }
     
     /// <summary>
@@ -885,7 +885,7 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void UpdateDraftPackVisibility()
     {
-        Debug.Log($"[EntityVisibilityManager] UpdateDraftPackVisibility called - Current game state: {currentGameState}");
+        /* Debug.Log($"[EntityVisibilityManager] UpdateDraftPackVisibility called - Current game state: {currentGameState}"); */
         LogDebug($"UpdateDraftPackVisibility called - Current game state: {currentGameState}");
         
         if (currentGameState != GameState.Draft)
@@ -904,7 +904,7 @@ public class EntityVisibilityManager : MonoBehaviour
             return;
         }
         
-        Debug.Log($"[EntityVisibilityManager] Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
+        /* Debug.Log($"[EntityVisibilityManager] Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})"); */
         LogDebug($"Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
         
         // Find the DraftManager to get the currently visible pack for the local player
@@ -918,14 +918,14 @@ public class EntityVisibilityManager : MonoBehaviour
         
         // Find all draft packs
         DraftPack[] allDraftPacks = FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
-        Debug.Log($"[EntityVisibilityManager] Found {allDraftPacks.Length} draft packs");
+        /* Debug.Log($"[EntityVisibilityManager] Found {allDraftPacks.Length} draft packs"); */
         LogDebug($"Found {allDraftPacks.Length} draft packs");
         
         foreach (DraftPack pack in allDraftPacks)
         {
             if (pack == null || pack.CardContainer == null) 
             {
-                Debug.Log($"[EntityVisibilityManager] Skipping null pack or pack with null CardContainer");
+                /* Debug.Log($"[EntityVisibilityManager] Skipping null pack or pack with null CardContainer"); */
                 LogDebug($"Skipping null pack or pack with null CardContainer");
                 continue;
             }
@@ -945,14 +945,14 @@ public class EntityVisibilityManager : MonoBehaviour
             // A pack should be visible if it's owned by the local player AND it's selectable (currently visible)
             bool shouldBeVisible = isOwnedByLocalPlayer && isSelectableByLocalPlayer;
             
-            Debug.Log($"[EntityVisibilityManager] Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value}, LocalPlayer ObjectId: {localPlayer.ObjectId})");
+            /* Debug.Log($"[EntityVisibilityManager] Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value}, LocalPlayer ObjectId: {localPlayer.ObjectId})"); */
             LogDebug($"Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value}, LocalPlayer ObjectId: {localPlayer.ObjectId})");
             
             // Update visibility for all cards in this pack
             UpdateDraftPackCardVisibility(pack, shouldBeVisible);
         }
         
-        Debug.Log($"[EntityVisibilityManager] Updated draft pack visibility for {allDraftPacks.Length} packs");
+        /* Debug.Log($"[EntityVisibilityManager] Updated draft pack visibility for {allDraftPacks.Length} packs"); */
         LogDebug($"Updated draft pack visibility for {allDraftPacks.Length} packs");
     }
     
@@ -1083,7 +1083,7 @@ public class EntityVisibilityManager : MonoBehaviour
         bool targetInViewedFight = viewedEntities.Any(e => e != null && (uint)e.ObjectId == targetEntityId);
         bool shouldShow = sourceInViewedFight && targetInViewedFight;
         
-        Debug.Log($"EntityVisibilityManager: Visual effects visibility check - Source entity (ID: {sourceEntityId}) in viewed fight: {sourceInViewedFight}, Target entity (ID: {targetEntityId}) in viewed fight: {targetInViewedFight}, Should show: {shouldShow}");
+        /* Debug.Log($"EntityVisibilityManager: Visual effects visibility check - Source entity (ID: {sourceEntityId}) in viewed fight: {sourceInViewedFight}, Target entity (ID: {targetEntityId}) in viewed fight: {targetInViewedFight}, Should show: {shouldShow}"); */
         
         return shouldShow;
     }
@@ -1161,17 +1161,17 @@ public class EntityVisibilityManager : MonoBehaviour
     [ContextMenu("Debug Entity Stats UI Relationships")]
     public void DebugEntityStatsUIRelationships()
     {
-        Debug.Log("=== ENTITY STATS UI RELATIONSHIPS DEBUG ===");
+        /* Debug.Log("=== ENTITY STATS UI RELATIONSHIPS DEBUG ==="); */
         
         // Find all stats UI entities
         var statsUIEntities = allEntities.Where(e => e != null && 
             (e.EntityType == EntityType.PlayerStatsUI || e.EntityType == EntityType.PetStatsUI)).ToList();
             
-        Debug.Log($"Found {statsUIEntities.Count} stats UI entities:");
+        /* Debug.Log($"Found {statsUIEntities.Count} stats UI entities:"); */
         
         foreach (var statsUI in statsUIEntities)
         {
-            Debug.Log($"Stats UI: {statsUI.EntityName.Value} (ID: {statsUI.ObjectId}, Type: {statsUI.EntityType})");
+            /* Debug.Log($"Stats UI: {statsUI.EntityName.Value} (ID: {statsUI.ObjectId}, Type: {statsUI.EntityType})"); */
             
             // Check if it has EntityStatsUIController
             var controller = statsUI.GetComponent<EntityStatsUIController>();
@@ -1182,12 +1182,12 @@ public class EntityVisibilityManager : MonoBehaviour
             }
             else
             {
-                Debug.Log($"  - Has EntityStatsUIController: NO");
+                /* Debug.Log($"  - Has EntityStatsUIController: NO"); */
             }
             
             // Check if it has NetworkEntityUI
             var entityUI = statsUI.GetComponent<NetworkEntityUI>();
-            Debug.Log($"  - Has NetworkEntityUI: {(entityUI != null ? "YES" : "NO")}");
+            /* Debug.Log($"  - Has NetworkEntityUI: {(entityUI != null ? "YES" : "NO")}"); */
             
             // Find which main entity owns this stats UI
             NetworkEntity ownerEntity = null;
@@ -1208,15 +1208,15 @@ public class EntityVisibilityManager : MonoBehaviour
             
             if (ownerEntity != null)
             {
-                Debug.Log($"  - Owner: {ownerEntity.EntityName.Value} (ID: {ownerEntity.ObjectId}, Type: {ownerEntity.EntityType})");
+                /* Debug.Log($"  - Owner: {ownerEntity.EntityName.Value} (ID: {ownerEntity.ObjectId}, Type: {ownerEntity.EntityType})"); */
             }
             else
             {
-                Debug.Log($"  - Owner: NOT FOUND");
+                /* Debug.Log($"  - Owner: NOT FOUND"); */
             }
         }
         
-        Debug.Log("=== END STATS UI DEBUG ===");
+        /* Debug.Log("=== END STATS UI DEBUG ==="); */
     }
     
     /// <summary>
@@ -1245,8 +1245,8 @@ public class EntityVisibilityManager : MonoBehaviour
             return;
         }
         
-        Debug.Log($"=== TESTING STATS UI VISIBILITY ===");
-        Debug.Log($"Viewed fight entities: {string.Join(", ", viewedFightEntities.Select(e => $"{e.EntityName.Value} (ID: {e.ObjectId})"))}");
+        /* Debug.Log($"=== TESTING STATS UI VISIBILITY ==="); */
+        /* Debug.Log($"Viewed fight entities: {string.Join(", ", viewedFightEntities.Select(e => $"{e.EntityName.Value} (ID: {e.ObjectId})"))}"); */
         
         // Find all stats UI entities and test their visibility
         var statsUIEntities = allEntities.Where(e => e != null && 
@@ -1258,10 +1258,10 @@ public class EntityVisibilityManager : MonoBehaviour
             var controller = statsUI.GetComponent<EntityStatsUIController>();
             bool actuallyVisible = controller != null ? controller.IsVisible() : false;
             
-            Debug.Log($"Stats UI: {statsUI.EntityName.Value} - Should be visible: {shouldBeVisible}, Actually visible: {actuallyVisible}");
+            /* Debug.Log($"Stats UI: {statsUI.EntityName.Value} - Should be visible: {shouldBeVisible}, Actually visible: {actuallyVisible}"); */
         }
         
-        Debug.Log("=== END VISIBILITY TEST ===");
+        /* Debug.Log("=== END VISIBILITY TEST ==="); */
     }
     
     /// <summary>

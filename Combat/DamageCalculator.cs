@@ -34,7 +34,7 @@ public class DamageCalculator : MonoBehaviour
             return 0;
         }
         
-        Debug.Log($"DamageCalculator: Calculating damage for card {cardData.CardName} from {source.EntityName.Value} to {target.EntityName.Value}");
+        /* Debug.Log($"DamageCalculator: Calculating damage for card {cardData.CardName} from {source.EntityName.Value} to {target.EntityName.Value}"); */
         
         // Calculate base damage from card's damage effects
         int baseDamage = 0;
@@ -57,23 +57,23 @@ public class DamageCalculator : MonoBehaviour
         
         int modifiedDamage = baseDamage;
         
-        Debug.Log($"DamageCalculator: Total base damage is {modifiedDamage}");
+        /* Debug.Log($"DamageCalculator: Total base damage is {modifiedDamage}"); */
         
         // Apply source modifiers (buffs/debuffs affecting outgoing damage)
         modifiedDamage = ApplySourceModifiers(source, modifiedDamage);
-        Debug.Log($"DamageCalculator: After source modifiers: {modifiedDamage}");
+        /* Debug.Log($"DamageCalculator: After source modifiers: {modifiedDamage}"); */
         
         // Apply target modifiers (buffs/debuffs affecting incoming damage)
         modifiedDamage = ApplyTargetModifiers(target, modifiedDamage);
-        Debug.Log($"DamageCalculator: After target modifiers: {modifiedDamage}");
+        /* Debug.Log($"DamageCalculator: After target modifiers: {modifiedDamage}"); */
         
         // Apply critical hit chance if applicable
         modifiedDamage = ApplyCriticalHitChance(source, target, modifiedDamage);
-        Debug.Log($"DamageCalculator: After critical hit check: {modifiedDamage}");
+        /* Debug.Log($"DamageCalculator: After critical hit check: {modifiedDamage}"); */
         
         // Round to nearest integer for final damage value
         int finalDamage = Mathf.RoundToInt(modifiedDamage);
-        Debug.Log($"DamageCalculator: Final damage: {finalDamage}");
+        /* Debug.Log($"DamageCalculator: Final damage: {finalDamage}"); */
         
         return finalDamage;
     }
@@ -99,7 +99,7 @@ public class DamageCalculator : MonoBehaviour
         if (damageMultiplier != 1.0f)
         {
             modifiedDamage = Mathf.RoundToInt(modifiedDamage * damageMultiplier);
-            Debug.Log($"DamageCalculator: Source damage multiplier {damageMultiplier}, damage is now {modifiedDamage}");
+            /* Debug.Log($"DamageCalculator: Source damage multiplier {damageMultiplier}, damage is now {modifiedDamage}"); */
         }
         
         // Check for Strength effect (positive damage bonus)
@@ -107,7 +107,7 @@ public class DamageCalculator : MonoBehaviour
         {
             int strengthValue = sourceEffects.GetEffectPotency("Strength");
             modifiedDamage += strengthValue;
-            Debug.Log($"DamageCalculator: Source has Strength {strengthValue}, damage increased to {modifiedDamage}");
+            /* Debug.Log($"DamageCalculator: Source has Strength {strengthValue}, damage increased to {modifiedDamage}"); */
         }
         
         return modifiedDamage;
@@ -134,7 +134,7 @@ public class DamageCalculator : MonoBehaviour
         {
             int armorValue = targetEffects.GetEffectPotency("Armor");
             modifiedDamage = Mathf.Max(1, modifiedDamage - armorValue); // Ensure at least 1 damage
-            Debug.Log($"DamageCalculator: Target has Armor {armorValue}, damage reduced to {modifiedDamage}");
+            /* Debug.Log($"DamageCalculator: Target has Armor {armorValue}, damage reduced to {modifiedDamage}"); */
         }
         
         return modifiedDamage;
@@ -165,7 +165,7 @@ public class DamageCalculator : MonoBehaviour
         if (Random.value < critChance)
         {
             float critDamage = damage * gameManager.CriticalHitModifier.Value;
-            Debug.Log($"DamageCalculator: Critical hit! Damage increased from {damage} to {critDamage}");
+            /* Debug.Log($"DamageCalculator: Critical hit! Damage increased from {damage} to {critDamage}"); */
             
             // TODO: Consider notifying UI for critical hit display effect
             

@@ -76,14 +76,14 @@ public class ShopSetup : NetworkBehaviour
             targetRect.offsetMin = sourceRect.offsetMin;
             targetRect.offsetMax = sourceRect.offsetMax;
             
-            Debug.Log($"ShopSetup: Mirrored RectTransform properties from {sourceContainer.name} to {targetContainer.name}");
-            Debug.Log($"  - Size Delta: {sourceRect.sizeDelta}");
-            Debug.Log($"  - Anchored Position: {sourceRect.anchoredPosition}");
-            Debug.Log($"  - Anchor Min/Max: {sourceRect.anchorMin}/{sourceRect.anchorMax}");
+            /* Debug.Log($"ShopSetup: Mirrored RectTransform properties from {sourceContainer.name} to {targetContainer.name}"); */
+            /* Debug.Log($"  - Size Delta: {sourceRect.sizeDelta}"); */
+            /* Debug.Log($"  - Anchored Position: {sourceRect.anchoredPosition}"); */
+            /* Debug.Log($"  - Anchor Min/Max: {sourceRect.anchorMin}/{sourceRect.anchorMax}"); */
         }
         else
         {
-            Debug.Log($"ShopSetup: Mirrored basic Transform properties from {sourceContainer.name} to {targetContainer.name}");
+            /* Debug.Log($"ShopSetup: Mirrored basic Transform properties from {sourceContainer.name} to {targetContainer.name}"); */
         }
     }
     
@@ -93,7 +93,7 @@ public class ShopSetup : NetworkBehaviour
     [ObserversRpc]
     private void ObserversMirrorCardContainerTransform(int shopNetObjId)
     {
-        Debug.Log($"ShopSetup.ObserversMirrorCardContainerTransform called on {(IsServerInitialized ? "Server" : "Client")} - Shop NOB ID: {shopNetObjId}");
+        /* Debug.Log($"ShopSetup.ObserversMirrorCardContainerTransform called on {(IsServerInitialized ? "Server" : "Client")} - Shop NOB ID: {shopNetObjId}"); */
         
         // Find the DraftCanvasManager if we don't have it
         if (draftCanvasManager == null)
@@ -166,11 +166,11 @@ public class ShopSetup : NetworkBehaviour
         int minCost = gameManager.ShopMinCardCost.Value;
         int maxCost = gameManager.ShopMaxCardCost.Value;
         
-        Debug.Log($"ShopSetup: Creating shop with {shopSize} cards, cost range: {minCost}-{maxCost}");
+        /* Debug.Log($"ShopSetup: Creating shop with {shopSize} cards, cost range: {minCost}-{maxCost}"); */
         
         CreateShopInstance(shopSize, minCost, maxCost);
         
-        Debug.Log($"ShopSetup: Successfully created shop");
+        /* Debug.Log($"ShopSetup: Successfully created shop"); */
     }
     
     /// <summary>
@@ -185,7 +185,7 @@ public class ShopSetup : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"ShopSetup: Creating shop instance");
+        /* Debug.Log($"ShopSetup: Creating shop instance"); */
         
         // Instantiate the shop
         GameObject shopObject = Instantiate(shopPackPrefab);
@@ -212,7 +212,7 @@ public class ShopSetup : NetworkBehaviour
         if (shopNetObj != null)
         {
             FishNet.InstanceFinder.ServerManager.Spawn(shopNetObj);
-            Debug.Log($"ShopSetup: Spawned shop on network");
+            /* Debug.Log($"ShopSetup: Spawned shop on network"); */
             
             // Sync the shop parenting to all clients
             if (shopContainer != null)
@@ -251,7 +251,7 @@ public class ShopSetup : NetworkBehaviour
         spawnedShop.OnCardPurchased += OnCardPurchased;
         spawnedShop.OnShopRefreshed += OnShopRefreshed;
         
-        Debug.Log($"ShopSetup: Successfully created and initialized shop");
+        /* Debug.Log($"ShopSetup: Successfully created and initialized shop"); */
     }
     
     /// <summary>
@@ -260,7 +260,7 @@ public class ShopSetup : NetworkBehaviour
     [Server]
     private void ClearExistingShop()
     {
-        Debug.Log($"ShopSetup: Clearing existing shop");
+        /* Debug.Log($"ShopSetup: Clearing existing shop"); */
         
         if (spawnedShop != null)
         {
@@ -322,7 +322,7 @@ public class ShopSetup : NetworkBehaviour
     [ObserversRpc]
     private void ObserversSyncShopParenting(int shopNetObjId, int setupNetObjId)
     {
-        Debug.Log($"ShopSetup.ObserversSyncShopParenting called on {(IsServerInitialized ? "Server" : "Client")} - Shop NOB ID: {shopNetObjId}, Setup NOB ID: {setupNetObjId}");
+        /* Debug.Log($"ShopSetup.ObserversSyncShopParenting called on {(IsServerInitialized ? "Server" : "Client")} - Shop NOB ID: {shopNetObjId}, Setup NOB ID: {setupNetObjId}"); */
         
         NetworkObject shopNetObj = null;
         bool foundShop = false;
@@ -358,7 +358,7 @@ public class ShopSetup : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"ShopSetup on {gameObject.name} (Client): Parenting shop (NOB ID: {shopNetObjId}) to shopContainer: {shopContainer.name}");
+        /* Debug.Log($"ShopSetup on {gameObject.name} (Client): Parenting shop (NOB ID: {shopNetObjId}) to shopContainer: {shopContainer.name}"); */
         shopObject.transform.SetParent(shopContainer, false); // worldPositionStays = false to correctly apply local transforms
         shopObject.transform.localPosition = Vector3.zero;
         shopObject.transform.localRotation = Quaternion.identity;
@@ -405,6 +405,6 @@ public class ShopSetup : NetworkBehaviour
             }
         }
         
-        Debug.Log($"ShopSetup: Refreshed transform mirroring for shop");
+        /* Debug.Log($"ShopSetup: Refreshed transform mirroring for shop"); */
     }
 } 

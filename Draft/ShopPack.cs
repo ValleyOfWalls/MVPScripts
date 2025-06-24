@@ -97,7 +97,7 @@ public class ShopPack : NetworkBehaviour
     [Server]
     public void InitializeShop(int shopSize, int minCardCost, int maxCardCost)
     {
-        Debug.Log($"ShopPack: Initializing shop with {shopSize} cards, cost range: {minCardCost}-{maxCardCost}");
+        /* Debug.Log($"ShopPack: Initializing shop with {shopSize} cards, cost range: {minCardCost}-{maxCardCost}"); */
         
         // Clear any existing cards
         ClearShop();
@@ -144,7 +144,7 @@ public class ShopPack : NetworkBehaviour
         // Generate a random cost within the specified range
         int cardCost = UnityEngine.Random.Range(minCost, maxCost + 1);
         
-        Debug.Log($"ShopPack: Creating shop card '{randomCardData.CardName}' with cost {cardCost}");
+        /* Debug.Log($"ShopPack: Creating shop card '{randomCardData.CardName}' with cost {cardCost}"); */
         
         // Spawn the card using CardSpawner.SpawnUnownedCard
         GameObject cardObject = cardSpawner.SpawnUnownedCard(randomCardData);
@@ -156,7 +156,7 @@ public class ShopPack : NetworkBehaviour
             {
                 card.SetPurchasable(true, cardCost);
                 
-                Debug.Log($"ShopPack: Created shop card '{card.CardName}' with cost {cardCost}");
+                /* Debug.Log($"ShopPack: Created shop card '{card.CardName}' with cost {cardCost}"); */
             }
             
             // Parent the card to our container
@@ -232,7 +232,7 @@ public class ShopPack : NetworkBehaviour
         // Notify all clients that this card is no longer available
         NotifyCardUnavailable(cardNetObj.ObjectId, card.CardName);
         
-        Debug.Log($"ShopPack: {buyer.EntityName.Value} purchased '{card.CardName}' for {cardCost} gold");
+        /* Debug.Log($"ShopPack: {buyer.EntityName.Value} purchased '{card.CardName}' for {cardCost} gold"); */
         
         // Fire purchase event
         OnCardPurchased?.Invoke(this, cardObject, buyer);
@@ -265,7 +265,7 @@ public class ShopPack : NetworkBehaviour
     [Server]
     private void ClearShop()
     {
-        Debug.Log($"ShopPack: Clearing shop of {cardNetworkIds.Count} cards");
+        /* Debug.Log($"ShopPack: Clearing shop of {cardNetworkIds.Count} cards"); */
         
         // Despawn all existing cards
         for (int i = spawnedCards.Count - 1; i >= 0; i--)
@@ -301,7 +301,7 @@ public class ShopPack : NetworkBehaviour
     /// </summary>
     private void OnCardListChanged(SyncListOperation operation, int index, int oldValue, int newValue, bool asServer)
     {
-        Debug.Log($"ShopPack: Card list changed - Operation: {operation}, Index: {index}, Value: {newValue}");
+        /* Debug.Log($"ShopPack: Card list changed - Operation: {operation}, Index: {index}, Value: {newValue}"); */
         
         // Rebuild local card list when changes occur
         if (!asServer)
@@ -439,7 +439,7 @@ public class ShopPack : NetworkBehaviour
         // Wait a frame to ensure NetworkObjects are properly spawned
         yield return null;
         
-        Debug.Log($"ShopPack: Syncing card parenting after delay - Card NOB ID: {cardNetObjId}, Shop NOB ID: {shopNetObjId}");
+        /* Debug.Log($"ShopPack: Syncing card parenting after delay - Card NOB ID: {cardNetObjId}, Shop NOB ID: {shopNetObjId}"); */
         
         NetworkObject cardNetObj = null;
         bool foundCard = false;
@@ -475,7 +475,7 @@ public class ShopPack : NetworkBehaviour
             yield break;
         }
         
-        Debug.Log($"ShopPack on {gameObject.name}: Parenting card {cardName} (NOB ID: {cardNetObjId}) to cardContainer: {cardContainer.name}");
+        /* Debug.Log($"ShopPack on {gameObject.name}: Parenting card {cardName} (NOB ID: {cardNetObjId}) to cardContainer: {cardContainer.name}"); */
         cardObject.transform.SetParent(cardContainer, false);
         
         // Don't set localPosition to Vector3.zero - let GridLayoutGroup handle positioning
@@ -493,7 +493,7 @@ public class ShopPack : NetworkBehaviour
     [ObserversRpc]
     private void NotifyCardUnavailable(int cardNetObjId, string cardName)
     {
-        Debug.Log($"ShopPack.NotifyCardUnavailable called on {(IsServerInitialized ? "Server" : "Client")} - Card NOB ID: {cardNetObjId}, Card Name: {cardName}");
+        /* Debug.Log($"ShopPack.NotifyCardUnavailable called on {(IsServerInitialized ? "Server" : "Client")} - Card NOB ID: {cardNetObjId}, Card Name: {cardName}"); */
         
         // Find the card object
         NetworkObject cardNetObj = null;
@@ -519,7 +519,7 @@ public class ShopPack : NetworkBehaviour
                 canvasManager.HideSelectionUIForCard(cardObject);
             }
             
-            Debug.Log($"ShopPack: Notified {canvasManagers.Length} canvas managers that card {cardName} is no longer available");
+            /* Debug.Log($"ShopPack: Notified {canvasManagers.Length} canvas managers that card {cardName} is no longer available"); */
         }
         else
         {

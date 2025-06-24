@@ -178,7 +178,7 @@ public class FightConclusionManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log("FightConclusionManager: Starting fight conclusion sequence");
+        /* Debug.Log("FightConclusionManager: Starting fight conclusion sequence"); */
 
         // Store the fight results
         fightResults = new Dictionary<NetworkEntity, bool>(completedFightResults);
@@ -218,12 +218,12 @@ public class FightConclusionManager : NetworkBehaviour
     private IEnumerator ConclusionTimingCoroutine()
     {
         float conclusionDuration = ConclusionDuration;
-        Debug.Log($"FightConclusionManager: Conclusion timing started - will last {conclusionDuration} seconds");
+        /* Debug.Log($"FightConclusionManager: Conclusion timing started - will last {conclusionDuration} seconds"); */
 
         // Wait for the conclusion duration (including all animations)
         yield return new WaitForSeconds(conclusionDuration);
 
-        Debug.Log("FightConclusionManager: Conclusion duration complete, transitioning to draft");
+        /* Debug.Log("FightConclusionManager: Conclusion duration complete, transitioning to draft"); */
 
         // End the conclusion
         isConclusionActive.Value = false;
@@ -246,7 +246,7 @@ public class FightConclusionManager : NetworkBehaviour
     [Server]
     private void StartDraftPhase()
     {
-        Debug.Log("FightConclusionManager: Starting draft phase");
+        /* Debug.Log("FightConclusionManager: Starting draft phase"); */
 
         if (draftSetup != null)
         {
@@ -268,7 +268,7 @@ public class FightConclusionManager : NetworkBehaviour
     /// </summary>
     private void HandleConclusionStart()
     {
-        Debug.Log("FightConclusionManager: Handling conclusion start on client");
+        /* Debug.Log("FightConclusionManager: Handling conclusion start on client"); */
 
         if (fightConclusionUIManager != null)
         {
@@ -286,7 +286,7 @@ public class FightConclusionManager : NetworkBehaviour
     /// </summary>
     private void HandleConclusionEnd()
     {
-        Debug.Log("FightConclusionManager: Handling conclusion end on client");
+        /* Debug.Log("FightConclusionManager: Handling conclusion end on client"); */
 
         if (fightConclusionUIManager != null)
         {
@@ -301,7 +301,7 @@ public class FightConclusionManager : NetworkBehaviour
 
     private void OnConclusionActiveChanged(bool prev, bool next, bool asServer)
     {
-        Debug.Log($"FightConclusionManager: Conclusion active changed from {prev} to {next} on {(asServer ? "Server" : "Client")}");
+        /* Debug.Log($"FightConclusionManager: Conclusion active changed from {prev} to {next} on {(asServer ? "Server" : "Client")}"); */
 
         if (!asServer) // Client-side handling
         {
@@ -345,7 +345,7 @@ public class FightConclusionManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcShowFightConclusion(FightResultData[] fightResultsArray)
     {
-        Debug.Log("FightConclusionManager: RpcShowFightConclusion called on client");
+        /* Debug.Log("FightConclusionManager: RpcShowFightConclusion called on client"); */
         
         // Convert the array back to a dictionary with NetworkEntity references
         fightResults.Clear();
@@ -362,7 +362,7 @@ public class FightConclusionManager : NetworkBehaviour
             }
         }
         
-        Debug.Log($"FightConclusionManager: Received {fightResults.Count} fight results on client");
+        /* Debug.Log($"FightConclusionManager: Received {fightResults.Count} fight results on client"); */
         
         // The actual showing is handled by the SyncVar change callback
         // This RPC provides the necessary fight results data for the UI
@@ -370,7 +370,7 @@ public class FightConclusionManager : NetworkBehaviour
         // Ensure combat canvas remains available during conclusion for proper transition
         if (combatCanvasManager != null)
         {
-            Debug.Log("FightConclusionManager: Combat canvas will be available during conclusion display");
+            /* Debug.Log("FightConclusionManager: Combat canvas will be available during conclusion display"); */
         }
     }
 
@@ -380,7 +380,7 @@ public class FightConclusionManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcHideFightConclusion()
     {
-        Debug.Log("FightConclusionManager: RpcHideFightConclusion called on client");
+        /* Debug.Log("FightConclusionManager: RpcHideFightConclusion called on client"); */
         
         // The actual hiding should already be handled by the animation system
         // This RPC is mainly for cleanup or fallback scenarios
@@ -446,7 +446,7 @@ public class FightConclusionManager : NetworkBehaviour
     {
         if (isConclusionActive.Value)
         {
-            Debug.Log("FightConclusionManager: Force ending conclusion");
+            /* Debug.Log("FightConclusionManager: Force ending conclusion"); */
             
             // Stop the timing coroutine
             if (conclusionTimingCoroutine != null)

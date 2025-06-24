@@ -80,17 +80,17 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         
         if (handLayoutManager != null)
         {
-            Debug.Log($"[CardDragDrop] Found HandLayoutManager in parent hierarchy: {handLayoutManager.gameObject.name}");
+            /* Debug.Log($"[CardDragDrop] Found HandLayoutManager in parent hierarchy: {handLayoutManager.gameObject.name}"); */
         }
         else
         {
-            Debug.Log($"[CardDragDrop] No HandLayoutManager found in parent hierarchy for {gameObject.name}");
+            /* Debug.Log($"[CardDragDrop] No HandLayoutManager found in parent hierarchy for {gameObject.name}"); */
             // Debug parent hierarchy
             Transform current = transform.parent;
             int depth = 0;
             while (current != null && depth < 5)
             {
-                Debug.Log($"[CardDragDrop] Parent {depth}: {current.name} (components: {string.Join(", ", current.GetComponents<Component>().Select(c => c.GetType().Name))})");
+                /* Debug.Log($"[CardDragDrop] Parent {depth}: {current.name} (components: {string.Join(", ", current.GetComponents<Component>().Select(c => c.GetType().Name))})"); */
                 current = current.parent;
                 depth++;
             }
@@ -98,11 +98,11 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         
         if (cardAnimator != null)
         {
-            Debug.Log($"[CardDragDrop] Found CardAnimator on {gameObject.name}");
+            /* Debug.Log($"[CardDragDrop] Found CardAnimator on {gameObject.name}"); */
         }
         else
         {
-            Debug.Log($"[CardDragDrop] No CardAnimator found on {gameObject.name} - animations will be skipped");
+            /* Debug.Log($"[CardDragDrop] No CardAnimator found on {gameObject.name} - animations will be skipped"); */
         }
         
         ValidateComponents();
@@ -498,12 +498,12 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         // Notify HandLayoutManager that drag is starting
         if (handLayoutManager != null)
         {
-            Debug.Log($"[CardDragDrop] Notifying HandLayoutManager on {handLayoutManager.gameObject.name} that drag started for {gameObject.name}");
+            /* Debug.Log($"[CardDragDrop] Notifying HandLayoutManager on {handLayoutManager.gameObject.name} that drag started for {gameObject.name}"); */
             handLayoutManager.OnCardDragStart(rectTransform);
         }
         else
         {
-            Debug.Log($"[CardDragDrop] HandLayoutManager is null - cannot notify drag start for {gameObject.name}");
+            /* Debug.Log($"[CardDragDrop] HandLayoutManager is null - cannot notify drag start for {gameObject.name}"); */
         }
         
         // Notify SourceAndTargetIdentifier that drag is starting to keep damage previews visible
@@ -899,7 +899,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                     // Trigger successful play animation if available
                     if (cardAnimator != null)
                     {
-                        Debug.Log($"[CardDragDrop] Starting successful play animation for {gameObject.name}");
+                        /* Debug.Log($"[CardDragDrop] Starting successful play animation for {gameObject.name}"); */
                         cardAnimator.OnPlaySuccess();
                     }
                     
@@ -949,7 +949,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 bool hasLayoutData = handLayoutManager.GetCardLayoutData(rectTransform, out handReturnPosition, out handReturnScale, out handReturnRotation);
                 if (hasLayoutData)
                 {
-                    Debug.Log($"[CardDragDrop] Got complete layout data from HandLayoutManager - pos: {handReturnPosition}, scale: {handReturnScale}, rot: {handReturnRotation.eulerAngles}");
+                    /* Debug.Log($"[CardDragDrop] Got complete layout data from HandLayoutManager - pos: {handReturnPosition}, scale: {handReturnScale}, rot: {handReturnRotation.eulerAngles}"); */
                 }
                 else
                 {
@@ -957,7 +957,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                     handReturnPosition = Vector3.zero;
                     handReturnScale = Vector3.one;
                     handReturnRotation = Quaternion.identity;
-                    Debug.Log($"[CardDragDrop] Failed to get layout data, using fallback values");
+                    /* Debug.Log($"[CardDragDrop] Failed to get layout data, using fallback values"); */
                 }
             }
             else
@@ -966,20 +966,20 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 handReturnPosition = Vector3.zero;
                 handReturnScale = Vector3.one;
                 handReturnRotation = Quaternion.identity;
-                Debug.Log($"[CardDragDrop] No HandLayoutManager, using fallback values");
+                /* Debug.Log($"[CardDragDrop] No HandLayoutManager, using fallback values"); */
             }
             
-            Debug.Log($"[CardDragDrop] Starting failed play animation for {gameObject.name} from {currentLocalPosition} to complete layout");
+            /* Debug.Log($"[CardDragDrop] Starting failed play animation for {gameObject.name} from {currentLocalPosition} to complete layout"); */
             
             // Use CardAnimator for failed play animation - pass complete layout data
             cardAnimator.AnimatePlayFailedComplete(currentLocalPosition, handReturnPosition, handReturnScale, handReturnRotation, () => {
                 // Animation complete - ensure card state is reset
-                Debug.Log($"[CardDragDrop] Failed play animation complete for {gameObject.name}");
+                /* Debug.Log($"[CardDragDrop] Failed play animation complete for {gameObject.name}"); */
                 
                 // Double-check layout update happened and force cleanup
                 if (handLayoutManager != null)
                 {
-                    Debug.Log($"[CardDragDrop] Final layout update triggered after animation complete");
+                    /* Debug.Log($"[CardDragDrop] Final layout update triggered after animation complete"); */
                     handLayoutManager.UpdateLayout();
                 }
                 
@@ -1013,12 +1013,12 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         // Notify HandLayoutManager first, then reset visual state
         if (handLayoutManager != null)
         {
-            Debug.Log($"[CardDragDrop] Notifying HandLayoutManager on {handLayoutManager.gameObject.name} that drag ended for {gameObject.name}, cardWasPlayed: {cardWasPlayed}");
+            /* Debug.Log($"[CardDragDrop] Notifying HandLayoutManager on {handLayoutManager.gameObject.name} that drag ended for {gameObject.name}, cardWasPlayed: {cardWasPlayed}"); */
             handLayoutManager.OnCardDragEnd(rectTransform, cardWasPlayed);
         }
         else
         {
-            Debug.Log($"[CardDragDrop] HandLayoutManager is null - cannot notify drag end for {gameObject.name}");
+            /* Debug.Log($"[CardDragDrop] HandLayoutManager is null - cannot notify drag end for {gameObject.name}"); */
         }
         
         // Reset visual state after layout handling
@@ -1183,7 +1183,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 {
                     DestroyImmediate(cardCanvas);
                 }
-                Debug.Log($"[CardDragDrop] Removed temporary canvas component for {gameObject.name}");
+                /* Debug.Log($"[CardDragDrop] Removed temporary canvas component for {gameObject.name}"); */
             }
         }
         
@@ -1194,7 +1194,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             canvasGroup.blocksRaycasts = true;
         }
         
-        Debug.Log($"[CardDragDrop] Drag state cleanup complete for {gameObject.name}");
+        /* Debug.Log($"[CardDragDrop] Drag state cleanup complete for {gameObject.name}"); */
     }
 
     private void LogDebug(string message)

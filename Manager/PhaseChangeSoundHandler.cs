@@ -231,7 +231,7 @@ public class PhaseChangeSoundHandler : MonoBehaviour
         }
         else if (debugMode)
         {
-            Debug.Log($"PhaseChangeSoundHandler: No start sound configured for phase {phase}");
+            /* Debug.Log($"PhaseChangeSoundHandler: No start sound configured for phase {phase}"); */
         }
     }
     
@@ -270,7 +270,7 @@ public class PhaseChangeSoundHandler : MonoBehaviour
         }
         else if (debugMode)
         {
-            Debug.Log($"PhaseChangeSoundHandler: No end sound configured for phase {phase}");
+            /* Debug.Log($"PhaseChangeSoundHandler: No end sound configured for phase {phase}"); */
         }
     }
     

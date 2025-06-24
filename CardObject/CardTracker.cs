@@ -229,7 +229,7 @@ public class CardTracker : NetworkBehaviour
             CardUpgradeManager.Instance.OnCardPlayed(card, ownerEntity);
         }
 
-        Debug.Log($"CardTracker: Card {card?.CardData?.CardName} played {_timesPlayedThisFight.Value} times this fight");
+        /* Debug.Log($"CardTracker: Card {card?.CardData?.CardName} played {_timesPlayedThisFight.Value} times this fight"); */
     }
 
     /// <summary>

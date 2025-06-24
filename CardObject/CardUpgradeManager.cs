@@ -95,7 +95,7 @@ public class CardUpgradeManager : NetworkBehaviour
         var availableUpgrades = GetUpgradeableCards();
         
         int validCount = availableUpgrades.Count;
-        Debug.Log($"CardUpgradeManager: Loaded {validCount} cards with upgrade conditions");
+        /* Debug.Log($"CardUpgradeManager: Loaded {validCount} cards with upgrade conditions"); */
         
         // Log each upgradeable card for debugging
         foreach (var card in availableUpgrades)
@@ -756,7 +756,7 @@ public class CardUpgradeManager : NetworkBehaviour
         // Trigger event
         OnCardUpgraded?.Invoke(upgrade.baseCardData, upgrade.upgradedCardData, upgrade.entity);
         
-        Debug.Log($"CardUpgradeManager: Executed upgrade {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName} for {upgrade.entity.EntityName.Value}");
+        /* Debug.Log($"CardUpgradeManager: Executed upgrade {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName} for {upgrade.entity.EntityName.Value}"); */
     }
     
     /// <summary>
@@ -797,7 +797,7 @@ public class CardUpgradeManager : NetworkBehaviour
             bool replaced = entityDeck.ReplaceSingleCard(baseCardId, upgradedCardId);
             if (replaced)
             {
-                Debug.Log($"CardUpgradeManager: Replaced one copy of {upgrade.baseCardData.CardName} with {upgrade.upgradedCardData.CardName}");
+                /* Debug.Log($"CardUpgradeManager: Replaced one copy of {upgrade.baseCardData.CardName} with {upgrade.upgradedCardData.CardName}"); */
             }
             else
             {

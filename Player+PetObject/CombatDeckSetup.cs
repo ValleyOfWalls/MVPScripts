@@ -65,7 +65,7 @@ public class CombatDeckSetup : NetworkBehaviour
             handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
             if (handEntity != null)
             {
-                Debug.Log($"CombatDeckSetup on {gameObject.name}: Found hand entity: {handEntity.EntityName.Value}");
+                /* Debug.Log($"CombatDeckSetup on {gameObject.name}: Found hand entity: {handEntity.EntityName.Value}"); */
                 
                 // Get deck transform from the hand entity
                 var handEntityUI = handEntity.GetComponent<NetworkEntityUI>();
@@ -74,7 +74,7 @@ public class CombatDeckSetup : NetworkBehaviour
                     deckTransform = handEntityUI.GetDeckTransform();
                     if (deckTransform != null)
                     {
-                        Debug.Log($"CombatDeckSetup on {gameObject.name}: Using hand entity deck transform. Path: {GetTransformPath(deckTransform)}");
+                        /* Debug.Log($"CombatDeckSetup on {gameObject.name}: Using hand entity deck transform. Path: {GetTransformPath(deckTransform)}"); */
                         return;
                     }
                 }
@@ -198,13 +198,13 @@ public class CombatDeckSetup : NetworkBehaviour
         }
 
         // Log detailed information about this entity
-        Debug.Log($"=== CombatDeckSetup.SpawnDeckCards for {gameObject.name} ===");
-        Debug.Log($"Entity Type: {ownerEntity?.EntityType}");
-        Debug.Log($"Entity Name: {ownerEntity?.EntityName.Value}");
-        Debug.Log($"Entity IsOwner: {ownerEntity?.IsOwner}");
-        Debug.Log($"Entity Owner ClientId: {ownerEntity?.Owner?.ClientId ?? -1}");
-        Debug.Log($"Hand Entity: {handEntity?.EntityName.Value}");
-        Debug.Log($"=== Starting card spawn process ===");
+        /* Debug.Log($"=== CombatDeckSetup.SpawnDeckCards for {gameObject.name} ==="); */
+        /* Debug.Log($"Entity Type: {ownerEntity?.EntityType}"); */
+        /* Debug.Log($"Entity Name: {ownerEntity?.EntityName.Value}"); */
+        /* Debug.Log($"Entity IsOwner: {ownerEntity?.IsOwner}"); */
+        /* Debug.Log($"Entity Owner ClientId: {ownerEntity?.Owner?.ClientId ?? -1}"); */
+        /* Debug.Log($"Hand Entity: {handEntity?.EntityName.Value}"); */
+        /* Debug.Log($"=== Starting card spawn process ==="); */
 
         // Get all card IDs from the entity's deck
         List<int> cardIds = entityDeck.GetAllCardIds();
@@ -219,7 +219,7 @@ public class CombatDeckSetup : NetworkBehaviour
             yield break;
         }
 
-        Debug.Log($"Spawning {cardIds.Count} cards for {gameObject.name}");
+        /* Debug.Log($"Spawning {cardIds.Count} cards for {gameObject.name}"); */
 
         // Spawn each card
         foreach (int cardId in cardIds)
@@ -231,7 +231,7 @@ public class CombatDeckSetup : NetworkBehaviour
                 continue;
             }
 
-            Debug.Log($"About to spawn card {cardData.CardName} for entity {ownerEntity?.EntityName.Value} (ClientId: {ownerEntity?.Owner?.ClientId ?? -1})");
+            /* Debug.Log($"About to spawn card {cardData.CardName} for entity {ownerEntity?.EntityName.Value} (ClientId: {ownerEntity?.Owner?.ClientId ?? -1})"); */
 
             // Spawn the card using the Hand entity's CardSpawner
             GameObject cardObject = handCardSpawner.SpawnCard(cardData);
@@ -244,12 +244,12 @@ public class CombatDeckSetup : NetworkBehaviour
             // Log the card's ownership after spawning
             NetworkObject cardNetObj = cardObject.GetComponent<NetworkObject>();
             Card card = cardObject.GetComponent<Card>();
-            Debug.Log($"Card {cardData.CardName} spawned - NetworkObject Owner ClientId: {cardNetObj?.Owner?.ClientId ?? -1}");
-            Debug.Log($"Card {cardData.CardName} - Card.OwnerEntity: {(card?.OwnerEntity != null ? card.OwnerEntity.EntityName.Value : "null")}");
-            Debug.Log($"Card {cardData.CardName} - Card.OwnerEntity ClientId: {(card?.OwnerEntity?.Owner?.ClientId ?? -1)}");
+            /* Debug.Log($"Card {cardData.CardName} spawned - NetworkObject Owner ClientId: {cardNetObj?.Owner?.ClientId ?? -1}"); */
+            /* Debug.Log($"Card {cardData.CardName} - Card.OwnerEntity: {(card?.OwnerEntity != null ? card.OwnerEntity.EntityName.Value : "null")}"); */
+            /* Debug.Log($"Card {cardData.CardName} - Card.OwnerEntity ClientId: {(card?.OwnerEntity?.Owner?.ClientId ?? -1)}"); */
 
             // Log the parent transform before setup
-            Debug.Log($"Setting up card {cardObject.name} with parent transform {deckTransform.name} (exists: {deckTransform != null}, path: {GetTransformPath(deckTransform)})");
+            /* Debug.Log($"Setting up card {cardObject.name} with parent transform {deckTransform.name} (exists: {deckTransform != null}, path: {GetTransformPath(deckTransform)})"); */
 
             // Set up card ownership and parenting using the Hand entity's CardParenter
             handCardParenter.SetupCard(cardObject, ownerEntity, deckTransform);
@@ -264,7 +264,7 @@ public class CombatDeckSetup : NetworkBehaviour
             yield return new WaitForSeconds(0.05f);
         }
 
-        Debug.Log($"Finished setting up combat deck for {gameObject.name} with {cardIds.Count} cards");
+        /* Debug.Log($"Finished setting up combat deck for {gameObject.name} with {cardIds.Count} cards"); */
         
         // Mark setup as complete
         if (IsServerInitialized)

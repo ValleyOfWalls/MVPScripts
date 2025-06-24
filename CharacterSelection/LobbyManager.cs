@@ -118,11 +118,11 @@ public class LobbyManager : NetworkBehaviour
             else
             {
                 // For subsequent players, notify the existing character selection manager
-                Debug.Log($"LobbyManager: Player {connectedPlayers.Count} joined, notifying character selection manager");
+                /* Debug.Log($"LobbyManager: Player {connectedPlayers.Count} joined, notifying character selection manager"); */
                 NotifyCharacterSelectionManagerOfNewPlayer(conn, playerName);
             }
             
-            Debug.Log($"LobbyManager: Added player {playerName} (total players: {connectedPlayers.Count})");
+            /* Debug.Log($"LobbyManager: Added player {playerName} (total players: {connectedPlayers.Count})"); */
         }
     }
     

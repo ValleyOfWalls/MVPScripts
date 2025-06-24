@@ -327,7 +327,7 @@ public class TextStyleHandler : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"TextStyleHandler: Found {validText.Count} TextMeshProUGUI components in scene");
+            /* Debug.Log($"TextStyleHandler: Found {validText.Count} TextMeshProUGUI components in scene"); */
         }
         
         UpdateStatistics();
@@ -471,7 +471,7 @@ public class TextStyleHandler : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"TextStyleHandler: Applied styles to {appliedCount} text components, skipped {skippedCount}");
+            /* Debug.Log($"TextStyleHandler: Applied styles to {appliedCount} text components, skipped {skippedCount}"); */
         }
         
         UpdateStatistics();
@@ -560,7 +560,7 @@ public class TextStyleHandler : MonoBehaviour
             
             if (debugMode)
             {
-                Debug.Log($"TextStyleHandler: Applied ReliableMenuText (style {entry.reliableMenuTextStyleIndex}) to '{entry.objectPath}'");
+                /* Debug.Log($"TextStyleHandler: Applied ReliableMenuText (style {entry.reliableMenuTextStyleIndex}) to '{entry.objectPath}'"); */
             }
         }
         
@@ -570,7 +570,7 @@ public class TextStyleHandler : MonoBehaviour
         {
             string styleInfo = entry.useGradient ? "Gradient" : entry.textColor.ToString();
             string reliableInfo = entry.addReliableMenuText ? " + ReliableMenuText" : "";
-            Debug.Log($"TextStyleHandler: Applied style to '{entry.objectPath}' - Size: {entry.fontSize}, Style: {styleInfo}{reliableInfo}");
+            /* Debug.Log($"TextStyleHandler: Applied style to '{entry.objectPath}' - Size: {entry.fontSize}, Style: {styleInfo}{reliableInfo}"); */
         }
         
         return true;

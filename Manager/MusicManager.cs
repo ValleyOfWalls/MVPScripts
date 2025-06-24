@@ -163,7 +163,7 @@ public class MusicManager : MonoBehaviour
         // Set primary as current active source
         currentActiveSource = primaryAudioSource;
         
-        Debug.Log("MusicManager: Initialized dual audio source setup for crossfading");
+        /* Debug.Log("MusicManager: Initialized dual audio source setup for crossfading"); */
     }
     
     /// <summary>
@@ -321,7 +321,7 @@ public class MusicManager : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"MusicManager: Playing track {track.name} with fade in");
+            /* Debug.Log($"MusicManager: Playing track {track.name} with fade in"); */
         }
     }
     
@@ -394,7 +394,7 @@ public class MusicManager : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"MusicManager: Crossfaded to track {newTrack.name}");
+            /* Debug.Log($"MusicManager: Crossfaded to track {newTrack.name}"); */
         }
         
         crossfadeCoroutine = null;

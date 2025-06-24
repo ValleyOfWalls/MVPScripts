@@ -447,11 +447,11 @@ public class PetCombatAI : NetworkBehaviour
         switch (targetType)
         {
             case CardTargetType.Self:
-                Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Self - returning pet entity");
+                /* Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Self - returning pet entity"); */
                 return petEntity;
                 
             case CardTargetType.Opponent:
-                Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Opponent - returning opponent entity");
+                /* Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Opponent - returning opponent entity"); */
                 return opponentEntity;
                 
             case CardTargetType.Ally:
@@ -459,7 +459,7 @@ public class PetCombatAI : NetworkBehaviour
                 NetworkEntity ally = GetAllyForEntity(petEntity);
                 if (ally != null)
                 {
-                    Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Ally - returning {ally.EntityName.Value}");
+                    /* Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Ally - returning {ally.EntityName.Value}"); */
                     return ally;
                 }
                 else
@@ -475,7 +475,7 @@ public class PetCombatAI : NetworkBehaviour
                 {
                     int randomIndex = Random.Range(0, allTargets.Count);
                     NetworkEntity randomTarget = allTargets[randomIndex];
-                    Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Random - selected {randomTarget.EntityName.Value}");
+                    /* Debug.Log($"PetCombatAI: Card {cardData.CardName} targets Random - selected {randomTarget.EntityName.Value}"); */
                     return randomTarget;
                 }
                 break;

@@ -209,7 +209,7 @@ public class PetData : MonoBehaviour
         // Update our discovered collider reference
         discoveredCollider = newBoxCollider;
         
-        Debug.Log($"PetData: Created and fitted new BoxCollider for {petName}");
+        /* Debug.Log($"PetData: Created and fitted new BoxCollider for {petName}"); */
     }
     
     /// <summary>

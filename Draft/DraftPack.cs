@@ -108,7 +108,7 @@ public class DraftPack : NetworkBehaviour
         OriginalOwnerPlayerId.Value = originalOwner.ObjectId;
         CurrentOwnerPlayerId.Value = originalOwner.ObjectId;
         
-        Debug.Log($"DraftPack: Initializing pack with {size} cards for player {originalOwner.EntityName.Value}");
+        /* Debug.Log($"DraftPack: Initializing pack with {size} cards for player {originalOwner.EntityName.Value}"); */
         
         // Get random cards from the database (allowing duplicates for draft)
         List<CardData> randomCards = CardDatabase.Instance.GetRandomCardsWithDuplicates(size);
@@ -151,11 +151,11 @@ public class DraftPack : NetworkBehaviour
                 // Sync the parenting to all clients
                 ObserversSyncCardParenting(cardNetObj.ObjectId, this.NetworkObject.ObjectId, cardData.CardName);
                 
-                Debug.Log($"DraftPack: Added card {cardData.CardName} (ID: {cardNetObj.ObjectId}) to pack");
+                /* Debug.Log($"DraftPack: Added card {cardData.CardName} (ID: {cardNetObj.ObjectId}) to pack"); */
             }
         }
         
-        Debug.Log($"DraftPack: Pack initialization complete with {cardObjectIds.Count} cards");
+        /* Debug.Log($"DraftPack: Pack initialization complete with {cardObjectIds.Count} cards"); */
     }
     
     /// <summary>
@@ -182,12 +182,12 @@ public class DraftPack : NetworkBehaviour
         
         if (removed)
         {
-            Debug.Log($"DraftPack: Removed card {cardId} from pack. Remaining cards: {cardObjectIds.Count}");
+            /* Debug.Log($"DraftPack: Removed card {cardId} from pack. Remaining cards: {cardObjectIds.Count}"); */
             
             // Check if pack is now empty
             if (cardObjectIds.Count == 0)
             {
-                Debug.Log("DraftPack: Pack is now empty");
+                /* Debug.Log("DraftPack: Pack is now empty"); */
                 OnPackEmpty?.Invoke(this);
             }
         }
@@ -265,12 +265,12 @@ public class DraftPack : NetworkBehaviour
     
     private void OnCurrentOwnerChanged(int prev, int next, bool asServer)
     {
-        Debug.Log($"DraftPack {gameObject.name}: OnCurrentOwnerChanged called - prev: {prev}, next: {next}, asServer: {asServer}");
+        /* Debug.Log($"DraftPack {gameObject.name}: OnCurrentOwnerChanged called - prev: {prev}, next: {next}, asServer: {asServer}"); */
         
         NetworkEntity newOwner = FindEntityById(next);
         if (newOwner != null)
         {
-            Debug.Log($"DraftPack {gameObject.name}: Found new owner entity: {newOwner.EntityName.Value} (ID: {newOwner.ObjectId})");
+            /* Debug.Log($"DraftPack {gameObject.name}: Found new owner entity: {newOwner.EntityName.Value} (ID: {newOwner.ObjectId})"); */
             OnOwnerChanged?.Invoke(this, newOwner);
             
             // Update draft pack visibility when ownership changes
@@ -311,7 +311,7 @@ public class DraftPack : NetworkBehaviour
                     // Only reparent if the card is not already a child of cardContainer
                     if (cardObject.transform.parent != cardContainer)
                     {
-                        Debug.Log($"DraftPack: Reparenting card {cardObject.name} to cardContainer on client");
+                        /* Debug.Log($"DraftPack: Reparenting card {cardObject.name} to cardContainer on client"); */
                         cardObject.transform.SetParent(cardContainer, false);
                         // Don't override positions - let the layout system handle positioning
                         
@@ -331,7 +331,7 @@ public class DraftPack : NetworkBehaviour
             }
         }
         
-        Debug.Log($"DraftPack: Updated local card list. Found {localCards.Count} cards");
+        /* Debug.Log($"DraftPack: Updated local card list. Found {localCards.Count} cards"); */
     }
     
     private void UpdateInspectorCardList()
@@ -423,17 +423,17 @@ public class DraftPack : NetworkBehaviour
             yield break;
         }
 
-        Debug.Log($"DraftPack on {gameObject.name} (Client): Parenting card {cardName} (NOB ID: {cardNetObjId}) to cardContainer: {cardContainer.name}");
+        /* Debug.Log($"DraftPack on {gameObject.name} (Client): Parenting card {cardName} (NOB ID: {cardNetObjId}) to cardContainer: {cardContainer.name}"); */
         cardObject.transform.SetParent(cardContainer, false); // worldPositionStays = false to correctly apply local transforms
         // Don't override positions - let the layout system handle positioning
         
-        Debug.Log($"DraftPack: Card {cardName} parented successfully, now checking visibility (CurrentOwnerPlayerId: {CurrentOwnerPlayerId.Value})");
+        /* Debug.Log($"DraftPack: Card {cardName} parented successfully, now checking visibility (CurrentOwnerPlayerId: {CurrentOwnerPlayerId.Value})"); */
         
         // Use EntityVisibilityManager to determine proper visibility for draft pack cards
         EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
         if (entityVisibilityManager != null)
         {
-            Debug.Log($"DraftPack: EntityVisibilityManager found, calling UpdateDraftPackVisibilityForPack for pack {gameObject.name}");
+            /* Debug.Log($"DraftPack: EntityVisibilityManager found, calling UpdateDraftPackVisibilityForPack for pack {gameObject.name}"); */
             // Let the EntityVisibilityManager handle visibility based on pack ownership
             entityVisibilityManager.UpdateDraftPackVisibilityForPack(this);
         }

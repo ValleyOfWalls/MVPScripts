@@ -41,7 +41,7 @@ public class LifeHandler : NetworkBehaviour
         
         if (amount <= 0) return; // Ignore non-positive damage
         
-        Debug.Log($"LifeHandler: {entity.EntityName.Value} taking {amount} damage from {(source != null ? source.EntityName.Value : "unknown")}");
+        /* Debug.Log($"LifeHandler: {entity.EntityName.Value} taking {amount} damage from {(source != null ? source.EntityName.Value : "unknown")}"); */
         
         // Process shield absorption first
         EffectHandler effectHandler = GetComponent<EffectHandler>();
@@ -89,7 +89,7 @@ public class LifeHandler : NetworkBehaviour
         
         if (amount <= 0) return; // Ignore non-positive healing
         
-        Debug.Log($"LifeHandler: {entity.EntityName.Value} receiving {amount} healing from {(source != null ? source.EntityName.Value : "unknown")}");
+        /* Debug.Log($"LifeHandler: {entity.EntityName.Value} receiving {amount} healing from {(source != null ? source.EntityName.Value : "unknown")}"); */
         
         // Cap healing to prevent exceeding max health
         int cappedHealing = Mathf.Min(amount, entity.MaxHealth.Value - entity.CurrentHealth.Value);
@@ -109,7 +109,7 @@ public class LifeHandler : NetworkBehaviour
     [Server]
     private void HandleDeath(NetworkEntity killer)
     {
-        Debug.Log($"LifeHandler: {entity.EntityName.Value} has died");
+        /* Debug.Log($"LifeHandler: {entity.EntityName.Value} has died"); */
         
         // Ensure health is exactly 0
         entity.CurrentHealth.Value = 0;

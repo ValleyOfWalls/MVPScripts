@@ -31,7 +31,7 @@ public class TravelerSpawner : MonoBehaviour
     
     private void Start()
     {
-        Debug.Log("TravelerSpawner: Starting initialization...");
+        /* Debug.Log("TravelerSpawner: Starting initialization..."); */
         
         // Check if prefab is assigned
         if (travelerPrefab == null)
@@ -40,7 +40,7 @@ public class TravelerSpawner : MonoBehaviour
             return;
         }
         
-        Debug.Log($"TravelerSpawner: Creating pool of {maxTravelers} travelers...");
+        /* Debug.Log($"TravelerSpawner: Creating pool of {maxTravelers} travelers..."); */
         
         // Pre-populate the pool
         for (int i = 0; i < maxTravelers; i++)
@@ -57,17 +57,17 @@ public class TravelerSpawner : MonoBehaviour
             travelerPool.Enqueue(traveler);
         }
         
-        Debug.Log($"TravelerSpawner: Pool created with {travelerPool.Count} travelers. Starting spawn coroutine...");
+        /* Debug.Log($"TravelerSpawner: Pool created with {travelerPool.Count} travelers. Starting spawn coroutine..."); */
         StartCoroutine(SpawnTravelers());
     }
     
     private IEnumerator SpawnTravelers()
     {
-        Debug.Log("TravelerSpawner: Spawn coroutine started!");
+        /* Debug.Log("TravelerSpawner: Spawn coroutine started!"); */
         
         while (true)
         {
-            Debug.Log($"TravelerSpawner: Active: {activeTravelers.Count}, Pool: {travelerPool.Count}, Max: {maxTravelers}");
+            /* Debug.Log($"TravelerSpawner: Active: {activeTravelers.Count}, Pool: {travelerPool.Count}, Max: {maxTravelers}"); */
             
             if (activeTravelers.Count < maxTravelers && travelerPool.Count > 0)
             {
@@ -85,7 +85,7 @@ public class TravelerSpawner : MonoBehaviour
     
     private void SpawnTraveler()
     {
-        Debug.Log("TravelerSpawner: SpawnTraveler() called");
+        /* Debug.Log("TravelerSpawner: SpawnTraveler() called"); */
         
         if (travelerPool.Count == 0)
         {
@@ -94,7 +94,7 @@ public class TravelerSpawner : MonoBehaviour
         }
         
         GameObject traveler = travelerPool.Dequeue();
-        Debug.Log($"TravelerSpawner: Got traveler from pool: {traveler.name}");
+        /* Debug.Log($"TravelerSpawner: Got traveler from pool: {traveler.name}"); */
         
         // Random spawn position within spawn volume
         Vector3 spawnPos = GetRandomPositionInVolume(spawnCenter, spawnSize);
@@ -156,7 +156,7 @@ public class TravelerSpawner : MonoBehaviour
         traveler.transform.rotation = Quaternion.Euler(0, Random.Range(0, 360), 0);
         
         // Activate the traveler first so NavMeshAgent becomes active
-        Debug.Log($"TravelerSpawner: Activating traveler at position {traveler.transform.position}");
+        /* Debug.Log($"TravelerSpawner: Activating traveler at position {traveler.transform.position}"); */
         traveler.SetActive(true);
         activeTravelers.Add(traveler);
         
@@ -172,12 +172,12 @@ public class TravelerSpawner : MonoBehaviour
             return;
         }
         
-        Debug.Log($"TravelerSpawner: Found TravelerMover component. Initializing traveler with destination {destination} and speed {speed}");
+        /* Debug.Log($"TravelerSpawner: Found TravelerMover component. Initializing traveler with destination {destination} and speed {speed}"); */
         
         try
         {
             mover.Initialize(destination, speed, this);
-            Debug.Log($"TravelerSpawner: Initialize completed successfully!");
+            /* Debug.Log($"TravelerSpawner: Initialize completed successfully!"); */
         }
         catch (System.Exception e)
         {
@@ -185,7 +185,7 @@ public class TravelerSpawner : MonoBehaviour
             Debug.LogError($"TravelerSpawner: Stack trace: {e.StackTrace}");
         }
         
-        Debug.Log($"TravelerSpawner: Traveler spawned successfully! Active count: {activeTravelers.Count}");
+        /* Debug.Log($"TravelerSpawner: Traveler spawned successfully! Active count: {activeTravelers.Count}"); */
     }
     
     private Vector3 GetRandomPositionInVolume(Vector3 center, Vector3 size)
@@ -201,7 +201,7 @@ public class TravelerSpawner : MonoBehaviour
     
     public void ReturnTravelerToPool(GameObject traveler)
     {
-        Debug.Log($"TravelerSpawner: ReturnTravelerToPool called for {traveler.name}");
+        /* Debug.Log($"TravelerSpawner: ReturnTravelerToPool called for {traveler.name}"); */
         
         if (activeTravelers.Contains(traveler))
         {

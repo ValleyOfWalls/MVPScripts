@@ -388,7 +388,7 @@ public static class CardGenerator
     /// </summary>
     public static void CreateWarriorDeck()
     {
-        Debug.Log("Creating Warrior Deck...");
+        /* Debug.Log("Creating Warrior Deck..."); */
         
         // Create all cards for the deck
         var cards = new List<(CardData baseCard, CardData upgradedCard)>();
@@ -460,7 +460,7 @@ public static class CardGenerator
     /// </summary>
     public static void CreateMysticDeck()
     {
-        Debug.Log("Creating Mystic Deck...");
+        /* Debug.Log("Creating Mystic Deck..."); */
         
         var cards = new List<(CardData baseCard, CardData upgradedCard)>();
         
@@ -534,7 +534,7 @@ public static class CardGenerator
     /// </summary>
     public static void CreateAssassinDeck()
     {
-        Debug.Log("Creating Assassin Deck...");
+        /* Debug.Log("Creating Assassin Deck..."); */
         
         var cards = new List<(CardData baseCard, CardData upgradedCard)>();
         
@@ -609,7 +609,7 @@ public static class CardGenerator
     /// </summary>
     public static void CreateElementalDeck()
     {
-        Debug.Log("Creating Elemental Pet Deck...");
+        /* Debug.Log("Creating Elemental Pet Deck..."); */
         
         var cards = new List<(CardData baseCard, CardData upgradedCard)>();
         
@@ -681,7 +681,7 @@ public static class CardGenerator
     /// </summary>
     public static void CreateBeastDeck()
     {
-        Debug.Log("Creating Beast Pet Deck...");
+        /* Debug.Log("Creating Beast Pet Deck..."); */
         
         var cards = new List<(CardData baseCard, CardData upgradedCard)>();
         
@@ -749,7 +749,7 @@ public static class CardGenerator
     /// </summary>
     public static void CreateSpiritDeck()
     {
-        Debug.Log("Creating Spirit Pet Deck...");
+        /* Debug.Log("Creating Spirit Pet Deck..."); */
         
         var cards = new List<(CardData baseCard, CardData upgradedCard)>();
         
@@ -875,7 +875,7 @@ public static class CardGenerator
         // Save the deck
         SaveDeckAsAsset(deck, deckFolderPath);
         
-        Debug.Log($"Created deck '{deckName}' with {deckCards.Count} cards");
+        /* Debug.Log($"Created deck '{deckName}' with {deckCards.Count} cards"); */
     }
 
     /// <summary>
@@ -1050,7 +1050,7 @@ public static class CardGenerator
             Debug.LogWarning($"CardGenerator: Card '{card.CardName}' has no effects - this might be intentional for utility cards");
         }
 
-        Debug.Log($"CardGenerator: Card '{card.CardName}' validation passed!");
+        /* Debug.Log($"CardGenerator: Card '{card.CardName}' validation passed!"); */
         return true;
     }
 
@@ -1065,12 +1065,12 @@ public static class CardGenerator
             return;
         }
 
-        Debug.Log($"═══ CARD INFO: {card.CardName} ═══");
-        Debug.Log($"ID: {card.CardId}");
-        Debug.Log($"Cost: {card.EnergyCost} energy");
-        Debug.Log($"Type: {card.CardType}");
-        Debug.Log($"Category: {card.CardCategory}");
-        Debug.Log($"Description: {card.Description}");
+        /* Debug.Log($"═══ CARD INFO: {card.CardName} ═══"); */
+        /* Debug.Log($"ID: {card.CardId}"); */
+        /* Debug.Log($"Cost: {card.EnergyCost} energy"); */
+        /* Debug.Log($"Type: {card.CardType}"); */
+        /* Debug.Log($"Category: {card.CardCategory}"); */
+        /* Debug.Log($"Description: {card.Description}"); */
         
         if (card.HasEffects)
         {
@@ -1078,17 +1078,17 @@ public static class CardGenerator
             for (int i = 0; i < card.Effects.Count; i++)
             {
                 var effect = card.Effects[i];
-                Debug.Log($"  {i+1}. {effect.effectType} - Amount: {effect.amount}, Target: {effect.targetType}, Duration: {effect.duration}");
+                /* Debug.Log($"  {i+1}. {effect.effectType} - Amount: {effect.amount}, Target: {effect.targetType}, Duration: {effect.duration}"); */
             }
         }
 
         if (card.CanUpgrade)
         {
-            Debug.Log($"Upgrade: {card.UpgradeConditionType} {card.UpgradeComparisonType} {card.UpgradeRequiredValue}");
-            Debug.Log($"Upgrades to: {(card.UpgradedVersion != null ? card.UpgradedVersion.CardName : "None")}");
+            /* Debug.Log($"Upgrade: {card.UpgradeConditionType} {card.UpgradeComparisonType} {card.UpgradeRequiredValue}"); */
+            /* Debug.Log($"Upgrades to: {(card.UpgradedVersion != null ? card.UpgradedVersion.CardName : "None")}"); */
         }
 
-        Debug.Log("═══════════════════════════════════════");
+        /* Debug.Log("═══════════════════════════════════════"); */
     }
 
     /// <summary>
@@ -1274,6 +1274,6 @@ public class CardGeneratorWindow : EditorWindow
         if (upgradedCard != null)
             message += $" -> {upgradedCard.CardName}";
         
-        Debug.Log(message);
+        /* Debug.Log(message); */
     }
 } 

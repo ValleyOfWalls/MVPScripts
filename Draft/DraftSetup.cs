@@ -104,45 +104,45 @@ public class DraftSetup : NetworkBehaviour
     private IEnumerator SetupDraftPhase()
     {
         // Step 1: Hide all network entities for draft transition
-        Debug.Log("DraftSetup: Step 1 - Hiding all network entities for draft transition");
+        /* Debug.Log("DraftSetup: Step 1 - Hiding all network entities for draft transition"); */
         HideAllNetworkEntities();
         
         // Step 2: Disable combat canvas
-        Debug.Log("DraftSetup: Step 2 - Disabling combat canvas");
+        /* Debug.Log("DraftSetup: Step 2 - Disabling combat canvas"); */
         DisableCombatCanvas();
         
         // Small delay to ensure combat canvas is properly disabled
         yield return new WaitForSeconds(0.1f);
         
         // Step 3: Update game phase to Draft
-        Debug.Log("DraftSetup: Step 3 - Updating game phase to Draft");
+        /* Debug.Log("DraftSetup: Step 3 - Updating game phase to Draft"); */
         UpdateGamePhase();
         
         // Step 4: Enable draft canvas
-        Debug.Log("DraftSetup: Step 4 - Enabling draft canvas");
+        /* Debug.Log("DraftSetup: Step 4 - Enabling draft canvas"); */
         EnableDraftCanvas();
         
         // Small delay to ensure UI is ready
         yield return new WaitForSeconds(0.2f);
         
         // Step 5: Create shop
-        Debug.Log("DraftSetup: Step 5 - Creating shop");
+        /* Debug.Log("DraftSetup: Step 5 - Creating shop"); */
         CreateShop();
         
         // Step 6: Create draft packs
-        Debug.Log("DraftSetup: Step 6 - Creating draft packs");
+        /* Debug.Log("DraftSetup: Step 6 - Creating draft packs"); */
         CreateDraftPacks();
         
         // Step 7: Assign draft packs to players
-        Debug.Log("DraftSetup: Step 7 - Assigning draft packs to players");
+        /* Debug.Log("DraftSetup: Step 7 - Assigning draft packs to players"); */
         AssignDraftPacks();
         
         // Step 8: Start the draft manager
-        Debug.Log("DraftSetup: Step 8 - Starting draft manager");
+        /* Debug.Log("DraftSetup: Step 8 - Starting draft manager"); */
         StartDraftManager();
         
         isSetupComplete = true;
-        Debug.Log("DraftSetup: Draft phase initialization complete!");
+        /* Debug.Log("DraftSetup: Draft phase initialization complete!"); */
     }
     
     /// <summary>
@@ -277,7 +277,7 @@ public class DraftSetup : NetworkBehaviour
     [Server]
     public void ResetSetup()
     {
-        Debug.Log("DraftSetup: Resetting setup state for new draft round");
+        /* Debug.Log("DraftSetup: Resetting setup state for new draft round"); */
         
         // Reset the setup completion flag
         isSetupComplete = false;
@@ -297,9 +297,9 @@ public class DraftSetup : NetworkBehaviour
         // Clear existing draft packs from previous round
         if (draftPackSetup != null)
         {
-            Debug.Log("DraftSetup: Clearing existing draft packs from previous round");
+            /* Debug.Log("DraftSetup: Clearing existing draft packs from previous round"); */
             // Note: We can't call ClearExistingPacks directly as it's private, but CreateDraftPacks will handle this
-            Debug.Log("DraftSetup: DraftPackSetup found, existing packs will be cleared when new packs are created");
+            /* Debug.Log("DraftSetup: DraftPackSetup found, existing packs will be cleared when new packs are created"); */
         }
         else
         {
@@ -339,7 +339,7 @@ public class DraftSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcEnableDraftCanvas()
     {
-        Debug.Log("DraftSetup: RpcEnableDraftCanvas called");
+        /* Debug.Log("DraftSetup: RpcEnableDraftCanvas called"); */
         
         // First, directly enable the draft canvas GameObject (like CombatSetup does)
         if (draftCanvas != null)
@@ -359,7 +359,7 @@ public class DraftSetup : NetworkBehaviour
     private IEnumerator SetupDraftUIWithDelay()
     {
         yield return null; // Wait one frame
-        Debug.Log("DraftSetup: Setting up draft UI after delay");
+        /* Debug.Log("DraftSetup: Setting up draft UI after delay"); */
         
         // Ensure canvas is enabled before setting up UI
         if (draftCanvas != null && !draftCanvas.activeSelf)
@@ -378,20 +378,20 @@ public class DraftSetup : NetworkBehaviour
         if (draftCanvasManager != null)
         {
             draftCanvasManager.EnableDraftCanvas();
-            Debug.Log("DraftSetup: Draft canvas enabled via DraftCanvasManager on client");
+            /* Debug.Log("DraftSetup: Draft canvas enabled via DraftCanvasManager on client"); */
         }
         else
         {
             Debug.LogWarning("DraftSetup: DraftCanvasManager not found on client, but canvas should be enabled directly");
         }
         
-        Debug.Log("DraftSetup: Draft UI setup completed");
+        /* Debug.Log("DraftSetup: Draft UI setup completed"); */
     }
     
     [ObserversRpc]
     private void RpcHideAllNetworkEntities()
     {
-        Debug.Log("DraftSetup: RpcHideAllNetworkEntities called on client");
+        /* Debug.Log("DraftSetup: RpcHideAllNetworkEntities called on client"); */
         
         if (entityVisibilityManager != null)
         {
@@ -422,7 +422,7 @@ public class DraftSetup : NetworkBehaviour
         // Wait a small additional delay
         yield return new WaitForSeconds(0.1f);
         
-        Debug.Log("DraftSetup: Updating draft pack visibility after delay");
+        /* Debug.Log("DraftSetup: Updating draft pack visibility after delay"); */
         
         if (entityVisibilityManager != null)
         {
@@ -439,7 +439,7 @@ public class DraftSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcUpdateGamePhase()
     {
-        Debug.Log("DraftSetup: RpcUpdateGamePhase called on client");
+        /* Debug.Log("DraftSetup: RpcUpdateGamePhase called on client"); */
         
         if (gamePhaseManager != null)
         {

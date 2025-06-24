@@ -30,7 +30,7 @@ public class TravelerMover : MonoBehaviour
     
     public void Initialize(Vector3 targetDestination, float moveSpeed, TravelerSpawner travelerSpawner)
     {
-        Debug.Log($"TravelerMover: Initialize called for {gameObject.name}");
+        /* Debug.Log($"TravelerMover: Initialize called for {gameObject.name}"); */
         
         destination = targetDestination;
         speed = moveSpeed;
@@ -38,11 +38,11 @@ public class TravelerMover : MonoBehaviour
         isMoving = true;
         destinationSet = false; // Reset flag
         
-        Debug.Log($"TravelerMover: useNavMesh={useNavMesh}, navAgent null={navAgent == null}");
+        /* Debug.Log($"TravelerMover: useNavMesh={useNavMesh}, navAgent null={navAgent == null}"); */
         
         if (useNavMesh && navAgent != null)
         {
-            Debug.Log("TravelerMover: Configuring NavMesh agent...");
+            /* Debug.Log("TravelerMover: Configuring NavMesh agent..."); */
             
             // Configure NavMesh agent
             navAgent.enabled = true;
@@ -52,7 +52,7 @@ public class TravelerMover : MonoBehaviour
             navAgent.stoppingDistance = 0.1f;
             navAgent.autoBraking = true;
             
-            Debug.Log($"TravelerMover: Agent configured. Starting SetDestinationNextFrame coroutine...");
+            /* Debug.Log($"TravelerMover: Agent configured. Starting SetDestinationNextFrame coroutine..."); */
             // Wait a frame to ensure agent is properly placed, then set destination
             StartCoroutine(SetDestinationNextFrame(destination));
         }
@@ -131,7 +131,7 @@ public class TravelerMover : MonoBehaviour
             return;
         }
         
-        Debug.Log($"TravelerMover: Checking destination for {gameObject.name} - pathPending={navAgent.pathPending}, remainingDistance={navAgent.remainingDistance}, hasPath={navAgent.hasPath}, velocity={navAgent.velocity.sqrMagnitude}");
+        /* Debug.Log($"TravelerMover: Checking destination for {gameObject.name} - pathPending={navAgent.pathPending}, remainingDistance={navAgent.remainingDistance}, hasPath={navAgent.hasPath}, velocity={navAgent.velocity.sqrMagnitude}"); */
         
         // Check if NavMesh agent has reached its destination
         if (!navAgent.pathPending && navAgent.remainingDistance < 0.5f)
@@ -161,12 +161,12 @@ public class TravelerMover : MonoBehaviour
     
     private IEnumerator SetDestinationNextFrame(Vector3 targetDestination)
     {
-        Debug.Log($"TravelerMover: SetDestinationNextFrame started for {gameObject.name}");
+        /* Debug.Log($"TravelerMover: SetDestinationNextFrame started for {gameObject.name}"); */
         
         // Wait a frame to ensure NavMeshAgent is fully initialized
         yield return null;
         
-        Debug.Log($"TravelerMover: After wait - agent enabled={navAgent.enabled}, isOnNavMesh={navAgent.isOnNavMesh}");
+        /* Debug.Log($"TravelerMover: After wait - agent enabled={navAgent.enabled}, isOnNavMesh={navAgent.isOnNavMesh}"); */
         
         if (navAgent != null && navAgent.enabled && navAgent.isOnNavMesh)
         {

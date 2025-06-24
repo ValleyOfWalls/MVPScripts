@@ -73,7 +73,7 @@ public class CardDatabase : MonoBehaviour
                     {
                         field.SetValue(data, nextId);
                         cardId = nextId;
-                        Debug.Log($"CardDatabase: Assigned ID {cardId} to card '{data.CardName}'");
+                        /* Debug.Log($"CardDatabase: Assigned ID {cardId} to card '{data.CardName}'"); */
                     }
                     else
                     {
@@ -94,10 +94,10 @@ public class CardDatabase : MonoBehaviour
             }
         }
         
-        Debug.Log($"CardDatabase initialized with {cardDataById.Count} total cards:");
-        Debug.Log($"  - Starter Cards: {starterCardsList.Count}");
-        Debug.Log($"  - Draftable Cards: {draftableCardsList.Count}");
-        Debug.Log($"  - Upgraded Cards: {upgradedCardsList.Count}");
+        /* Debug.Log($"CardDatabase initialized with {cardDataById.Count} total cards:"); */
+        /* Debug.Log($"  - Starter Cards: {starterCardsList.Count}"); */
+        /* Debug.Log($"  - Draftable Cards: {draftableCardsList.Count}"); */
+        /* Debug.Log($"  - Upgraded Cards: {upgradedCardsList.Count}"); */
 
         if (cardDataById.Count == 0)
         {
@@ -314,10 +314,10 @@ public class CardDatabase : MonoBehaviour
         EditorUtility.SetDirty(this);
         
         int totalFound = foundStarterCards.Count + foundDraftableCards.Count + foundUpgradedCards.Count;
-        Debug.Log($"CardDatabase: Auto-populated with {totalFound} total CardData assets:");
-        Debug.Log($"  - Starter Cards: {foundStarterCards.Count}");
-        Debug.Log($"  - Draftable Cards: {foundDraftableCards.Count}");
-        Debug.Log($"  - Upgraded Cards: {foundUpgradedCards.Count}");
+        /* Debug.Log($"CardDatabase: Auto-populated with {totalFound} total CardData assets:"); */
+        /* Debug.Log($"  - Starter Cards: {foundStarterCards.Count}"); */
+        /* Debug.Log($"  - Draftable Cards: {foundDraftableCards.Count}"); */
+        /* Debug.Log($"  - Upgraded Cards: {foundUpgradedCards.Count}"); */
         
         // Reinitialize the database
         InitializeDatabase();
@@ -462,7 +462,7 @@ public class CardDatabase : MonoBehaviour
         summary.AppendLine($"  Conditional Effects: {conditionalCards}");
         summary.AppendLine($"  Scaling Effects: {scalingCards}");
         
-        Debug.Log(summary.ToString());
+        /* Debug.Log(summary.ToString()); */
     }
 #endif
 } 

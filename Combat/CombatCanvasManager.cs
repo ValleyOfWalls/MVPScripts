@@ -322,7 +322,7 @@ public class CombatCanvasManager : NetworkBehaviour
             
             if (viewedPlayer != null && viewedOpponentPet != null)
             {
-                Debug.Log($"CombatCanvasManager: Updating entity positioning and facing for viewed combat - Player: {viewedPlayer.EntityName.Value}, Opponent Pet: {viewedOpponentPet.EntityName.Value}");
+                /* Debug.Log($"CombatCanvasManager: Updating entity positioning and facing for viewed combat - Player: {viewedPlayer.EntityName.Value}, Opponent Pet: {viewedOpponentPet.EntityName.Value}"); */
                 PositionCombatEntitiesForSpecificFight(viewedPlayer, viewedOpponentPet);
             }
             else
@@ -476,7 +476,7 @@ public class CombatCanvasManager : NetworkBehaviour
         
         if (spawnedNetworkObject != null && ownPetViewContainer != null)
         {
-            Debug.Log($"CombatCanvasManager: Moving OwnPetView from root to container on client");
+            /* Debug.Log($"CombatCanvasManager: Moving OwnPetView from root to container on client"); */
             spawnedNetworkObject.transform.SetParent(ownPetViewContainer, false);
             spawnedNetworkObject.gameObject.SetActive(true);
             
@@ -603,7 +603,7 @@ public class CombatCanvasManager : NetworkBehaviour
             }
         }
         
-        Debug.Log($"SetupEntityFacingWithDelay: Setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}");
+        /* Debug.Log($"SetupEntityFacingWithDelay: Setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}"); */
         SetupEntityFacing(player, opponentPet);
     }
 
@@ -632,11 +632,11 @@ public class CombatCanvasManager : NetworkBehaviour
         float distance = Vector3.Distance(playerPos, opponentPos);
         if (distance < 0.1f)
         {
-            Debug.Log($"AreEntitiesReadyForFacing: Entities too close together (distance: {distance:F3}), might not be positioned yet");
+            /* Debug.Log($"AreEntitiesReadyForFacing: Entities too close together (distance: {distance:F3}), might not be positioned yet"); */
             return false;
         }
         
-        Debug.Log($"AreEntitiesReadyForFacing: Entities ready - Player: {playerPos}, OpponentPet: {opponentPos}, Distance: {distance:F3}");
+        /* Debug.Log($"AreEntitiesReadyForFacing: Entities ready - Player: {playerPos}, OpponentPet: {opponentPos}, Distance: {distance:F3}"); */
         return true;
     }
 
@@ -728,7 +728,7 @@ public class CombatCanvasManager : NetworkBehaviour
         // Apply the rotation
         entity.transform.rotation = targetRotation;
 
-        Debug.Log($"[ENTITY_FACING] {entityDescription} {entity.EntityName.Value}: Rotated from Y={oldEulerAngles.y:F1}° to Y={targetRotation.eulerAngles.y:F1}° to face {target.EntityName.Value}");
+        /* Debug.Log($"[ENTITY_FACING] {entityDescription} {entity.EntityName.Value}: Rotated from Y={oldEulerAngles.y:F1}° to Y={targetRotation.eulerAngles.y:F1}° to face {target.EntityName.Value}"); */
     }
 
     /// <summary>
@@ -770,7 +770,7 @@ public class CombatCanvasManager : NetworkBehaviour
     /// </summary>
     private void PositionHandEntityAlways(NetworkEntity ownerEntity, Transform targetPosition, string handDescription)
     {
-        Debug.Log($"[POSITIONING_DEBUG] PositionHandEntityAlways called for {handDescription}");
+        /* Debug.Log($"[POSITIONING_DEBUG] PositionHandEntityAlways called for {handDescription}"); */
         
         if (ownerEntity == null || targetPosition == null)
         {
@@ -781,8 +781,8 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[POSITIONING_DEBUG] Owner entity: {ownerEntity.EntityName.Value}");
-        Debug.Log($"[POSITIONING_DEBUG] Target position: {targetPosition.name}");
+        /* Debug.Log($"[POSITIONING_DEBUG] Owner entity: {ownerEntity.EntityName.Value}"); */
+        /* Debug.Log($"[POSITIONING_DEBUG] Target position: {targetPosition.name}"); */
 
         var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
         if (relationshipManager == null)
@@ -804,7 +804,7 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[POSITIONING_DEBUG] Hand entity found: {handEntity.EntityName.Value}");
+        /* Debug.Log($"[POSITIONING_DEBUG] Hand entity found: {handEntity.EntityName.Value}"); */
 
         // Check combat canvas availability
         if (combatCanvas == null)
@@ -813,7 +813,7 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[POSITIONING_DEBUG] Combat canvas available: {combatCanvas.name}");
+        /* Debug.Log($"[POSITIONING_DEBUG] Combat canvas available: {combatCanvas.name}"); */
 
         // Hand entity should be a RectTransform, target position can be regular Transform (position marker)
         RectTransform handRectTransform = handEntity.transform as RectTransform;
@@ -824,22 +824,22 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[POSITIONING_DEBUG] Hand entity current parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL/ROOT")}");
-        Debug.Log($"[POSITIONING_DEBUG] Combat canvas transform: {combatCanvas.transform.name}");
+        /* Debug.Log($"[POSITIONING_DEBUG] Hand entity current parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL/ROOT")}"); */
+        /* Debug.Log($"[POSITIONING_DEBUG] Combat canvas transform: {combatCanvas.transform.name}"); */
         
         // Ensure the hand entity is a child of the main combat canvas if it isn't already
         if (handRectTransform.parent != combatCanvas.transform)
         {
-            Debug.Log($"[UI_HIERARCHY] {handDescription} {handEntity.EntityName.Value}: Moving to be child of combat canvas");
-            Debug.Log($"[UI_HIERARCHY] Before reparenting - Parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL")}");
+            /* Debug.Log($"[UI_HIERARCHY] {handDescription} {handEntity.EntityName.Value}: Moving to be child of combat canvas"); */
+            /* Debug.Log($"[UI_HIERARCHY] Before reparenting - Parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL")}"); */
             
             handRectTransform.SetParent(combatCanvas.transform, false);
             
-            Debug.Log($"[UI_HIERARCHY] After reparenting - Parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL")}");
+            /* Debug.Log($"[UI_HIERARCHY] After reparenting - Parent: {(handRectTransform.parent != null ? handRectTransform.parent.name : "NULL")}"); */
         }
         else
         {
-            Debug.Log($"[UI_HIERARCHY] {handDescription} {handEntity.EntityName.Value}: Already child of combat canvas");
+            /* Debug.Log($"[UI_HIERARCHY] {handDescription} {handEntity.EntityName.Value}: Already child of combat canvas"); */
         }
         
         // Position the hand entity based on the target position
@@ -857,7 +857,7 @@ public class CombatCanvasManager : NetworkBehaviour
             handRectTransform.sizeDelta = targetRectTransform.sizeDelta;
             handRectTransform.pivot = targetRectTransform.pivot;
             
-            Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Copied RectTransform properties from target");
+            /* Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Copied RectTransform properties from target"); */
         }
         else
         {
@@ -880,13 +880,13 @@ public class CombatCanvasManager : NetworkBehaviour
             handRectTransform.anchorMax = new Vector2(0.5f, 0.5f);
             handRectTransform.pivot = new Vector2(0.5f, 0.5f);
             
-            Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Converted Transform position {targetPosition.position} to anchored position {handRectTransform.anchoredPosition}");
+            /* Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Converted Transform position {targetPosition.position} to anchored position {handRectTransform.anchoredPosition}"); */
         }
         
         // Ensure proper layer ordering
         handRectTransform.SetAsLastSibling();
         
-        Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Positioned from {oldAnchoredPosition} to {handRectTransform.anchoredPosition}");
+        /* Debug.Log($"[UI_POSITIONING] {handDescription} {handEntity.EntityName.Value}: Positioned from {oldAnchoredPosition} to {handRectTransform.anchoredPosition}"); */
     }
 
     /// <summary>
@@ -894,7 +894,7 @@ public class CombatCanvasManager : NetworkBehaviour
     /// </summary>
     private void PositionStatsUIAlways(NetworkEntity ownerEntity, Transform targetPosition, string statsUIDescription)
     {
-        Debug.Log($"[POSITIONING_DEBUG] PositionStatsUIAlways called for {statsUIDescription}");
+        /* Debug.Log($"[POSITIONING_DEBUG] PositionStatsUIAlways called for {statsUIDescription}"); */
         
         if (ownerEntity == null || targetPosition == null)
         {
@@ -905,8 +905,8 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[POSITIONING_DEBUG] Owner entity: {ownerEntity.EntityName.Value}");
-        Debug.Log($"[POSITIONING_DEBUG] Target position: {targetPosition.name}");
+        /* Debug.Log($"[POSITIONING_DEBUG] Owner entity: {ownerEntity.EntityName.Value}"); */
+        /* Debug.Log($"[POSITIONING_DEBUG] Target position: {targetPosition.name}"); */
 
         var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
         if (relationshipManager == null)
@@ -928,7 +928,7 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[POSITIONING_DEBUG] Stats UI entity found: {statsUIEntity.EntityName.Value}");
+        /* Debug.Log($"[POSITIONING_DEBUG] Stats UI entity found: {statsUIEntity.EntityName.Value}"); */
 
         // Check combat canvas availability
         if (combatCanvas == null)
@@ -937,7 +937,7 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[POSITIONING_DEBUG] Combat canvas available: {combatCanvas.name}");
+        /* Debug.Log($"[POSITIONING_DEBUG] Combat canvas available: {combatCanvas.name}"); */
 
         // Stats UI entity should be a RectTransform, target position can be regular Transform (position marker)
         RectTransform statsUIRectTransform = statsUIEntity.transform as RectTransform;
@@ -948,22 +948,22 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[POSITIONING_DEBUG] Stats UI entity current parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL/ROOT")}");
-        Debug.Log($"[POSITIONING_DEBUG] Combat canvas transform: {combatCanvas.transform.name}");
+        /* Debug.Log($"[POSITIONING_DEBUG] Stats UI entity current parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL/ROOT")}"); */
+        /* Debug.Log($"[POSITIONING_DEBUG] Combat canvas transform: {combatCanvas.transform.name}"); */
         
         // Ensure the stats UI entity is a child of the main combat canvas if it isn't already
         if (statsUIRectTransform.parent != combatCanvas.transform)
         {
-            Debug.Log($"[UI_HIERARCHY] {statsUIDescription} {statsUIEntity.EntityName.Value}: Moving to be child of combat canvas");
-            Debug.Log($"[UI_HIERARCHY] Before reparenting - Parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL")}");
+            /* Debug.Log($"[UI_HIERARCHY] {statsUIDescription} {statsUIEntity.EntityName.Value}: Moving to be child of combat canvas"); */
+            /* Debug.Log($"[UI_HIERARCHY] Before reparenting - Parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL")}"); */
             
             statsUIRectTransform.SetParent(combatCanvas.transform, false);
             
-            Debug.Log($"[UI_HIERARCHY] After reparenting - Parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL")}");
+            /* Debug.Log($"[UI_HIERARCHY] After reparenting - Parent: {(statsUIRectTransform.parent != null ? statsUIRectTransform.parent.name : "NULL")}"); */
         }
         else
         {
-            Debug.Log($"[UI_HIERARCHY] {statsUIDescription} {statsUIEntity.EntityName.Value}: Already child of combat canvas");
+            /* Debug.Log($"[UI_HIERARCHY] {statsUIDescription} {statsUIEntity.EntityName.Value}: Already child of combat canvas"); */
         }
         
         // Position the stats UI entity based on the target position
@@ -981,7 +981,7 @@ public class CombatCanvasManager : NetworkBehaviour
             statsUIRectTransform.sizeDelta = targetRectTransform.sizeDelta;
             statsUIRectTransform.pivot = targetRectTransform.pivot;
             
-            Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Copied RectTransform properties from target");
+            /* Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Copied RectTransform properties from target"); */
         }
         else
         {
@@ -1004,13 +1004,13 @@ public class CombatCanvasManager : NetworkBehaviour
             statsUIRectTransform.anchorMax = new Vector2(0.5f, 0.5f);
             statsUIRectTransform.pivot = new Vector2(0.5f, 0.5f);
             
-            Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Converted Transform position {targetPosition.position} to anchored position {statsUIRectTransform.anchoredPosition}");
+            /* Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Converted Transform position {targetPosition.position} to anchored position {statsUIRectTransform.anchoredPosition}"); */
         }
         
         // Ensure proper layer ordering
         statsUIRectTransform.SetAsLastSibling();
         
-        Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Positioned from {oldAnchoredPosition} to {statsUIRectTransform.anchoredPosition}");
+        /* Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Positioned from {oldAnchoredPosition} to {statsUIRectTransform.anchoredPosition}"); */
     }
 
     /// <summary>
@@ -1019,7 +1019,7 @@ public class CombatCanvasManager : NetworkBehaviour
     [ContextMenu("Debug Manual Position Entities")]
     public void DebugManualPositionEntities()
     {
-        Debug.Log("=== DEBUG: Manual positioning trigger ===");
+        /* Debug.Log("=== DEBUG: Manual positioning trigger ==="); */
         
         if (combatCanvas == null)
         {
@@ -1040,7 +1040,7 @@ public class CombatCanvasManager : NetworkBehaviour
     [ContextMenu("Debug Fix Hand Entity Parenting")]
     public void DebugFixHandEntityParenting()
     {
-        Debug.Log("=== DEBUG: Starting hand entity parenting check ===");
+        /* Debug.Log("=== DEBUG: Starting hand entity parenting check ==="); */
         
         // Check if combat canvas is available
         if (combatCanvas == null)
@@ -1049,7 +1049,7 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"DEBUG: Combat canvas found: {combatCanvas.name}");
+        /* Debug.Log($"DEBUG: Combat canvas found: {combatCanvas.name}"); */
         
         // Find all hand entities in the scene
         NetworkEntity[] allEntities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
@@ -1058,9 +1058,9 @@ public class CombatCanvasManager : NetworkBehaviour
         {
             if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
             {
-                Debug.Log($"DEBUG: Found hand entity: {entity.EntityName.Value} (Type: {entity.EntityType})");
-                Debug.Log($"DEBUG: Current parent: {(entity.transform.parent != null ? entity.transform.parent.name : "NULL/ROOT")}");
-                Debug.Log($"DEBUG: Current position: {entity.transform.position}");
+                /* Debug.Log($"DEBUG: Found hand entity: {entity.EntityName.Value} (Type: {entity.EntityType})"); */
+                /* Debug.Log($"DEBUG: Current parent: {(entity.transform.parent != null ? entity.transform.parent.name : "NULL/ROOT")}"); */
+                /* Debug.Log($"DEBUG: Current position: {entity.transform.position}"); */
                 
                 RectTransform handRectTransform = entity.transform as RectTransform;
                 if (handRectTransform == null)
@@ -1072,18 +1072,18 @@ public class CombatCanvasManager : NetworkBehaviour
                 // Force reparent to combat canvas
                 if (handRectTransform.parent != combatCanvas.transform)
                 {
-                    Debug.Log($"DEBUG: Reparenting {entity.EntityName.Value} to combat canvas");
+                    /* Debug.Log($"DEBUG: Reparenting {entity.EntityName.Value} to combat canvas"); */
                     handRectTransform.SetParent(combatCanvas.transform, false);
-                    Debug.Log($"DEBUG: New parent: {handRectTransform.parent.name}");
+                    /* Debug.Log($"DEBUG: New parent: {handRectTransform.parent.name}"); */
                 }
                 else
                 {
-                    Debug.Log($"DEBUG: {entity.EntityName.Value} is already a child of combat canvas");
+                    /* Debug.Log($"DEBUG: {entity.EntityName.Value} is already a child of combat canvas"); */
                 }
             }
         }
         
-        Debug.Log("=== DEBUG: Hand entity parenting check complete ===");
+        /* Debug.Log("=== DEBUG: Hand entity parenting check complete ==="); */
     }
 
     /// <summary>
@@ -1093,7 +1093,7 @@ public class CombatCanvasManager : NetworkBehaviour
     [ContextMenu("Debug Test Entity Facing")]
     public void DebugTestEntityFacing()
     {
-        Debug.Log("=== DEBUG: Starting entity facing test ===");
+        /* Debug.Log("=== DEBUG: Starting entity facing test ==="); */
         
         if (fightManager == null)
         {
@@ -1110,7 +1110,7 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"DEBUG: Found {allFights.Count} fight assignments, testing facing for each");
+        /* Debug.Log($"DEBUG: Found {allFights.Count} fight assignments, testing facing for each"); */
         
         foreach (var fightAssignment in allFights)
         {
@@ -1123,16 +1123,16 @@ public class CombatCanvasManager : NetworkBehaviour
                 continue;
             }
             
-            Debug.Log($"DEBUG: Testing facing for fight - Player: {player.EntityName.Value}, Opponent Pet: {opponentPet.EntityName.Value}");
-            Debug.Log($"DEBUG: Player position: {player.transform.position}, rotation: {player.transform.rotation.eulerAngles}");
-            Debug.Log($"DEBUG: Opponent Pet position: {opponentPet.transform.position}, rotation: {opponentPet.transform.rotation.eulerAngles}");
+            /* Debug.Log($"DEBUG: Testing facing for fight - Player: {player.EntityName.Value}, Opponent Pet: {opponentPet.EntityName.Value}"); */
+            /* Debug.Log($"DEBUG: Player position: {player.transform.position}, rotation: {player.transform.rotation.eulerAngles}"); */
+            /* Debug.Log($"DEBUG: Opponent Pet position: {opponentPet.transform.position}, rotation: {opponentPet.transform.rotation.eulerAngles}"); */
             
             // Test the facing setup
             SetupEntityFacing(player, opponentPet);
             
-            Debug.Log($"DEBUG: After facing setup - Player rotation: {player.transform.rotation.eulerAngles}, Opponent Pet rotation: {opponentPet.transform.rotation.eulerAngles}");
+            /* Debug.Log($"DEBUG: After facing setup - Player rotation: {player.transform.rotation.eulerAngles}, Opponent Pet rotation: {opponentPet.transform.rotation.eulerAngles}"); */
         }
         
-        Debug.Log("=== DEBUG: Entity facing test complete ===");
+        /* Debug.Log("=== DEBUG: Entity facing test complete ==="); */
     }
 } 

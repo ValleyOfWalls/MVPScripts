@@ -204,7 +204,7 @@ public class SteamNetworkIntegration : MonoBehaviour
             return false;
         }
 
-        Debug.Log("Steam Initialized Successfully!");
+        /* Debug.Log("Steam Initialized Successfully!"); */
         return true;
     }
 
@@ -255,7 +255,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         if (!m_steamInitialized || !m_currentLobbyId.IsValid())
             return;
 
-        Debug.Log($"Leaving lobby: {m_currentLobbyId}");
+        /* Debug.Log($"Leaving lobby: {m_currentLobbyId}"); */
         SteamMatchmaking.LeaveLobby(m_currentLobbyId);
         
         // Notify PlayerSpawner for local player leaving
@@ -307,7 +307,7 @@ public class SteamNetworkIntegration : MonoBehaviour
             // Notify if a new player joined (compared to previous list)
             if (!previousMembers.Contains(playerId) && playerId != SteamUser.GetSteamID())
             {
-                Debug.Log($"New player detected in RefreshPlayerList: {GetFriendName(playerId)} ({playerId})");
+                /* Debug.Log($"New player detected in RefreshPlayerList: {GetFriendName(playerId)} ({playerId})"); */
                 OnPlayerJoinedLobbyEvent?.Invoke(playerId);
                 // if (playerSpawner != null && NetworkEntityPlayerPrefab != null)
                 // {
@@ -321,7 +321,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         {
             if (!m_currentLobbyMembers.Contains(oldMember))
             {
-                 Debug.Log($"Player left detected in RefreshPlayerList: {GetFriendName(oldMember)} ({oldMember})");
+                 /* Debug.Log($"Player left detected in RefreshPlayerList: {GetFriendName(oldMember)} ({oldMember})"); */
                  OnPlayerLeftLobbyEvent?.Invoke(oldMember);
                 // if (playerSpawner != null)
                 // {
@@ -384,7 +384,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         m_currentLobbyId = new CSteamID(param.m_ulSteamIDLobby);
         m_lobbyIdJustCreated = m_currentLobbyId;
         m_isSteamHost = true;
-        Debug.Log($"Lobby created successfully: {m_currentLobbyId}. This client IS THE STEAM HOST.");
+        /* Debug.Log($"Lobby created successfully: {m_currentLobbyId}. This client IS THE STEAM HOST."); */
 
         SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_GAME_ID_KEY, LOBBY_GAME_ID_VALUE);
         SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_VERSION_KEY, Application.version);
@@ -397,7 +397,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         {
             fishNetManager.ServerManager.StartConnection();
             fishNetManager.ClientManager.StartConnection(); 
-            Debug.Log("FishNet Host Started (Server and Client for host).");
+            /* Debug.Log("FishNet Host Started (Server and Client for host)."); */
         }
         else
         {
@@ -408,7 +408,7 @@ public class SteamNetworkIntegration : MonoBehaviour
     private void OnLobbyEnteredCallback(LobbyEnter_t param)
     {
         CSteamID enteredLobbyId = new CSteamID(param.m_ulSteamIDLobby);
-        Debug.Log($"OnLobbyEnteredCallback received for lobby {enteredLobbyId}. Response code: {param.m_EChatRoomEnterResponse}");
+        /* Debug.Log($"OnLobbyEnteredCallback received for lobby {enteredLobbyId}. Response code: {param.m_EChatRoomEnterResponse}"); */
 
         if (param.m_EChatRoomEnterResponse != (uint)EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess)
         {
@@ -426,13 +426,13 @@ public class SteamNetworkIntegration : MonoBehaviour
         {
             m_isSteamHost = true;
             shouldConnectAsFishNetClient = false;
-            Debug.Log($"Entered own created lobby ({enteredLobbyId}). Confirmed Steam Host. FishNet client connection handled by creator path.");
+            /* Debug.Log($"Entered own created lobby ({enteredLobbyId}). Confirmed Steam Host. FishNet client connection handled by creator path."); */
         }
         else
         {
             m_isSteamHost = IsCurrentPlayerLobbyOwner();
             shouldConnectAsFishNetClient = true;
-            Debug.Log($"Joining existing lobby ({enteredLobbyId}). Current Steam Owner status: {m_isSteamHost}. Will attempt to connect as FishNet client.");
+            /* Debug.Log($"Joining existing lobby ({enteredLobbyId}). Current Steam Owner status: {m_isSteamHost}. Will attempt to connect as FishNet client."); */
         }
         m_lobbyIdJustCreated = CSteamID.Nil;
         
@@ -456,7 +456,7 @@ public class SteamNetworkIntegration : MonoBehaviour
     private void OnLobbyListCallback(LobbyMatchList_t param)
     {
         m_availableLobbies.Clear();
-        Debug.Log($"Found {param.m_nLobbiesMatching} lobbies matching criteria.");
+        /* Debug.Log($"Found {param.m_nLobbiesMatching} lobbies matching criteria."); */
 
         for (int i = 0; i < param.m_nLobbiesMatching; i++)
         {
@@ -474,7 +474,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         }
         else if (m_availableLobbies.Count == 0) // Changed to else if for clarity, though simple else would also work if the above is true
         {
-            Debug.Log("No lobbies found. Creating a new lobby automatically.");
+            /* Debug.Log("No lobbies found. Creating a new lobby automatically."); */
             CreateLobby(); // Defaulting to public lobby
         }
         
@@ -525,12 +525,12 @@ public class SteamNetworkIntegration : MonoBehaviour
         CSteamID userChangedID = new CSteamID(param.m_ulSteamIDUserChanged);
         EChatMemberStateChange stateChange = (EChatMemberStateChange)param.m_rgfChatMemberStateChange;
 
-        Debug.Log($"LobbyChatUpdate: User {GetFriendName(userChangedID)} ({userChangedID}) changed state: {stateChange}");
+        /* Debug.Log($"LobbyChatUpdate: User {GetFriendName(userChangedID)} ({userChangedID}) changed state: {stateChange}"); */
 
         switch (stateChange)
         {
             case EChatMemberStateChange.k_EChatMemberStateChangeEntered:
-                Debug.Log($"User {GetFriendName(userChangedID)} entered the lobby.");
+                /* Debug.Log($"User {GetFriendName(userChangedID)} entered the lobby."); */
                 if (!m_currentLobbyMembers.Contains(userChangedID)) // Should usually be new
                 {
                     // m_currentLobbyMembers.Add(userChangedID); // RefreshPlayerList will handle this
@@ -545,7 +545,7 @@ public class SteamNetworkIntegration : MonoBehaviour
             case EChatMemberStateChange.k_EChatMemberStateChangeDisconnected:
             case EChatMemberStateChange.k_EChatMemberStateChangeKicked:
             case EChatMemberStateChange.k_EChatMemberStateChangeBanned:
-                Debug.Log($"User {GetFriendName(userChangedID)} left, disconnected, was kicked or banned from the lobby.");
+                /* Debug.Log($"User {GetFriendName(userChangedID)} left, disconnected, was kicked or banned from the lobby."); */
                 if (m_currentLobbyMembers.Contains(userChangedID))
                 {
                     // m_currentLobbyMembers.Remove(userChangedID); // RefreshPlayerList will handle this
@@ -561,7 +561,7 @@ public class SteamNetworkIntegration : MonoBehaviour
                     // Steam automatically handles host migration if SetLobbyOwner is used by new host.
                     // We just need to update our internal m_isSteamHost state.
                     m_isSteamHost = IsCurrentPlayerLobbyOwner();
-                    Debug.Log($"Lobby owner may have changed. Current client is host: {m_isSteamHost}");
+                    /* Debug.Log($"Lobby owner may have changed. Current client is host: {m_isSteamHost}"); */
                 }
                 break;
         }
@@ -600,7 +600,7 @@ public class SteamNetworkIntegration : MonoBehaviour
     // Example method to be called when a client connects to our server
     public void OnRemoteClientConnected(int connectionId) // FishNet often uses connectionId
     {
-        Debug.Log($"FishNet: Remote client connected with connectionId {connectionId}.");
+        /* Debug.Log($"FishNet: Remote client connected with connectionId {connectionId}."); */
         // Here, you'd need a way to map connectionId to SteamID.
         // This usually involves the client sending its SteamID to the server upon connection.
         // Once you have the SteamID, you can call:
@@ -614,7 +614,7 @@ public class SteamNetworkIntegration : MonoBehaviour
     // Example method to be called when a client disconnects from our server
     public void OnRemoteClientDisconnected(int connectionId)
     {
-        Debug.Log($"FishNet: Remote client disconnected with connectionId {connectionId}.");
+        /* Debug.Log($"FishNet: Remote client disconnected with connectionId {connectionId}."); */
         // Map connectionId to SteamID and then:
         // OnPlayerLeftLobbyEvent?.Invoke(steamIdOfLeavingPlayer);
         // if (playerSpawner != null)
@@ -653,12 +653,12 @@ public class SteamNetworkIntegration : MonoBehaviour
             // Ensure we don't try to despawn for server connection if it was never fully processed as a separate player
             if (conn.ClientId != -1)
             {
-                Debug.Log($"Remote client {conn.ClientId} disconnected.");
+                /* Debug.Log($"Remote client {conn.ClientId} disconnected."); */
                 // if (playerSpawner != null) playerSpawner.DespawnEntitiesForConnection(conn);
             }
             else
             {
-                Debug.Log($"Host's server-side connection (ClientId {conn.ClientId}) disconnected/stopped.");
+                /* Debug.Log($"Host's server-side connection (ClientId {conn.ClientId}) disconnected/stopped."); */
             }
         }
     }
@@ -667,7 +667,7 @@ public class SteamNetworkIntegration : MonoBehaviour
     {
         if (args.ConnectionState == LocalConnectionState.Started)
         {
-            Debug.Log($"Local client (ClientId: {fishNetManager.ClientManager.Connection.ClientId}) connected to server.");
+            /* Debug.Log($"Local client (ClientId: {fishNetManager.ClientManager.Connection.ClientId}) connected to server."); */
             // This instance is the host if ServerManager is started and it's the Steam Host.
             // We want to spawn for ClientId 0 (client connection) but not for server connection
             if (fishNetManager.ServerManager.Started && IsUserSteamHost && fishNetManager.ClientManager.Connection.ClientId == 0) 

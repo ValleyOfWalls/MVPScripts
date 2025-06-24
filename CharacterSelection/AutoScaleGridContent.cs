@@ -325,7 +325,7 @@ public class AutoScaleGridContent : MonoBehaviour
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"AutoScaleGridContent: Detected size from first child: {childRect.rect.size}");
+                    /* Debug.Log($"AutoScaleGridContent: Detected size from first child: {childRect.rect.size}"); */
                 }
                 return childRect.rect.size;
             }
@@ -613,7 +613,7 @@ public class AutoScaleGridContent : MonoBehaviour
                 
                 if (enableDebugLogs && i == 0) // Log only for first child to avoid spam
                 {
-                    Debug.Log($"AutoScaleGridContent: Scaled child {child.name} from {originalSize} to scale {uniformScale} (target was {targetSize})");
+                    /* Debug.Log($"AutoScaleGridContent: Scaled child {child.name} from {originalSize} to scale {uniformScale} (target was {targetSize})"); */
                 }
             }
         }
@@ -644,7 +644,7 @@ public class AutoScaleGridContent : MonoBehaviour
         
         if (enableDebugLogs)
         {
-            Debug.Log($"AutoScaleGridContent: Usable size after padding: {usableSize}, Spacing: {spacing}");
+            /* Debug.Log($"AutoScaleGridContent: Usable size after padding: {usableSize}, Spacing: {spacing}"); */
         }
         
         // Try different column counts to find the best fit
@@ -670,7 +670,7 @@ public class AutoScaleGridContent : MonoBehaviour
             
             if (enableDebugLogs)
             {
-                Debug.Log($"AutoScaleGridContent: Testing {cols}x{rows} grid - Available per cell: {availableCellWidth}x{availableCellHeight}, Final cell: {cellSize}, Score: {score}");
+                /* Debug.Log($"AutoScaleGridContent: Testing {cols}x{rows} grid - Available per cell: {availableCellWidth}x{availableCellHeight}, Final cell: {cellSize}, Score: {score}"); */
             }
             
             if (score > bestScore)
@@ -691,7 +691,7 @@ public class AutoScaleGridContent : MonoBehaviour
             bestDims = CreateFallbackDimensions(itemCount, usableSize);
             if (enableDebugLogs)
             {
-                Debug.Log($"AutoScaleGridContent: Using fallback dimensions: {bestDims.cellSize}");
+                /* Debug.Log($"AutoScaleGridContent: Using fallback dimensions: {bestDims.cellSize}"); */
             }
         }
         

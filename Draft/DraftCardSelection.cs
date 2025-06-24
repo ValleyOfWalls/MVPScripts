@@ -71,7 +71,7 @@ public class DraftCardSelection : MonoBehaviour
             return;
         }
         
-        Debug.Log($"DraftCardSelection: Card {gameObject.name} selected for drafting");
+        /* Debug.Log($"DraftCardSelection: Card {gameObject.name} selected for drafting"); */
         
         // Notify the draft manager about the card selection
         if (draftManager != null)
@@ -103,7 +103,7 @@ public class DraftCardSelection : MonoBehaviour
             return false;
         }
         
-        Debug.Log($"DraftCardSelection: IsCardSelectableByLocalPlayer - localPlayer found: {localPlayer.EntityName.Value}");
+        /* Debug.Log($"DraftCardSelection: IsCardSelectableByLocalPlayer - localPlayer found: {localPlayer.EntityName.Value}"); */
         
         // Check if the local player has a pack available and this card is in it
         bool isSelectable = draftManager.IsCardSelectableByPlayer(gameObject, localPlayer);

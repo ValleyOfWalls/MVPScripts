@@ -174,7 +174,7 @@ public class DraftCanvasManager : MonoBehaviour
             localPlayer.OnCurrencyChanged -= UpdateCurrencyDisplay;
         }
         
-        Debug.Log("DraftCanvasManager: Draft state cleaned up");
+        /* Debug.Log("DraftCanvasManager: Draft state cleaned up"); */
     }
     
     public void UpdateDraftStatus(string status)
@@ -238,7 +238,7 @@ public class DraftCanvasManager : MonoBehaviour
             }
         }
         
-        Debug.Log($"DraftCanvasManager: Showing card selection UI for {selectedCard.name} (from shop: {isFromShop})");
+        /* Debug.Log($"DraftCanvasManager: Showing card selection UI for {selectedCard.name} (from shop: {isFromShop})"); */
     }
     
     /// <summary>
@@ -336,7 +336,7 @@ public class DraftCanvasManager : MonoBehaviour
             return;
         }
         
-        Debug.Log($"DraftCanvasManager: Selecting card {cardComponent.CardData.CardName} for {entityType} (from shop: {isShopCard})");
+        /* Debug.Log($"DraftCanvasManager: Selecting card {cardComponent.CardData.CardName} for {entityType} (from shop: {isShopCard})"); */
         
         // Call the appropriate method based on whether this is a shop card or draft card
         if (isShopCard)

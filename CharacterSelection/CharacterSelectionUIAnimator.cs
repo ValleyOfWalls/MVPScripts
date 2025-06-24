@@ -74,12 +74,12 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         // Initialize panels in hidden state
         SetupInitialPanelPositions();
         
-        Debug.Log("CharacterSelectionUIAnimator: Initialized with player list, character deck, and pet deck panels");
+        /* Debug.Log("CharacterSelectionUIAnimator: Initialized with player list, character deck, and pet deck panels"); */
     }
     
     private void SetupInitialPanelPositions()
     {
-        Debug.Log("CharacterSelectionUIAnimator: SetupInitialPanelPositions() - Setting up initial panel positions");
+        /* Debug.Log("CharacterSelectionUIAnimator: SetupInitialPanelPositions() - Setting up initial panel positions"); */
         
         // Set up all panels using the generic setup method (supports OffscreenPanelSetup)
         SetupPanel(playerListPanel, playerListRect, playerListHiddenOffset);
@@ -94,7 +94,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     {
         if (panel == null || panelRect == null) return;
         
-        Debug.Log($"CharacterSelectionUIAnimator: SetupPanel() - Setting up {panel.name} panel");
+        /* Debug.Log($"CharacterSelectionUIAnimator: SetupPanel() - Setting up {panel.name} panel"); */
         
         // Check if the panel has an OffscreenPanelSetup component
         OffscreenPanelSetup panelSetup = panel.GetComponent<OffscreenPanelSetup>();
@@ -112,7 +112,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         }
         
         panel.SetActive(false);
-        Debug.Log($"CharacterSelectionUIAnimator: {panel.name} panel set to INACTIVE during initial setup");
+        /* Debug.Log($"CharacterSelectionUIAnimator: {panel.name} panel set to INACTIVE during initial setup"); */
     }
     
 
@@ -143,7 +143,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
                 OnPlayerListVisibilityChanged?.Invoke(true);
             });
         
-        Debug.Log("CharacterSelectionUIAnimator: Player list panel sliding in with DOTween");
+        /* Debug.Log("CharacterSelectionUIAnimator: Player list panel sliding in with DOTween"); */
     }
     
     public void HidePlayerListPanel()
@@ -184,7 +184,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     public void ShowCharacterDeckPanel()
     {
-        Debug.Log($"CharacterSelectionUIAnimator: ShowCharacterDeckPanel() called - characterDeckPanel: {characterDeckPanel?.name}, isVisible: {isCharacterDeckVisible}");
+        /* Debug.Log($"CharacterSelectionUIAnimator: ShowCharacterDeckPanel() called - characterDeckPanel: {characterDeckPanel?.name}, isVisible: {isCharacterDeckVisible}"); */
         
         if (characterDeckPanel == null || isCharacterDeckVisible) return;
         
@@ -192,7 +192,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         characterDeckTween?.Kill();
         
         characterDeckPanel.SetActive(true);
-        Debug.Log("CharacterSelectionUIAnimator: Character deck panel set to ACTIVE - starting slide-in animation");
+        /* Debug.Log("CharacterSelectionUIAnimator: Character deck panel set to ACTIVE - starting slide-in animation"); */
         isCharacterDeckVisible = true;
         
         // Get positions from DeckPreviewPanelSetup if available
@@ -204,17 +204,17 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         characterDeckTween = characterDeckRect.DOAnchorPos(targetPos, slideAnimationDuration)
             .SetEase(slideInEase)
             .OnComplete(() => {
-                Debug.Log("CharacterSelectionUIAnimator: Character deck panel slide-in animation completed");
-                Debug.Log($"CharacterSelectionUIAnimator: Character deck panel active state after animation: {characterDeckPanel.activeInHierarchy}");
+                /* Debug.Log("CharacterSelectionUIAnimator: Character deck panel slide-in animation completed"); */
+                /* Debug.Log($"CharacterSelectionUIAnimator: Character deck panel active state after animation: {characterDeckPanel.activeInHierarchy}"); */
                 OnCharacterDeckVisibilityChanged?.Invoke(true);
             });
         
-        Debug.Log("CharacterSelectionUIAnimator: Character deck panel sliding in from below with DOTween");
+        /* Debug.Log("CharacterSelectionUIAnimator: Character deck panel sliding in from below with DOTween"); */
     }
     
     public void HideCharacterDeckPanel()
     {
-        Debug.Log($"CharacterSelectionUIAnimator: HideCharacterDeckPanel() called - characterDeckPanel: {characterDeckPanel?.name}, isVisible: {isCharacterDeckVisible}");
+        /* Debug.Log($"CharacterSelectionUIAnimator: HideCharacterDeckPanel() called - characterDeckPanel: {characterDeckPanel?.name}, isVisible: {isCharacterDeckVisible}"); */
         
         if (characterDeckPanel == null || !isCharacterDeckVisible) return;
         
@@ -241,7 +241,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     public void ShowPetDeckPanel()
     {
-        Debug.Log($"CharacterSelectionUIAnimator: ShowPetDeckPanel() called - petDeckPanel: {petDeckPanel?.name}, isVisible: {isPetDeckVisible}");
+        /* Debug.Log($"CharacterSelectionUIAnimator: ShowPetDeckPanel() called - petDeckPanel: {petDeckPanel?.name}, isVisible: {isPetDeckVisible}"); */
         
         if (petDeckPanel == null || isPetDeckVisible) return;
         
@@ -249,7 +249,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         petDeckTween?.Kill();
         
         petDeckPanel.SetActive(true);
-        Debug.Log("CharacterSelectionUIAnimator: Pet deck panel set to ACTIVE - starting slide-in animation");
+        /* Debug.Log("CharacterSelectionUIAnimator: Pet deck panel set to ACTIVE - starting slide-in animation"); */
         isPetDeckVisible = true;
         
         // Get positions from DeckPreviewPanelSetup if available
@@ -261,17 +261,17 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         petDeckTween = petDeckRect.DOAnchorPos(targetPos, slideAnimationDuration)
             .SetEase(slideInEase)
             .OnComplete(() => {
-                Debug.Log("CharacterSelectionUIAnimator: Pet deck panel slide-in animation completed");
-                Debug.Log($"CharacterSelectionUIAnimator: Pet deck panel active state after animation: {petDeckPanel.activeInHierarchy}");
+                /* Debug.Log("CharacterSelectionUIAnimator: Pet deck panel slide-in animation completed"); */
+                /* Debug.Log($"CharacterSelectionUIAnimator: Pet deck panel active state after animation: {petDeckPanel.activeInHierarchy}"); */
                 OnPetDeckVisibilityChanged?.Invoke(true);
             });
         
-        Debug.Log("CharacterSelectionUIAnimator: Pet deck panel sliding in from below with DOTween");
+        /* Debug.Log("CharacterSelectionUIAnimator: Pet deck panel sliding in from below with DOTween"); */
     }
     
     public void HidePetDeckPanel()
     {
-        Debug.Log($"CharacterSelectionUIAnimator: HidePetDeckPanel() called - petDeckPanel: {petDeckPanel?.name}, isVisible: {isPetDeckVisible}");
+        /* Debug.Log($"CharacterSelectionUIAnimator: HidePetDeckPanel() called - petDeckPanel: {petDeckPanel?.name}, isVisible: {isPetDeckVisible}"); */
         
         if (petDeckPanel == null || !isPetDeckVisible) return;
         
@@ -347,7 +347,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         
         if (!isCharacterSelectionPhase && enableClickOutsideDetection)
         {
-            Debug.Log($"CharacterSelectionUIAnimator: Game phase changed to {gamePhaseManager.GetCurrentPhase()}, disabling click detection");
+            /* Debug.Log($"CharacterSelectionUIAnimator: Game phase changed to {gamePhaseManager.GetCurrentPhase()}, disabling click detection"); */
             enableClickOutsideDetection = false;
         }
         
@@ -356,7 +356,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     private void CheckClickOutsideSelections()
     {
-        Debug.Log($"CharacterSelectionUIAnimator: CheckClickOutsideSelections() - Mouse clicked at {Input.mousePosition}, checking if outside selection areas");
+        /* Debug.Log($"CharacterSelectionUIAnimator: CheckClickOutsideSelections() - Mouse clicked at {Input.mousePosition}, checking if outside selection areas"); */
         
         // Debug current state
         DebugClickDetectionState();
@@ -410,12 +410,12 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity))
         {
             GameObject hitObject = hit.collider.gameObject;
-            Debug.Log($"CharacterSelectionUIAnimator: 3D Physics raycast hit: {hitObject.name}");
+            /* Debug.Log($"CharacterSelectionUIAnimator: 3D Physics raycast hit: {hitObject.name}"); */
             
             // Check if this is a character or pet selection model
             if (Is3DSelectionModel(hitObject))
             {
-                Debug.Log($"CharacterSelectionUIAnimator: 3D model selection detected on {hitObject.name}");
+                /* Debug.Log($"CharacterSelectionUIAnimator: 3D model selection detected on {hitObject.name}"); */
                 return true;
             }
             
@@ -426,7 +426,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             {
                 if (Is3DSelectionModel(current.gameObject))
                 {
-                    Debug.Log($"CharacterSelectionUIAnimator: 3D model selection detected on parent {current.name}");
+                    /* Debug.Log($"CharacterSelectionUIAnimator: 3D model selection detected on parent {current.name}"); */
                     return true;
                 }
                 current = current.parent;
@@ -434,7 +434,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             }
         }
         
-        Debug.Log("CharacterSelectionUIAnimator: No 3D model selection detected");
+        /* Debug.Log("CharacterSelectionUIAnimator: No 3D model selection detected"); */
         return false;
     }
     
@@ -461,13 +461,13 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         // Check if this object is a child of the character or pet grid parents
         if (characterGridParentRect != null && obj.transform.IsChildOf(characterGridParentRect.transform))
         {
-            Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of character grid parent");
+            /* Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of character grid parent"); */
             return true;
         }
         
         if (petGridParentRect != null && obj.transform.IsChildOf(petGridParentRect.transform))
         {
-            Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of pet grid parent");
+            /* Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of pet grid parent"); */
             return true;
         }
         
@@ -495,7 +495,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             if (raycaster != null)
             {
                 raycaster.Raycast(pointerData, results);
-                Debug.Log($"CharacterSelectionUIAnimator: Using Character Canvas: {characterCanvas.name} - found {results.Count} hits");
+                /* Debug.Log($"CharacterSelectionUIAnimator: Using Character Canvas: {characterCanvas.name} - found {results.Count} hits"); */
                 foundValidClick = CheckRaycastResults(results);
                 if (foundValidClick) return true;
             }
@@ -510,13 +510,13 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             if (raycaster != null)
             {
                 raycaster.Raycast(pointerData, results);
-                Debug.Log($"CharacterSelectionUIAnimator: Using Pet Canvas: {petCanvas.name} - found {results.Count} hits");
+                /* Debug.Log($"CharacterSelectionUIAnimator: Using Pet Canvas: {petCanvas.name} - found {results.Count} hits"); */
                 foundValidClick = CheckRaycastResults(results);
                 if (foundValidClick) return true;
             }
         }
         
-        Debug.Log("CharacterSelectionUIAnimator: No valid UI selection items found in canvas raycast results");
+        /* Debug.Log("CharacterSelectionUIAnimator: No valid UI selection items found in canvas raycast results"); */
         return false;
     }
     
@@ -544,11 +544,11 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             // Check if we clicked on a character or pet selection item
             if (IsObjectInCharacterOrPetSelection(hitObject))
             {
-                Debug.Log($"CharacterSelectionUIAnimator: Click on selection item ({hitObject.name}) - keeping open");
+                /* Debug.Log($"CharacterSelectionUIAnimator: Click on selection item ({hitObject.name}) - keeping open"); */
                 return true;
             }
             
-            Debug.Log($"CharacterSelectionUIAnimator: Checked object: {hitObject.name} (not a selection item)");
+            /* Debug.Log($"CharacterSelectionUIAnimator: Checked object: {hitObject.name} (not a selection item)"); */
         }
         
         return false;
@@ -597,7 +597,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     {
         characterGridParentRect = characterGridParent;
         petGridParentRect = petGridParent;
-        Debug.Log($"CharacterSelectionUIAnimator: Click detection areas set - Character: {characterGridParent?.name} (null: {characterGridParent == null}), Pet: {petGridParent?.name} (null: {petGridParent == null})");
+        /* Debug.Log($"CharacterSelectionUIAnimator: Click detection areas set - Character: {characterGridParent?.name} (null: {characterGridParent == null}), Pet: {petGridParent?.name} (null: {petGridParent == null})"); */
         
         // Additional debugging info
         if (characterGridParent != null)
@@ -647,14 +647,14 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
                 if (name.Contains("pet") && (name.Contains("grid") || name.Contains("parent") || name.Contains("content")))
                 {
                     petGridParentRect = grid;
-                    Debug.Log($"CharacterSelectionUIAnimator: Auto-found pet grid parent: {grid.name}");
+                    /* Debug.Log($"CharacterSelectionUIAnimator: Auto-found pet grid parent: {grid.name}"); */
                     break;
                 }
             }
         }
         
         // Log final status
-        Debug.Log($"CharacterSelectionUIAnimator: Final grid parent status - Character: {characterGridParentRect?.name ?? "NULL"}, Pet: {petGridParentRect?.name ?? "NULL"}");
+        /* Debug.Log($"CharacterSelectionUIAnimator: Final grid parent status - Character: {characterGridParentRect?.name ?? "NULL"}, Pet: {petGridParentRect?.name ?? "NULL"}"); */
         
         // Disable click detection if we still don't have valid setup
         DisableClickDetectionIfInvalid();
@@ -665,12 +665,12 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     /// </summary>
     public void DebugClickDetectionState()
     {
-        Debug.Log($"CharacterSelectionUIAnimator: Click Detection State:");
-        Debug.Log($"  - enableClickOutsideDetection: {enableClickOutsideDetection}");
-        Debug.Log($"  - characterGridParentRect: {characterGridParentRect?.name ?? "NULL"}");
-        Debug.Log($"  - petGridParentRect: {petGridParentRect?.name ?? "NULL"}");
-        Debug.Log($"  - characterDeckPanel: {characterDeckPanel?.name ?? "NULL"} (active: {characterDeckPanel?.activeInHierarchy})");
-        Debug.Log($"  - petDeckPanel: {petDeckPanel?.name ?? "NULL"} (active: {petDeckPanel?.activeInHierarchy})");
+        /* Debug.Log($"CharacterSelectionUIAnimator: Click Detection State:"); */
+        /* Debug.Log($"  - enableClickOutsideDetection: {enableClickOutsideDetection}"); */
+        /* Debug.Log($"  - characterGridParentRect: {characterGridParentRect?.name ?? "NULL"}"); */
+        /* Debug.Log($"  - petGridParentRect: {petGridParentRect?.name ?? "NULL"}"); */
+        /* Debug.Log($"  - characterDeckPanel: {characterDeckPanel?.name ?? "NULL"} (active: {characterDeckPanel?.activeInHierarchy})"); */
+        /* Debug.Log($"  - petDeckPanel: {petDeckPanel?.name ?? "NULL"} (active: {petDeckPanel?.activeInHierarchy})"); */
         
         Canvas canvas = GetComponentInParent<Canvas>();
         if (canvas == null)
@@ -678,8 +678,8 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             canvas = FindFirstObjectByType<Canvas>();
         }
         
-        Debug.Log($"  - Canvas: {canvas?.name ?? "NULL"}");
-        Debug.Log($"  - GraphicRaycaster: {canvas?.GetComponent<GraphicRaycaster>() != null}");
+        /* Debug.Log($"  - Canvas: {canvas?.name ?? "NULL"}"); */
+        /* Debug.Log($"  - GraphicRaycaster: {canvas?.GetComponent<GraphicRaycaster>() != null}"); */
         
         // Check if we should disable click detection due to missing references
         bool hasValidSetup = characterGridParentRect != null || petGridParentRect != null;
@@ -812,7 +812,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             return false;
         }
         
-        Debug.Log($"CharacterSelectionUIAnimator: IsObjectInCharacterOrPetSelection checking: {obj.name}");
+        /* Debug.Log($"CharacterSelectionUIAnimator: IsObjectInCharacterOrPetSelection checking: {obj.name}"); */
         
         // Method 1: Check if object is a child of character or pet grid parents
         if (characterGridParentRect != null && obj.transform.IsChildOf(characterGridParentRect.transform))
@@ -833,7 +833,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         while (currentTransform != null && hierarchyDepth < 10) // Prevent infinite loops
         {
             string objName = currentTransform.name.ToLower();
-            Debug.Log($"CharacterSelectionUIAnimator: Checking hierarchy level {hierarchyDepth}: {currentTransform.name}");
+            /* Debug.Log($"CharacterSelectionUIAnimator: Checking hierarchy level {hierarchyDepth}: {currentTransform.name}"); */
             
             // Look for selection item indicators (expanded patterns)
             if ((objName.Contains("character") && (objName.Contains("item") || objName.Contains("selection"))) ||
@@ -842,11 +842,11 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
                 objName.StartsWith("character") ||
                 objName.StartsWith("pet"))
             {
-                Debug.Log($"CharacterSelectionUIAnimator: Found selection item name pattern: {currentTransform.name}");
+                /* Debug.Log($"CharacterSelectionUIAnimator: Found selection item name pattern: {currentTransform.name}"); */
                 // Check if this or a parent has a Button component
                 if (currentTransform.GetComponent<UnityEngine.UI.Button>() != null)
                 {
-                    Debug.Log($"CharacterSelectionUIAnimator: Found selection button: {currentTransform.name}");
+                    /* Debug.Log($"CharacterSelectionUIAnimator: Found selection button: {currentTransform.name}"); */
                     return true;
                 }
             }
@@ -860,7 +860,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
                 if (parentName.Contains("character") && (parentName.Contains("grid") || parentName.Contains("parent") || parentName.Contains("content")) ||
                     parentName.Contains("pet") && (parentName.Contains("grid") || parentName.Contains("parent") || parentName.Contains("content")))
                 {
-                    Debug.Log($"CharacterSelectionUIAnimator: Found selection area by parent name: {currentTransform.parent.name}");
+                    /* Debug.Log($"CharacterSelectionUIAnimator: Found selection area by parent name: {currentTransform.parent.name}"); */
                     return true;
                 }
             }
@@ -873,22 +873,22 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         string rootObjName = obj.name.ToLower();
         if (rootObjName.Contains("character") || rootObjName.Contains("pet"))
         {
-            Debug.Log($"CharacterSelectionUIAnimator: Checking root object name pattern: {obj.name}");
+            /* Debug.Log($"CharacterSelectionUIAnimator: Checking root object name pattern: {obj.name}"); */
             // Only consider it a selection item if it has a Button component or is clickable
             if (obj.GetComponent<UnityEngine.UI.Button>() != null)
             {
-                Debug.Log($"CharacterSelectionUIAnimator: Found selection item by root name pattern with button: {obj.name}");
+                /* Debug.Log($"CharacterSelectionUIAnimator: Found selection item by root name pattern with button: {obj.name}"); */
                 return true;
             }
             
             if (obj.GetComponentInParent<UnityEngine.UI.Button>() != null)
             {
-                Debug.Log($"CharacterSelectionUIAnimator: Found selection item by root name pattern with parent button: {obj.name}");
+                /* Debug.Log($"CharacterSelectionUIAnimator: Found selection item by root name pattern with parent button: {obj.name}"); */
                 return true;
             }
         }
         
-        Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is NOT a selection item");
+        /* Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is NOT a selection item"); */
         return false;
     }
     

@@ -41,7 +41,7 @@ public class EnergyHandler : NetworkBehaviour
         
         if (amount <= 0) return; // Ignore non-positive amounts
         
-        Debug.Log($"EnergyHandler: {entity.EntityName.Value} spending {amount} energy");
+        /* Debug.Log($"EnergyHandler: {entity.EntityName.Value} spending {amount} energy"); */
         
         // Cap energy spend to prevent negative energy
         int cappedAmount = Mathf.Min(amount, entity.CurrentEnergy.Value);
@@ -69,7 +69,7 @@ public class EnergyHandler : NetworkBehaviour
         
         if (amount <= 0) return; // Ignore non-positive amounts
         
-        Debug.Log($"EnergyHandler: {entity.EntityName.Value} gaining {amount} energy");
+        /* Debug.Log($"EnergyHandler: {entity.EntityName.Value} gaining {amount} energy"); */
         
         // Cap energy gain to prevent exceeding max energy
         int cappedAmount = Mathf.Min(amount, entity.MaxEnergy.Value - entity.CurrentEnergy.Value);
@@ -95,7 +95,7 @@ public class EnergyHandler : NetworkBehaviour
         
         if (amountToAdd <= 0) return; // Already at max energy
         
-        Debug.Log($"EnergyHandler: {entity.EntityName.Value} replenishing to max energy {entity.MaxEnergy.Value}");
+        /* Debug.Log($"EnergyHandler: {entity.EntityName.Value} replenishing to max energy {entity.MaxEnergy.Value}"); */
         
         // Set energy to max
         entity.CurrentEnergy.Value = entity.MaxEnergy.Value;
@@ -113,7 +113,7 @@ public class EnergyHandler : NetworkBehaviour
     {
         if (!IsServerInitialized || amount <= 0) return;
         
-        Debug.Log($"EnergyHandler: {entity.EntityName.Value} increasing max energy by {amount}");
+        /* Debug.Log($"EnergyHandler: {entity.EntityName.Value} increasing max energy by {amount}"); */
         
         // Increase max energy
         entity.MaxEnergy.Value += amount;
@@ -134,7 +134,7 @@ public class EnergyHandler : NetworkBehaviour
     {
         if (!IsServerInitialized || amount <= 0) return;
         
-        Debug.Log($"EnergyHandler: {entity.EntityName.Value} decreasing max energy by {amount}");
+        /* Debug.Log($"EnergyHandler: {entity.EntityName.Value} decreasing max energy by {amount}"); */
         
         // Decrease max energy, but ensure it doesn't go below 0
         entity.MaxEnergy.Value = Mathf.Max(0, entity.MaxEnergy.Value - amount);

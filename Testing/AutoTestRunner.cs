@@ -278,7 +278,7 @@ public class AutoTestRunner : MonoBehaviour
         // Wait until all players are ready in character selection
         yield return new WaitUntil(() => characterSelectionComplete);
         
-        Debug.Log("AutoTestRunner: Character selection phase completed, waiting for combat transition...");
+        /* Debug.Log("AutoTestRunner: Character selection phase completed, waiting for combat transition..."); */
     }
 
     private IEnumerator PollCharacterSelectionConditions()
@@ -297,7 +297,7 @@ public class AutoTestRunner : MonoBehaviour
         int playerCount = lobbyManager.GetConnectedPlayerCount();
         bool allPlayersReady = lobbyManager.AreAllPlayersReady();
         
-        Debug.Log($"AutoTestRunner: Checking lobby conditions - Players: {playerCount}, All Ready: {allPlayersReady}");
+        /* Debug.Log($"AutoTestRunner: Checking lobby conditions - Players: {playerCount}, All Ready: {allPlayersReady}"); */
         
         // Conditions: At least 2 players and all players are ready
         if (playerCount >= 2 && allPlayersReady)
@@ -313,7 +313,7 @@ public class AutoTestRunner : MonoBehaviour
         
         int playerCount = characterSelectionManager.GetConnectedPlayerCount();
         
-        Debug.Log($"AutoTestRunner: Checking character selection conditions - Players: {playerCount}");
+        /* Debug.Log($"AutoTestRunner: Checking character selection conditions - Players: {playerCount}"); */
         
         // For character selection, we need at least 2 players and the UI manager handles auto-selection/ready
         // We'll assume character selection is complete when we have enough players
@@ -370,7 +370,7 @@ public class AutoTestRunner : MonoBehaviour
             }
             catch (System.Exception e)
             {
-                Debug.Log($"AutoTestRunner: Could not unsubscribe from character selection events: {e.Message}");
+                /* Debug.Log($"AutoTestRunner: Could not unsubscribe from character selection events: {e.Message}"); */
             }
         }
     }

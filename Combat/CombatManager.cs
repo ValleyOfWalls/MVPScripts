@@ -50,15 +50,15 @@ public class CombatManager : NetworkBehaviour
     public void StartCombat()
     {
         if (!IsServerInitialized) return;
-        Debug.Log("CombatManager: Starting combat...");
+        /* Debug.Log("CombatManager: Starting combat..."); */
 
         // Get all spawned entities
         List<NetworkEntity> entities = GetAllSpawnedEntities();
-        Debug.Log($"CombatManager: Found {entities.Count} total entities");
+        /* Debug.Log($"CombatManager: Found {entities.Count} total entities"); */
         
         // Find players and their assigned opponent pets
         var players = entities.Where(e => e.EntityType == EntityType.Player);
-        Debug.Log($"CombatManager: Found {players.Count()} players");
+        /* Debug.Log($"CombatManager: Found {players.Count()} players"); */
 
         if (players.Count() == 0)
         {
@@ -68,11 +68,11 @@ public class CombatManager : NetworkBehaviour
 
         foreach (var player in players)
         {
-            Debug.Log($"CombatManager: Processing player {player.EntityName.Value}");
+            /* Debug.Log($"CombatManager: Processing player {player.EntityName.Value}"); */
             NetworkEntity opponentPet = fightManager.GetOpponentForPlayer(player);
             if (opponentPet != null)
             {
-                Debug.Log($"CombatManager: Found opponent pet {opponentPet.EntityName.Value} for player {player.EntityName.Value}");
+                /* Debug.Log($"CombatManager: Found opponent pet {opponentPet.EntityName.Value} for player {player.EntityName.Value}"); */
                 activeFights.Add(player, opponentPet);
                 fightRounds.Add(player, 0); // Initialize round counter for this fight
                 fightTurns.Add(player, CombatTurn.None); // Initialize turn state
@@ -91,7 +91,7 @@ public class CombatManager : NetworkBehaviour
                 }
                 
                 // Start first round for this fight
-                Debug.Log($"CombatManager: Starting first round for player {player.EntityName.Value}");
+                /* Debug.Log($"CombatManager: Starting first round for player {player.EntityName.Value}"); */
                 StartNewRound(player);
             }
             else
@@ -100,7 +100,7 @@ public class CombatManager : NetworkBehaviour
             }
         }
 
-        Debug.Log("CombatManager: Combat initialization complete!");
+        /* Debug.Log("CombatManager: Combat initialization complete!"); */
     }
 
     private List<NetworkEntity> GetAllSpawnedEntities()
@@ -159,13 +159,13 @@ public class CombatManager : NetworkBehaviour
         RpcStartNewRound(player.ObjectId, pet.ObjectId, fightRounds[player]);
 
         // Draw cards for both entities in this specific fight
-        Debug.Log($"CombatManager: Drawing cards for player {player.EntityName.Value}");
+        /* Debug.Log($"CombatManager: Drawing cards for player {player.EntityName.Value}"); */
         DrawCardsForEntity(player);
-        Debug.Log($"CombatManager: Drawing cards for pet {pet.EntityName.Value}");
+        /* Debug.Log($"CombatManager: Drawing cards for pet {pet.EntityName.Value}"); */
         DrawCardsForEntity(pet);
 
         // Set turn to player for this fight
-        Debug.Log($"CombatManager: Setting turn to PlayerTurn for fight: {player.EntityName.Value} vs {pet.EntityName.Value}");
+        /* Debug.Log($"CombatManager: Setting turn to PlayerTurn for fight: {player.EntityName.Value} vs {pet.EntityName.Value}"); */
         SetTurn(player, CombatTurn.PlayerTurn);
     }
     
@@ -317,7 +317,7 @@ public class CombatManager : NetworkBehaviour
                     if (petTracker != null)
                     {
                         petTracker.OnTurnEnd();
-                        Debug.Log($"CombatManager: Called OnTurnEnd for pet {pet.EntityName.Value}");
+                        /* Debug.Log($"CombatManager: Called OnTurnEnd for pet {pet.EntityName.Value}"); */
                     }
                 }
             }
@@ -365,7 +365,7 @@ public class CombatManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"CombatManager: Processing end turn request from connection {conn.ClientId}");
+        /* Debug.Log($"CombatManager: Processing end turn request from connection {conn.ClientId}"); */
 
         // Find the player entity associated with this connection
         NetworkEntity playerEntity = GetPlayerEntityFromConnection(conn);
@@ -375,7 +375,7 @@ public class CombatManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"CombatManager: Found player entity {playerEntity.EntityName.Value} for end turn request");
+        /* Debug.Log($"CombatManager: Found player entity {playerEntity.EntityName.Value} for end turn request"); */
 
         // Only allow ending turn if it's actually this player's turn
         if (!fightTurns.TryGetValue(playerEntity, out CombatTurn currentTurn))
@@ -390,13 +390,13 @@ public class CombatManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"CombatManager: Processing end turn for {playerEntity.EntityName.Value}");
+        /* Debug.Log($"CombatManager: Processing end turn for {playerEntity.EntityName.Value}"); */
 
         // Discard player's hand
         HandManager handManager = GetHandManagerForEntity(playerEntity);
         if (handManager != null)
         {
-            Debug.Log($"CombatManager: Discarding hand for {playerEntity.EntityName.Value}");
+            /* Debug.Log($"CombatManager: Discarding hand for {playerEntity.EntityName.Value}"); */
             handManager.DiscardHand();
         }
         else
@@ -406,7 +406,7 @@ public class CombatManager : NetworkBehaviour
         }
 
         // Switch to pet turn for this specific fight
-        Debug.Log($"CombatManager: Switching to pet turn for {playerEntity.EntityName.Value}");
+        /* Debug.Log($"CombatManager: Switching to pet turn for {playerEntity.EntityName.Value}"); */
         SetTurn(playerEntity, CombatTurn.PetTurn);
     }
 
@@ -444,24 +444,24 @@ public class CombatManager : NetworkBehaviour
         // (The fight might have ended during the pet's turn if someone died)
         if (!activeFights.ContainsKey(player))
         {
-            Debug.Log($"CombatManager: Fight involving player {player.EntityName.Value} has ended, not starting new round.");
+            /* Debug.Log($"CombatManager: Fight involving player {player.EntityName.Value} has ended, not starting new round."); */
             yield break;
         }
 
         // Add a short pause before starting the new round
-        Debug.Log($"CombatManager: Adding a 0.25s delay before starting new round for fight involving player {player.EntityName.Value}.");
+        /* Debug.Log($"CombatManager: Adding a 0.25s delay before starting new round for fight involving player {player.EntityName.Value}."); */
         yield return new WaitForSeconds(0.25f);
 
         // Double-check that the fight is still active after the delay
         if (!activeFights.ContainsKey(player))
         {
-            Debug.Log($"CombatManager: Fight involving player {player.EntityName.Value} ended during delay, not starting new round.");
+            /* Debug.Log($"CombatManager: Fight involving player {player.EntityName.Value} ended during delay, not starting new round."); */
             yield break;
         }
 
         // Start new round for this specific fight
         // Note: OnTurnEnd for the pet will be called automatically in SetTurn when transitioning from PetTurn to PlayerTurn
-        Debug.Log($"CombatManager: Delay complete. Starting new round for fight involving player {player.EntityName.Value}.");
+        /* Debug.Log($"CombatManager: Delay complete. Starting new round for fight involving player {player.EntityName.Value}."); */
         StartNewRound(player);
     }
 
@@ -491,7 +491,7 @@ public class CombatManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"CombatManager: Handling death of {deadEntity.EntityName.Value} killed by {(killer != null ? killer.EntityName.Value : "unknown")}");
+        /* Debug.Log($"CombatManager: Handling death of {deadEntity.EntityName.Value} killed by {(killer != null ? killer.EntityName.Value : "unknown")}"); */
         
         // Find the fight this entity was involved in
         NetworkEntity player = null;
@@ -534,7 +534,7 @@ public class CombatManager : NetworkBehaviour
             // Notify clients about the fight end
             RpcNotifyFightEnded(player, pet, playerWon);
             
-            Debug.Log($"CombatManager: Fight ended - {(playerWon ? player.EntityName.Value : pet.EntityName.Value)} won");
+            /* Debug.Log($"CombatManager: Fight ended - {(playerWon ? player.EntityName.Value : pet.EntityName.Value)} won"); */
             
             // Check if all fights are complete
             CheckAllFightsComplete();
@@ -551,7 +551,7 @@ public class CombatManager : NetworkBehaviour
     [Server]
     private void DespawnAllCardsForFight(NetworkEntity player, NetworkEntity pet)
     {
-        Debug.Log($"CombatManager: Despawning all cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}");
+        /* Debug.Log($"CombatManager: Despawning all cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}"); */
         
         // Despawn player's cards
         HandManager playerHandManager = GetHandManagerForEntity(player);
@@ -577,7 +577,7 @@ public class CombatManager : NetworkBehaviour
             Debug.LogWarning($"CombatManager: Pet {pet.EntityName.Value} has no HandManager component");
         }
         
-        Debug.Log($"CombatManager: Finished despawning cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}");
+        /* Debug.Log($"CombatManager: Finished despawning cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}"); */
     }
     
     /// <summary>
@@ -619,7 +619,7 @@ public class CombatManager : NetworkBehaviour
     [Server]
     private void ShowFightConclusion()
     {
-        Debug.Log("CombatManager: Starting fight conclusion display");
+        /* Debug.Log("CombatManager: Starting fight conclusion display"); */
         
         if (fightConclusionManager != null)
         {
@@ -640,12 +640,12 @@ public class CombatManager : NetworkBehaviour
     [Server]
     private void TransitionToDraftPhaseDirectly()
     {
-        Debug.Log("CombatManager: Starting direct transition to draft phase");
+        /* Debug.Log("CombatManager: Starting direct transition to draft phase"); */
         
         if (draftSetup != null)
         {
             // Reset the draft setup state to allow a new draft to begin
-            Debug.Log("CombatManager: Resetting draft setup for new draft round");
+            /* Debug.Log("CombatManager: Resetting draft setup for new draft round"); */
             draftSetup.ResetSetup();
             
             // Initialize the new draft

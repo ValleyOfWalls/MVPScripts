@@ -108,7 +108,7 @@ public class OffscreenPanelSetup : MonoBehaviour
                 break;
         }
         
-        Debug.Log($"OffscreenPanelSetup: Calculated hidden position for {gameObject.name} ({hideDirection}) using {(autoCalculateOffset ? "auto" : "manual")} offset ({offsetToUse:F1}): {hiddenPosition}");
+        /* Debug.Log($"OffscreenPanelSetup: Calculated hidden position for {gameObject.name} ({hideDirection}) using {(autoCalculateOffset ? "auto" : "manual")} offset ({offsetToUse:F1}): {hiddenPosition}"); */
     }
     
     /// <summary>
@@ -137,7 +137,7 @@ public class OffscreenPanelSetup : MonoBehaviour
         float minimumOffset = 100f;
         requiredOffset = Mathf.Max(requiredOffset, minimumOffset);
         
-        Debug.Log($"OffscreenPanelSetup: Auto-calculated offset for {gameObject.name} ({hideDirection}): {requiredOffset:F1} (panel size: {panelSize}, buffer: {offsetBuffer})");
+        /* Debug.Log($"OffscreenPanelSetup: Auto-calculated offset for {gameObject.name} ({hideDirection}): {requiredOffset:F1} (panel size: {panelSize}, buffer: {offsetBuffer})"); */
         return requiredOffset;
     }
     
@@ -280,7 +280,7 @@ public class OffscreenPanelSetup : MonoBehaviour
             CalculateHiddenPosition();
             if (hiddenPosition != previousHiddenPosition)
             {
-                Debug.Log($"OffscreenPanelSetup: Updated hidden position for {gameObject.name}: {hiddenPosition}");
+                /* Debug.Log($"OffscreenPanelSetup: Updated hidden position for {gameObject.name}: {hiddenPosition}"); */
             }
         }
     }

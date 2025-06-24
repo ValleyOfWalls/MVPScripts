@@ -87,7 +87,7 @@ public class SoundEffectManager : MonoBehaviour
     
     private void InitializeManager()
     {
-        Debug.Log($"SoundEffectManager: Starting initialization");
+        /* Debug.Log($"SoundEffectManager: Starting initialization"); */
         
         // Create audio source parent
         if (audioSourceParent == null)
@@ -204,7 +204,7 @@ public class SoundEffectManager : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"SoundEffectManager: Playing {clip.name} at {position} (Volume: {volume}, Pitch: {pitch}, Loop: {loop})");
+            /* Debug.Log($"SoundEffectManager: Playing {clip.name} at {position} (Volume: {volume}, Pitch: {pitch}, Loop: {loop})"); */
         }
         
         // Start coroutine to return to pool when finished
@@ -380,7 +380,7 @@ public class SoundEffectManager : MonoBehaviour
         {
             if (debugMode)
             {
-                Debug.Log($"SoundEffectManager: Playing custom sound '{soundName}' at {position}");
+                /* Debug.Log($"SoundEffectManager: Playing custom sound '{soundName}' at {position}"); */
             }
             PlayAudioClipAtPosition(position, soundEntry.audioClip, soundEntry.volume, soundEntry.pitch, soundEntry.loop);
         }

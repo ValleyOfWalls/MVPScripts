@@ -110,7 +110,7 @@ public class LoadingScreenManager : NetworkBehaviour
     
     private void OnGamePhaseChanged(GamePhaseManager.GamePhase newPhase)
     {
-        Debug.Log($"LoadingScreenManager: Game phase changed to {newPhase}");
+        /* Debug.Log($"LoadingScreenManager: Game phase changed to {newPhase}"); */
         
         // Show loading screen when transitioning to combat phase
         if (newPhase == GamePhaseManager.GamePhase.Combat && !isLoadingScreenActive)
@@ -126,7 +126,7 @@ public class LoadingScreenManager : NetworkBehaviour
     {
         if (isLoadingScreenActive) return;
         
-        Debug.Log("LoadingScreenManager: Showing loading screen");
+        /* Debug.Log("LoadingScreenManager: Showing loading screen"); */
         isLoadingScreenActive = true;
         
         // Activate the loading screen panel
@@ -151,7 +151,7 @@ public class LoadingScreenManager : NetworkBehaviour
     {
         if (!isLoadingScreenActive) return;
         
-        Debug.Log("LoadingScreenManager: Hiding loading screen");
+        /* Debug.Log("LoadingScreenManager: Hiding loading screen"); */
         isLoadingScreenActive = false;
         
         // Stop loading text animation
@@ -240,7 +240,7 @@ public class LoadingScreenManager : NetworkBehaviour
         {
             if (combatSetup != null && combatSetup.IsSetupComplete)
             {
-                Debug.Log("LoadingScreenManager: Combat setup completed, hiding loading screen");
+                /* Debug.Log("LoadingScreenManager: Combat setup completed, hiding loading screen"); */
                 
                 // Add a small delay to ensure smooth transition
                 yield return new WaitForSeconds(0.5f);

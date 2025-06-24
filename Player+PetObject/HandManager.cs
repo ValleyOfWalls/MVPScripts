@@ -55,7 +55,7 @@ public class HandManager : NetworkBehaviour
     public void DrawCards()
     {
         if (!IsServerInitialized) return;
-        if (verboseLogging) Debug.Log($"HandManager: Drawing cards for {gameObject.name}");
+        if (verboseLogging) /* Debug.Log($"HandManager: Drawing cards for {gameObject.name}"); */
 
         // Check if transforms are available
         if (deckTransform == null || handTransform == null)
@@ -180,11 +180,11 @@ public class HandManager : NetworkBehaviour
                 continue;
             }
             
-            Debug.Log($"HandManager: Moving card {card.name} to discard for {gameObject.name}");
+            /* Debug.Log($"HandManager: Moving card {card.name} to discard for {gameObject.name}"); */
             MoveCardToDiscard(card);
         }
         
-        Debug.Log($"HandManager: Finished discarding {handCards.Count} cards for {gameObject.name}");
+        /* Debug.Log($"HandManager: Finished discarding {handCards.Count} cards for {gameObject.name}"); */
     }
 
     /// <summary>
@@ -194,7 +194,7 @@ public class HandManager : NetworkBehaviour
     public void DrawOneCard()
     {
         if (!IsServerInitialized) return;
-        Debug.Log($"HandManager: Drawing one card for {gameObject.name}");
+        /* Debug.Log($"HandManager: Drawing one card for {gameObject.name}"); */
 
         // Check if transforms are available
         if (deckTransform == null || handTransform == null)
@@ -214,7 +214,7 @@ public class HandManager : NetworkBehaviour
             RecycleAndShuffleDiscardPile();
             // Get updated deck cards after recycling
             deckCards = GetCardsInTransform(deckTransform);
-            Debug.Log($"HandManager: After recycling, deck now has {deckCards.Count} cards.");
+            /* Debug.Log($"HandManager: After recycling, deck now has {deckCards.Count} cards."); */
         }
 
         // Check if we have any cards to draw
@@ -232,7 +232,7 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"HandManager: Moving card {card.name} to hand for {gameObject.name}");
+        /* Debug.Log($"HandManager: Moving card {card.name} to hand for {gameObject.name}"); */
         MoveCardToHand(card);
     }
 
@@ -243,7 +243,7 @@ public class HandManager : NetworkBehaviour
     public void DiscardCard(GameObject card)
     {
         if (!IsServerInitialized || card == null) return;
-        Debug.Log($"HandManager: Discarding specific card {card.name} for {gameObject.name}");
+        /* Debug.Log($"HandManager: Discarding specific card {card.name} for {gameObject.name}"); */
 
         // Check if transforms are available
         if (handTransform == null || discardTransform == null)
@@ -283,7 +283,7 @@ public class HandManager : NetworkBehaviour
             sourceAndTargetIdentifier.OnCardPlayedOrDiscarded();
         }
 
-        Debug.Log($"HandManager: Moving card {card.name} to discard for {gameObject.name}");
+        /* Debug.Log($"HandManager: Moving card {card.name} to discard for {gameObject.name}"); */
         MoveCardToDiscard(card);
     }
 
@@ -323,7 +323,7 @@ public class HandManager : NetworkBehaviour
         }
 
         // Direct server-side manipulation
-        Debug.Log($"HandManager (ServerDirect): Enabling card {card.name} and moving to hand for {gameObject.name}");
+        /* Debug.Log($"HandManager (ServerDirect): Enabling card {card.name} and moving to hand for {gameObject.name}"); */
         card.SetActive(true);
         card.transform.SetParent(handTransform);
         
@@ -332,11 +332,11 @@ public class HandManager : NetworkBehaviour
         if (handLayoutManager == null)
         {
         card.transform.localPosition = Vector3.zero;
-            Debug.Log($"HandManager (ServerDirect): Reset {card.name} position to zero (no HandLayoutManager found)");
+            /* Debug.Log($"HandManager (ServerDirect): Reset {card.name} position to zero (no HandLayoutManager found)"); */
         }
         else
         {
-            Debug.Log($"HandManager (ServerDirect): Skipped position reset for {card.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+            /* Debug.Log($"HandManager (ServerDirect): Skipped position reset for {card.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
         }
         
         // RPCs for clients only
@@ -380,7 +380,7 @@ public class HandManager : NetworkBehaviour
         }
 
         // Direct server-side manipulation
-        Debug.Log($"HandManager (ServerDirect): Disabling card {card.name} and moving to discard for {gameObject.name}");
+        /* Debug.Log($"HandManager (ServerDirect): Disabling card {card.name} and moving to discard for {gameObject.name}"); */
         card.SetActive(false);
         card.transform.SetParent(discardTransform);
         card.transform.localPosition = Vector3.zero;
@@ -427,7 +427,7 @@ public class HandManager : NetworkBehaviour
         }
 
         // Direct server-side manipulation
-        Debug.Log($"HandManager (ServerDirect): Moving card {card.name} to deck (disabled) for {gameObject.name}");
+        /* Debug.Log($"HandManager (ServerDirect): Moving card {card.name} to deck (disabled) for {gameObject.name}"); */
         card.transform.SetParent(deckTransform);
         card.transform.localPosition = Vector3.zero;
         card.SetActive(false); 
@@ -448,14 +448,14 @@ public class HandManager : NetworkBehaviour
             Debug.Log($"HandManager: No cards in discard pile to recycle for {gameObject.name}");
             return;
         }
-        Debug.Log($"HandManager: Starting recycle of {discardCards.Count} cards from discard to deck for {gameObject.name}");
+        /* Debug.Log($"HandManager: Starting recycle of {discardCards.Count} cards from discard to deck for {gameObject.name}"); */
 
         List<GameObject> initialExistingDeckCards = GetCardsInTransform(deckTransform); // Get initial state
-        Debug.Log($"HandManager: Found {initialExistingDeckCards.Count} existing cards in deck that will remain on top for {gameObject.name}");
+        /* Debug.Log($"HandManager: Found {initialExistingDeckCards.Count} existing cards in deck that will remain on top for {gameObject.name}"); */
 
         System.Random rng = new System.Random();
         int n = discardCards.Count;
-        Debug.Log($"HandManager: Shuffling {n} discard cards for {gameObject.name}");
+        /* Debug.Log($"HandManager: Shuffling {n} discard cards for {gameObject.name}"); */
         while (n > 1)
         {
             n--;
@@ -464,7 +464,7 @@ public class HandManager : NetworkBehaviour
             discardCards[k] = discardCards[n];
             discardCards[n] = temp;
         }
-        Debug.Log($"HandManager: Finished shuffling discard cards. About to move {discardCards.Count} cards to deck for {gameObject.name}");
+        /* Debug.Log($"HandManager: Finished shuffling discard cards. About to move {discardCards.Count} cards to deck for {gameObject.name}"); */
 
         int movedCardThisRecycle = 0;
         for(int i=0; i < discardCards.Count; i++)
@@ -472,7 +472,7 @@ public class HandManager : NetworkBehaviour
             GameObject card = discardCards[i];
             if (card != null)
             {
-                Debug.Log($"HandManager (RecycleLoop {i+1}/{discardCards.Count}): Processing card {card.name} for {gameObject.name}");
+                /* Debug.Log($"HandManager (RecycleLoop {i+1}/{discardCards.Count}): Processing card {card.name} for {gameObject.name}"); */
                 MoveCardToDeck(card); // This now does direct server parenting
                 movedCardThisRecycle++;
             }
@@ -481,7 +481,7 @@ public class HandManager : NetworkBehaviour
                 Debug.LogError($"HandManager (RecycleLoop {i+1}/{discardCards.Count}): Found a NULL card in the discardCards list for {gameObject.name}");
             }
         }
-        Debug.Log($"HandManager: Loop for moving cards from discard to deck completed. Moved {movedCardThisRecycle} cards this cycle for {gameObject.name}.");
+        /* Debug.Log($"HandManager: Loop for moving cards from discard to deck completed. Moved {movedCardThisRecycle} cards this cycle for {gameObject.name}."); */
 
         // Sibling index management
         // initialExistingDeckCards contains the references to the cards that were originally in the deck.
@@ -489,7 +489,7 @@ public class HandManager : NetworkBehaviour
         // All these GameObjects should now be children of deckTransform due to direct server-side parenting.
 
         int siblingIndex = 0;
-        Debug.Log($"HandManager: Setting sibling indices for {initialExistingDeckCards.Count} original deck cards.");
+        /* Debug.Log($"HandManager: Setting sibling indices for {initialExistingDeckCards.Count} original deck cards."); */
         foreach (GameObject card in initialExistingDeckCards)
         {
             if (card == null) { Debug.LogError("Null card found in initialExistingDeckCards during sibling sort!"); continue; }
@@ -497,7 +497,7 @@ public class HandManager : NetworkBehaviour
             card.transform.SetSiblingIndex(siblingIndex++);
         }
         
-        Debug.Log($"HandManager: Setting sibling indices for {discardCards.Count} recycled cards.");
+        /* Debug.Log($"HandManager: Setting sibling indices for {discardCards.Count} recycled cards."); */
         foreach (GameObject card in discardCards) 
         {
             if (card == null) { Debug.LogError("Null card found in discardCards during sibling sort!"); continue; }
@@ -506,13 +506,13 @@ public class HandManager : NetworkBehaviour
         }
         
         List<GameObject> finalDeckContents = GetCardsInTransform(deckTransform);
-        Debug.Log($"HandManager: Completed recycle and shuffle. Final deck count: {finalDeckContents.Count}. Expected {initialExistingDeckCards.Count + discardCards.Count} for {gameObject.name}");
+        /* Debug.Log($"HandManager: Completed recycle and shuffle. Final deck count: {finalDeckContents.Count}. Expected {initialExistingDeckCards.Count + discardCards.Count} for {gameObject.name}"); */
     }
 
     [ObserversRpc]
     private void RpcSetCardEnabled(int cardNetObjId, bool enabled)
     {
-        Debug.Log($"HandManager (Client RPC): RpcSetCardEnabled called for card NOB ID: {cardNetObjId}, enabled: {enabled}");
+        /* Debug.Log($"HandManager (Client RPC): RpcSetCardEnabled called for card NOB ID: {cardNetObjId}, enabled: {enabled}"); */
         
         NetworkObject cardNetObj = null;
         bool foundCard = false;
@@ -543,7 +543,7 @@ public class HandManager : NetworkBehaviour
             Debug.LogWarning($"HandManager (Client RPC): No EntityVisibilityManager found, using fallback for card {cardObject.name}");
         }
         
-        Debug.Log($"HandManager (Client RPC): RpcSetCardEnabled - Card {cardObject.name} visibility updated (requested: {enabled})");
+        /* Debug.Log($"HandManager (Client RPC): RpcSetCardEnabled - Card {cardObject.name} visibility updated (requested: {enabled})"); */
     }
 
     /// <summary>
@@ -566,8 +566,8 @@ public class HandManager : NetworkBehaviour
     [ObserversRpc(ExcludeServer = true)]
     private void RpcSetCardParent(int cardNetObjId, int parentEntityNetObjId, string targetTransformName)
     {
-        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Setting card with ID {cardNetObjId} parent to {targetTransformName} on entity with ID {parentEntityNetObjId}");
-        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - This HandManager is on entity {gameObject.name} with NOB ID: {this.NetworkObject.ObjectId}");
+        /* Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Setting card with ID {cardNetObjId} parent to {targetTransformName} on entity with ID {parentEntityNetObjId}"); */
+        /* Debug.Log($"HandManager (Client RPC): RpcSetCardParent - This HandManager is on entity {gameObject.name} with NOB ID: {this.NetworkObject.ObjectId}"); */
         
         // First check if this HandManager instance is for the correct entity
         Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION 1: this.NetworkObject.ObjectId ({this.NetworkObject.ObjectId}) vs parentEntityNetObjId ({parentEntityNetObjId})");
@@ -594,14 +594,14 @@ public class HandManager : NetworkBehaviour
         
         // Additional validation: Check if the card actually belongs to this entity
         Card card = cardNetObj.GetComponent<Card>();
-        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION 2: Card component found: {card != null}");
+        /* Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION 2: Card component found: {card != null}"); */
         if (card != null && card.OwnerEntity != null)
         {
             NetworkObject cardOwnerNetObj = card.OwnerEntity.GetComponent<NetworkObject>();
-            Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION 2: Card.OwnerEntity = {card.OwnerEntity.EntityName.Value}, cardOwnerNetObj.ObjectId = {cardOwnerNetObj?.ObjectId ?? -1}, this.NetworkObject.ObjectId = {this.NetworkObject.ObjectId}");
+            /* Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION 2: Card.OwnerEntity = {card.OwnerEntity.EntityName.Value}, cardOwnerNetObj.ObjectId = {cardOwnerNetObj?.ObjectId ?? -1}, this.NetworkObject.ObjectId = {this.NetworkObject.ObjectId}"); */
             if (cardOwnerNetObj != null && cardOwnerNetObj.ObjectId != this.NetworkObject.ObjectId)
             {
-                Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Card {card.name} belongs to entity {card.OwnerEntity.EntityName.Value} (NOB ID: {cardOwnerNetObj.ObjectId}), not this entity (NOB ID: {this.NetworkObject.ObjectId}). Ignoring.");
+                /* Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Card {card.name} belongs to entity {card.OwnerEntity.EntityName.Value} (NOB ID: {cardOwnerNetObj.ObjectId}), not this entity (NOB ID: {this.NetworkObject.ObjectId}). Ignoring."); */
                 return;
             }
         }
@@ -649,7 +649,7 @@ public class HandManager : NetworkBehaviour
         
         // Set the card's parent to the target transform
         GameObject cardObject = cardNetObj.gameObject;
-        Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION PASSED - Setting card {cardObject.name} parent to {targetTransform.name} on {gameObject.name}");
+        /* Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION PASSED - Setting card {cardObject.name} parent to {targetTransform.name} on {gameObject.name}"); */
         cardObject.transform.SetParent(targetTransform);
         
         // Only reset position if no HandLayoutManager is present to avoid interfering with custom layouts
@@ -657,17 +657,17 @@ public class HandManager : NetworkBehaviour
         if (handLayoutManager == null && targetTransformName == "Hand")
         {
             cardObject.transform.localPosition = Vector3.zero;
-            Debug.Log($"HandManager (Client RPC): Reset {cardObject.name} position to zero (no HandLayoutManager found)");
+            /* Debug.Log($"HandManager (Client RPC): Reset {cardObject.name} position to zero (no HandLayoutManager found)"); */
         }
         else if (targetTransformName != "Hand")
         {
             // Always reset position for Deck and Discard (they don't use custom layouts)
         cardObject.transform.localPosition = Vector3.zero;
-            Debug.Log($"HandManager (Client RPC): Reset {cardObject.name} position to zero for {targetTransformName}");
+            /* Debug.Log($"HandManager (Client RPC): Reset {cardObject.name} position to zero for {targetTransformName}"); */
         }
         else
         {
-            Debug.Log($"HandManager (Client RPC): Skipped position reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+            /* Debug.Log($"HandManager (Client RPC): Skipped position reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
         }
     }
 
@@ -694,7 +694,7 @@ public class HandManager : NetworkBehaviour
             }
         }
         
-        Debug.Log($"HandManager: Found {cards.Count} cards in {parent.name} for {gameObject.name}");
+        /* Debug.Log($"HandManager: Found {cards.Count} cards in {parent.name} for {gameObject.name}"); */
         return cards;
     }
 
@@ -760,7 +760,7 @@ public class HandManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"HandManager: Despawning all cards for {gameObject.name}");
+        /* Debug.Log($"HandManager: Despawning all cards for {gameObject.name}"); */
         
         // Get CardSpawner component
         CardSpawner cardSpawner = GetComponent<CardSpawner>();
@@ -778,7 +778,7 @@ public class HandManager : NetworkBehaviour
         {
             List<GameObject> handCards = GetCardsInTransform(handTransform);
             allCards.AddRange(handCards);
-            Debug.Log($"HandManager: Found {handCards.Count} cards in hand for {gameObject.name}");
+            /* Debug.Log($"HandManager: Found {handCards.Count} cards in hand for {gameObject.name}"); */
         }
         
         // Add cards from deck
@@ -786,7 +786,7 @@ public class HandManager : NetworkBehaviour
         {
             List<GameObject> deckCards = GetCardsInTransform(deckTransform);
             allCards.AddRange(deckCards);
-            Debug.Log($"HandManager: Found {deckCards.Count} cards in deck for {gameObject.name}");
+            /* Debug.Log($"HandManager: Found {deckCards.Count} cards in deck for {gameObject.name}"); */
         }
         
         // Add cards from discard
@@ -794,21 +794,21 @@ public class HandManager : NetworkBehaviour
         {
             List<GameObject> discardCards = GetCardsInTransform(discardTransform);
             allCards.AddRange(discardCards);
-            Debug.Log($"HandManager: Found {discardCards.Count} cards in discard for {gameObject.name}");
+            /* Debug.Log($"HandManager: Found {discardCards.Count} cards in discard for {gameObject.name}"); */
         }
         
         // Despawn all cards
-        Debug.Log($"HandManager: Despawning {allCards.Count} total cards for {gameObject.name}");
+        /* Debug.Log($"HandManager: Despawning {allCards.Count} total cards for {gameObject.name}"); */
         foreach (GameObject card in allCards)
         {
             if (card != null)
             {
-                Debug.Log($"HandManager: Despawning card {card.name} for {gameObject.name}");
+                /* Debug.Log($"HandManager: Despawning card {card.name} for {gameObject.name}"); */
                 cardSpawner.DespawnCard(card);
             }
         }
         
-        Debug.Log($"HandManager: Finished despawning all cards for {gameObject.name}");
+        /* Debug.Log($"HandManager: Finished despawning all cards for {gameObject.name}"); */
     }
     
     private void LogVerbose(string message)

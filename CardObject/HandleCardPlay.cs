@@ -76,7 +76,7 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"HandleCardPlay: Playing card {card.CardData?.CardName}");
+        /* Debug.Log($"HandleCardPlay: Playing card {card.CardData?.CardName}"); */
         
         // Check if TestCombat return-to-hand mode is enabled
         #if UNITY_EDITOR
@@ -179,7 +179,7 @@ public class HandleCardPlay : NetworkBehaviour
             bool sequenceValid = card.CardData.CanPlayWithCombo(sourceTracker.ComboCount);
             if (!sequenceValid)
             {
-                Debug.Log($"HandleCardPlay: Cannot play {card.CardData.CardName} - combo requirement not met (have {sourceTracker.ComboCount}, need {card.CardData.RequiredComboAmount})");
+                /* Debug.Log($"HandleCardPlay: Cannot play {card.CardData.CardName} - combo requirement not met (have {sourceTracker.ComboCount}, need {card.CardData.RequiredComboAmount})"); */
                 return false;
             }
         }
@@ -256,7 +256,7 @@ public class HandleCardPlay : NetworkBehaviour
     [ServerRpc(RequireOwnership = false)]
     public void ServerPlayCard(NetworkConnection conn = null)
     {
-        Debug.Log($"HandleCardPlay: ServerPlayCard called for card {card?.CardData?.CardName}");
+        /* Debug.Log($"HandleCardPlay: ServerPlayCard called for card {card?.CardData?.CardName}"); */
         
         // Validate on server side as well
         if (!CanPlayCard())
@@ -266,7 +266,7 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"HandleCardPlay: Server validation passed for card {card?.CardData?.CardName}");
+        /* Debug.Log($"HandleCardPlay: Server validation passed for card {card?.CardData?.CardName}"); */
 
         // FIXED: Deduct energy cost BEFORE processing effects (was happening after)
         // This ensures restore energy effects work correctly with the proper order
@@ -277,11 +277,11 @@ public class HandleCardPlay : NetworkBehaviour
             
             // Deduct energy cost first
             sourceEntity.ChangeEnergy(-energyCost);
-            Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value} before applying effects");
+            /* Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value} before applying effects"); */
         }
 
         // Process the card effect AFTER energy deduction
-        Debug.Log($"HandleCardPlay: Processing card effects - cardEffectResolver: {cardEffectResolver != null}");
+        /* Debug.Log($"HandleCardPlay: Processing card effects - cardEffectResolver: {cardEffectResolver != null}"); */
         
         if (cardEffectResolver != null)
         {
@@ -289,26 +289,26 @@ public class HandleCardPlay : NetworkBehaviour
             var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
             var targetEntity = sourceAndTargetIdentifier.AllTargets.Count > 0 ? sourceAndTargetIdentifier.AllTargets[0] : null;
             
-            Debug.Log($"HandleCardPlay: Entities - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, CardData: {card?.CardData?.CardName}");
+            /* Debug.Log($"HandleCardPlay: Entities - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, CardData: {card?.CardData?.CardName}"); */
             
             if (sourceEntity != null && targetEntity != null)
             {
                 // Check if this card should trigger visual effects
-                Debug.Log($"HandleCardPlay: Checking if card {card.CardData?.CardName} should trigger visual effects...");
+                /* Debug.Log($"HandleCardPlay: Checking if card {card.CardData?.CardName} should trigger visual effects..."); */
                 bool shouldTriggerVisuals = ShouldTriggerVisualEffects(card.CardData);
-                Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects result: {shouldTriggerVisuals}");
+                /* Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects result: {shouldTriggerVisuals}"); */
                 
                 if (shouldTriggerVisuals)
                 {
-                    Debug.Log($"HandleCardPlay: Card {card.CardData?.CardName} SHOULD trigger visual effects - calling TriggerVisualEffects");
+                    /* Debug.Log($"HandleCardPlay: Card {card.CardData?.CardName} SHOULD trigger visual effects - calling TriggerVisualEffects"); */
                     TriggerVisualEffects(sourceEntity, targetEntity, card.CardData);
                 }
                 else
                 {
-                    Debug.Log($"HandleCardPlay: Card {card.CardData?.CardName} should NOT trigger visual effects");
+                    /* Debug.Log($"HandleCardPlay: Card {card.CardData?.CardName} should NOT trigger visual effects"); */
                 }
                 
-                Debug.Log($"HandleCardPlay: Calling cardEffectResolver.ServerResolveCardEffect");
+                /* Debug.Log($"HandleCardPlay: Calling cardEffectResolver.ServerResolveCardEffect"); */
                 cardEffectResolver.ServerResolveCardEffect(sourceEntity, targetEntity, card.CardData);
             }
             else
@@ -331,7 +331,7 @@ public class HandleCardPlay : NetworkBehaviour
             if (handManager != null)
             {
                 handManager.DiscardCard(gameObject);
-                Debug.Log($"HandleCardPlay: Discarded card {card?.CardData?.CardName} to discard pile");
+                /* Debug.Log($"HandleCardPlay: Discarded card {card?.CardData?.CardName} to discard pile"); */
             }
             else
             {
@@ -339,7 +339,7 @@ public class HandleCardPlay : NetworkBehaviour
             }
         }
         
-        Debug.Log($"HandleCardPlay: ServerPlayCard completed for card {card?.CardData?.CardName}");
+        /* Debug.Log($"HandleCardPlay: ServerPlayCard completed for card {card?.CardData?.CardName}"); */
     }
 
     /// <summary>
@@ -428,7 +428,7 @@ public class HandleCardPlay : NetworkBehaviour
         
         // Deduct energy cost
         sourceEntity.ChangeEnergy(-energyCost);
-        Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value}");
+        /* Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value}"); */
         
         // Find the hand manager and discard the card
         HandManager handManager = GetHandManagerForEntity(sourceEntity);
@@ -496,7 +496,7 @@ public class HandleCardPlay : NetworkBehaviour
             return false;
         }
         
-        Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - Card {cardData.CardName} has {cardData.Effects.Count} effects, checking each...");
+        /* Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - Card {cardData.CardName} has {cardData.Effects.Count} effects, checking each..."); */
         
         // Check each effect to see if any need visual effects
         foreach (var effect in cardData.Effects)
@@ -504,16 +504,16 @@ public class HandleCardPlay : NetworkBehaviour
             Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - Checking effect {effect.effectType} with behavior {effect.animationBehavior}");
             if (ShouldEffectTriggerVisual(effect, cardData))
             {
-                Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - Effect {effect.effectType} SHOULD trigger visual");
+                /* Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - Effect {effect.effectType} SHOULD trigger visual"); */
                 return true;
             }
             else
             {
-                Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - Effect {effect.effectType} should NOT trigger visual");
+                /* Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - Effect {effect.effectType} should NOT trigger visual"); */
             }
         }
         
-        Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - No effects on card {cardData.CardName} need visual effects");
+        /* Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects - No effects on card {cardData.CardName} need visual effects"); */
         return false;
     }
     
@@ -522,20 +522,20 @@ public class HandleCardPlay : NetworkBehaviour
     /// </summary>
     private bool ShouldEffectTriggerVisual(CardEffect effect, CardData cardData)
     {
-        Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Checking effect {effect.effectType} with animation behavior {effect.animationBehavior}");
+        /* Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Checking effect {effect.effectType} with animation behavior {effect.animationBehavior}"); */
         
         // Check explicit animation behavior first
         switch (effect.animationBehavior)
         {
             case EffectAnimationBehavior.None:
-                Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Effect {effect.effectType} has None behavior, returning false");
+                /* Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Effect {effect.effectType} has None behavior, returning false"); */
                 return false;
             case EffectAnimationBehavior.InstantOnTarget:
             case EffectAnimationBehavior.ProjectileFromSource:
             case EffectAnimationBehavior.OnSourceOnly:
             case EffectAnimationBehavior.AreaEffect:
             case EffectAnimationBehavior.BeamToTarget:
-                Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Effect {effect.effectType} has explicit visual behavior {effect.animationBehavior}, returning true");
+                /* Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Effect {effect.effectType} has explicit visual behavior {effect.animationBehavior}, returning true"); */
                 return true;
             case EffectAnimationBehavior.Auto:
                 Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Effect {effect.effectType} has Auto behavior, falling through to auto-detection");
@@ -560,7 +560,7 @@ public class HandleCardPlay : NetworkBehaviour
                 break;
         }
         
-        Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Auto-detection for effect {effect.effectType}: {shouldTrigger}");
+        /* Debug.Log($"HandleCardPlay: ShouldEffectTriggerVisual - Auto-detection for effect {effect.effectType}: {shouldTrigger}"); */
         return shouldTrigger;
     }
     
@@ -571,7 +571,7 @@ public class HandleCardPlay : NetworkBehaviour
     /// </summary>
     public void TriggerVisualEffects(NetworkEntity sourceEntity, NetworkEntity targetEntity, CardData cardData)
     {
-        Debug.Log($"HandleCardPlay: TriggerVisualEffects called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Card: {cardData?.CardName}");
+        /* Debug.Log($"HandleCardPlay: TriggerVisualEffects called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Card: {cardData?.CardName}"); */
         
         if (sourceEntity == null || targetEntity == null || cardData == null) 
         {
@@ -582,35 +582,35 @@ public class HandleCardPlay : NetworkBehaviour
         bool hasTriggeredAttackAnimation = false;
         float maxEffectDuration = 0f;
         
-        Debug.Log($"HandleCardPlay: TriggerVisualEffects - Processing {cardData.Effects.Count} effects for card {cardData.CardName}");
+        /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Processing {cardData.Effects.Count} effects for card {cardData.CardName}"); */
         
         // Process each effect that needs visual representation
         foreach (var effect in cardData.Effects)
         {
-            Debug.Log($"HandleCardPlay: TriggerVisualEffects - Processing effect {effect.effectType} with animation behavior {effect.animationBehavior}");
+            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Processing effect {effect.effectType} with animation behavior {effect.animationBehavior}"); */
             
             if (!ShouldEffectTriggerVisual(effect, cardData))
             {
-                Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect {effect.effectType} skipped (no visual needed)");
+                /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect {effect.effectType} skipped (no visual needed)"); */
                 continue;
             }
                 
-            Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect {effect.effectType} will trigger visual");
+            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect {effect.effectType} will trigger visual"); */
             
             // Trigger attack animation once for any effect that needs it
             bool shouldTriggerAttackAnim = ShouldTriggerAttackAnimation(effect);
-            Debug.Log($"HandleCardPlay: TriggerVisualEffects - ShouldTriggerAttackAnimation for effect {effect.effectType}: {shouldTriggerAttackAnim}");
+            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - ShouldTriggerAttackAnimation for effect {effect.effectType}: {shouldTriggerAttackAnim}"); */
             
             if (!hasTriggeredAttackAnimation && shouldTriggerAttackAnim)
             {
-                Debug.Log($"HandleCardPlay: TriggerVisualEffects - Attempting to trigger attack animation on source {sourceEntity.EntityName.Value}");
+                /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Attempting to trigger attack animation on source {sourceEntity.EntityName.Value}"); */
                 NetworkEntityAnimator sourceAnimator = sourceEntity.GetComponent<NetworkEntityAnimator>();
                 if (sourceAnimator != null)
                 {
-                    Debug.Log($"HandleCardPlay: TriggerVisualEffects - Found NetworkEntityAnimator on {sourceEntity.EntityName.Value}, calling PlayAttackAnimation");
+                    /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Found NetworkEntityAnimator on {sourceEntity.EntityName.Value}, calling PlayAttackAnimation"); */
                     sourceAnimator.PlayAttackAnimation();
                     hasTriggeredAttackAnimation = true;
-                    Debug.Log($"HandleCardPlay: TriggerVisualEffects - Attack animation triggered successfully on {sourceEntity.EntityName.Value}");
+                    /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Attack animation triggered successfully on {sourceEntity.EntityName.Value}"); */
                 }
                 else
                 {
@@ -619,18 +619,18 @@ public class HandleCardPlay : NetworkBehaviour
             }
             else if (hasTriggeredAttackAnimation)
             {
-                Debug.Log($"HandleCardPlay: TriggerVisualEffects - Attack animation already triggered for this card");
+                /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Attack animation already triggered for this card"); */
             }
             else
             {
-                Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect {effect.effectType} does not need attack animation");
+                /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect {effect.effectType} does not need attack animation"); */
             }
             
             // Handle the specific effect's visual behavior
-            Debug.Log($"HandleCardPlay: TriggerVisualEffects - Triggering visual for effect {effect.effectType}");
+            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Triggering visual for effect {effect.effectType}"); */
             float effectDuration = TriggerEffectVisual(sourceEntity, targetEntity, effect, cardData);
             maxEffectDuration = Mathf.Max(maxEffectDuration, effectDuration);
-            Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect duration: {effectDuration}, max so far: {maxEffectDuration}");
+            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Effect duration: {effectDuration}, max so far: {maxEffectDuration}"); */
         }
         
         // Schedule damage animation on target after effects complete
@@ -642,7 +642,7 @@ public class HandleCardPlay : NetworkBehaviour
             // Check if there's already a damage animation scheduled for this target
             if (activeDamageAnimations.ContainsKey(targetId))
             {
-                Debug.Log($"HandleCardPlay: TriggerVisualEffects - Damage animation already scheduled for {targetEntity.EntityName.Value} (ID: {targetId}), canceling previous one");
+                /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Damage animation already scheduled for {targetEntity.EntityName.Value} (ID: {targetId}), canceling previous one"); */
                 
                 // Cancel the existing coroutine
                 if (EffectAnimationManager.Instance != null && activeDamageAnimations[targetId] != null)
@@ -653,7 +653,7 @@ public class HandleCardPlay : NetworkBehaviour
                 activeDamageAnimations.Remove(targetId);
             }
             
-            Debug.Log($"HandleCardPlay: TriggerVisualEffects - Scheduling damage animation on target {targetEntity.EntityName.Value} (ID: {targetId}) with delay {damageAnimDelay}");
+            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Scheduling damage animation on target {targetEntity.EntityName.Value} (ID: {targetId}) with delay {damageAnimDelay}"); */
             
             // Use EffectAnimationManager to start the coroutine since the card GameObject may become inactive
             if (EffectAnimationManager.Instance != null)
@@ -668,10 +668,10 @@ public class HandleCardPlay : NetworkBehaviour
         }
         else
         {
-            Debug.Log($"HandleCardPlay: TriggerVisualEffects - No damage animation scheduled (maxEffectDuration = {maxEffectDuration})");
+            /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - No damage animation scheduled (maxEffectDuration = {maxEffectDuration})"); */
         }
         
-        Debug.Log($"HandleCardPlay: TriggerVisualEffects - Completed processing all effects for card {cardData.CardName}");
+        /* Debug.Log($"HandleCardPlay: TriggerVisualEffects - Completed processing all effects for card {cardData.CardName}"); */
     }
     
     /// <summary>
@@ -679,7 +679,7 @@ public class HandleCardPlay : NetworkBehaviour
     /// </summary>
     private bool ShouldTriggerAttackAnimation(CardEffect effect)
     {
-        Debug.Log($"HandleCardPlay: ShouldTriggerAttackAnimation - Checking effect {effect.effectType} with animation behavior {effect.animationBehavior}");
+        /* Debug.Log($"HandleCardPlay: ShouldTriggerAttackAnimation - Checking effect {effect.effectType} with animation behavior {effect.animationBehavior}"); */
         
         bool shouldTrigger = false;
         string reason = "";
@@ -711,7 +711,7 @@ public class HandleCardPlay : NetworkBehaviour
                 break;
         }
         
-        Debug.Log($"HandleCardPlay: ShouldTriggerAttackAnimation - Effect {effect.effectType} {reason}, returning {shouldTrigger}");
+        /* Debug.Log($"HandleCardPlay: ShouldTriggerAttackAnimation - Effect {effect.effectType} {reason}, returning {shouldTrigger}"); */
         return shouldTrigger;
     }
     
@@ -766,7 +766,7 @@ public class HandleCardPlay : NetworkBehaviour
                 {
                     if (!string.IsNullOrEmpty(effect.customEffectName))
                     {
-                        Debug.Log($"HandleCardPlay: Using delayed custom effect name: {effect.customEffectName}");
+                        /* Debug.Log($"HandleCardPlay: Using delayed custom effect name: {effect.customEffectName}"); */
                         if (EffectAnimationManager.Instance != null)
                         {
                             EffectAnimationManager.Instance.StartCoroutine(TriggerNamedCustomEffectDelayed(sourceEntity, targetEntity, effect.customEffectName, duration, effect.animationDelay));
@@ -774,7 +774,7 @@ public class HandleCardPlay : NetworkBehaviour
                     }
                     else
                     {
-                        Debug.Log($"HandleCardPlay: Using delayed default effect");
+                        /* Debug.Log($"HandleCardPlay: Using delayed default effect"); */
                         if (EffectAnimationManager.Instance != null)
                         {
                             EffectAnimationManager.Instance.StartCoroutine(TriggerDefaultEffectDelayed(sourceEntity, targetEntity, duration, effect.animationDelay));
@@ -785,12 +785,12 @@ public class HandleCardPlay : NetworkBehaviour
                 {
                     if (!string.IsNullOrEmpty(effect.customEffectName))
                     {
-                        Debug.Log($"HandleCardPlay: Using custom effect name: {effect.customEffectName}");
+                        /* Debug.Log($"HandleCardPlay: Using custom effect name: {effect.customEffectName}"); */
                         EffectAnimationManager.TriggerNamedCustomEffect(sourceEntity, targetEntity, effect.customEffectName, duration);
                     }
                     else
                     {
-                        Debug.Log($"HandleCardPlay: Using default effect");
+                        /* Debug.Log($"HandleCardPlay: Using default effect"); */
                         EffectAnimationManager.TriggerEffectAnimation(sourceEntity, targetEntity, duration);
                     }
                 }
@@ -989,7 +989,7 @@ public class HandleCardPlay : NetworkBehaviour
     private System.Collections.IEnumerator TriggerDamageAnimationDelayed(NetworkEntity targetEntity, float delay)
     {
         int targetId = (int)targetEntity.NetworkObject.ObjectId;
-        Debug.Log($"HandleCardPlay: Starting damage animation delay of {delay} seconds for {targetEntity.EntityName.Value} (ID: {targetId})");
+        /* Debug.Log($"HandleCardPlay: Starting damage animation delay of {delay} seconds for {targetEntity.EntityName.Value} (ID: {targetId})"); */
         
         yield return new WaitForSeconds(delay);
         
@@ -999,7 +999,7 @@ public class HandleCardPlay : NetworkBehaviour
             activeDamageAnimations.Remove(targetId);
         }
         
-        Debug.Log($"HandleCardPlay: Delay complete, triggering damage animation on {targetEntity.EntityName.Value}");
+        /* Debug.Log($"HandleCardPlay: Delay complete, triggering damage animation on {targetEntity.EntityName.Value}"); */
         NetworkEntityAnimator targetAnimator = targetEntity.GetComponent<NetworkEntityAnimator>();
         if (targetAnimator != null)
         {

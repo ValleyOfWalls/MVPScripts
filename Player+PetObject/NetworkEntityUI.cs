@@ -55,7 +55,7 @@ public class NetworkEntityUI : MonoBehaviour
         if (dropZone == null)
         {
             dropZone = gameObject.AddComponent<DropZone>();
-            Debug.Log($"NetworkEntityUI: Added DropZone component to {gameObject.name}");
+            /* Debug.Log($"NetworkEntityUI: Added DropZone component to {gameObject.name}"); */
         }
 
         ValidateComponents();

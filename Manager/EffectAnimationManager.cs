@@ -91,7 +91,7 @@ public class EffectAnimationManager : NetworkBehaviour
     
     private void InitializeManager()
     {
-        Debug.Log($"EffectAnimationManager: Starting initialization - IsServer: {IsServerStarted}, IsClient: {IsClientStarted}");
+        /* Debug.Log($"EffectAnimationManager: Starting initialization - IsServer: {IsServerStarted}, IsClient: {IsClientStarted}"); */
         
         // Create effect parent if not assigned
         if (effectParent == null)
@@ -101,7 +101,7 @@ public class EffectAnimationManager : NetworkBehaviour
             effectParent.SetParent(transform);
         }
         
-        Debug.Log($"EffectAnimationManager: Default effect prefab assigned: {defaultEffectPrefab != null}");
+        /* Debug.Log($"EffectAnimationManager: Default effect prefab assigned: {defaultEffectPrefab != null}"); */
         
         // Initialize custom effect dictionaries
         customEffectPools = new Dictionary<string, Queue<GameObject>>();
@@ -116,7 +116,7 @@ public class EffectAnimationManager : NetworkBehaviour
         // Initialize object pools
         InitializePools();
         
-        Debug.Log($"EffectAnimationManager: Initialized successfully");
+        /* Debug.Log($"EffectAnimationManager: Initialized successfully"); */
     }
     
     /// <summary>
@@ -139,7 +139,7 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     private CustomEffectEntry GetCustomEffectEntry(string effectName)
     {
-        Debug.Log($"EffectAnimationManager: GetCustomEffectEntry called for '{effectName}' - Database has {customEffectDatabase.Length} entries");
+        /* Debug.Log($"EffectAnimationManager: GetCustomEffectEntry called for '{effectName}' - Database has {customEffectDatabase.Length} entries"); */
         
         foreach (var entry in customEffectDatabase)
         {
@@ -196,7 +196,7 @@ public class EffectAnimationManager : NetworkBehaviour
         CustomEffectEntry entry = GetCustomEffectEntry(effectName);
         if (entry != null && entry.effectPrefab != null)
         {
-            Debug.Log($"EffectAnimationManager: Found custom effect entry for '{effectName}' with prefab {entry.effectPrefab.name}");
+            /* Debug.Log($"EffectAnimationManager: Found custom effect entry for '{effectName}' with prefab {entry.effectPrefab.name}"); */
             
             if (sourceEntity != null && targetEntity != null)
             {
@@ -212,7 +212,7 @@ public class EffectAnimationManager : NetworkBehaviour
                     
                     if (duration <= 0f) duration = defaultEffectDuration;
                     
-                    Debug.Log($"EffectAnimationManager: Playing custom effect '{effectName}' from {sourcePosition} to {targetPosition}");
+                    /* Debug.Log($"EffectAnimationManager: Playing custom effect '{effectName}' from {sourcePosition} to {targetPosition}"); */
                     RpcPlayCustomEffect(sourcePosition, targetPosition, effectName, duration, (uint)sourceEntity.ObjectId, (uint)targetEntity.ObjectId);
                 }
                 else
@@ -282,8 +282,8 @@ public class EffectAnimationManager : NetworkBehaviour
         if (debugMode)
         {
             string effectName = customPrefab != null ? customPrefab.name : "Default";
-            Debug.Log($"EffectAnimationManager: Playing {effectName} effect from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}");
-            Debug.Log($"Source position: {sourcePosition}, Target position: {targetPosition}");
+            /* Debug.Log($"EffectAnimationManager: Playing {effectName} effect from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}"); */
+            /* Debug.Log($"Source position: {sourcePosition}, Target position: {targetPosition}"); */
         }
         
         // If we have a custom prefab, try to use it but fall back gracefully
@@ -426,7 +426,7 @@ public class EffectAnimationManager : NetworkBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"EffectAnimationManager: Completed effect animation");
+            /* Debug.Log($"EffectAnimationManager: Completed effect animation"); */
         }
     }
     
@@ -513,7 +513,7 @@ public class EffectAnimationManager : NetworkBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"EffectAnimationManager: Completed custom {customEffectName} effect animation");
+            /* Debug.Log($"EffectAnimationManager: Completed custom {customEffectName} effect animation"); */
         }
     }
     
@@ -542,7 +542,7 @@ public class EffectAnimationManager : NetworkBehaviour
             // Store the procedural prefab for future use
             defaultEffectPrefab = proceduralPrefab;
             GameObject newEffect = Instantiate(proceduralPrefab, effectParent);
-            Debug.Log($"EffectAnimationManager: Created procedural effect instance");
+            /* Debug.Log($"EffectAnimationManager: Created procedural effect instance"); */
             return newEffect;
         }
         
@@ -611,7 +611,7 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     private GameObject FindCustomEffectPrefab(string prefabName)
     {
-        Debug.Log($"EffectAnimationManager: FindCustomEffectPrefab called for '{prefabName}'");
+        /* Debug.Log($"EffectAnimationManager: FindCustomEffectPrefab called for '{prefabName}'"); */
         
         // First check if we already have it cached from the database
         if (customEffectPrefabs.ContainsKey(prefabName))
@@ -630,7 +630,7 @@ public class EffectAnimationManager : NetworkBehaviour
         }
         else
         {
-            Debug.Log($"EffectAnimationManager: No database entry found for '{prefabName}' (entry: {entry != null}, prefab: {entry?.effectPrefab != null})");
+            /* Debug.Log($"EffectAnimationManager: No database entry found for '{prefabName}' (entry: {entry != null}, prefab: {entry?.effectPrefab != null})"); */
         }
         
         // Fallback: Try to load from Resources folder (legacy support)
@@ -642,7 +642,7 @@ public class EffectAnimationManager : NetworkBehaviour
         
         if (prefab != null)
         {
-            Debug.Log($"EffectAnimationManager: Found prefab in Resources for '{prefabName}': {prefab.name}");
+            /* Debug.Log($"EffectAnimationManager: Found prefab in Resources for '{prefabName}': {prefab.name}"); */
             customEffectPrefabs[prefabName] = prefab;
             return prefab;
         }
@@ -681,7 +681,7 @@ public class EffectAnimationManager : NetworkBehaviour
     {
         try
         {
-            Debug.Log($"EffectAnimationManager: Creating procedural default effect");
+            /* Debug.Log($"EffectAnimationManager: Creating procedural default effect"); */
             
             GameObject effect = new GameObject($"Procedural_Default_Effect");
             ParticleSystem ps = effect.AddComponent<ParticleSystem>();
@@ -710,7 +710,7 @@ public class EffectAnimationManager : NetworkBehaviour
                 if (effectMaterial != null)
                 {
                     renderer.material = effectMaterial;
-                    Debug.Log($"EffectAnimationManager: Applied material {effectMaterial.name} to procedural effect");
+                    /* Debug.Log($"EffectAnimationManager: Applied material {effectMaterial.name} to procedural effect"); */
                 }
                 else
                 {
@@ -718,7 +718,7 @@ public class EffectAnimationManager : NetworkBehaviour
                 }
             }
             
-            Debug.Log($"EffectAnimationManager: Successfully created procedural default effect");
+            /* Debug.Log($"EffectAnimationManager: Successfully created procedural default effect"); */
             return effect;
         }
         catch (System.Exception e)
@@ -831,7 +831,7 @@ public class EffectAnimationManager : NetworkBehaviour
                         material.renderQueue = 3000;
                     }
                     
-                    Debug.Log($"EffectAnimationManager: Created fallback material with shader: {shaderName}");
+                    /* Debug.Log($"EffectAnimationManager: Created fallback material with shader: {shaderName}"); */
                     return material;
                 }
             }
@@ -851,7 +851,7 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     public static void TriggerEffectAnimation(NetworkEntity sourceEntity, NetworkEntity targetEntity, float duration = 0f)
     {
-        Debug.Log($"EffectAnimationManager: TriggerEffectAnimation called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Duration: {duration}");
+        /* Debug.Log($"EffectAnimationManager: TriggerEffectAnimation called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Duration: {duration}"); */
         
         if (Instance == null)
         {
@@ -859,7 +859,7 @@ public class EffectAnimationManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"EffectAnimationManager: Instance found, IsServerStarted: {Instance.IsServerStarted}");
+        /* Debug.Log($"EffectAnimationManager: Instance found, IsServerStarted: {Instance.IsServerStarted}"); */
         
         if (Instance.IsServerStarted)
         {
@@ -902,7 +902,7 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     public static void TriggerNamedCustomEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, float duration = 0f)
     {
-        Debug.Log($"EffectAnimationManager: TriggerNamedCustomEffect called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Effect: {effectName}, Duration: {duration}");
+        /* Debug.Log($"EffectAnimationManager: TriggerNamedCustomEffect called - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, Effect: {effectName}, Duration: {duration}"); */
         
         if (Instance == null)
         {
@@ -910,7 +910,7 @@ public class EffectAnimationManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"EffectAnimationManager: Instance found, IsServerStarted: {Instance.IsServerStarted}");
+        /* Debug.Log($"EffectAnimationManager: Instance found, IsServerStarted: {Instance.IsServerStarted}"); */
         
         if (Instance.IsServerStarted)
         {
@@ -930,7 +930,7 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     private void TriggerLocalVisualEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, float duration)
     {
-        Debug.Log($"EffectAnimationManager: TriggerLocalVisualEffect called");
+        /* Debug.Log($"EffectAnimationManager: TriggerLocalVisualEffect called"); */
         
         // Get positions for the effect
         Vector3 sourcePosition = GetEffectPosition(sourceEntity, true);
@@ -948,7 +948,7 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     private void TriggerLocalNamedCustomEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, float duration)
     {
-        Debug.Log($"EffectAnimationManager: TriggerLocalNamedCustomEffect called - Effect: {effectName}");
+        /* Debug.Log($"EffectAnimationManager: TriggerLocalNamedCustomEffect called - Effect: {effectName}"); */
         
         // Get positions for the effect
         Vector3 sourcePosition = GetEffectPosition(sourceEntity, true);
@@ -966,7 +966,7 @@ public class EffectAnimationManager : NetworkBehaviour
     /// </summary>
     private void TriggerLocalCustomPrefabEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, GameObject customPrefab, float duration)
     {
-        Debug.Log($"EffectAnimationManager: TriggerLocalCustomPrefabEffect called - Prefab: {customPrefab?.name}");
+        /* Debug.Log($"EffectAnimationManager: TriggerLocalCustomPrefabEffect called - Prefab: {customPrefab?.name}"); */
         
         if (customPrefab == null)
         {
@@ -1014,7 +1014,7 @@ public class EffectAnimationManager : NetworkBehaviour
         {
             // Fallback to entity position
             Vector3 fallbackPosition = entity.transform.position + Vector3.up * 1f; // Slightly above entity
-            Debug.Log($"EffectAnimationManager: No EffectAnimationSource found on {entity.EntityName.Value}, using fallback position: {fallbackPosition}");
+            /* Debug.Log($"EffectAnimationManager: No EffectAnimationSource found on {entity.EntityName.Value}, using fallback position: {fallbackPosition}"); */
             return fallbackPosition;
         }
     }

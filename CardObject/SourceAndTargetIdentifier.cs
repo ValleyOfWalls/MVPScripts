@@ -214,7 +214,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
     /// </summary>
     public void OnCardPlayedOrDiscarded()
     {
-        Debug.Log($"SourceAndTargetIdentifier: Card played/discarded - forcing damage preview cleanup");
+        /* Debug.Log($"SourceAndTargetIdentifier: Card played/discarded - forcing damage preview cleanup"); */
         
         // Force hide all previews regardless of drag state
         HideDamagePreviews();
@@ -238,7 +238,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         overrideTarget = target;
         hasOverrideTarget = target != null;
         
-        Debug.Log($"SourceAndTargetIdentifier: Override target set to {(target != null ? target.EntityName.Value : "null")}");
+        /* Debug.Log($"SourceAndTargetIdentifier: Override target set to {(target != null ? target.EntityName.Value : "null")}"); */
         
         // Update targeting with the override
         if (hasOverrideTarget)
@@ -263,7 +263,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
     /// </summary>
     public void UpdateSourceAndTarget()
     {
-        Debug.Log($"SourceAndTargetIdentifier: UpdateSourceAndTarget called for card {gameObject.name}");
+        /* Debug.Log($"SourceAndTargetIdentifier: UpdateSourceAndTarget called for card {gameObject.name}"); */
         
         // Ensure we have everything we need
         if (card == null)
@@ -290,13 +290,13 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         }
         else
         {
-            Debug.Log($"SourceAndTargetIdentifier: Source entity for card {gameObject.name} is {sourceEntity.EntityName.Value}");
+            /* Debug.Log($"SourceAndTargetIdentifier: Source entity for card {gameObject.name} is {sourceEntity.EntityName.Value}"); */
         }
         
         // Check if we have an override target from drag and drop
         if (hasOverrideTarget && overrideTarget != null)
         {
-            Debug.Log($"SourceAndTargetIdentifier: Using override target {overrideTarget.EntityName.Value} for drag and drop");
+            /* Debug.Log($"SourceAndTargetIdentifier: Using override target {overrideTarget.EntityName.Value} for drag and drop"); */
             
             // Set the override target as the primary target
             allTargets.Clear();
@@ -319,7 +319,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         }
         else
         {
-            Debug.Log($"SourceAndTargetIdentifier: Primary target entity for card {gameObject.name} is {targetEntity.EntityName.Value}");
+            /* Debug.Log($"SourceAndTargetIdentifier: Primary target entity for card {gameObject.name} is {targetEntity.EntityName.Value}"); */
         }
 
         // Update debug info
@@ -347,7 +347,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
             allTargetNames = "None";
         }
         
-        Debug.Log($"SourceAndTargetIdentifier: Debug info updated - Source: {currentSourceName}, Primary Target: {currentTargetName}, All Targets: {allTargetNames}");
+        /* Debug.Log($"SourceAndTargetIdentifier: Debug info updated - Source: {currentSourceName}, Primary Target: {currentTargetName}, All Targets: {allTargetNames}"); */
     }
 
     private NetworkEntity GetSourceEntity()
@@ -511,7 +511,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
     /// </summary>
     public void ForceUpdateSourceAndTarget(NetworkEntity source, NetworkEntity target)
     {
-        Debug.Log($"SourceAndTargetIdentifier: ForceUpdateSourceAndTarget called for card {gameObject.name} with source: {source.EntityName.Value}, target: {target.EntityName.Value}");
+        /* Debug.Log($"SourceAndTargetIdentifier: ForceUpdateSourceAndTarget called for card {gameObject.name} with source: {source.EntityName.Value}, target: {target.EntityName.Value}"); */
         
         sourceEntity = source;
         targetEntity = target;
@@ -530,7 +530,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
     /// </summary>
     public void ForceUpdateSourceAndTargets(NetworkEntity source, List<NetworkEntity> targets)
     {
-        Debug.Log($"SourceAndTargetIdentifier: ForceUpdateSourceAndTargets called for card {gameObject.name} with {targets.Count} targets");
+        /* Debug.Log($"SourceAndTargetIdentifier: ForceUpdateSourceAndTargets called for card {gameObject.name} with {targets.Count} targets"); */
         
         sourceEntity = source;
         allTargets.Clear();
@@ -559,7 +559,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
             return;
         }
 
-        Debug.Log($"SourceAndTargetIdentifier: Showing damage previews for card {card.CardData.CardName}");
+        /* Debug.Log($"SourceAndTargetIdentifier: Showing damage previews for card {card.CardData.CardName}"); */
         
         // Mark previews as active
         previewsActive = true;
@@ -583,7 +583,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
     {
         if (!previewsActive || allTargets.Count == 0) return;
 
-        Debug.Log($"SourceAndTargetIdentifier: Hiding damage previews");
+        /* Debug.Log($"SourceAndTargetIdentifier: Hiding damage previews"); */
         
         // Mark previews as inactive
         previewsActive = false;
@@ -603,7 +603,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         // Force cleanup of any active damage previews when the card is destroyed
         if (previewsActive && allTargets.Count > 0)
         {
-            Debug.Log($"SourceAndTargetIdentifier: Card being destroyed - forcing damage preview cleanup");
+            /* Debug.Log($"SourceAndTargetIdentifier: Card being destroyed - forcing damage preview cleanup"); */
             
             foreach (var target in allTargets)
             {
@@ -679,7 +679,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
 
         if (amountToShow <= 0) return; // Nothing to show
 
-        Debug.Log($"SourceAndTargetIdentifier: Attempting to show preview on {target.EntityName.Value} (Type: {target.EntityType})");
+        /* Debug.Log($"SourceAndTargetIdentifier: Attempting to show preview on {target.EntityName.Value} (Type: {target.EntityType})"); */
 
         // Check if this is an ally pet (different from opponent pets)
         bool isAllyPet = IsAllyPet(target);
@@ -694,7 +694,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
                 if (petImage != null)
                 {
                     petDisplay.ShowDamagePreview(amountToShow, showDamage);
-                    Debug.Log($"SourceAndTargetIdentifier: Showing preview over ally pet {target.EntityName.Value}'s image via OwnPetVisualDisplay");
+                    /* Debug.Log($"SourceAndTargetIdentifier: Showing preview over ally pet {target.EntityName.Value}'s image via OwnPetVisualDisplay"); */
                 }
                 else
                 {
@@ -717,7 +717,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
                 if (statsUIController != null)
                 {
                     statsUIController.ShowDamagePreview(amountToShow, showDamage);
-                    Debug.Log($"SourceAndTargetIdentifier: Showing preview over {target.EntityName.Value}'s stats UI");
+                    /* Debug.Log($"SourceAndTargetIdentifier: Showing preview over {target.EntityName.Value}'s stats UI"); */
                 }
                 else
                 {

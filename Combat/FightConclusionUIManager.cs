@@ -261,7 +261,7 @@ public class FightConclusionUIManager : NetworkBehaviour
         // Update images
         UpdateLocalPlayerImages(player, opponent);
 
-        Debug.Log($"FightConclusionUIManager: Local player result - {player.EntityName.Value} vs {opponent.EntityName.Value}: {(playerWon ? "Won" : "Lost")}");
+        /* Debug.Log($"FightConclusionUIManager: Local player result - {player.EntityName.Value} vs {opponent.EntityName.Value}: {(playerWon ? "Won" : "Lost")}"); */
     }
 
     /// <summary>
@@ -337,7 +337,7 @@ public class FightConclusionUIManager : NetworkBehaviour
             CreateOtherResultEntry(player, opponent, playerWon);
         }
 
-        Debug.Log($"FightConclusionUIManager: Created {otherResultsContainer.childCount} other result entries");
+        /* Debug.Log($"FightConclusionUIManager: Created {otherResultsContainer.childCount} other result entries"); */
     }
 
     /// <summary>
@@ -457,7 +457,7 @@ public class FightConclusionUIManager : NetworkBehaviour
 
     private void HandleAnimationCompleted()
     {
-        Debug.Log("FightConclusionUIManager: Conclusion animation completed");
+        /* Debug.Log("FightConclusionUIManager: Conclusion animation completed"); */
         
         // Hide the canvas
         if (fightConclusionCanvas != null)

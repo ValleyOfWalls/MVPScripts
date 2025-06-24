@@ -114,8 +114,8 @@ namespace MVPScripts.Editor
             
             string[] scriptFiles = GetScriptFiles();
             
-            Debug.Log($"=== DEBUG LOG COMMENT TOOL - PREVIEW ===");
-            Debug.Log($"Found {scriptFiles.Length} C# files to analyze");
+            /* Debug.Log($"=== DEBUG LOG COMMENT TOOL - PREVIEW ==="); */
+            /* Debug.Log($"Found {scriptFiles.Length} C# files to analyze"); */
             
             int totalChanges = 0;
             
@@ -129,13 +129,13 @@ namespace MVPScripts.Editor
                                          if (changes.Count > 0)
                      {
                          int totalMatches = changes.Sum(c => c.DebugLogPositions.Count);
-                         Debug.Log($"\n{filePath} - {totalMatches} Debug.Log statements found:");
+                         /* Debug.Log($"\n{filePath} - {totalMatches} Debug.Log statements found:"); */
                          foreach (var change in changes)
                          {
-                             Debug.Log($"  Line {change.LineNumber}: {change.OriginalLine.Trim()}");
+                             /* Debug.Log($"  Line {change.LineNumber}: {change.OriginalLine.Trim()}"); */
                              foreach (var position in change.DebugLogPositions)
                              {
-                                 Debug.Log($"    -> {position.Statement}");
+                                 /* Debug.Log($"    -> {position.Statement}"); */
                              }
                          }
                          processedFiles.Add($"{Path.GetFileName(filePath)} ({totalMatches} changes)");
@@ -148,10 +148,10 @@ namespace MVPScripts.Editor
                 }
             }
             
-            Debug.Log($"\n=== PREVIEW SUMMARY ===");
-            Debug.Log($"Files with Debug.Log statements: {processedFiles.Count}");
-            Debug.Log($"Total Debug.Log statements to comment: {totalChanges}");
-            Debug.Log($"Files with errors: {errorFiles.Count}");
+            /* Debug.Log($"\n=== PREVIEW SUMMARY ==="); */
+            /* Debug.Log($"Files with Debug.Log statements: {processedFiles.Count}"); */
+            /* Debug.Log($"Total Debug.Log statements to comment: {totalChanges}"); */
+            /* Debug.Log($"Files with errors: {errorFiles.Count}"); */
             
             showResults = true;
         }
@@ -163,8 +163,8 @@ namespace MVPScripts.Editor
             
             string[] scriptFiles = GetScriptFiles();
             
-            Debug.Log($"=== DEBUG LOG COMMENT TOOL - PROCESSING ===");
-            Debug.Log($"Processing {scriptFiles.Length} C# files...");
+            /* Debug.Log($"=== DEBUG LOG COMMENT TOOL - PROCESSING ==="); */
+            /* Debug.Log($"Processing {scriptFiles.Length} C# files..."); */
             
             int totalChanges = 0;
             int filesModified = 0;
@@ -194,7 +194,7 @@ namespace MVPScripts.Editor
                          totalChanges += totalMatches;
                          filesModified++;
                          
-                         Debug.Log($"Modified {filePath} - {totalMatches} Debug.Log statements commented out");
+                         /* Debug.Log($"Modified {filePath} - {totalMatches} Debug.Log statements commented out"); */
                      }
                 }
                 catch (Exception ex)
@@ -207,10 +207,10 @@ namespace MVPScripts.Editor
             // Refresh the asset database
             AssetDatabase.Refresh();
             
-            Debug.Log($"\n=== PROCESSING COMPLETE ===");
-            Debug.Log($"Files modified: {filesModified}");
-            Debug.Log($"Total Debug.Log statements commented: {totalChanges}");
-            Debug.Log($"Files with errors: {errorFiles.Count}");
+            /* Debug.Log($"\n=== PROCESSING COMPLETE ==="); */
+            /* Debug.Log($"Files modified: {filesModified}"); */
+            /* Debug.Log($"Total Debug.Log statements commented: {totalChanges}"); */
+            /* Debug.Log($"Files with errors: {errorFiles.Count}"); */
             
             showResults = true;
             
@@ -262,7 +262,7 @@ namespace MVPScripts.Editor
                 EditorUtility.DisplayDialog("Restore Complete", 
                     $"Restored {restoredCount} files from backups.", "OK");
                     
-                Debug.Log($"Restored {restoredCount} files from backups");
+                /* Debug.Log($"Restored {restoredCount} files from backups"); */
             }
             catch (Exception ex)
             {

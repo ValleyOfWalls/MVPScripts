@@ -140,7 +140,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
 
     public void Initialize(CharacterSelectionManager manager, List<CharacterData> characters, List<PetData> pets)
     {
-        Debug.Log($"CharacterSelectionUIManager: Initialize() called - isInitialized: {isInitialized}");
+        /* Debug.Log($"CharacterSelectionUIManager: Initialize() called - isInitialized: {isInitialized}"); */
         
         if (isInitialized)
         {
@@ -148,7 +148,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             return;
         }
         
-        Debug.Log("CharacterSelectionUIManager: Starting initialization sequence");
+        /* Debug.Log("CharacterSelectionUIManager: Starting initialization sequence"); */
         
         selectionManager = manager;
         availableCharacters = characters;
@@ -158,29 +158,29 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         myPlayerID = GetPlayerID();
         myPlayerColor = GetPlayerColor(myPlayerID);
         
-        Debug.Log("CharacterSelectionUIManager: Setting up UI (Part 1 - Core UI and Animator)...");
+        /* Debug.Log("CharacterSelectionUIManager: Setting up UI (Part 1 - Core UI and Animator)..."); */
         SetupCoreUI();
         
-        Debug.Log("CharacterSelectionUIManager: Initializing deck preview controller...");
+        /* Debug.Log("CharacterSelectionUIManager: Initializing deck preview controller..."); */
         InitializeDeckPreviewController();
         
-        Debug.Log("CharacterSelectionUIManager: Finalizing UI animator setup...");
+        /* Debug.Log("CharacterSelectionUIManager: Finalizing UI animator setup..."); */
         FinalizeUIAnimatorSetup();
         
-        Debug.Log("CharacterSelectionUIManager: Setting up UI (Part 2 - Panel setup)...");
+        /* Debug.Log("CharacterSelectionUIManager: Setting up UI (Part 2 - Panel setup)..."); */
         FinishUISetup();
         
-        Debug.Log("CharacterSelectionUIManager: Creating selection items...");
+        /* Debug.Log("CharacterSelectionUIManager: Creating selection items..."); */
         CreateSelectionItems();
         
-        Debug.Log("CharacterSelectionUIManager: Making default selections (this will trigger deck previews)...");
+        /* Debug.Log("CharacterSelectionUIManager: Making default selections (this will trigger deck previews)..."); */
         MakeDefaultSelections();
         
-        Debug.Log("CharacterSelectionUIManager: Updating ready button state...");
+        /* Debug.Log("CharacterSelectionUIManager: Updating ready button state..."); */
         UpdateReadyButtonState();
         
         isInitialized = true;
-        Debug.Log($"CharacterSelectionUIManager: Initialized - Player ID: {myPlayerID}, Color: {myPlayerColor}");
+        /* Debug.Log($"CharacterSelectionUIManager: Initialized - Player ID: {myPlayerID}, Color: {myPlayerColor}"); */
     }
     
     /// <summary>
@@ -224,7 +224,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
         
         // No objects exist, spawn them
-        Debug.Log("CharacterSelectionUIManager: Server spawning selection objects for new client");
+        /* Debug.Log("CharacterSelectionUIManager: Server spawning selection objects for new client"); */
         CreateCharacterItems();
         CreatePetItems();
     }
@@ -308,7 +308,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             petGridParent?.GetComponent<RectTransform>()
         );
         
-        Debug.Log("CharacterSelectionUIManager: UI Animator created and basic setup complete");
+        /* Debug.Log("CharacterSelectionUIManager: UI Animator created and basic setup complete"); */
     }
     
     private void FinalizeUIAnimatorSetup()
@@ -339,8 +339,8 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     private void ValidateGridParentReferences()
     {
         // Check and log grid parent reference status
-        Debug.Log($"CharacterSelectionUIManager: Validating grid parent references:");
-        Debug.Log($"  - characterGridParent: {characterGridParent?.name ?? "NULL"}");
+        /* Debug.Log($"CharacterSelectionUIManager: Validating grid parent references:"); */
+        /* Debug.Log($"  - characterGridParent: {characterGridParent?.name ?? "NULL"}"); */
         Debug.Log($"  - petGridParent: {petGridParent?.name ?? "NULL"}");
         
         if (characterGridParent == null)
@@ -373,7 +373,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             }
             else
             {
-                Debug.Log($"CharacterSelectionUIManager: petGridParent '{petGridParent.name}' has {petGridParent.childCount} children");
+                /* Debug.Log($"CharacterSelectionUIManager: petGridParent '{petGridParent.name}' has {petGridParent.childCount} children"); */
             }
         }
     }
@@ -381,7 +381,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     private void OnPlayerListVisibilityChanged(bool isVisible)
     {
         // Handle any additional logic when player list visibility changes
-        Debug.Log($"CharacterSelectionUIManager: Player list visibility changed to {isVisible}");
+        /* Debug.Log($"CharacterSelectionUIManager: Player list visibility changed to {isVisible}"); */
         
         // Update player list with current data when panel becomes visible
         if (isVisible && latestPlayerInfos != null && latestPlayerInfos.Count > 0)
@@ -461,14 +461,14 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         // If we're the server (or host) and no objects exist, spawn them
         if (FishNet.InstanceFinder.IsServerStarted)
         {
-            Debug.Log("CharacterSelectionUIManager: Server spawning new selection objects");
+            /* Debug.Log("CharacterSelectionUIManager: Server spawning new selection objects"); */
             CreateCharacterItems();
             CreatePetItems();
         }
         else
         {
             // We're a client and no objects exist yet, wait for them
-            Debug.Log("CharacterSelectionUIManager: Client waiting for server to spawn selection objects");
+            /* Debug.Log("CharacterSelectionUIManager: Client waiting for server to spawn selection objects"); */
             StartCoroutine(WaitForServerSpawnedObjects());
         }
     }
@@ -693,7 +693,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         if (networkObjectComponent != null)
         {
             // Since we're in a networked context, spawn the NetworkObject properly
-            Debug.Log($"CharacterSelectionUIManager: Detected NetworkObject on {prefabToUse.name}, spawning through network system for character selection");
+            /* Debug.Log($"CharacterSelectionUIManager: Detected NetworkObject on {prefabToUse.name}, spawning through network system for character selection"); */
             item = SpawnNetworkObjectForSelection(prefabToUse, parentTransform, index, isCharacter);
         }
         else
@@ -759,7 +759,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             
             // Spawn the object on the network for all clients to see
             FishNet.InstanceFinder.ServerManager.Spawn(networkObject);
-            Debug.Log($"CharacterSelectionUIManager: Server spawned NetworkObject {spawnedObject.name} for character selection");
+            /* Debug.Log($"CharacterSelectionUIManager: Server spawned NetworkObject {spawnedObject.name} for character selection"); */
             
             // Mark this as a selection object with desired parent info
             SelectionNetworkObject selectionMarker = spawnedObject.AddComponent<SelectionNetworkObject>();
@@ -825,7 +825,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     /// </summary>
     private System.Collections.IEnumerator WaitForNetworkAndCreateItems()
     {
-        Debug.Log("CharacterSelectionUIManager: Waiting for network to be ready...");
+        /* Debug.Log("CharacterSelectionUIManager: Waiting for network to be ready..."); */
         
         // Wait for network manager to be available
         while (FishNet.InstanceFinder.NetworkManager == null)
@@ -853,7 +853,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     /// </summary>
     private System.Collections.IEnumerator WaitForServerSpawnedObjects()
     {
-        Debug.Log("CharacterSelectionUIManager: Client waiting for server-spawned selection objects...");
+        /* Debug.Log("CharacterSelectionUIManager: Client waiting for server-spawned selection objects..."); */
         
         float timeout = 5f; // 5 second timeout
         float elapsed = 0f;
@@ -923,7 +923,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                     selectionComponent.isCharacter = isCharacterPrefab;
                     
                     discoveredObjects.Add(selectionComponent);
-                    Debug.Log($"CharacterSelectionUIManager: Discovered and tagged NetworkObject {obj.name} as {(isCharacterPrefab ? "character" : "pet")} at index {prefabIndex}");
+                    /* Debug.Log($"CharacterSelectionUIManager: Discovered and tagged NetworkObject {obj.name} as {(isCharacterPrefab ? "character" : "pet")} at index {prefabIndex}"); */
                 }
             }
             
@@ -931,14 +931,14 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             int expectedCount = (availableCharacters?.Count ?? 0) + (availablePets?.Count ?? 0);
             if (discoveredObjects.Count >= expectedCount)
             {
-                Debug.Log($"CharacterSelectionUIManager: Client discovered {discoveredObjects.Count} NetworkObjects matching our prefabs");
+                /* Debug.Log($"CharacterSelectionUIManager: Client discovered {discoveredObjects.Count} NetworkObjects matching our prefabs"); */
                 DiscoverAndRegisterSpawnedObjects(discoveredObjects.ToArray());
                 yield break;
             }
             
             if (expectedCount > 0)
             {
-                Debug.Log($"CharacterSelectionUIManager: Still waiting... Expected {expectedCount} objects, found {discoveredObjects.Count} NetworkObjects");
+                /* Debug.Log($"CharacterSelectionUIManager: Still waiting... Expected {expectedCount} objects, found {discoveredObjects.Count} NetworkObjects"); */
             }
             
             elapsed += 0.5f;
@@ -956,7 +956,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     /// </summary>
     private void DiscoverAndRegisterSpawnedObjects(SelectionNetworkObject[] spawnedObjects)
     {
-        Debug.Log($"CharacterSelectionUIManager: Client registering {spawnedObjects.Length} discovered selection objects");
+        /* Debug.Log($"CharacterSelectionUIManager: Client registering {spawnedObjects.Length} discovered selection objects"); */
         
         // Clear any existing items
         characterItems.Clear();
@@ -985,7 +985,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             {
                 // Parent the object to the correct UI hierarchy position
                 item.transform.SetParent(targetParent, false);
-                Debug.Log($"CharacterSelectionUIManager: Parented {item.name} to {targetParent.name}");
+                /* Debug.Log($"CharacterSelectionUIManager: Parented {item.name} to {targetParent.name}"); */
             }
             
             // Ensure the item has an EntitySelectionController
@@ -1027,10 +1027,10 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                 Position3DModel(item, selectionObj.selectionIndex, false);
             }
             
-            Debug.Log($"CharacterSelectionUIManager: Client registered {(selectionObj.isCharacter ? "character" : "pet")} selection object at index {selectionObj.selectionIndex}");
+            /* Debug.Log($"CharacterSelectionUIManager: Client registered {(selectionObj.isCharacter ? "character" : "pet")} selection object at index {selectionObj.selectionIndex}"); */
         }
         
-        Debug.Log($"CharacterSelectionUIManager: Client registration complete - {characterItems.Count} characters, {petItems.Count} pets");
+        /* Debug.Log($"CharacterSelectionUIManager: Client registration complete - {characterItems.Count} characters, {petItems.Count} pets"); */
     }
     
     /// <summary>
@@ -1060,7 +1060,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         // Set the position
         modelItem.transform.position = position;
         
-        Debug.Log($"CharacterSelectionUIManager: Positioned {(isCharacter ? "character" : "pet")} model {index} at {position} using {positioningMode} mode");
+        /* Debug.Log($"CharacterSelectionUIManager: Positioned {(isCharacter ? "character" : "pet")} model {index} at {position} using {positioningMode} mode"); */
     }
     
     /// <summary>
@@ -1140,7 +1140,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             {
                 Vector3 fallbackPosition = CalculateGridPosition(positions.Count, isCharacter);
                 positions.Add(fallbackPosition);
-                Debug.Log($"CharacterSelectionUIManager: Auto-generated {(isCharacter ? "character" : "pet")} position {positions.Count - 1}: {fallbackPosition}");
+                /* Debug.Log($"CharacterSelectionUIManager: Auto-generated {(isCharacter ? "character" : "pet")} position {positions.Count - 1}: {fallbackPosition}"); */
             }
             
             return positions[index];
@@ -1368,12 +1368,12 @@ public class CharacterSelectionUIManager : NetworkBehaviour
 
     private void MakeDefaultSelections()
     {
-        Debug.Log($"CharacterSelectionUIManager: MakeDefaultSelections() called - availableCharacters: {availableCharacters.Count}, availablePets: {availablePets.Count}");
+        /* Debug.Log($"CharacterSelectionUIManager: MakeDefaultSelections() called - availableCharacters: {availableCharacters.Count}, availablePets: {availablePets.Count}"); */
         
         // Auto-select first character and first pet if available
         if (availableCharacters.Count > 0 && characterControllers.Count > 0)
         {
-            Debug.Log($"CharacterSelectionUIManager: Auto-selecting first character: {availableCharacters[0].CharacterName}");
+            /* Debug.Log($"CharacterSelectionUIManager: Auto-selecting first character: {availableCharacters[0].CharacterName}"); */
             
             // Trigger selection through the first character controller
             EntitySelectionController firstCharacterController = characterControllers[0];
@@ -1389,13 +1389,13 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                     deckPreviewController.ShowCharacterDeck(0, isReady);
                 }
                 
-                Debug.Log($"CharacterSelectionUIManager: Auto-selected first character: {availableCharacters[0].CharacterName}");
+                /* Debug.Log($"CharacterSelectionUIManager: Auto-selected first character: {availableCharacters[0].CharacterName}"); */
             }
         }
         
         if (availablePets.Count > 0 && petControllers.Count > 0)
         {
-            Debug.Log($"CharacterSelectionUIManager: Auto-selecting first pet: {availablePets[0].PetName}");
+            /* Debug.Log($"CharacterSelectionUIManager: Auto-selecting first pet: {availablePets[0].PetName}"); */
             
             // Trigger selection through the first pet controller
             EntitySelectionController firstPetController = petControllers[0];
@@ -1411,7 +1411,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                     deckPreviewController.ShowPetDeck(0, isReady);
                 }
                 
-                Debug.Log($"CharacterSelectionUIManager: Auto-selected first pet: {availablePets[0].PetName}");
+                /* Debug.Log($"CharacterSelectionUIManager: Auto-selected first pet: {availablePets[0].PetName}"); */
             }
         }
         
@@ -1423,7 +1423,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         if (autoTestRunner != null && autoTestRunner.enableAutoTesting)
         {
             // Auto-ready after a short delay to ensure UI is set up
-            Debug.Log("CharacterSelectionUIManager: Auto-test runner detected, will auto-ready after delay");
+            /* Debug.Log("CharacterSelectionUIManager: Auto-test runner detected, will auto-ready after delay"); */
             StartCoroutine(AutoReadyAfterDelay());
         }
     }
@@ -1448,7 +1448,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     /// </summary>
     public void OnCharacterSelectionChanged(int characterIndex)
     {
-        Debug.Log($"CharacterSelectionUIManager: OnCharacterSelectionChanged({characterIndex}) called via EntitySelectionController");
+        /* Debug.Log($"CharacterSelectionUIManager: OnCharacterSelectionChanged({characterIndex}) called via EntitySelectionController"); */
         
         if (characterIndex < 0 || characterIndex >= availableCharacters.Count) return;
         
@@ -1466,7 +1466,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     /// </summary>
     public void OnPetSelectionChanged(int petIndex)
     {
-        Debug.Log($"CharacterSelectionUIManager: OnPetSelectionChanged({petIndex}) called via EntitySelectionController");
+        /* Debug.Log($"CharacterSelectionUIManager: OnPetSelectionChanged({petIndex}) called via EntitySelectionController"); */
         
         if (petIndex < 0 || petIndex >= availablePets.Count) return;
         
@@ -1562,7 +1562,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         {
             if (selectionManager != null)
             {
-                Debug.Log($"CharacterSelectionUIManager: Sending selection to server - Character: {selectedCharacterIndex}, Pet: {selectedPetIndex}, CustomName: '{customPlayerName}'");
+                /* Debug.Log($"CharacterSelectionUIManager: Sending selection to server - Character: {selectedCharacterIndex}, Pet: {selectedPetIndex}, CustomName: '{customPlayerName}'"); */
                 selectionManager.RequestSelectionUpdate(selectedCharacterIndex, selectedPetIndex, customPlayerName, "");
             }
             else
@@ -1677,7 +1677,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                 if (wasReady != isReady && deckPreviewController != null)
                 {
                     deckPreviewController.SetPlayerReadyState(isReady);
-                    Debug.Log($"CharacterSelectionUIManager: Player ready state changed to {isReady} - updated deck preview controller");
+                    /* Debug.Log($"CharacterSelectionUIManager: Player ready state changed to {isReady} - updated deck preview controller"); */
                 }
                 continue; // Skip showing selection indicators for self
             }
@@ -1828,7 +1828,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     
     private void UpdatePlayerListItemContent(GameObject item, PlayerSelectionInfo info)
     {
-        Debug.Log($"CharacterSelectionUIManager: Updating player list item - Name: '{info.playerName}', HasSelection: {info.hasSelection}, IsReady: {info.isReady}, CharacterName: '{info.characterName}', PetName: '{info.petName}'");
+        /* Debug.Log($"CharacterSelectionUIManager: Updating player list item - Name: '{info.playerName}', HasSelection: {info.hasSelection}, IsReady: {info.isReady}, CharacterName: '{info.characterName}', PetName: '{info.petName}'"); */
         
         TextMeshProUGUI infoText = item.GetComponentInChildren<TextMeshProUGUI>();
         if (infoText != null)
@@ -1861,7 +1861,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     
     private void LeaveGame()
     {
-        Debug.Log("CharacterSelectionUIManager: Player requested to leave game");
+        /* Debug.Log("CharacterSelectionUIManager: Player requested to leave game"); */
         
         // Find the SteamNetworkIntegration to handle leaving
         SteamNetworkIntegration steamNetwork = FindFirstObjectByType<SteamNetworkIntegration>();
@@ -1930,7 +1930,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     /// </summary>
     public void CleanupSelectionModels()
     {
-        Debug.Log($"CharacterSelectionUIManager: Cleaning up {characterItems.Count} character models and {petItems.Count} pet models");
+        /* Debug.Log($"CharacterSelectionUIManager: Cleaning up {characterItems.Count} character models and {petItems.Count} pet models"); */
         
         // Force cleanup on all controllers first to ensure proper cleanup of dynamically created models
         ForceCleanupAllControllers();
@@ -1952,14 +1952,14 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         {
             if (item != null)
             {
-                Debug.Log($"CharacterSelectionUIManager: Cleaning up pet selection model: {item.name}");
+                /* Debug.Log($"CharacterSelectionUIManager: Cleaning up pet selection model: {item.name}"); */
                 CleanupSelectionItem(item);
             }
         }
         petItems.Clear();
         petControllers.Clear();
         
-        Debug.Log("CharacterSelectionUIManager: Selection model cleanup complete");
+        /* Debug.Log("CharacterSelectionUIManager: Selection model cleanup complete"); */
     }
     
     /// <summary>
@@ -2027,7 +2027,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                 {
                     if (controller.GetModel3D() != null)
                     {
-                        Debug.Log($"CharacterSelectionUIManager: Force cleaning model from pet controller: {controller.name}");
+                        /* Debug.Log($"CharacterSelectionUIManager: Force cleaning model from pet controller: {controller.name}"); */
                     }
                 }
                 catch (System.Exception e)

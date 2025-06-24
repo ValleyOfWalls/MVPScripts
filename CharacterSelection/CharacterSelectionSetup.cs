@@ -96,33 +96,33 @@ public class CharacterSelectionSetup : NetworkBehaviour
     private IEnumerator SetupCombinedCharacterSelectionPhase()
     {
         // Step 1: Hide any existing lobby UI (if any)
-        Debug.Log("CharacterSelectionSetup: Step 1 - Ensuring lobby UI is hidden");
+        /* Debug.Log("CharacterSelectionSetup: Step 1 - Ensuring lobby UI is hidden"); */
         HideLobbyUI();
         
         // Step 2: Hide all existing network entities (if any)
-        Debug.Log("CharacterSelectionSetup: Step 2 - Hiding existing network entities");
+        /* Debug.Log("CharacterSelectionSetup: Step 2 - Hiding existing network entities"); */
         HideAllNetworkEntities();
         
         // Small delay to ensure UI transitions are smooth
         yield return new WaitForSeconds(0.1f);
         
         // Step 3: Update game phase to CharacterSelection (this now includes lobby functionality)
-        Debug.Log("CharacterSelectionSetup: Step 3 - Updating game phase to CharacterSelection (with lobby functionality)");
+        /* Debug.Log("CharacterSelectionSetup: Step 3 - Updating game phase to CharacterSelection (with lobby functionality)"); */
         UpdateGamePhase();
         
         // Step 4: Enable character selection canvas
-        Debug.Log("CharacterSelectionSetup: Step 4 - Enabling character selection canvas");
+        /* Debug.Log("CharacterSelectionSetup: Step 4 - Enabling character selection canvas"); */
         EnableCharacterSelectionCanvas();
         
         // Small delay to ensure UI is ready
         yield return new WaitForSeconds(0.2f);
         
         // Step 5: Initialize character selection manager (now handles lobby functionality too)
-        Debug.Log("CharacterSelectionSetup: Step 5 - Initializing character selection manager with lobby integration");
+        /* Debug.Log("CharacterSelectionSetup: Step 5 - Initializing character selection manager with lobby integration"); */
         InitializeCharacterSelectionManager();
         
         isSetupComplete = true;
-        Debug.Log("CharacterSelectionSetup: Combined lobby/character selection phase initialization complete!");
+        /* Debug.Log("CharacterSelectionSetup: Combined lobby/character selection phase initialization complete!"); */
     }
     
     /// <summary>
@@ -165,7 +165,7 @@ public class CharacterSelectionSetup : NetworkBehaviour
         if (gamePhaseManager != null)
         {
             gamePhaseManager.SetCharacterSelectionPhase();
-            Debug.Log("CharacterSelectionSetup: Game phase updated to CharacterSelection on server");
+            /* Debug.Log("CharacterSelectionSetup: Game phase updated to CharacterSelection on server"); */
             
             // Also notify clients to update their game phase using PhaseNetworker
             PhaseNetworker phaseNetworker = gamePhaseManager.GetComponent<PhaseNetworker>();
@@ -218,7 +218,7 @@ public class CharacterSelectionSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcHideLobbyUI()
     {
-        Debug.Log("CharacterSelectionSetup: RpcHideLobbyUI called on client");
+        /* Debug.Log("CharacterSelectionSetup: RpcHideLobbyUI called on client"); */
         
         if (characterSelectionUIManager != null)
         {
@@ -234,7 +234,7 @@ public class CharacterSelectionSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcHideAllNetworkEntities()
     {
-        Debug.Log("CharacterSelectionSetup: RpcHideAllNetworkEntities called on client");
+        /* Debug.Log("CharacterSelectionSetup: RpcHideAllNetworkEntities called on client"); */
         
         if (entityVisibilityManager != null)
         {
@@ -250,7 +250,7 @@ public class CharacterSelectionSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcUpdateGamePhase()
     {
-        Debug.Log("CharacterSelectionSetup: RpcUpdateGamePhase called on client");
+        /* Debug.Log("CharacterSelectionSetup: RpcUpdateGamePhase called on client"); */
         
         if (gamePhaseManager != null)
         {
@@ -276,7 +276,7 @@ public class CharacterSelectionSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcEnableCharacterSelectionCanvas()
     {
-        Debug.Log("CharacterSelectionSetup: RpcEnableCharacterSelectionCanvas called on client");
+        /* Debug.Log("CharacterSelectionSetup: RpcEnableCharacterSelectionCanvas called on client"); */
         
         if (characterSelectionCanvas != null)
         {
@@ -318,7 +318,7 @@ public class CharacterSelectionSetup : NetworkBehaviour
     [Server]
     public void CleanupCharacterSelection()
     {
-        Debug.Log("CharacterSelectionSetup: Starting character selection cleanup");
+        /* Debug.Log("CharacterSelectionSetup: Starting character selection cleanup"); */
         
         // Notify clients to cleanup character selection
         RpcCleanupCharacterSelection();
@@ -332,7 +332,7 @@ public class CharacterSelectionSetup : NetworkBehaviour
     [ObserversRpc]
     private void RpcCleanupCharacterSelection()
     {
-        Debug.Log("CharacterSelectionSetup: RpcCleanupCharacterSelection called on client");
+        /* Debug.Log("CharacterSelectionSetup: RpcCleanupCharacterSelection called on client"); */
         
         // Clean up character selection UI and models
         if (characterSelectionUIManager != null)

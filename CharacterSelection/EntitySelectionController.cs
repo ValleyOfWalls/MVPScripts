@@ -202,7 +202,7 @@ public class EntitySelectionController : MonoBehaviour
             
             model3DCreated = true;
             
-            Debug.Log($"EntitySelectionController: Created 3D model for {GetDisplayName()} from auto-discovered data");
+            /* Debug.Log($"EntitySelectionController: Created 3D model for {GetDisplayName()} from auto-discovered data"); */
         }
         else
         {
@@ -250,7 +250,7 @@ public class EntitySelectionController : MonoBehaviour
         ValidateInitialization();
         isInitialized = true;
         
-        Debug.Log($"EntitySelectionController: Initialized as Character controller for {GetDisplayName()} at index {index}");
+        /* Debug.Log($"EntitySelectionController: Initialized as Character controller for {GetDisplayName()} at index {index}"); */
     }
     
     /// <summary>
@@ -293,7 +293,7 @@ public class EntitySelectionController : MonoBehaviour
         ValidateInitialization();
         isInitialized = true;
         
-        Debug.Log($"EntitySelectionController: Initialized as Pet controller for {GetDisplayName()} at index {index}");
+        /* Debug.Log($"EntitySelectionController: Initialized as Pet controller for {GetDisplayName()} at index {index}"); */
     }
     
     private void SetDependencies(CharacterSelectionUIManager uiMgr, DeckPreviewController deckController, CharacterSelectionManager selMgr)
@@ -332,7 +332,7 @@ public class EntitySelectionController : MonoBehaviour
         ValidateInitialization();
         isInitialized = true;
         
-        Debug.Log($"EntitySelectionController: Initialized from serialized references as {entityType} controller for {GetDisplayName()} at index {index}");
+        /* Debug.Log($"EntitySelectionController: Initialized from serialized references as {entityType} controller for {GetDisplayName()} at index {index}"); */
     }
     
     /// <summary>
@@ -479,7 +479,7 @@ public class EntitySelectionController : MonoBehaviour
             return;
         }
         
-        Debug.Log($"EntitySelectionController: Handling character selection for {characterData.CharacterName}");
+        /* Debug.Log($"EntitySelectionController: Handling character selection for {characterData.CharacterName}"); */
         
         // Notify UI manager about selection change
         if (uiManager != null)
@@ -510,7 +510,7 @@ public class EntitySelectionController : MonoBehaviour
             return;
         }
         
-        Debug.Log($"EntitySelectionController: Handling pet selection for {petData.PetName}");
+        /* Debug.Log($"EntitySelectionController: Handling pet selection for {petData.PetName}"); */
         
         // Notify UI manager about selection change
         if (uiManager != null)
@@ -857,7 +857,7 @@ public class EntitySelectionController : MonoBehaviour
             {
                 petDataReference = petData;
                 changesWereMade = true;
-                Debug.Log($"EntitySelectionController: Auto-assigned PetData from {gameObject.name}");
+                /* Debug.Log($"EntitySelectionController: Auto-assigned PetData from {gameObject.name}"); */
             }
         }
 
@@ -873,7 +873,7 @@ public class EntitySelectionController : MonoBehaviour
             {
                 selectionButton = foundButton;
                 changesWereMade = true;
-                Debug.Log($"EntitySelectionController: Auto-assigned Button from {foundButton.gameObject.name}");
+                /* Debug.Log($"EntitySelectionController: Auto-assigned Button from {foundButton.gameObject.name}"); */
             }
         }
 
@@ -891,13 +891,13 @@ public class EntitySelectionController : MonoBehaviour
             {
                 model3D = meshRenderer.gameObject;
                 changesWereMade = true;
-                Debug.Log($"EntitySelectionController: Auto-assigned 3D model from {model3D.name} (MeshRenderer)");
+                /* Debug.Log($"EntitySelectionController: Auto-assigned 3D model from {model3D.name} (MeshRenderer)"); */
             }
             else if (skinnedMeshRenderer != null && skinnedMeshRenderer.gameObject != gameObject)
             {
                 model3D = skinnedMeshRenderer.gameObject;
                 changesWereMade = true;
-                Debug.Log($"EntitySelectionController: Auto-assigned 3D model from {model3D.name} (SkinnedMeshRenderer)");
+                /* Debug.Log($"EntitySelectionController: Auto-assigned 3D model from {model3D.name} (SkinnedMeshRenderer)"); */
             }
         }
 
@@ -915,7 +915,7 @@ public class EntitySelectionController : MonoBehaviour
                 {
                     modelCollider = collider;
                     changesWereMade = true;
-                    Debug.Log($"EntitySelectionController: Auto-assigned model Collider from {collider.gameObject.name}");
+                    /* Debug.Log($"EntitySelectionController: Auto-assigned model Collider from {collider.gameObject.name}"); */
                 }
             }
 
@@ -930,7 +930,7 @@ public class EntitySelectionController : MonoBehaviour
                 {
                     modelRenderer = renderer;
                     changesWereMade = true;
-                    Debug.Log($"EntitySelectionController: Auto-assigned MeshRenderer from {renderer.gameObject.name}");
+                    /* Debug.Log($"EntitySelectionController: Auto-assigned MeshRenderer from {renderer.gameObject.name}"); */
                 }
             }
 
@@ -945,7 +945,7 @@ public class EntitySelectionController : MonoBehaviour
                 {
                     modelMeshFilter = meshFilter;
                     changesWereMade = true;
-                    Debug.Log($"EntitySelectionController: Auto-assigned MeshFilter from {meshFilter.gameObject.name}");
+                    /* Debug.Log($"EntitySelectionController: Auto-assigned MeshFilter from {meshFilter.gameObject.name}"); */
                 }
             }
         }
@@ -958,7 +958,7 @@ public class EntitySelectionController : MonoBehaviour
             {
                 raycastCamera = mainCamera;
                 changesWereMade = true;
-                Debug.Log($"EntitySelectionController: Auto-assigned raycast camera from Camera.main ({mainCamera.gameObject.name})");
+                /* Debug.Log($"EntitySelectionController: Auto-assigned raycast camera from Camera.main ({mainCamera.gameObject.name})"); */
             }
         }
 
@@ -967,13 +967,13 @@ public class EntitySelectionController : MonoBehaviour
         {
             entityType = EntityType.Character;
             changesWereMade = true;
-            Debug.Log($"EntitySelectionController: Set entity type to Character");
+            /* Debug.Log($"EntitySelectionController: Set entity type to Character"); */
         }
         else if (petDataReference != null && entityType != EntityType.Pet)
         {
             entityType = EntityType.Pet;
             changesWereMade = true;
-            Debug.Log($"EntitySelectionController: Set entity type to Pet");
+            /* Debug.Log($"EntitySelectionController: Set entity type to Pet"); */
         }
 
         // Set appropriate selection mode based on found components
@@ -981,24 +981,24 @@ public class EntitySelectionController : MonoBehaviour
         {
             selectionMode = SelectionMode.Both;
             changesWereMade = true;
-            Debug.Log($"EntitySelectionController: Set selection mode to Both (3D model and button found)");
+            /* Debug.Log($"EntitySelectionController: Set selection mode to Both (3D model and button found)"); */
         }
         else if (model3D != null && selectionButton == null && selectionMode != SelectionMode.Model_3D)
         {
             selectionMode = SelectionMode.Model_3D;
             changesWereMade = true;
-            Debug.Log($"EntitySelectionController: Set selection mode to Model_3D");
+            /* Debug.Log($"EntitySelectionController: Set selection mode to Model_3D"); */
         }
         else if (selectionButton != null && model3D == null && selectionMode != SelectionMode.UI_Button)
         {
             selectionMode = SelectionMode.UI_Button;
             changesWereMade = true;
-            Debug.Log($"EntitySelectionController: Set selection mode to UI_Button");
+            /* Debug.Log($"EntitySelectionController: Set selection mode to UI_Button"); */
         }
 
         if (changesWereMade)
         {
-            Debug.Log($"EntitySelectionController: Auto-assignment complete for {gameObject.name}");
+            /* Debug.Log($"EntitySelectionController: Auto-assignment complete for {gameObject.name}"); */
             
             #if UNITY_EDITOR
             // Mark the object as dirty so changes are saved
@@ -1007,7 +1007,7 @@ public class EntitySelectionController : MonoBehaviour
         }
         else
         {
-            Debug.Log($"EntitySelectionController: No auto-assignment needed for {gameObject.name} - all references already assigned");
+            /* Debug.Log($"EntitySelectionController: No auto-assignment needed for {gameObject.name} - all references already assigned"); */
         }
     }
 
@@ -1036,7 +1036,7 @@ public class EntitySelectionController : MonoBehaviour
     [ContextMenu("Validate Setup")]
     public void ValidateSetupEditor()
     {
-        Debug.Log($"=== EntitySelectionController Validation for {gameObject.name} ===");
+        /* Debug.Log($"=== EntitySelectionController Validation for {gameObject.name} ==="); */
         
         // Check entity type and data consistency
         if (entityType == EntityType.Character)
@@ -1067,7 +1067,7 @@ public class EntitySelectionController : MonoBehaviour
         {
             if (selectionButton != null)
             {
-                Debug.Log($"✓ Button component assigned for UI selection");
+                /* Debug.Log($"✓ Button component assigned for UI selection"); */
             }
             else
             {
@@ -1079,11 +1079,11 @@ public class EntitySelectionController : MonoBehaviour
         {
             if (model3D != null)
             {
-                Debug.Log($"✓ 3D model assigned: {model3D.name}");
+                /* Debug.Log($"✓ 3D model assigned: {model3D.name}"); */
                 
                 if (modelCollider != null)
                 {
-                    Debug.Log($"✓ Model collider assigned for click detection");
+                    /* Debug.Log($"✓ Model collider assigned for click detection"); */
                 }
                 else
                 {
@@ -1099,14 +1099,14 @@ public class EntitySelectionController : MonoBehaviour
         // Check camera for raycast detection
         if (useRaycastDetection && raycastCamera != null)
         {
-            Debug.Log($"✓ Raycast camera assigned: {raycastCamera.gameObject.name}");
+            /* Debug.Log($"✓ Raycast camera assigned: {raycastCamera.gameObject.name}"); */
         }
         else if (useRaycastDetection)
         {
             Debug.LogWarning($"⚠ Raycast detection enabled but no camera assigned (will use Camera.main)");
         }
 
-        Debug.Log($"=== Validation Complete ===");
+        /* Debug.Log($"=== Validation Complete ==="); */
     }
 
     #endregion

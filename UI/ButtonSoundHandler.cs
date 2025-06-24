@@ -181,7 +181,7 @@ public class ButtonSoundHandler : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"ButtonSoundHandler: Found {validButtons.Count} buttons in scene");
+            /* Debug.Log($"ButtonSoundHandler: Found {validButtons.Count} buttons in scene"); */
         }
         
         UpdateStatistics();
@@ -322,7 +322,7 @@ public class ButtonSoundHandler : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"ButtonSoundHandler: Applied settings to {appliedCount} buttons, skipped {skippedCount}");
+            /* Debug.Log($"ButtonSoundHandler: Applied settings to {appliedCount} buttons, skipped {skippedCount}"); */
         }
         
         UpdateStatistics();
@@ -362,7 +362,7 @@ public class ButtonSoundHandler : MonoBehaviour
             clickHandler.SetClickSoundName(clickSound);
             if (debugMode)
             {
-                Debug.Log($"ButtonSoundHandler: Set click sound '{clickSound}' for '{entry.objectPath}'");
+                /* Debug.Log($"ButtonSoundHandler: Set click sound '{clickSound}' for '{entry.objectPath}'"); */
             }
         }
         
@@ -373,7 +373,7 @@ public class ButtonSoundHandler : MonoBehaviour
             clickHandler.SetHoverEnterSoundName(hoverEnterSound);
             if (debugMode)
             {
-                Debug.Log($"ButtonSoundHandler: Set hover enter sound '{hoverEnterSound}' for '{entry.objectPath}'");
+                /* Debug.Log($"ButtonSoundHandler: Set hover enter sound '{hoverEnterSound}' for '{entry.objectPath}'"); */
             }
         }
         
@@ -384,7 +384,7 @@ public class ButtonSoundHandler : MonoBehaviour
             clickHandler.SetHoverExitSoundName(hoverExitSound);
             if (debugMode)
             {
-                Debug.Log($"ButtonSoundHandler: Set hover exit sound '{hoverExitSound}' for '{entry.objectPath}'");
+                /* Debug.Log($"ButtonSoundHandler: Set hover exit sound '{hoverExitSound}' for '{entry.objectPath}'"); */
             }
         }
         
@@ -397,7 +397,7 @@ public class ButtonSoundHandler : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"ButtonSoundHandler: Applied sound settings to '{entry.objectPath}' - Click: '{clickSound}', HoverEnter: '{hoverEnterSound}', HoverExit: '{hoverExitSound}'");
+            /* Debug.Log($"ButtonSoundHandler: Applied sound settings to '{entry.objectPath}' - Click: '{clickSound}', HoverEnter: '{hoverEnterSound}', HoverExit: '{hoverExitSound}'"); */
         }
         
         return true;
@@ -456,7 +456,7 @@ public class ButtonSoundHandler : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"ButtonSoundHandler: Removed {removedCount} ClickSoundHandler components");
+            /* Debug.Log($"ButtonSoundHandler: Removed {removedCount} ClickSoundHandler components"); */
         }
         
         UpdateStatistics();

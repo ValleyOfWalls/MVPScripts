@@ -162,7 +162,7 @@ public class FightPreviewManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log("FightPreviewManager: Starting fight preview sequence");
+        /* Debug.Log("FightPreviewManager: Starting fight preview sequence"); */
 
         // Reset client ready states
         clientsReadyForPreview.Clear();
@@ -199,12 +199,12 @@ public class FightPreviewManager : NetworkBehaviour
     private IEnumerator PreviewTimingCoroutine()
     {
         float previewDuration = PreviewDuration;
-        Debug.Log($"FightPreviewManager: Preview timing started - will last {previewDuration} seconds");
+        /* Debug.Log($"FightPreviewManager: Preview timing started - will last {previewDuration} seconds"); */
 
         // Wait for the preview duration (including all animations)
         yield return new WaitForSeconds(previewDuration);
 
-        Debug.Log("FightPreviewManager: Preview duration complete, transitioning to combat");
+        /* Debug.Log("FightPreviewManager: Preview duration complete, transitioning to combat"); */
 
         // End the preview
         isPreviewActive.Value = false;
@@ -227,7 +227,7 @@ public class FightPreviewManager : NetworkBehaviour
     [Server]
     private void StartActualCombat()
     {
-        Debug.Log("FightPreviewManager: Starting actual combat");
+        /* Debug.Log("FightPreviewManager: Starting actual combat"); */
 
         if (combatManager != null)
         {
@@ -249,7 +249,7 @@ public class FightPreviewManager : NetworkBehaviour
     /// </summary>
     private void HandlePreviewStart()
     {
-        Debug.Log("FightPreviewManager: Handling preview start on client");
+        /* Debug.Log("FightPreviewManager: Handling preview start on client"); */
 
         if (fightPreviewUIManager != null)
         {
@@ -267,7 +267,7 @@ public class FightPreviewManager : NetworkBehaviour
     /// </summary>
     private void HandlePreviewEnd()
     {
-        Debug.Log("FightPreviewManager: Handling preview end on client");
+        /* Debug.Log("FightPreviewManager: Handling preview end on client"); */
 
         if (fightPreviewUIManager != null)
         {
@@ -282,7 +282,7 @@ public class FightPreviewManager : NetworkBehaviour
 
     private void OnPreviewActiveChanged(bool prev, bool next, bool asServer)
     {
-        Debug.Log($"FightPreviewManager: Preview active changed from {prev} to {next} on {(asServer ? "Server" : "Client")}");
+        /* Debug.Log($"FightPreviewManager: Preview active changed from {prev} to {next} on {(asServer ? "Server" : "Client")}"); */
 
         if (!asServer) // Client-side handling
         {
@@ -326,7 +326,7 @@ public class FightPreviewManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcShowFightPreview()
     {
-        Debug.Log("FightPreviewManager: RpcShowFightPreview called on client");
+        /* Debug.Log("FightPreviewManager: RpcShowFightPreview called on client"); */
         
         // The actual showing is handled by the SyncVar change callback
         // This RPC can be used for additional client-side setup if needed
@@ -345,7 +345,7 @@ public class FightPreviewManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcHideFightPreview()
     {
-        Debug.Log("FightPreviewManager: RpcHideFightPreview called on client");
+        /* Debug.Log("FightPreviewManager: RpcHideFightPreview called on client"); */
         
         // The actual hiding should already be handled by the animation system
         // This RPC is mainly for cleanup or fallback scenarios
@@ -414,7 +414,7 @@ public class FightPreviewManager : NetworkBehaviour
     {
         if (isPreviewActive.Value)
         {
-            Debug.Log("FightPreviewManager: Force ending preview");
+            /* Debug.Log("FightPreviewManager: Force ending preview"); */
             
             // Stop the timing coroutine
             if (previewTimingCoroutine != null)

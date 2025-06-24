@@ -95,7 +95,7 @@ public class CharacterSelectionManager : NetworkBehaviour
             if (petData != null)
             {
                 availablePets.Add(petData);
-                Debug.Log($"CharacterSelectionManager: Found PetData component on prefab {prefab.name}");
+                /* Debug.Log($"CharacterSelectionManager: Found PetData component on prefab {prefab.name}"); */
             }
             else
             {
@@ -238,7 +238,7 @@ public class CharacterSelectionManager : NetworkBehaviour
             EnsureSelectionObjectsSpawned();
             
             BroadcastPlayerUpdates();
-            Debug.Log($"CharacterSelectionManager: Added player {playerName} to character selection");
+            /* Debug.Log($"CharacterSelectionManager: Added player {playerName} to character selection"); */
         }
     }
     
@@ -248,7 +248,7 @@ public class CharacterSelectionManager : NetworkBehaviour
     [Server]
     public void ServerAddPlayerDirectly(NetworkConnection conn, string playerName)
     {
-        Debug.Log($"CharacterSelectionManager: ServerAddPlayerDirectly called for {playerName}");
+        /* Debug.Log($"CharacterSelectionManager: ServerAddPlayerDirectly called for {playerName}"); */
         ServerAddPlayerLogic(conn, playerName);
         
         // Ensure selection objects are spawned on server for all clients
@@ -290,7 +290,7 @@ public class CharacterSelectionManager : NetworkBehaviour
     [TargetRpc]
     private void TargetRpcInitializeJoiningClient(NetworkConnection conn)
     {
-        Debug.Log("CharacterSelectionManager: TargetRpcInitializeJoiningClient called");
+        /* Debug.Log("CharacterSelectionManager: TargetRpcInitializeJoiningClient called"); */
         
         // If the client hasn't been initialized yet, do it now
         if (uiManager == null || !uiManager.gameObject.activeInHierarchy)
@@ -336,13 +336,13 @@ public class CharacterSelectionManager : NetworkBehaviour
         }
         
         BroadcastPlayerUpdates();
-        Debug.Log($"CharacterSelectionManager: Updated selection for player {playerDisplayNames[conn]}");
+        /* Debug.Log($"CharacterSelectionManager: Updated selection for player {playerDisplayNames[conn]}"); */
     }
 
     [ServerRpc(RequireOwnership = false)]
     public void CmdTogglePlayerReadyState(NetworkConnection conn)
     {
-        Debug.Log($"CharacterSelectionManager: CmdTogglePlayerReadyState called for connection {conn?.ClientId} at {Time.time:F3}");
+        /* Debug.Log($"CharacterSelectionManager: CmdTogglePlayerReadyState called for connection {conn?.ClientId} at {Time.time:F3}"); */
         
         if (conn == null)
         {
@@ -369,7 +369,7 @@ public class CharacterSelectionManager : NetworkBehaviour
         BroadcastPlayerUpdates();
         CheckAllPlayersReady();
         
-        Debug.Log($"CharacterSelectionManager: Player {playerDisplayNames[conn]} ({conn.ClientId}) ready state: {playerReadyStates[conn]}");
+        /* Debug.Log($"CharacterSelectionManager: Player {playerDisplayNames[conn]} ({conn.ClientId}) ready state: {playerReadyStates[conn]}"); */
     }
 
     [Server]
@@ -447,11 +447,11 @@ public class CharacterSelectionManager : NetworkBehaviour
             }
         }
         
-        Debug.Log($"CharacterSelectionManager: Ready check - Players: {connectedPlayers.Count}, All Ready: {allReady}, All Have Selections: {allHaveSelections}");
+        /* Debug.Log($"CharacterSelectionManager: Ready check - Players: {connectedPlayers.Count}, All Ready: {allReady}, All Have Selections: {allHaveSelections}"); */
         
         if (allReady && allHaveSelections)
         {
-            Debug.Log("CharacterSelectionManager: All players ready with selections, starting entity spawning and combat transition");
+            /* Debug.Log("CharacterSelectionManager: All players ready with selections, starting entity spawning and combat transition"); */
             StartCoroutine(TransitionToCombat());
         }
     }
@@ -490,7 +490,7 @@ public class CharacterSelectionManager : NetworkBehaviour
                 
                 if (spawnedData != null)
                 {
-                    Debug.Log($"CharacterSelectionManager: Successfully spawned entities for player {conn.ClientId}");
+                    /* Debug.Log($"CharacterSelectionManager: Successfully spawned entities for player {conn.ClientId}"); */
                 }
                 else
                 {
@@ -522,7 +522,7 @@ public class CharacterSelectionManager : NetworkBehaviour
         if (characterSelectionSetup != null)
         {
             characterSelectionSetup.CleanupCharacterSelection();
-            Debug.Log("CharacterSelectionManager: Character selection cleanup initiated");
+            /* Debug.Log("CharacterSelectionManager: Character selection cleanup initiated"); */
         }
         else
         {

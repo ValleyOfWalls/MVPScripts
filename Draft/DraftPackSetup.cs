@@ -77,14 +77,14 @@ public class DraftPackSetup : NetworkBehaviour
             targetRect.offsetMin = sourceRect.offsetMin;
             targetRect.offsetMax = sourceRect.offsetMax;
             
-            Debug.Log($"DraftPackSetup: Mirrored RectTransform properties from {sourceContainer.name} to {targetContainer.name}");
-            Debug.Log($"  - Size Delta: {sourceRect.sizeDelta}");
-            Debug.Log($"  - Anchored Position: {sourceRect.anchoredPosition}");
-            Debug.Log($"  - Anchor Min/Max: {sourceRect.anchorMin}/{sourceRect.anchorMax}");
+            /* Debug.Log($"DraftPackSetup: Mirrored RectTransform properties from {sourceContainer.name} to {targetContainer.name}"); */
+            /* Debug.Log($"  - Size Delta: {sourceRect.sizeDelta}"); */
+            /* Debug.Log($"  - Anchored Position: {sourceRect.anchoredPosition}"); */
+            /* Debug.Log($"  - Anchor Min/Max: {sourceRect.anchorMin}/{sourceRect.anchorMax}"); */
         }
         else
         {
-            Debug.Log($"DraftPackSetup: Mirrored basic Transform properties from {sourceContainer.name} to {targetContainer.name}");
+            /* Debug.Log($"DraftPackSetup: Mirrored basic Transform properties from {sourceContainer.name} to {targetContainer.name}"); */
         }
     }
     
@@ -94,7 +94,7 @@ public class DraftPackSetup : NetworkBehaviour
     [ObserversRpc]
     private void ObserversMirrorCardContainerTransform(int packNetObjId)
     {
-        Debug.Log($"DraftPackSetup.ObserversMirrorCardContainerTransform called on {(IsServerInitialized ? "Server" : "Client")} - Pack NOB ID: {packNetObjId}");
+        /* Debug.Log($"DraftPackSetup.ObserversMirrorCardContainerTransform called on {(IsServerInitialized ? "Server" : "Client")} - Pack NOB ID: {packNetObjId}"); */
         
         // Find the DraftCanvasManager if we don't have it
         if (draftCanvasManager == null)
@@ -167,7 +167,7 @@ public class DraftPackSetup : NetworkBehaviour
         }
         
         int packSize = gameManager.DraftPackSize.Value;
-        Debug.Log($"DraftPackSetup: Creating {players.Count} draft packs with {packSize} cards each");
+        /* Debug.Log($"DraftPackSetup: Creating {players.Count} draft packs with {packSize} cards each"); */
         
         // Clear any existing packs
         ClearExistingPacks();
@@ -178,7 +178,7 @@ public class DraftPackSetup : NetworkBehaviour
             CreateDraftPackForPlayer(player, packSize);
         }
         
-        Debug.Log($"DraftPackSetup: Successfully created {spawnedPacks.Count} draft packs");
+        /* Debug.Log($"DraftPackSetup: Successfully created {spawnedPacks.Count} draft packs"); */
     }
     
     /// <summary>
@@ -193,7 +193,7 @@ public class DraftPackSetup : NetworkBehaviour
             return;
         }
         
-        Debug.Log($"DraftPackSetup: Creating draft pack for player {player.EntityName.Value}");
+        /* Debug.Log($"DraftPackSetup: Creating draft pack for player {player.EntityName.Value}"); */
         
         // Instantiate the pack
         GameObject packObject = Instantiate(draftPackPrefab);
@@ -219,7 +219,7 @@ public class DraftPackSetup : NetworkBehaviour
         if (packNetObj != null)
         {
             FishNet.InstanceFinder.ServerManager.Spawn(packNetObj);
-            Debug.Log($"DraftPackSetup: Spawned draft pack on network for player {player.EntityName.Value}");
+            /* Debug.Log($"DraftPackSetup: Spawned draft pack on network for player {player.EntityName.Value}"); */
             
             // Sync the pack parenting to all clients
             if (draftPackContainer != null)
@@ -257,7 +257,7 @@ public class DraftPackSetup : NetworkBehaviour
         // Subscribe to pack events
         draftPack.OnPackEmpty += OnPackEmpty;
         
-        Debug.Log($"DraftPackSetup: Successfully created and initialized draft pack for player {player.EntityName.Value}");
+        /* Debug.Log($"DraftPackSetup: Successfully created and initialized draft pack for player {player.EntityName.Value}"); */
     }
     
     /// <summary>
@@ -266,7 +266,7 @@ public class DraftPackSetup : NetworkBehaviour
     [Server]
     private void ClearExistingPacks()
     {
-        Debug.Log($"DraftPackSetup: Clearing {spawnedPacks.Count} existing packs");
+        /* Debug.Log($"DraftPackSetup: Clearing {spawnedPacks.Count} existing packs"); */
         
         foreach (DraftPack pack in spawnedPacks)
         {
@@ -303,7 +303,7 @@ public class DraftPackSetup : NetworkBehaviour
     /// </summary>
     private void OnPackEmpty(DraftPack emptyPack)
     {
-        Debug.Log($"DraftPackSetup: Pack {emptyPack.name} is now empty");
+        /* Debug.Log($"DraftPackSetup: Pack {emptyPack.name} is now empty"); */
         
         // Remove from our list
         spawnedPacks.Remove(emptyPack);
@@ -357,7 +357,7 @@ public class DraftPackSetup : NetworkBehaviour
     [ObserversRpc]
     private void ObserversSyncPackParenting(int packNetObjId, int setupNetObjId, string packName)
     {
-        Debug.Log($"DraftPackSetup.ObserversSyncPackParenting called on {(IsServerInitialized ? "Server" : "Client")} - Pack NOB ID: {packNetObjId}, Setup NOB ID: {setupNetObjId}, Pack Name: {packName}");
+        /* Debug.Log($"DraftPackSetup.ObserversSyncPackParenting called on {(IsServerInitialized ? "Server" : "Client")} - Pack NOB ID: {packNetObjId}, Setup NOB ID: {setupNetObjId}, Pack Name: {packName}"); */
         
         NetworkObject packNetObj = null;
         bool foundPack = false;
@@ -393,7 +393,7 @@ public class DraftPackSetup : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"DraftPackSetup on {gameObject.name} (Client): Parenting pack {packName} (NOB ID: {packNetObjId}) to draftPackContainer: {draftPackContainer.name}");
+        /* Debug.Log($"DraftPackSetup on {gameObject.name} (Client): Parenting pack {packName} (NOB ID: {packNetObjId}) to draftPackContainer: {draftPackContainer.name}"); */
         packObject.transform.SetParent(draftPackContainer, false); // worldPositionStays = false to correctly apply local transforms
         packObject.transform.localPosition = Vector3.zero;
         packObject.transform.localRotation = Quaternion.identity;
@@ -443,6 +443,6 @@ public class DraftPackSetup : NetworkBehaviour
             }
         }
         
-        Debug.Log($"DraftPackSetup: Refreshed transform mirroring for {spawnedPacks.Count} packs");
+        /* Debug.Log($"DraftPackSetup: Refreshed transform mirroring for {spawnedPacks.Count} packs"); */
     }
 } 

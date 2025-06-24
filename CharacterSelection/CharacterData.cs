@@ -211,7 +211,7 @@ public class CharacterData : MonoBehaviour
         // Update our discovered collider reference
         discoveredCollider = newBoxCollider;
         
-        Debug.Log($"CharacterData: Created and fitted new BoxCollider for {characterName}");
+        /* Debug.Log($"CharacterData: Created and fitted new BoxCollider for {characterName}"); */
     }
     
     /// <summary>
