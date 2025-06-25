@@ -10,13 +10,16 @@ public class OwnPetStatsDisplay : MonoBehaviour, IUpdatablePetDisplay
 {
     [Header("Health UI")]
     [SerializeField] private TextMeshProUGUI healthText;
-    [SerializeField] private Image healthBar;
-    [SerializeField] private Image healthBarBackground;
+    [SerializeField] private Image healthBar; // Legacy fallback
+    [SerializeField] private Image healthBarBackground; // Legacy fallback
     
     [Header("Energy UI")]
     [SerializeField] private TextMeshProUGUI energyText;
-    [SerializeField] private Image energyBar;
-    [SerializeField] private Image energyBarBackground;
+    [SerializeField] private Image energyBar; // Legacy fallback
+    [SerializeField] private Image energyBarBackground; // Legacy fallback
+    
+    [Header("Enhanced Bar Controller")]
+    [SerializeField] private HealthEnergyBarController barController;
     
     [Header("Visual Settings")]
     [SerializeField] private Color healthBarColor = Color.red;
@@ -33,6 +36,10 @@ public class OwnPetStatsDisplay : MonoBehaviour, IUpdatablePetDisplay
     {
         ValidateComponents();
         SetupBarColors();
+        
+        // Get bar controller if not assigned
+        if (barController == null)
+            barController = GetComponent<HealthEnergyBarController>();
     }
     
     private void ValidateComponents()
@@ -117,17 +124,25 @@ public class OwnPetStatsDisplay : MonoBehaviour, IUpdatablePetDisplay
         int currentHealth = currentPet.CurrentHealth.Value;
         int maxHealth = currentPet.MaxHealth.Value;
         
-        // Update health text
-        if (healthText != null)
+        // Use enhanced bar controller if available, otherwise fallback to legacy
+        if (barController != null)
         {
-            healthText.text = $"{currentHealth}/{maxHealth}";
+            barController.UpdateHealthBar(currentHealth, maxHealth);
         }
-        
-        // Update health bar
-        if (healthBar != null)
+        else
         {
-            float healthPercentage = maxHealth > 0 ? (float)currentHealth / maxHealth : 0f;
-            healthBar.fillAmount = healthPercentage;
+            // Legacy fallback - Update health text
+            if (healthText != null)
+            {
+                healthText.text = $"{currentHealth}/{maxHealth}";
+            }
+            
+            // Legacy fallback - Update health bar
+            if (healthBar != null)
+            {
+                float healthPercentage = maxHealth > 0 ? (float)currentHealth / maxHealth : 0f;
+                healthBar.fillAmount = healthPercentage;
+            }
         }
         
         LogDebug($"Health updated: {currentHealth}/{maxHealth}");
@@ -143,17 +158,25 @@ public class OwnPetStatsDisplay : MonoBehaviour, IUpdatablePetDisplay
         int currentEnergy = currentPet.CurrentEnergy.Value;
         int maxEnergy = currentPet.MaxEnergy.Value;
         
-        // Update energy text
-        if (energyText != null)
+        // Use enhanced bar controller if available, otherwise fallback to legacy
+        if (barController != null)
         {
-            energyText.text = $"{currentEnergy}/{maxEnergy}";
+            barController.UpdateEnergyBar(currentEnergy, maxEnergy);
         }
-        
-        // Update energy bar
-        if (energyBar != null)
+        else
         {
-            float energyPercentage = maxEnergy > 0 ? (float)currentEnergy / maxEnergy : 0f;
-            energyBar.fillAmount = energyPercentage;
+            // Legacy fallback - Update energy text
+            if (energyText != null)
+            {
+                energyText.text = $"{currentEnergy}/{maxEnergy}";
+            }
+            
+            // Legacy fallback - Update energy bar
+            if (energyBar != null)
+            {
+                float energyPercentage = maxEnergy > 0 ? (float)currentEnergy / maxEnergy : 0f;
+                energyBar.fillAmount = energyPercentage;
+            }
         }
         
         LogDebug($"Energy updated: {currentEnergy}/{maxEnergy}");

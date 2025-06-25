@@ -23,8 +23,11 @@ public class EntityStatsUIController : NetworkBehaviour
     [SerializeField] private TextMeshProUGUI nameText;
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private TextMeshProUGUI energyText;
-    [SerializeField] private Image healthBar;
-    [SerializeField] private Image energyBar;
+    [SerializeField] private Image healthBar; // Legacy fallback - use barController instead
+    [SerializeField] private Image energyBar; // Legacy fallback - use barController instead
+    
+    [Header("Enhanced Bar Controller")]
+    [SerializeField] private HealthEnergyBarController barController;
     
     [Header("Status Effects UI")]
     [SerializeField] private TextMeshProUGUI effectsText;
@@ -64,6 +67,7 @@ public class EntityStatsUIController : NetworkBehaviour
         // Get required components
         if (statsEntity == null) statsEntity = GetComponent<NetworkEntity>();
         if (relationshipManager == null) relationshipManager = GetComponent<RelationshipManager>();
+        if (barController == null) barController = GetComponent<HealthEnergyBarController>();
         
         // Validate stats entity type
         if (statsEntity != null && statsEntity.EntityType != EntityType.PlayerStatsUI && statsEntity.EntityType != EntityType.PetStatsUI)
@@ -380,16 +384,24 @@ public class EntityStatsUIController : NetworkBehaviour
         lastHealth = currentHealth;
         lastMaxHealth = maxHealth;
         
-        // Update health text
-        if (healthText != null)
+        // Use enhanced bar controller if available, otherwise fallback to legacy
+        if (barController != null)
         {
-            healthText.text = $"{currentHealth}/{maxHealth}";
+            barController.UpdateHealthBar(currentHealth, maxHealth);
         }
-        
-        // Update health bar
-        if (healthBar != null && maxHealth > 0)
+        else
         {
-            healthBar.fillAmount = (float)currentHealth / maxHealth;
+            // Legacy fallback - Update health text
+            if (healthText != null)
+            {
+                healthText.text = $"{currentHealth}/{maxHealth}";
+            }
+            
+            // Legacy fallback - Update health bar
+            if (healthBar != null && maxHealth > 0)
+            {
+                healthBar.fillAmount = (float)currentHealth / maxHealth;
+            }
         }
     }
     
@@ -406,16 +418,24 @@ public class EntityStatsUIController : NetworkBehaviour
         lastEnergy = currentEnergy;
         lastMaxEnergy = maxEnergy;
         
-        // Update energy text
-        if (energyText != null)
+        // Use enhanced bar controller if available, otherwise fallback to legacy
+        if (barController != null)
         {
-            energyText.text = $"{currentEnergy}/{maxEnergy}";
+            barController.UpdateEnergyBar(currentEnergy, maxEnergy);
         }
-        
-        // Update energy bar
-        if (energyBar != null && maxEnergy > 0)
+        else
         {
-            energyBar.fillAmount = (float)currentEnergy / maxEnergy;
+            // Legacy fallback - Update energy text
+            if (energyText != null)
+            {
+                energyText.text = $"{currentEnergy}/{maxEnergy}";
+            }
+            
+            // Legacy fallback - Update energy bar
+            if (energyBar != null && maxEnergy > 0)
+            {
+                energyBar.fillAmount = (float)currentEnergy / maxEnergy;
+            }
         }
     }
     
