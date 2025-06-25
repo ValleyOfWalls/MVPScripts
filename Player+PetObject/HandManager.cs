@@ -789,7 +789,7 @@ public class HandManager : NetworkBehaviour
         return FindFirstObjectByType<EntityVisibilityManager>();
     }
 
-    [ObserversRpc(ExcludeServer = true)]
+    [ObserversRpc]
     private void RpcSetCardParent(int cardNetObjId, int parentEntityNetObjId, string targetTransformName)
     {
         /* Debug.Log($"HandManager (Client RPC): RpcSetCardParent - Setting card with ID {cardNetObjId} parent to {targetTransformName} on entity with ID {parentEntityNetObjId}"); */
@@ -900,7 +900,7 @@ public class HandManager : NetworkBehaviour
     /// <summary>
     /// RPC to reset card visual state on clients (alpha, scale, etc.) when moving to hand
     /// </summary>
-    [ObserversRpc(ExcludeServer = true)]
+    [ObserversRpc]
     private void RpcResetCardVisualState(int cardNetObjId)
     {
         // Find the card NetworkObject
