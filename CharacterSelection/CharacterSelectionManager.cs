@@ -524,12 +524,9 @@ public class CharacterSelectionManager : NetworkBehaviour
         {
             gamePhaseManager.SetCombatPhase();
             
-            // Network the phase change
-            PhaseNetworker phaseNetworker = gamePhaseManager.GetComponent<PhaseNetworker>();
-            if (phaseNetworker != null)
-            {
-                phaseNetworker.SendPhaseChangeToClients((int)GamePhaseManager.GamePhase.Combat);
-            }
+            // Use RPC method as primary route (since it works reliably)
+            RpcUpdateGamePhaseToCombat();
+            Debug.Log("CharacterSelectionManager: Sent combat phase change to all clients via RPC");
         }
         
         // Clean up character selection phase
@@ -627,6 +624,16 @@ public class CharacterSelectionManager : NetworkBehaviour
             // Hide character selection UI and clean up models
             uiManager.HideCharacterSelectionUI();
             Debug.Log("CharacterSelectionManager: Character selection UI hidden and models cleaned up");
+        }
+    }
+
+    [ObserversRpc]
+    private void RpcUpdateGamePhaseToCombat()
+    {
+        if (gamePhaseManager != null)
+        {
+            gamePhaseManager.SetCombatPhase();
+            Debug.Log("CharacterSelectionManager: Game phase updated to Combat on client via RPC");
         }
     }
 

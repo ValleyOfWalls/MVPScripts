@@ -292,20 +292,9 @@ public class CombatSetup : NetworkBehaviour
             /* Debug.Log("CombatSetup: Setting combat phase on server"); */
             gamePhaseManager.SetCombatPhase();
             
-            // Network the phase change to all clients using PhaseNetworker
-            PhaseNetworker phaseNetworker = gamePhaseManager.GetComponent<PhaseNetworker>();
-            if (phaseNetworker != null)
-            {
-                Debug.Log("CombatSetup: Sending combat phase change to all clients via PhaseNetworker");
-                phaseNetworker.SendPhaseChangeToClients((int)GamePhaseManager.GamePhase.Combat);
-            }
-            else
-            {
-                Debug.LogWarning("CombatSetup: PhaseNetworker not found, using fallback RPC method");
-            }
-            
-            // Also use direct RPC as fallback to ensure phase change reaches all clients
+            // Use RPC method as primary route (since it works reliably)
             RpcUpdateGamePhaseToCombat();
+            Debug.Log("CombatSetup: Sent combat phase change to all clients via RPC");
         }
         else
         {

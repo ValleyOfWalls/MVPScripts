@@ -196,6 +196,19 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     }
     
     /// <summary>
+    /// Called when this NetworkBehaviour starts on the client
+    /// </summary>
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        Debug.Log("CharacterSelectionUIManager: Started on client");
+        
+        // Reset initialization flag so the UI can be properly initialized for this new session
+        isInitialized = false;
+        Debug.Log("CharacterSelectionUIManager: Reset isInitialized to false for new client session");
+    }
+    
+    /// <summary>
     /// Server method to ensure selection objects are spawned (called when new clients join)
     /// </summary>
     [Server]
@@ -1861,23 +1874,31 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     
     private void LeaveGame()
     {
-        /* Debug.Log("CharacterSelectionUIManager: Player requested to leave game"); */
+        Debug.Log("CharacterSelectionUIManager: Player requested to leave game");
         
-        // Find the SteamNetworkIntegration to handle leaving
-        SteamNetworkIntegration steamNetwork = FindFirstObjectByType<SteamNetworkIntegration>();
+        // Find the SteamNetworkIntegration to handle graceful disconnection and return to start
+        SteamNetworkIntegration steamNetwork = SteamNetworkIntegration.Instance;
         if (steamNetwork != null)
         {
-            steamNetwork.LeaveLobby();
+            // Use the comprehensive disconnect and return to start method
+            steamNetwork.DisconnectAndReturnToStart();
         }
-        
-        // Also disconnect from FishNet
-        FishNet.InstanceFinder.ClientManager?.StopConnection();
-        FishNet.InstanceFinder.ServerManager?.StopConnection(true);
-        
-        // Return to start screen
-        // This would typically be handled by a scene manager or game state manager
-        Debug.Log("CharacterSelectionUIManager: Returning to start screen");
+        else
+        {
+            Debug.LogError("CharacterSelectionUIManager: SteamNetworkIntegration.Instance not found, cannot gracefully disconnect");
+            
+            // Fallback: basic disconnect without proper transition
+            FishNet.InstanceFinder.ClientManager?.StopConnection();
+            FishNet.InstanceFinder.ServerManager?.StopConnection(true);
+            
+            // Try to transition through GamePhaseManager as fallback
+            GamePhaseManager gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            if (gamePhaseManager != null)
+            {
+                gamePhaseManager.SetStartPhase();
+            }
         }
+    }
     
     private void OnDestroy()
     {
@@ -1935,6 +1956,13 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         // Force cleanup on all controllers first to ensure proper cleanup of dynamically created models
         ForceCleanupAllControllers();
         
+        // Clean up deck preview cards to prevent NetworkTransform errors
+        if (deckPreviewController != null)
+        {
+            deckPreviewController.ClearAllDeckPreviews();
+            Debug.Log("CharacterSelectionUIManager: Cleared all deck preview cards");
+        }
+        
         // Cleanup character selection models (including NetworkObjects)
         foreach (GameObject item in characterItems)
         {
@@ -1958,6 +1986,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
         petItems.Clear();
         petControllers.Clear();
+        
+        // Reset initialization flag so the UI can be properly initialized again when rejoining
+        isInitialized = false;
         
         /* Debug.Log("CharacterSelectionUIManager: Selection model cleanup complete"); */
     }

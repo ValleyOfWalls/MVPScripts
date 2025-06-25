@@ -167,18 +167,9 @@ public class CharacterSelectionSetup : NetworkBehaviour
             gamePhaseManager.SetCharacterSelectionPhase();
             /* Debug.Log("CharacterSelectionSetup: Game phase updated to CharacterSelection on server"); */
             
-            // Also notify clients to update their game phase using PhaseNetworker
-            PhaseNetworker phaseNetworker = gamePhaseManager.GetComponent<PhaseNetworker>();
-            if (phaseNetworker != null)
-            {
-                phaseNetworker.SendPhaseChangeToClients((int)GamePhaseManager.GamePhase.CharacterSelection);
-                Debug.Log("CharacterSelectionSetup: Sent character selection phase change to all clients via PhaseNetworker");
-            }
-            else
-            {
-                Debug.LogWarning("CharacterSelectionSetup: PhaseNetworker not found, using fallback RPC method");
-                RpcUpdateGamePhase();
-            }
+            // Use RPC method as primary route (since it works reliably)
+            RpcUpdateGamePhase();
+            Debug.Log("CharacterSelectionSetup: Sent character selection phase change to all clients via RPC");
         }
         else
         {

@@ -2,6 +2,7 @@ using UnityEngine;
 using Steamworks;
 using System.Collections.Generic;
 using System;
+using System.Collections;
 using FishNet.Managing; // Ensured this is active
 using FishNet.Transporting;
 using FishNet.Connection; // Added this line
@@ -48,6 +49,9 @@ public class SteamNetworkIntegration : MonoBehaviour
     public delegate void PlayerJoinedLobbyDelegate(CSteamID newPlayerId); // For PlayerSpawner
     public delegate void PlayerLeftLobbyDelegate(CSteamID newPlayerId); // For PlayerSpawner
 
+    // New event for graceful disconnection
+    public delegate void DisconnectedAndReturnedToStartDelegate();
+    public event DisconnectedAndReturnedToStartDelegate OnDisconnectedAndReturnedToStart;
 
     // Callback handles
     private Callback<LobbyCreated_t> m_lobbyCreated;
@@ -89,6 +93,9 @@ public class SteamNetworkIntegration : MonoBehaviour
 
     private PlayerSpawner playerSpawner; // Reference to component rather than instance
     private NetworkManager fishNetManager; // To cache NetworkManager instance
+    
+    // Disconnect handling
+    private bool m_intentionalDisconnect = false;
 
     private void Awake()
     {
@@ -253,9 +260,12 @@ public class SteamNetworkIntegration : MonoBehaviour
     public void LeaveLobby()
     {
         if (!m_steamInitialized || !m_currentLobbyId.IsValid())
+        {
+            Debug.Log("SteamNetworkIntegration: LeaveLobby called but no active lobby to leave");
             return;
+        }
 
-        /* Debug.Log($"Leaving lobby: {m_currentLobbyId}"); */
+        Debug.Log($"SteamNetworkIntegration: Leaving Steam lobby: {m_currentLobbyId}");
         SteamMatchmaking.LeaveLobby(m_currentLobbyId);
         
         // Notify PlayerSpawner for local player leaving
@@ -269,10 +279,22 @@ public class SteamNetworkIntegration : MonoBehaviour
         if (fishNetManager != null)
         {
             if (fishNetManager.IsClientStarted)
+            {
+                Debug.Log("SteamNetworkIntegration: Stopping FishNet client connection");
                 fishNetManager.ClientManager.StopConnection();
+            }
             if (fishNetManager.IsServerStarted)
-                 fishNetManager.ServerManager.StopConnection(true);
+            {
+                Debug.Log("SteamNetworkIntegration: Stopping FishNet server connection");
+                fishNetManager.ServerManager.StopConnection(true);
+            }
         }
+        else
+        {
+            Debug.LogWarning("SteamNetworkIntegration: FishNetManager is null, cannot stop network connections");
+        }
+        
+        Debug.Log("SteamNetworkIntegration: Successfully left lobby and stopped network connections");
     }
 
     public void RequestLobbiesList()
@@ -687,7 +709,222 @@ public class SteamNetworkIntegration : MonoBehaviour
         else if (args.ConnectionState == LocalConnectionState.Stopped)
         {
             // Client disconnection handling
+            Debug.Log($"SteamNetworkIntegration: Local client disconnected (Reason: {args.ConnectionState})");
+            
+            // Check if we're in a lobby and this wasn't an intentional disconnect
+            if (IsInLobby && !m_intentionalDisconnect)
+            {
+                Debug.Log("SteamNetworkIntegration: Unexpected disconnection detected (likely host left), initiating graceful return to start screen");
+                
+                // Clear lobby state since we're no longer connected
+                m_currentLobbyId = CSteamID.Nil;
+                m_isSteamHost = false;
+                m_currentLobbyMembers.Clear();
+                
+                // Trigger graceful return to start screen
+                StartCoroutine(HandleUnexpectedDisconnectReturnToStart());
+            }
+            else if (m_intentionalDisconnect)
+            {
+                Debug.Log("SteamNetworkIntegration: Intentional disconnect detected, cleanup already handled");
+                m_intentionalDisconnect = false; // Reset flag
+            }
+            else
+            {
+                Debug.Log("SteamNetworkIntegration: Client disconnected but not in lobby, no special handling needed");
+            }
         }
     }
+    #endregion
+
+    #region Graceful Disconnect and Return to Start
+    
+    /// <summary>
+    /// Gracefully disconnects from the current lobby and network session, then returns to start screen.
+    /// This method handles the complete cleanup process for leaving a game session.
+    /// </summary>
+    public void DisconnectAndReturnToStart()
+    {
+        Debug.Log("SteamNetworkIntegration: Starting graceful disconnect and return to start screen");
+        
+        // Mark this as an intentional disconnect to prevent unexpected disconnect handling
+        m_intentionalDisconnect = true;
+        
+        // FIRST: Reset to start phase while still connected (since GamePhaseManager is a NetworkObject)
+        GamePhaseManager gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        if (gamePhaseManager != null)
+        {
+            Debug.Log("SteamNetworkIntegration: Resetting to start phase before disconnecting");
+            gamePhaseManager.SetStartPhase();
+        }
+        else
+        {
+            Debug.LogError("SteamNetworkIntegration: GamePhaseManager not found, cannot reset phase before disconnect");
+        }
+        
+        // SECOND: Clean up all selection NetworkObjects before disconnecting to prevent NetworkTransform errors
+        CleanupSelectionNetworkObjects();
+        
+        // THIRD: Leave the Steam lobby and disconnect (this also handles FishNet disconnection)
+        LeaveLobby();
+        
+        // Give a brief moment for network cleanup to complete
+        StartCoroutine(HandleReturnToStartAfterDisconnect());
+    }
+    
+    /// <summary>
+    /// Handles unexpected disconnections (like when host leaves) and gracefully returns to start screen
+    /// </summary>
+    private IEnumerator HandleUnexpectedDisconnectReturnToStart()
+    {
+        Debug.Log("SteamNetworkIntegration: Handling unexpected disconnect - restarting application for clean state");
+        
+        // Wait a brief moment for any ongoing operations to complete
+        yield return new WaitForSeconds(1.0f);
+        
+        // Clear lobby state
+        m_currentLobbyId = CSteamID.Nil;
+        m_isSteamHost = false;
+        m_currentLobbyMembers.Clear();
+        
+        // Simple and clean solution: restart the application
+        // This ensures all NetworkObjects are properly reset and we start in a clean state
+        Debug.Log("SteamNetworkIntegration: Restarting application due to unexpected disconnect");
+        
+        #if UNITY_EDITOR
+            // In editor, stop play mode
+            UnityEditor.EditorApplication.isPlaying = false;
+        #else
+            // In build, restart the application
+            Application.Quit();
+            
+            // For platforms that support it, you could also use:
+            // System.Diagnostics.Process.Start(Application.dataPath.Replace("_Data", ".exe"));
+        #endif
+    }
+    
+    /// <summary>
+    /// Cleans up character selection entities to prevent conflicts during phase transitions
+    /// </summary>
+    private void CleanupCharacterSelectionEntities()
+    {
+        Debug.Log("SteamNetworkIntegration: Cleaning up character selection entities");
+        
+        // Clean up selection models through UI manager
+        CharacterSelectionUIManager uiManager = FindFirstObjectByType<CharacterSelectionUIManager>();
+        if (uiManager != null)
+        {
+            uiManager.CleanupSelectionModels();
+            Debug.Log("SteamNetworkIntegration: Character selection models cleaned up via UI manager");
+        }
+        else
+        {
+            Debug.LogWarning("SteamNetworkIntegration: CharacterSelectionUIManager not found during cleanup");
+        }
+        
+        Debug.Log("SteamNetworkIntegration: Character selection entity cleanup complete");
+    }
+    
+    /// <summary>
+    /// Properly despawns all selection NetworkObjects before disconnecting to prevent NetworkTransform errors
+    /// </summary>
+    private void CleanupSelectionNetworkObjects()
+    {
+        Debug.Log("SteamNetworkIntegration: Cleaning up selection NetworkObjects before disconnect");
+        
+        // Clean up deck preview cards first (before NetworkObjects are despawned)
+        CharacterSelectionUIManager uiManager = FindFirstObjectByType<CharacterSelectionUIManager>();
+        if (uiManager != null)
+        {
+            // Get the deck preview controller and clean up cards
+            DeckPreviewController deckPreview = uiManager.GetComponent<DeckPreviewController>();
+            if (deckPreview != null)
+            {
+                deckPreview.ClearAllDeckPreviews();
+                Debug.Log("SteamNetworkIntegration: Cleared deck preview cards before NetworkObject cleanup");
+            }
+        }
+        
+        // Find all SelectionNetworkObjects in the scene
+        SelectionNetworkObject[] selectionObjects = FindObjectsOfType<SelectionNetworkObject>();
+        
+        if (selectionObjects.Length == 0)
+        {
+            Debug.Log("SteamNetworkIntegration: No selection NetworkObjects found to clean up");
+            return;
+        }
+        
+        Debug.Log($"SteamNetworkIntegration: Found {selectionObjects.Length} selection NetworkObjects to despawn");
+        
+        // Despawn all selection NetworkObjects if we're the server
+        if (fishNetManager != null && fishNetManager.IsServerStarted)
+        {
+            foreach (SelectionNetworkObject selectionObj in selectionObjects)
+            {
+                if (selectionObj != null)
+                {
+                    FishNet.Object.NetworkObject networkObject = selectionObj.GetComponent<FishNet.Object.NetworkObject>();
+                    if (networkObject != null && networkObject.IsSpawned)
+                    {
+                        try
+                        {
+                            fishNetManager.ServerManager.Despawn(networkObject);
+                            Debug.Log($"SteamNetworkIntegration: Despawned selection NetworkObject: {selectionObj.gameObject.name}");
+                        }
+                        catch (System.Exception e)
+                        {
+                            Debug.LogWarning($"SteamNetworkIntegration: Error despawning {selectionObj.gameObject.name}: {e.Message}");
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            Debug.Log("SteamNetworkIntegration: Not server, skipping NetworkObject despawn (will be handled by server)");
+        }
+        
+        Debug.Log("SteamNetworkIntegration: Selection NetworkObject cleanup complete");
+    }
+    
+    /// <summary>
+    /// Coroutine to handle the return to start screen after intentional network cleanup
+    /// </summary>
+    private IEnumerator HandleReturnToStartAfterDisconnect()
+    {
+        // Wait a brief moment for network cleanup
+        yield return new WaitForSeconds(0.5f);
+        
+        // Ensure we're fully disconnected
+        if (fishNetManager != null)
+        {
+            if (fishNetManager.IsClientStarted)
+            {
+                fishNetManager.ClientManager.StopConnection();
+                yield return new WaitForSeconds(0.2f);
+            }
+            
+            if (fishNetManager.IsServerStarted)
+            {
+                fishNetManager.ServerManager.StopConnection(true);
+                yield return new WaitForSeconds(0.2f);
+            }
+        }
+        
+        // Clean up any remaining network entities from character selection/lobby
+        CleanupCharacterSelectionEntities();
+        
+        // DON'T call GamePhaseManager after disconnect since it's a NetworkObject
+        // The UI transition will be handled by the StartScreenManager when reconnecting
+        
+        // Reset the intentional disconnect flag
+        m_intentionalDisconnect = false;
+        
+        // Notify that the disconnect and return process is complete
+        OnDisconnectedAndReturnedToStart?.Invoke();
+        
+        Debug.Log("SteamNetworkIntegration: Successfully disconnected from network session");
+    }
+    
     #endregion
 } 

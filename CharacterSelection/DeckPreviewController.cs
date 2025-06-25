@@ -468,6 +468,14 @@ public class DeckPreviewController : MonoBehaviour
             Debug.Log($"DeckPreviewController: Removed NetworkObject from preview card {cardData.CardName}");
         }
         
+        // IMPORTANT: Also remove NetworkTransform to prevent NetworkTransform errors
+        FishNet.Component.Transforming.NetworkTransform networkTransform = item.GetComponent<FishNet.Component.Transforming.NetworkTransform>();
+        if (networkTransform != null)
+        {
+            DestroyImmediate(networkTransform);
+            Debug.Log($"DeckPreviewController: Removed NetworkTransform from preview card {cardData.CardName}");
+        }
+        
         // Initialize the Card component with the CardData
         Card cardComponent = item.GetComponent<Card>();
         if (cardComponent != null)
@@ -590,7 +598,10 @@ public class DeckPreviewController : MonoBehaviour
         petDeckItems.Clear();
     }
     
-    private void ClearAllDeckPreviews()
+    /// <summary>
+    /// Clears all deck preview cards from both character and pet deck panels
+    /// </summary>
+    public void ClearAllDeckPreviews()
     {
         ClearCharacterDeckPreview();
         ClearPetDeckPreview();

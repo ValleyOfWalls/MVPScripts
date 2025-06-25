@@ -297,4 +297,22 @@ public class LobbyManager : NetworkBehaviour
             OnPlayersReadyStateChanged?.Invoke();
         }
     }
+    
+    /// <summary>
+    /// Public method to handle a player requesting to leave the lobby
+    /// </summary>
+    public void RequestLeaveLobby()
+    {
+        Debug.Log("LobbyManager: Player requesting to leave lobby");
+        
+        // Use SteamNetworkIntegration to handle the complete disconnect process
+        if (SteamNetworkIntegration.Instance != null)
+        {
+            SteamNetworkIntegration.Instance.DisconnectAndReturnToStart();
+        }
+        else
+        {
+            Debug.LogError("LobbyManager: SteamNetworkIntegration.Instance not found, cannot gracefully leave lobby");
+        }
+    }
 } 
