@@ -757,7 +757,7 @@ public class HandleCardPlay : NetworkBehaviour
     }
 
     /// <summary>
-    /// Handles the cleanup after a card is played (energy cost, discarding)
+    /// Client-side cleanup trigger - now smarter about avoiding duplicate disposal
     /// </summary>
     private void ProcessCardPlayCleanup()
     {
@@ -768,7 +768,16 @@ public class HandleCardPlay : NetworkBehaviour
             return;
         }
         
-        // Call server to handle the cleanup
+        // Check if the main server disposal path is already handling this card
+        if (isProcessingCardPlay)
+        {
+            Debug.Log($"CARDPLAY_DEBUG: Card {gameObject.name} is already being processed through main server path, skipping animation callback cleanup");
+            return;
+        }
+        
+        Debug.Log($"CARDPLAY_DEBUG: ProcessCardPlayCleanup called for {gameObject.name} - using legacy path");
+        
+        // Call server to handle the cleanup (now uses RequireOwnership = false)
         if (sourceAndTargetIdentifier?.SourceEntity != null && card?.CardData != null)
         {
             CmdProcessCardPlayCleanup(sourceAndTargetIdentifier.SourceEntity.ObjectId, card.CardData.EnergyCost);
@@ -778,9 +787,11 @@ public class HandleCardPlay : NetworkBehaviour
     /// <summary>
     /// Server RPC to handle energy deduction and card discarding
     /// </summary>
-    [ServerRpc]
+    [ServerRpc(RequireOwnership = false)]
     private void CmdProcessCardPlayCleanup(int sourceEntityId, int energyCost)
     {
+        Debug.Log($"CARDPLAY_DEBUG: CmdProcessCardPlayCleanup called (legacy path) for sourceEntityId: {sourceEntityId}");
+        
         // Find the source entity
         NetworkEntity sourceEntity = FindEntityById(sourceEntityId);
         if (sourceEntity == null)
@@ -793,11 +804,11 @@ public class HandleCardPlay : NetworkBehaviour
         if (!energyAlreadyDeducted)
         {
             sourceEntity.ChangeEnergy(-energyCost);
-            /* Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value} during cleanup"); */
+            Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value} during cleanup");
         }
         else
         {
-            /* Debug.Log($"HandleCardPlay: Energy already deducted for {sourceEntity.EntityName.Value}, skipping deduction in cleanup"); */
+            Debug.Log($"HandleCardPlay: Energy already deducted for {sourceEntity.EntityName.Value}, skipping deduction in cleanup");
         }
         
         // Find the hand manager and discard the card
@@ -1404,17 +1415,49 @@ public class HandleCardPlay : NetworkBehaviour
     /// </summary>
     private System.Collections.IEnumerator DelayedServerCardDiscard()
     {
-        // Wait for animation to complete before discarding
-        yield return new WaitForSeconds(2.0f);
+        // Wait for animation to start before discarding - reduced delay to align with HandAnimator expectations
+        // HandAnimator waits ~0.5 seconds (30 frames) for card removal, so we discard faster
+        yield return new WaitForSeconds(0.3f);
         
         // Reset processing flag
         isProcessingCardPlay = false;
         energyAlreadyDeducted = false;
         
-        // Process the card discard
+        // DIRECT SERVER AUTHORITY - Handle card disposal without RPC
+        // This follows the same pattern as ServerPlayCard - server has full authority regardless of ownership
         if (sourceAndTargetIdentifier?.SourceEntity != null)
         {
-            CmdProcessCardPlayCleanup(sourceAndTargetIdentifier.SourceEntity.ObjectId, card?.CardData?.EnergyCost ?? 0);
+            NetworkEntity sourceEntity = sourceAndTargetIdentifier.SourceEntity;
+            Debug.Log($"CARDPLAY_DEBUG: Server directly handling card disposal for {sourceEntity.EntityName.Value}");
+            
+            // Find the hand manager and discard the card directly
+            HandManager handManager = GetHandManagerForEntity(sourceEntity);
+            if (handManager != null)
+            {
+                // Server directly calls DiscardCard - no RPC needed since server has full authority
+                handManager.DiscardCard(gameObject);
+                Debug.Log($"CARDPLAY_DEBUG: Server successfully discarded card {card?.CardData?.CardName}");
+                
+                // Trigger immediate layout update since HandAnimator is waiting for this card removal
+                HandLayoutManager handLayoutManager = handManager.GetHandTransform()?.GetComponent<HandLayoutManager>();
+                if (handLayoutManager != null)
+                {
+                    Debug.Log($"CARDPLAY_DEBUG: Triggering layout update after card disposal");
+                    handLayoutManager.UpdateLayout();
+                }
+                else
+                {
+                    Debug.LogWarning($"CARDPLAY_DEBUG: No HandLayoutManager found to trigger layout update");
+                }
+            }
+            else
+            {
+                Debug.LogError($"CARDPLAY_DEBUG: Could not find HandManager for entity {sourceEntity.EntityName.Value}");
+            }
+        }
+        else
+        {
+            Debug.LogError($"CARDPLAY_DEBUG: No source entity available for card disposal");
         }
         
         Debug.Log($"HandleCardPlay: DelayedServerCardDiscard completed for card {card?.CardData?.CardName}");
