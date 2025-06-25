@@ -580,10 +580,10 @@ public class HandleCardPlay : NetworkBehaviour
                     Debug.LogWarning($"HandleCardPlay: No HandAnimator found for GameObject: {gameObject.name}");
                 }
                 
-                // Only call cleanup on the card owner to prevent ServerRPC errors on clients
-                if (IsOwner)
+                // Call cleanup if we're the owner OR if we're on the server (for AI-played cards)
+                if (IsOwner || IsServerInitialized)
                 {
-                    Debug.Log($"HandleCardPlay: Card owner calling cleanup for GameObject: {gameObject.name}");
+                    Debug.Log($"HandleCardPlay: {(IsOwner ? "Card owner" : "Server")} calling cleanup for GameObject: {gameObject.name}");
                     ProcessCardPlayCleanup();
                 }
                 else
@@ -595,10 +595,10 @@ public class HandleCardPlay : NetworkBehaviour
         else
         {
             Debug.LogWarning($"HandleCardPlay: No CardAnimator found on GameObject: {gameObject.name}");
-            // If no animator, only call cleanup if we're the owner
-            if (IsOwner)
+            // If no animator, call cleanup if we're the owner OR if we're on the server (for AI-played cards)
+            if (IsOwner || IsServerInitialized)
             {
-                Debug.Log($"HandleCardPlay: Card owner calling immediate cleanup for GameObject: {gameObject.name}");
+                Debug.Log($"HandleCardPlay: {(IsOwner ? "Card owner" : "Server")} calling immediate cleanup for GameObject: {gameObject.name}");
                 ProcessCardPlayCleanup();
             }
             else
@@ -677,10 +677,10 @@ public class HandleCardPlay : NetworkBehaviour
                     Debug.LogWarning($"HandleCardPlay: No HandAnimator found for GameObject: {gameObject.name}");
                 }
                 
-                // Only call cleanup on the card owner to prevent ServerRPC errors on clients
-                if (IsOwner)
+                // Call cleanup if we're the owner OR if we're on the server (for AI-played cards)
+                if (IsOwner || IsServerInitialized)
                 {
-                    Debug.Log($"HandleCardPlay: Card owner calling cleanup for GameObject: {gameObject.name}");
+                    Debug.Log($"HandleCardPlay: {(IsOwner ? "Card owner" : "Server")} calling cleanup for GameObject: {gameObject.name}");
                     ProcessCardPlayCleanup();
                 }
                 else
@@ -692,10 +692,10 @@ public class HandleCardPlay : NetworkBehaviour
         else
         {
             Debug.LogWarning($"HandleCardPlay: No CardAnimator found on GameObject: {gameObject.name}");
-            // If no animator, only call cleanup if we're the owner
-            if (IsOwner)
+            // If no animator, call cleanup if we're the owner OR if we're on the server (for AI-played cards)
+            if (IsOwner || IsServerInitialized)
             {
-                Debug.Log($"HandleCardPlay: Card owner calling immediate cleanup for GameObject: {gameObject.name}");
+                Debug.Log($"HandleCardPlay: {(IsOwner ? "Card owner" : "Server")} calling immediate cleanup for GameObject: {gameObject.name}");
                 ProcessCardPlayCleanup();
             }
             else
@@ -761,9 +761,10 @@ public class HandleCardPlay : NetworkBehaviour
     /// </summary>
     private void ProcessCardPlayCleanup()
     {
-        if (!IsOwner)
+        // Allow cleanup if we're the owner OR if we're on the server (for AI-played cards)
+        if (!IsOwner && !IsServerInitialized)
         {
-            Debug.LogWarning($"HandleCardPlay: Cannot process cleanup, not network owner of card {gameObject.name}");
+            Debug.LogWarning($"HandleCardPlay: Cannot process cleanup, not network owner or server for card {gameObject.name}");
             return;
         }
         

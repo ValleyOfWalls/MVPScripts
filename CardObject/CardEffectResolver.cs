@@ -668,62 +668,29 @@ public class CardEffectResolver : NetworkBehaviour
     {
         Debug.Log($"CardEffectResolver: ProcessDamageEffect - Amount: {amount}");
         
-        // Use DamageCalculator for proper server-authoritative damage calculation
-        if (damageCalculator != null)
+        // For conditional/scaled effects, the amount has already been calculated
+        // Apply strength bonus and other modifiers manually since DamageCalculator would recalculate from base card data
+        EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
+        int strengthBonus = sourceTracker != null ? sourceTracker.StrengthStacks : 0;
+        int totalDamage = amount + strengthBonus;
+        
+        Debug.Log($"CardEffectResolver: Final damage calculation - Base: {amount}, Strength: {strengthBonus}, Total: {totalDamage}");
+        
+        // Apply the damage through LifeHandler
+        LifeHandler targetLifeHandler = targetEntity.GetComponent<LifeHandler>();
+        if (targetLifeHandler != null)
         {
-            // Create a temporary CardData for damage calculation if needed
-            CardData cardData = card?.CardData;
-            if (cardData != null)
+            targetLifeHandler.TakeDamage(totalDamage, sourceEntity);
+            
+            // Record damage dealt in source entity tracker
+            if (sourceTracker != null)
             {
-                int calculatedDamage = damageCalculator.CalculateDamage(sourceEntity, targetEntity, cardData);
-                Debug.Log($"CardEffectResolver: DamageCalculator result: {calculatedDamage} (base: {amount})");
-                
-                // Apply the calculated damage through LifeHandler
-                LifeHandler targetLifeHandler = targetEntity.GetComponent<LifeHandler>();
-                if (targetLifeHandler != null)
-                {
-                    targetLifeHandler.TakeDamage(calculatedDamage, sourceEntity);
-                    
-                    // Record damage dealt in source entity tracker
-                    EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
-                    if (sourceTracker != null)
-                    {
-                        sourceTracker.RecordDamageDealt(calculatedDamage);
-                    }
-                }
-                else
-                {
-                    Debug.LogError($"CardEffectResolver: Target entity {targetEntity.EntityName.Value} has no LifeHandler!");
-                }
-            }
-            else
-            {
-                Debug.LogError($"CardEffectResolver: No card data available for damage calculation");
+                sourceTracker.RecordDamageDealt(totalDamage);
             }
         }
         else
         {
-            // Fallback if no DamageCalculator (shouldn't happen)
-            Debug.LogWarning($"CardEffectResolver: No DamageCalculator found, using basic damage calculation");
-            
-            EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
-            int strengthBonus = sourceTracker != null ? sourceTracker.StrengthStacks : 0;
-            int totalDamage = amount + strengthBonus;
-            
-            LifeHandler targetLifeHandler = targetEntity.GetComponent<LifeHandler>();
-            if (targetLifeHandler != null)
-            {
-                targetLifeHandler.TakeDamage(totalDamage, sourceEntity);
-                
-                if (sourceTracker != null)
-                {
-                    sourceTracker.RecordDamageDealt(totalDamage);
-                }
-            }
-            else
-            {
-                Debug.LogError($"CardEffectResolver: Target entity {targetEntity.EntityName.Value} has no LifeHandler!");
-            }
+            Debug.LogError($"CardEffectResolver: Target entity {targetEntity.EntityName.Value} has no LifeHandler!");
         }
     }
     
