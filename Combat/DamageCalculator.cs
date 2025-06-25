@@ -54,10 +54,35 @@ public class DamageCalculator : MonoBehaviour
             Debug.LogWarning($"DamageCalculator: Card {cardData.CardName} has no damage effects");
             return 0;
         }
-        
+
+        // Use the overloaded method to apply modifiers
+        return CalculateDamage(source, target, baseDamage);
+    }
+
+    /// <summary>
+    /// Calculates the final damage amount for a pre-calculated base damage value
+    /// Use this for individual effects that have already been processed (scaled, conditional, etc.)
+    /// </summary>
+    /// <param name="source">The entity dealing damage</param>
+    /// <param name="target">The entity being targeted</param>
+    /// <param name="baseDamage">The pre-calculated base damage amount</param>
+    /// <returns>Final calculated damage amount with all modifiers applied</returns>
+    public int CalculateDamage(NetworkEntity source, NetworkEntity target, int baseDamage)
+    {
+        if (source == null || target == null)
+        {
+            Debug.LogError("DamageCalculator: Cannot calculate damage with null source or target");
+            return 0;
+        }
+
+        if (baseDamage <= 0)
+        {
+            return 0; // No damage to calculate
+        }
+
         int modifiedDamage = baseDamage;
         
-        /* Debug.Log($"DamageCalculator: Total base damage is {modifiedDamage}"); */
+        /* Debug.Log($"DamageCalculator: Calculating damage from {source.EntityName.Value} to {target.EntityName.Value} - Base: {baseDamage}"); */
         
         // Apply source modifiers (buffs/debuffs affecting outgoing damage)
         modifiedDamage = ApplySourceModifiers(source, modifiedDamage);

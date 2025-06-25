@@ -470,13 +470,32 @@ public class FightManager : NetworkBehaviour
     /// <returns>True if the fight was found and view was updated, false otherwise</returns>
     public bool SetViewedFight(NetworkEntity player)
     {
-        if (player == null) return false;
+        if (player == null) 
+        {
+            Debug.Log("FightManager.SetViewedFight: Player is null");
+            return false;
+        }
+        
+        Debug.Log($"FightManager.SetViewedFight: Looking for fight for player {player.EntityName.Value} (ID: {player.ObjectId})");
         
         var fightAssignment = GetFightForPlayer(player);
-        if (!fightAssignment.HasValue) return false;
+        if (!fightAssignment.HasValue) 
+        {
+            Debug.Log($"FightManager.SetViewedFight: No fight assignment found for player {player.EntityName.Value} (ID: {player.ObjectId})");
+            return false;
+        }
         
-        viewedCombatPlayer = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PlayerObjectId);
-        viewedCombatOpponentPet = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PetObjectId);
+        Debug.Log($"FightManager.SetViewedFight: Found fight assignment - Player: {fightAssignment.Value.PlayerObjectId}, Pet: {fightAssignment.Value.PetObjectId}");
+        
+        var newViewedPlayer = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PlayerObjectId);
+        var newViewedOpponentPet = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PetObjectId);
+        
+        Debug.Log($"FightManager.SetViewedFight: Resolved entities - Player: {(newViewedPlayer?.EntityName.Value ?? "null")} (ID: {newViewedPlayer?.ObjectId ?? 0}), OpponentPet: {(newViewedOpponentPet?.EntityName.Value ?? "null")} (ID: {newViewedOpponentPet?.ObjectId ?? 0})");
+        
+        viewedCombatPlayer = newViewedPlayer;
+        viewedCombatOpponentPet = newViewedOpponentPet;
+        
+        Debug.Log($"FightManager.SetViewedFight: Set viewed combat references - ViewedPlayer: {(viewedCombatPlayer?.EntityName.Value ?? "null")}, ViewedOpponentPet: {(viewedCombatOpponentPet?.EntityName.Value ?? "null")}");
         
         // Notify EntityVisibilityManager that the viewed fight has changed
         NotifyEntityVisibilityManagerReady();
@@ -492,9 +511,12 @@ public class FightManager : NetworkBehaviour
     {
         List<NetworkEntity> entities = new List<NetworkEntity>();
         
+        Debug.Log($"FightManager.GetViewedFightEntities: ViewedPlayer: {(viewedCombatPlayer?.EntityName.Value ?? "null")} (ID: {viewedCombatPlayer?.ObjectId ?? 0}), ViewedOpponentPet: {(viewedCombatOpponentPet?.EntityName.Value ?? "null")} (ID: {viewedCombatOpponentPet?.ObjectId ?? 0})");
+        
         if (viewedCombatPlayer != null)
         {
             entities.Add(viewedCombatPlayer);
+            Debug.Log($"FightManager.GetViewedFightEntities: Added viewed player {viewedCombatPlayer.EntityName.Value} to entities list");
             
             // Try to find the ally pet
             RelationshipManager playerRelationship = viewedCombatPlayer.GetComponent<RelationshipManager>();
@@ -504,13 +526,25 @@ public class FightManager : NetworkBehaviour
                 if (allyPet != null)
                 {
                     entities.Add(allyPet);
+                    Debug.Log($"FightManager.GetViewedFightEntities: Added ally pet {allyPet.EntityName.Value} (ID: {allyPet.ObjectId}) to entities list");
                 }
+            }
+            else
+            {
+                Debug.Log("FightManager.GetViewedFightEntities: No ally pet found for viewed player");
             }
         }
         
         if (viewedCombatOpponentPet != null)
         {
             entities.Add(viewedCombatOpponentPet);
+            Debug.Log($"FightManager.GetViewedFightEntities: Added opponent pet {viewedCombatOpponentPet.EntityName.Value} (ID: {viewedCombatOpponentPet.ObjectId}) to entities list");
+        }
+        
+        Debug.Log($"FightManager.GetViewedFightEntities: Returning {entities.Count} entities in viewed fight");
+        for (int i = 0; i < entities.Count; i++)
+        {
+            Debug.Log($"  Entity {i}: {entities[i].EntityName.Value} (ID: {entities[i].ObjectId}, Type: {entities[i].EntityType})");
         }
         
         return entities;

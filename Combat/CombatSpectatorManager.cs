@@ -425,7 +425,20 @@ public class CombatSpectatorManager : MonoBehaviour
             LogDebug("Cannot switch fight - FightManager is null");
             return;
         }
+
+        LogDebug($"Attempting to switch to fight: Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}");
         
+        // Debug: Log all available fight assignments for comparison
+        var allFights = fightManager.GetAllFightAssignments();
+        LogDebug($"All available fight assignments ({allFights.Count}):");
+        for (int i = 0; i < allFights.Count; i++)
+        {
+            var f = allFights[i];
+            var player = GetNetworkObjectComponent<NetworkEntity>(f.PlayerObjectId);
+            var pet = GetNetworkObjectComponent<NetworkEntity>(f.PetObjectId);
+            LogDebug($"  Fight {i}: Player {f.PlayerObjectId} ({(player?.EntityName.Value ?? "null")}) vs Pet {f.PetObjectId} ({(pet?.EntityName.Value ?? "null")})");
+        }
+
         // Get the player entity for this fight
         var playerEntity = GetNetworkObjectComponent<NetworkEntity>(fight.PlayerObjectId);
         if (playerEntity == null)
@@ -433,17 +446,25 @@ public class CombatSpectatorManager : MonoBehaviour
             LogDebug($"Cannot find player entity with ID {fight.PlayerObjectId}");
             return;
         }
-        
+
+        LogDebug($"Found player entity: {playerEntity.EntityName.Value} (ID: {playerEntity.ObjectId})");
+
         // Close any open deck view before switching fights
         if (deckViewerManager != null && deckViewerManager.IsDeckViewOpen)
         {
             deckViewerManager.CloseDeckView();
             LogDebug("Closed deck view before switching fights");
         }
-        
+
+        // Debug: Log current viewed combat state before switching
+        LogDebug($"Before SetViewedFight - ViewedPlayer: {(fightManager.ViewedCombatPlayer?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedCombatPlayer?.ObjectId ?? 0}), ViewedOpponentPet: {(fightManager.ViewedCombatOpponentPet?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedCombatOpponentPet?.ObjectId ?? 0})");
+
         // Use FightManager's SetViewedFight method to update the viewed combat references
         bool success = fightManager.SetViewedFight(playerEntity);
         
+        // Debug: Log viewed combat state after switching
+        LogDebug($"After SetViewedFight - Success: {success}, ViewedPlayer: {(fightManager.ViewedCombatPlayer?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedCombatPlayer?.ObjectId ?? 0}), ViewedOpponentPet: {(fightManager.ViewedCombatOpponentPet?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedCombatOpponentPet?.ObjectId ?? 0})");
+
         if (success)
         {
             // Update entity visibility to show the new fight

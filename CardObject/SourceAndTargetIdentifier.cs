@@ -669,22 +669,14 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
 
         if (card?.CardData?.Effects == null) return (0, 0);
 
-        // Get source entity's strength for damage calculations
-        EntityTracker sourceTracker = sourceEntity?.GetComponent<EntityTracker>();
-        int strengthBonus = sourceTracker != null ? sourceTracker.StrengthStacks : 0;
-
-        /* Debug.Log($"SourceAndTargetIdentifier: Calculating damage for {card.CardData.CardName} - Strength bonus: {strengthBonus}"); */
-
-        // Calculate damage by processing each effect individually (matching CardEffectResolver behavior)
+        // Calculate base damage by processing each effect individually (matching CardEffectResolver behavior)
         foreach (var effect in card.CardData.Effects)
         {
             switch (effect.effectType)
             {
                 case CardEffectType.Damage:
-                    // Apply strength to each damage effect individually (matching actual processing)
-                    int effectDamage = effect.amount + strengthBonus;
-                    damageAmount += effectDamage;
-                    /* Debug.Log($"SourceAndTargetIdentifier: Damage effect - Base: {effect.amount}, +Strength: {strengthBonus}, Total: {effectDamage}, Running total: {damageAmount}"); */
+                    // Apply base damage from the effect
+                    damageAmount += effect.amount;
                     break;
 
                 case CardEffectType.Heal:
@@ -696,6 +688,16 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
                     healAmount += effect.amount;
                     break;
             }
+        }
+
+        // Use DamageCalculator for consistent damage calculation (same as CardEffectResolver)
+        if (damageAmount > 0 && sourceEntity != null && damageCalculator != null)
+        {
+            damageAmount = damageCalculator.CalculateDamage(sourceEntity, target, damageAmount);
+        }
+        else if (damageAmount > 0 && damageCalculator == null)
+        {
+            Debug.LogWarning($"SourceAndTargetIdentifier: DamageCalculator not available for damage preview on {card.CardData.CardName}");
         }
 
         return (damageAmount, healAmount);
