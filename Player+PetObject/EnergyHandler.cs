@@ -35,19 +35,21 @@ public class EnergyHandler : NetworkBehaviour
     {
         if (!IsServerInitialized)
         {
-            Debug.LogError($"EnergyHandler on {gameObject.name}: SpendEnergy called outside of server context");
+            Debug.LogError($"CARDPLAY_DEBUG: EnergyHandler on {gameObject.name}: SpendEnergy called outside of server context");
             return;
         }
         
         if (amount <= 0) return; // Ignore non-positive amounts
         
-        /* Debug.Log($"EnergyHandler: {entity.EntityName.Value} spending {amount} energy"); */
+        Debug.Log($"CARDPLAY_DEBUG: {entity.EntityName.Value} spending {amount} energy (current: {entity.CurrentEnergy.Value})");
         
         // Cap energy spend to prevent negative energy
         int cappedAmount = Mathf.Min(amount, entity.CurrentEnergy.Value);
         
         // Apply energy change to the entity
         entity.CurrentEnergy.Value -= cappedAmount;
+        
+        Debug.Log($"CARDPLAY_DEBUG: {entity.EntityName.Value} energy after spending: {entity.CurrentEnergy.Value}");
         
         // Notify clients
         RpcOnEnergySpent(cappedAmount, source != null ? source.ObjectId : 0);

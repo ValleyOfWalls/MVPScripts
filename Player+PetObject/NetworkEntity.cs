@@ -337,27 +337,11 @@ public class NetworkEntity : NetworkBehaviour
         return ownerObj?.GetComponent<NetworkEntity>();
     }
 
-    #region State Changes
+    #region Health & Energy Management
 
-    [Server]
-    public void TakeDamage(int amount)
-    {
-        CurrentHealth.Value -= amount;
-        if (CurrentHealth.Value <= 0)
-        {
-            CurrentHealth.Value = 0;
-            Debug.Log($"{entityType} {EntityName.Value} has been defeated.");
-        }
-        _currentHealth = CurrentHealth.Value;
-    }
-
-    [Server]
-    public void Heal(int amount)
-    {
-        CurrentHealth.Value += amount;
-        if (CurrentHealth.Value > MaxHealth.Value) CurrentHealth.Value = MaxHealth.Value;
-        _currentHealth = CurrentHealth.Value;
-    }
+    // REMOVED: Direct TakeDamage and Heal methods
+    // All damage and healing must go through LifeHandler for proper server authority
+    // and effect processing - see LifeHandler.TakeDamage() and LifeHandler.Heal()
 
     [Server]
     public void ChangeEnergy(int amount)

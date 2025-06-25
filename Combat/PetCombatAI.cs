@@ -143,8 +143,43 @@ public class PetCombatAI : NetworkBehaviour
             HandleCardPlay cardPlayHandler = cardObject.GetComponent<HandleCardPlay>();
             if (cardPlayHandler != null)
             {
-                // Call the ServerPlayCard method
-                cardPlayHandler.ServerPlayCard();
+                Debug.Log($"CARDPLAY_DEBUG: PetCombatAI attempting to play card {card.CardData.CardName}");
+                Debug.Log($"CARDPLAY_DEBUG: Card object ownership - IsOwner: {cardObject.GetComponent<NetworkBehaviour>()?.IsOwner}, HasOwner: {cardObject.GetComponent<NetworkBehaviour>()?.Owner != null}");
+                Debug.Log($"CARDPLAY_DEBUG: Pet entity: {petEntity.EntityName.Value}, Type: {petEntity.EntityType}");
+                Debug.Log($"CARDPLAY_DEBUG: Pet entity ownership - IsOwner: {petEntity.IsOwner}, HasOwner: {petEntity.Owner != null}, OwnerClientId: {(petEntity.Owner != null ? petEntity.Owner.ClientId : -1)}");
+                
+                // Get source and target information for the server call
+                SourceAndTargetIdentifier sourceTargetId = cardObject.GetComponent<SourceAndTargetIdentifier>();
+                if (sourceTargetId != null)
+                {
+                    // Update source and target on server side for AI
+                    sourceTargetId.UpdateSourceAndTarget();
+                    
+                    var sourceEntity = sourceTargetId.SourceEntity;
+                    var allTargets = sourceTargetId.AllTargets;
+                    
+                    int sourceId = sourceEntity != null ? sourceEntity.ObjectId : petEntity.ObjectId; // Fallback to pet entity
+                    int[] targetIds = allTargets != null ? allTargets.Select(t => t != null ? t.ObjectId : 0).Where(id => id != 0).ToArray() : new int[0];
+                    
+                    Debug.Log($"CARDPLAY_DEBUG: PetCombatAI calling ServerPlayCard with sourceId: {sourceId}, targetIds: [{string.Join(", ", targetIds)}]");
+                    
+                    // Call the ServerPlayCard method with parameters
+                    try
+                    {
+                        cardPlayHandler.ServerPlayCard(sourceId, targetIds);
+                        Debug.Log($"CARDPLAY_DEBUG: Successfully called ServerPlayCard for {card.CardData.CardName}");
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogError($"CARDPLAY_DEBUG: Exception calling ServerPlayCard for {card.CardData.CardName}: {ex.Message}");
+                        continue;
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"CARDPLAY_DEBUG: SourceAndTargetIdentifier not found on card {card.CardData.CardName}");
+                    continue;
+                }
                 
                 // Update remaining energy
                 remainingEnergy -= card.CardData.EnergyCost;
@@ -156,7 +191,7 @@ public class PetCombatAI : NetworkBehaviour
             }
             else
             {
-                Debug.LogError($"PetCombatAI: Card {card.CardData.CardName} missing HandleCardPlay");
+                Debug.LogError($"CARDPLAY_DEBUG: Card {card.CardData.CardName} missing HandleCardPlay");
                 continue;
             }
         }

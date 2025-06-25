@@ -69,76 +69,85 @@ public class HandleCardPlay : NetworkBehaviour
     }
 
     /// <summary>
-    /// Called when a card play is attempted
+    /// Called when a card play is attempted - now routes directly to server
     /// </summary>
     public void OnCardPlayAttempt()
     {
-        if (!CanPlayCard())
-        {
-            Debug.LogWarning($"HandleCardPlay: Cannot play card {card.CardData?.CardName}. Reason: {playBlockReason}");
-            return;
-        }
-
-        Debug.Log($"HandleCardPlay: OnCardPlayAttempt - Playing card {card.CardData?.CardName}");
+        Debug.Log($"CARDPLAY_DEBUG: OnCardPlayAttempt called for card {card?.CardData?.CardName}");
         
-        // TRIGGER CARD PLAY ANIMATION - Do this at the start so the card animates out immediately
-        // The animation completion callback will handle the cleanup
-        TriggerCardPlayAnimationWithCleanup();
-        
-        // Check if TestCombat return-to-hand mode is enabled
-        #if UNITY_EDITOR
-        if (TestCombat.Instance != null && TestCombat.Instance.ShouldReturnToHand(gameObject))
+        // Ensure source/target identification is updated on client before server validation
+        if (sourceAndTargetIdentifier != null)
         {
-            // In return-to-hand mode, still process the effects but return the card to hand afterwards
-            if (cardEffectResolver != null)
-            {
-                cardEffectResolver.ResolveCardEffect();
-            }
+            Debug.Log($"CARDPLAY_DEBUG: Updating source and target before validation");
+            sourceAndTargetIdentifier.UpdateSourceAndTarget();
             
-            // Schedule the card to return to hand after a short delay
-            StartCoroutine(ReturnToHandAfterDelay());
-            return;
-        }
-        #endif
-        
-        // Normal card play processing - effects are resolved, but cleanup is delayed until animation completes
-        if (cardEffectResolver != null)
-        {
-            cardEffectResolver.ResolveCardEffect();
+            // Log current source/target state
+            Debug.Log($"CARDPLAY_DEBUG: After update - Source: {(sourceAndTargetIdentifier.SourceEntity != null ? sourceAndTargetIdentifier.SourceEntity.EntityName.Value : "null")}, Targets: {(sourceAndTargetIdentifier.AllTargets?.Count ?? 0)}");
         }
         else
         {
-            Debug.LogError("HandleCardPlay: Cannot resolve effect - missing CardEffectResolver");
+            Debug.LogError($"CARDPLAY_DEBUG: sourceAndTargetIdentifier is null for card {gameObject.name}");
         }
         
-        // NOTE: ProcessCardPlayCleanup() is now called from the animation completion callback
-        // instead of immediately, so the card can animate out before being discarded
+        if (!CanPlayCard())
+        {
+            Debug.LogWarning($"CARDPLAY_DEBUG: Cannot play card {card.CardData?.CardName}. Reason: {playBlockReason}");
+            return;
+        }
+
+        Debug.Log($"CARDPLAY_DEBUG: OnCardPlayAttempt - Client validation passed, routing card {card.CardData?.CardName} to server");
+        
+        // Get source and target IDs to pass to server
+        var clientSourceEntity = sourceAndTargetIdentifier.SourceEntity;
+        var clientAllTargets = sourceAndTargetIdentifier.AllTargets;
+        
+        int sourceId = clientSourceEntity != null ? clientSourceEntity.ObjectId : 0;
+        int[] targetIds = clientAllTargets != null ? clientAllTargets.Select(t => t != null ? t.ObjectId : 0).Where(id => id != 0).ToArray() : new int[0];
+        
+        Debug.Log($"CARDPLAY_DEBUG: Calling ServerPlayCard with sourceId: {sourceId}, targetIds: [{string.Join(", ", targetIds)}]");
+        
+        // Route all card plays through server for consistent processing
+        ServerPlayCard(sourceId, targetIds);
     }
 
     /// <summary>
-    /// Checks if the card can be played based on various conditions
+    /// Checks if the card can be played based on various conditions using passed parameters
     /// </summary>
-    private bool CanPlayCard()
+    private bool CanPlayCardWithParams(int sourceId, int[] targetIds)
     {
         canPlay = true;
         playBlockReason = "";
+
+        Debug.Log($"CARDPLAY_DEBUG: CanPlayCardWithParams validation starting for {card?.CardData?.CardName} with sourceId: {sourceId}, targetIds: [{string.Join(", ", targetIds)}]");
 
         // Check if we have valid card data
         if (card?.CardData == null)
         {
             canPlay = false;
             playBlockReason = "No card data";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - No card data");
             return false;
         }
 
         // Check if we have source entity
-        var sourceEntity = sourceAndTargetIdentifier?.SourceEntity;
+        if (sourceId <= 0)
+        {
+            canPlay = false;
+            playBlockReason = "No source entity";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - No source entity ID provided");
+            return false;
+        }
+        
+        NetworkEntity sourceEntity = FindEntityById(sourceId);
         if (sourceEntity == null)
         {
             canPlay = false;
             playBlockReason = "No source entity";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Could not find source entity with ID {sourceId}");
             return false;
         }
+
+        Debug.Log($"CARDPLAY_DEBUG: Found source entity: {sourceEntity.EntityName.Value}");
 
         // Check stun status
         EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
@@ -146,6 +155,7 @@ public class HandleCardPlay : NetworkBehaviour
         {
             canPlay = false;
             playBlockReason = "Source entity is stunned";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Source entity is stunned");
             return false;
         }
 
@@ -159,6 +169,110 @@ public class HandleCardPlay : NetworkBehaviour
             {
                 canPlay = false;
                 playBlockReason = $"Requires {cardData.RequiredComboAmount} combo (have {sourceTracker.ComboCount})";
+                Debug.Log($"CARDPLAY_DEBUG: Validation failed - Sequence requirement not met");
+                return false;
+            }
+        }
+
+        // Check if we have valid targets
+        if (targetIds == null || targetIds.Length == 0 || targetIds.All(id => id <= 0))
+        {
+            canPlay = false;
+            playBlockReason = "No valid targets";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - No valid target IDs provided");
+            return false;
+        }
+
+        // Validate that target entities exist
+        var targetEntities = targetIds.Select(id => id > 0 ? FindEntityById(id) : null).Where(e => e != null).ToList();
+        if (targetEntities.Count == 0)
+        {
+            canPlay = false;
+            playBlockReason = "No valid targets";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Could not find any target entities");
+            return false;
+        }
+
+        Debug.Log($"CARDPLAY_DEBUG: Found {targetEntities.Count} valid targets");
+
+        // Check energy cost
+        if (sourceEntity.CurrentEnergy.Value < card.CardData.EnergyCost)
+        {
+            canPlay = false;
+            playBlockReason = $"Not enough energy (need {card.CardData.EnergyCost}, have {sourceEntity.CurrentEnergy.Value})";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Not enough energy");
+            return false;
+        }
+
+        // Check combo requirements
+        if (card.CardData.RequiresCombo)
+        {
+            bool sequenceValid = card.CardData.CanPlayWithCombo(sourceTracker?.ComboCount ?? 0);
+            if (!sequenceValid)
+            {
+                canPlay = false;
+                playBlockReason = $"Combo requirement not met (have {(sourceTracker?.ComboCount ?? 0)}, need {card.CardData.RequiredComboAmount})";
+                Debug.Log($"CARDPLAY_DEBUG: Validation failed - Combo requirement not met");
+                return false;
+            }
+        }
+
+        Debug.Log($"CARDPLAY_DEBUG: All validation checks passed for {card.CardData.CardName}");
+        return true;
+    }
+
+    /// <summary>
+    /// Checks if the card can be played based on various conditions
+    /// </summary>
+    private bool CanPlayCard()
+    {
+        canPlay = true;
+        playBlockReason = "";
+
+        Debug.Log($"CARDPLAY_DEBUG: CanPlayCard validation starting for {card?.CardData?.CardName}");
+
+        // Check if we have valid card data
+        if (card?.CardData == null)
+        {
+            canPlay = false;
+            playBlockReason = "No card data";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - No card data");
+            return false;
+        }
+
+        // Check if we have source entity
+        var sourceEntity = sourceAndTargetIdentifier?.SourceEntity;
+        if (sourceEntity == null)
+        {
+            canPlay = false;
+            playBlockReason = "No source entity";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - No source entity (sourceAndTargetIdentifier: {sourceAndTargetIdentifier != null})");
+            return false;
+        }
+
+        Debug.Log($"CARDPLAY_DEBUG: Found source entity: {sourceEntity.EntityName.Value}");
+
+        // Check stun status
+        EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
+        if (sourceTracker != null && sourceTracker.IsStunned)
+        {
+            canPlay = false;
+            playBlockReason = "Source entity is stunned";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Source entity is stunned");
+            return false;
+        }
+
+        // Check sequence requirements
+        if (sourceTracker != null)
+        {
+            CardData cardData = card.CardData;
+            bool sequenceValid = cardData.CanPlayWithCombo(sourceTracker.ComboCount);
+
+            if (!sequenceValid)
+            {
+                canPlay = false;
+                playBlockReason = $"Requires {cardData.RequiredComboAmount} combo (have {sourceTracker.ComboCount})";
+                Debug.Log($"CARDPLAY_DEBUG: Validation failed - Sequence requirement not met");
                 return false;
             }
         }
@@ -169,14 +283,18 @@ public class HandleCardPlay : NetworkBehaviour
         {
             canPlay = false;
             playBlockReason = "No valid targets";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - No valid targets (allTargets: {(allTargets?.Count ?? 0)})");
             return false;
         }
+
+        Debug.Log($"CARDPLAY_DEBUG: Found {allTargets.Count} valid targets");
 
         // Check energy cost
         if (sourceEntity.CurrentEnergy.Value < card.CardData.EnergyCost)
         {
             canPlay = false;
             playBlockReason = $"Not enough energy (need {card.CardData.EnergyCost}, have {sourceEntity.CurrentEnergy.Value})";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Not enough energy");
             return false;
         }
 
@@ -186,11 +304,14 @@ public class HandleCardPlay : NetworkBehaviour
             bool sequenceValid = card.CardData.CanPlayWithCombo(sourceTracker.ComboCount);
             if (!sequenceValid)
             {
-                /* Debug.Log($"HandleCardPlay: Cannot play {card.CardData.CardName} - combo requirement not met (have {sourceTracker.ComboCount}, need {card.CardData.RequiredComboAmount})"); */
+                canPlay = false;
+                playBlockReason = $"Combo requirement not met (have {sourceTracker.ComboCount}, need {card.CardData.RequiredComboAmount})";
+                Debug.Log($"CARDPLAY_DEBUG: Validation failed - Combo requirement not met");
                 return false;
             }
         }
 
+        Debug.Log($"CARDPLAY_DEBUG: All validation checks passed for {card.CardData.CardName}");
         return true;
     }
 
@@ -261,95 +382,140 @@ public class HandleCardPlay : NetworkBehaviour
     /// Server method to validate and process card play
     /// </summary>
     [ServerRpc(RequireOwnership = false)]
-    public void ServerPlayCard(NetworkConnection conn = null)
+    public void ServerPlayCard(int sourceId, int[] targetIds, NetworkConnection conn = null)
     {
-        Debug.Log($"HandleCardPlay: ServerPlayCard called for card GameObject: {gameObject.name}");
+        Debug.Log($"CARDPLAY_DEBUG: ServerPlayCard called for card {gameObject.name} - CardData: {card?.CardData?.CardName}");
+        Debug.Log($"CARDPLAY_DEBUG: Network ownership - IsOwner: {IsOwner}, HasOwner: {Owner != null}, OwnerClientId: {(Owner != null ? Owner.ClientId : -1)}");
+        Debug.Log($"CARDPLAY_DEBUG: Server state - IsServer: {IsServerInitialized}, IsHost: {IsHost}, IsClient: {IsClientInitialized}");
         
         if (card?.CardData != null)
         {
-            Debug.Log($"HandleCardPlay: Card data found - CardName: {card.CardData.CardName}");
+            Debug.Log($"CARDPLAY_DEBUG: Card data validated - CardName: {card.CardData.CardName}");
         }
         else
         {
-            Debug.LogWarning($"HandleCardPlay: Card or CardData is null for GameObject: {gameObject.name}");
+            Debug.LogWarning($"CARDPLAY_DEBUG: Card or CardData is null for GameObject: {gameObject.name}");
+            return;
         }
         
-        // Validate on server side as well
-        if (!CanPlayCard())
+        // Check source entity ownership
+        if (sourceId > 0)
         {
-            Debug.LogWarning($"HandleCardPlay: Server rejected card play. Reason: {playBlockReason}");
+            NetworkEntity sourceEntity = FindEntityById(sourceId);
+            if (sourceEntity != null)
+            {
+                Debug.Log($"CARDPLAY_DEBUG: Source entity: {sourceEntity.EntityName.Value}, Type: {sourceEntity.EntityType}");
+                Debug.Log($"CARDPLAY_DEBUG: Source entity ownership - IsOwner: {sourceEntity.IsOwner}, HasOwner: {sourceEntity.Owner != null}, OwnerClientId: {(sourceEntity.Owner != null ? sourceEntity.Owner.ClientId : -1)}");
+            }
+        }
+        else
+        {
+            Debug.LogError($"CARDPLAY_DEBUG: No source entity ID provided");
+        }
+        
+        // Validate on server side using passed parameters
+        if (!CanPlayCardWithParams(sourceId, targetIds))
+        {
+            Debug.LogWarning($"CARDPLAY_DEBUG: Server rejected card play. Reason: {playBlockReason}");
             ClientRejectCardPlay(conn, playBlockReason);
             return;
         }
 
-        Debug.Log($"HandleCardPlay: Server validation passed for GameObject: {gameObject.name}");
+        Debug.Log($"CARDPLAY_DEBUG: Server validation passed for card {gameObject.name}");
+
+        // SINGLE SERVER-AUTHORITATIVE PROCESSING PATH
+        // All effects are processed here to prevent duplicate processing on host/client
+        
+        // Prevent double processing if already processing
+        if (isProcessingCardPlay)
+        {
+            Debug.LogWarning($"CARDPLAY_DEBUG: Card {card.CardData?.CardName} is already being processed, ignoring duplicate request");
+            return;
+        }
+        
+        isProcessingCardPlay = true;
+        Debug.Log($"CARDPLAY_DEBUG: Set processing flag for card {card.CardData?.CardName}");
 
         // TRIGGER CARD PLAY ANIMATION - Do this BEFORE processing effects so the card animates out immediately
-        // The animation completion callback will handle the discard
         TriggerCardPlayAnimationWithCleanup();
 
-        // FIXED: Deduct energy cost BEFORE processing effects (was happening after)
-        // This ensures restore energy effects work correctly with the proper order
-        if (sourceAndTargetIdentifier?.SourceEntity != null && card?.CardData != null)
+        // Deduct energy cost BEFORE processing effects 
+        if (sourceId > 0 && card?.CardData != null && !energyAlreadyDeducted)
         {
-            var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
-            int energyCost = card.CardData.EnergyCost;
-            
-            // Deduct energy cost first and mark as deducted
-            sourceEntity.ChangeEnergy(-energyCost);
-            energyAlreadyDeducted = true;
-            /* Debug.Log($"HandleCardPlay: Deducted {energyCost} energy from {sourceEntity.EntityName.Value} before applying effects"); */
-        }
-
-        // Process the card effect AFTER energy deduction
-        /* Debug.Log($"HandleCardPlay: Processing card effects - cardEffectResolver: {cardEffectResolver != null}"); */
-        
-        if (cardEffectResolver != null)
-        {
-            // Since we're already on server, call the effect resolver directly
-            var sourceEntity = sourceAndTargetIdentifier.SourceEntity;
-            var targetEntity = sourceAndTargetIdentifier.AllTargets.Count > 0 ? sourceAndTargetIdentifier.AllTargets[0] : null;
-            
-            /* Debug.Log($"HandleCardPlay: Entities - Source: {sourceEntity?.EntityName.Value}, Target: {targetEntity?.EntityName.Value}, CardData: {card?.CardData?.CardName}"); */
-            
-            if (sourceEntity != null && targetEntity != null)
+            NetworkEntity sourceEntity = FindEntityById(sourceId);
+            if (sourceEntity != null)
             {
-                // Check if this card should trigger visual effects
-                /* Debug.Log($"HandleCardPlay: Checking if card {card.CardData?.CardName} should trigger visual effects..."); */
-                bool shouldTriggerVisuals = ShouldTriggerVisualEffects(card.CardData);
-                /* Debug.Log($"HandleCardPlay: ShouldTriggerVisualEffects result: {shouldTriggerVisuals}"); */
+                int energyCost = card.CardData.EnergyCost;
                 
-                if (shouldTriggerVisuals)
+                Debug.Log($"CARDPLAY_DEBUG: Attempting to deduct {energyCost} energy from {sourceEntity.EntityName.Value}");
+                
+                // Use EnergyHandler for proper server-authoritative energy management
+                EnergyHandler energyHandler = sourceEntity.GetComponent<EnergyHandler>();
+                if (energyHandler != null)
                 {
-                    /* Debug.Log($"HandleCardPlay: Card {card.CardData?.CardName} SHOULD trigger visual effects - calling TriggerVisualEffects"); */
-                    TriggerVisualEffects(sourceEntity, targetEntity, card.CardData);
+                    energyHandler.SpendEnergy(energyCost, sourceEntity);
+                    Debug.Log($"CARDPLAY_DEBUG: Used EnergyHandler to deduct energy");
                 }
                 else
                 {
-                    /* Debug.Log($"HandleCardPlay: Card {card.CardData?.CardName} should NOT trigger visual effects"); */
+                    // Fallback to direct method if no EnergyHandler
+                    sourceEntity.ChangeEnergy(-energyCost);
+                    Debug.Log($"CARDPLAY_DEBUG: Used fallback direct energy deduction");
                 }
                 
-                /* Debug.Log($"HandleCardPlay: Calling cardEffectResolver.ServerResolveCardEffect"); */
-                cardEffectResolver.ServerResolveCardEffect(sourceEntity, targetEntity, card.CardData);
+                energyAlreadyDeducted = true;
+                Debug.Log($"CARDPLAY_DEBUG: Deducted {energyCost} energy from {sourceEntity.EntityName.Value}");
+            }
+        }
+
+        // Process card effects through the resolver - this is the SINGLE processing route
+        if (cardEffectResolver != null)
+        {
+            var allTargets = targetIds.Select(id => id > 0 ? FindEntityById(id) : null).Where(e => e != null).ToArray();
+            
+            Debug.Log($"CARDPLAY_DEBUG: Processing effects - Source: {(sourceId > 0 ? FindEntityById(sourceId)?.EntityName.Value : "null")}, Targets: {(allTargets?.Length ?? 0)}");
+            
+            if (sourceId > 0 && allTargets != null && allTargets.Length > 0)
+            {
+                NetworkEntity sourceEntity = FindEntityById(sourceId);
+                if (sourceEntity != null)
+                {
+                    // Use the server-side resolver method for consistent processing
+                    foreach (var targetEntity in allTargets)
+                    {
+                        Debug.Log($"CARDPLAY_DEBUG: Calling ServerResolveCardEffect for target {targetEntity.EntityName.Value}");
+                        cardEffectResolver.ServerResolveCardEffect(sourceEntity, targetEntity, card.CardData);
+                    }
+                }
             }
             else
             {
-                Debug.LogError($"HandleCardPlay: Missing entities - Source: {sourceEntity != null}, Target: {targetEntity != null}");
+                Debug.LogError($"CARDPLAY_DEBUG: Missing entities - Source: {sourceId > 0}, Targets: {(allTargets?.Length ?? 0)}");
             }
         }
         else
         {
-            Debug.LogError($"HandleCardPlay: cardEffectResolver is null!");
+            Debug.LogError($"CARDPLAY_DEBUG: cardEffectResolver is null!");
         }
-        
-        // Schedule delayed card discarding on server to allow animation to play first
-        // This ensures pet cards are properly discarded even when ownership check fails
-        if (sourceAndTargetIdentifier?.SourceEntity != null)
+
+        // Handle TestCombat return-to-hand mode
+        #if UNITY_EDITOR
+        if (TestCombat.Instance != null && TestCombat.Instance.ShouldReturnToHand(gameObject))
         {
+            Debug.Log($"CARDPLAY_DEBUG: Using TestCombat return-to-hand mode");
+            StartCoroutine(ReturnToHandAfterDelay());
+        }
+        else
+        {
+            Debug.Log($"CARDPLAY_DEBUG: Scheduling delayed card discard");
             StartCoroutine(DelayedServerCardDiscard());
         }
+        #else
+        Debug.Log($"CARDPLAY_DEBUG: Scheduling delayed card discard");
+        StartCoroutine(DelayedServerCardDiscard());
+        #endif
         
-        Debug.Log($"HandleCardPlay: ServerPlayCard completed for card {card?.CardData?.CardName}");
+        Debug.Log($"CARDPLAY_DEBUG: ServerPlayCard completed for card {card?.CardData?.CardName}");
     }
 
     /// <summary>
@@ -602,10 +768,9 @@ public class HandleCardPlay : NetworkBehaviour
         }
         
         // Call server to handle the cleanup
-        var sourceEntity = sourceAndTargetIdentifier?.SourceEntity;
-        if (sourceEntity != null && card?.CardData != null)
+        if (sourceAndTargetIdentifier?.SourceEntity != null && card?.CardData != null)
         {
-            CmdProcessCardPlayCleanup(sourceEntity.ObjectId, card.CardData.EnergyCost);
+            CmdProcessCardPlayCleanup(sourceAndTargetIdentifier.SourceEntity.ObjectId, card.CardData.EnergyCost);
         }
     }
     
@@ -1238,21 +1403,19 @@ public class HandleCardPlay : NetworkBehaviour
     /// </summary>
     private System.Collections.IEnumerator DelayedServerCardDiscard()
     {
-        // Wait for the card play animation to complete (typical duration is 0.4s)
-        yield return new WaitForSeconds(0.5f);
+        // Wait for animation to complete before discarding
+        yield return new WaitForSeconds(2.0f);
         
+        // Reset processing flag
+        isProcessingCardPlay = false;
+        energyAlreadyDeducted = false;
+        
+        // Process the card discard
         if (sourceAndTargetIdentifier?.SourceEntity != null)
         {
-            HandManager handManager = GetHandManagerForEntity(sourceAndTargetIdentifier.SourceEntity);
-            if (handManager != null)
-            {
-                handManager.DiscardCard(gameObject);
-                Debug.Log($"HandleCardPlay: Server discarded card {card?.CardData?.CardName} to discard pile after animation delay");
-            }
-            else
-            {
-                Debug.LogError($"HandleCardPlay: Could not find HandManager for entity {sourceAndTargetIdentifier.SourceEntity.EntityName.Value}");
-            }
+            CmdProcessCardPlayCleanup(sourceAndTargetIdentifier.SourceEntity.ObjectId, card?.CardData?.EnergyCost ?? 0);
         }
+        
+        Debug.Log($"HandleCardPlay: DelayedServerCardDiscard completed for card {card?.CardData?.CardName}");
     }
 } 

@@ -263,40 +263,44 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
     /// </summary>
     public void UpdateSourceAndTarget()
     {
-        /* Debug.Log($"SourceAndTargetIdentifier: UpdateSourceAndTarget called for card {gameObject.name}"); */
+        Debug.Log($"CARDPLAY_DEBUG: UpdateSourceAndTarget called for card {gameObject.name}");
         
         // Ensure we have everything we need
         if (card == null)
         {
-            Debug.LogError($"SourceAndTargetIdentifier: UpdateSourceAndTarget failed - Missing Card component reference on {gameObject.name}");
+            Debug.LogError($"CARDPLAY_DEBUG: UpdateSourceAndTarget failed - Missing Card component reference on {gameObject.name}");
             return;
         }
+        
+        Debug.Log($"CARDPLAY_DEBUG: Card component found, container: {card.CurrentContainer}");
         
         if (fightManager == null)
         {
             fightManager = FindFightManager();
             if (fightManager == null)
             {
-                Debug.LogError($"SourceAndTargetIdentifier: UpdateSourceAndTarget failed - Missing FightManager reference on {gameObject.name}");
+                Debug.LogError($"CARDPLAY_DEBUG: UpdateSourceAndTarget failed - Missing FightManager reference on {gameObject.name}");
                 return;
             }
         }
+        
+        Debug.Log($"CARDPLAY_DEBUG: FightManager found: {fightManager != null}");
         
         // Get the source entity (the player playing the card)
         sourceEntity = GetSourceEntity();
         if (sourceEntity == null)
         {
-            Debug.LogWarning($"SourceAndTargetIdentifier: Failed to determine source entity for card {gameObject.name}");
+            Debug.LogWarning($"CARDPLAY_DEBUG: Failed to determine source entity for card {gameObject.name}");
         }
         else
         {
-            /* Debug.Log($"SourceAndTargetIdentifier: Source entity for card {gameObject.name} is {sourceEntity.EntityName.Value}"); */
+            Debug.Log($"CARDPLAY_DEBUG: Source entity for card {gameObject.name} is {sourceEntity.EntityName.Value}");
         }
         
         // Check if we have an override target from drag and drop
         if (hasOverrideTarget && overrideTarget != null)
         {
-            /* Debug.Log($"SourceAndTargetIdentifier: Using override target {overrideTarget.EntityName.Value} for drag and drop"); */
+            Debug.Log($"CARDPLAY_DEBUG: Using override target {overrideTarget.EntityName.Value} for drag and drop");
             
             // Set the override target as the primary target
             allTargets.Clear();
@@ -305,6 +309,8 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         }
         else
         {
+            Debug.Log($"CARDPLAY_DEBUG: Getting targets based on card's target type");
+            
             // Get targets based on the card's target type (normal behavior)
             allTargets.Clear();
             GetTargetEntities(allTargets);
@@ -315,15 +321,17 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         
         if (targetEntity == null)
         {
-            Debug.LogWarning($"SourceAndTargetIdentifier: Failed to determine target entity for card {gameObject.name}");
+            Debug.LogWarning($"CARDPLAY_DEBUG: Failed to determine target entity for card {gameObject.name}");
         }
         else
         {
-            /* Debug.Log($"SourceAndTargetIdentifier: Primary target entity for card {gameObject.name} is {targetEntity.EntityName.Value}"); */
+            Debug.Log($"CARDPLAY_DEBUG: Primary target entity for card {gameObject.name} is {targetEntity.EntityName.Value}");
         }
 
         // Update debug info
         UpdateDebugInfo();
+        
+        Debug.Log($"CARDPLAY_DEBUG: UpdateSourceAndTarget completed - Source: {sourceEntity?.EntityName.Value ?? "null"}, Targets: {allTargets.Count}");
     }
 
     private void UpdateDebugInfo()
@@ -352,25 +360,33 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
 
     private NetworkEntity GetSourceEntity()
     {
+        Debug.Log($"CARDPLAY_DEBUG: GetSourceEntity called for card {gameObject.name}");
+        
         // The source is the owner of the card
         if (card != null && card.CurrentContainer == CardLocation.Hand)
         {
             NetworkEntity cardOwner = card.OwnerEntity;
+            Debug.Log($"CARDPLAY_DEBUG: Card owner: {(cardOwner != null ? cardOwner.EntityName.Value : "null")}");
+            
             if (cardOwner == null) return null;
+            
+            Debug.Log($"CARDPLAY_DEBUG: Card owner entity type: {cardOwner.EntityType}");
             
             // If the card is owned by a Hand entity, find the main entity that owns the hand
             if (cardOwner.EntityType == EntityType.PlayerHand || cardOwner.EntityType == EntityType.PetHand)
             {
+                Debug.Log($"CARDPLAY_DEBUG: Card owned by hand entity, finding main entity");
+                
                 // Find the main entity (Player/Pet) that owns this hand
                 NetworkEntity mainEntity = GetMainEntityForHand(cardOwner);
                 if (mainEntity != null)
                 {
-                    Debug.Log($"SourceAndTargetIdentifier: Card {gameObject.name} owned by hand {cardOwner.EntityName.Value}, main entity is {mainEntity.EntityName.Value}");
+                    Debug.Log($"CARDPLAY_DEBUG: Card {gameObject.name} owned by hand {cardOwner.EntityName.Value}, main entity is {mainEntity.EntityName.Value}");
                     return mainEntity;
                 }
                 else
                 {
-                    Debug.LogWarning($"SourceAndTargetIdentifier: Could not find main entity for hand {cardOwner.EntityName.Value}");
+                    Debug.LogWarning($"CARDPLAY_DEBUG: Could not find main entity for hand {cardOwner.EntityName.Value}");
                     return null;
                 }
             }
@@ -378,12 +394,15 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
             // If the card is owned by a main entity (Player/Pet), return it directly
             if (cardOwner.EntityType == EntityType.Player || cardOwner.EntityType == EntityType.Pet)
             {
+                Debug.Log($"CARDPLAY_DEBUG: Card owned directly by main entity {cardOwner.EntityName.Value}");
                 return cardOwner;
             }
             
-            Debug.LogWarning($"SourceAndTargetIdentifier: Unknown entity type {cardOwner.EntityType} for card owner {cardOwner.EntityName.Value}");
+            Debug.LogWarning($"CARDPLAY_DEBUG: Unknown entity type {cardOwner.EntityType} for card owner {cardOwner.EntityName.Value}");
             return null;
         }
+        
+        Debug.LogWarning($"CARDPLAY_DEBUG: Card is null or not in hand - card: {card != null}, container: {card?.CurrentContainer}");
         return null;
     }
     
@@ -440,7 +459,16 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
                 break;
                 
             case CardTargetType.Opponent:
-                NetworkEntity opponent = fightManager.GetOpponentForPlayer(sourceEntity);
+                NetworkEntity opponent = null;
+                if (sourceEntity.EntityType == EntityType.Player)
+                {
+                    opponent = fightManager.GetOpponentForPlayer(sourceEntity);
+                }
+                else if (sourceEntity.EntityType == EntityType.Pet)
+                {
+                    opponent = fightManager.GetOpponentForPet(sourceEntity);
+                }
+                
                 if (opponent != null)
                     targets.Add(opponent);
                 break;
@@ -499,7 +527,16 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
             allTargets.Add(ally);
             
         // Add opponent
-        NetworkEntity opponent = fightManager.GetOpponentForPlayer(sourceEntity);
+        NetworkEntity opponent = null;
+        if (sourceEntity.EntityType == EntityType.Player)
+        {
+            opponent = fightManager.GetOpponentForPlayer(sourceEntity);
+        }
+        else if (sourceEntity.EntityType == EntityType.Pet)
+        {
+            opponent = fightManager.GetOpponentForPet(sourceEntity);
+        }
+        
         if (opponent != null)
             allTargets.Add(opponent);
 

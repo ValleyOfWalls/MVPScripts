@@ -35,13 +35,20 @@ public class LifeHandler : NetworkBehaviour
     {
         if (!IsServerInitialized)
         {
-            Debug.LogError($"LifeHandler on {gameObject.name}: TakeDamage called outside of server context");
+            Debug.LogError($"CARDPLAY_DEBUG: LifeHandler on {gameObject.name}: TakeDamage called outside of server context");
             return;
         }
         
         if (amount <= 0) return; // Ignore non-positive damage
         
-        /* Debug.Log($"LifeHandler: {entity.EntityName.Value} taking {amount} damage from {(source != null ? source.EntityName.Value : "unknown")}"); */
+        // Prevent double processing on host/client
+        if (!IsHost && IsClientInitialized)
+        {
+            Debug.LogWarning($"CARDPLAY_DEBUG: LifeHandler: TakeDamage called on client-only context for {entity.EntityName.Value}, ignoring");
+            return;
+        }
+        
+        Debug.Log($"CARDPLAY_DEBUG: {entity.EntityName.Value} taking {amount} damage from {(source != null ? source.EntityName.Value : "unknown")} (current health: {entity.CurrentHealth.Value})");
         
         // Process shield absorption first
         EffectHandler effectHandler = GetComponent<EffectHandler>();
@@ -57,6 +64,8 @@ public class LifeHandler : NetworkBehaviour
         // Apply damage to the entity
         entity.CurrentHealth.Value -= cappedDamage;
         
+        Debug.Log($"CARDPLAY_DEBUG: {entity.EntityName.Value} health after damage: {entity.CurrentHealth.Value} (took {cappedDamage} damage)");
+        
         // Process thorns reflection if damage was actually taken
         if (cappedDamage > 0 && source != null && effectHandler != null)
         {
@@ -69,6 +78,7 @@ public class LifeHandler : NetworkBehaviour
         // Check for death
         if (entity.CurrentHealth.Value <= 0)
         {
+            Debug.Log($"CARDPLAY_DEBUG: {entity.EntityName.Value} has died, handling death");
             HandleDeath(source);
         }
     }
@@ -89,7 +99,14 @@ public class LifeHandler : NetworkBehaviour
         
         if (amount <= 0) return; // Ignore non-positive healing
         
-        /* Debug.Log($"LifeHandler: {entity.EntityName.Value} receiving {amount} healing from {(source != null ? source.EntityName.Value : "unknown")}"); */
+        // Prevent double processing on host/client
+        if (!IsHost && IsClientInitialized)
+        {
+            Debug.LogWarning($"LifeHandler: Heal called on client-only context for {entity.EntityName.Value}, ignoring");
+            return;
+        }
+        
+        Debug.Log($"LifeHandler: {entity.EntityName.Value} receiving {amount} healing from {(source != null ? source.EntityName.Value : "unknown")}");
         
         // Cap healing to prevent exceeding max health
         int cappedHealing = Mathf.Min(amount, entity.MaxHealth.Value - entity.CurrentHealth.Value);
