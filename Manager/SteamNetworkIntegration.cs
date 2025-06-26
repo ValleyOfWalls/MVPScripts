@@ -36,10 +36,15 @@ public class SteamNetworkIntegration : MonoBehaviour
 
     // --- SteamLobbyManager Fields ---
     [Header("Lobby Settings")]
-    [SerializeField] private int maxPlayers = 8;
+    [SerializeField] private int maxPlayers = 4;
     private const string LOBBY_GAME_ID_KEY = "GameID";
     private const string LOBBY_GAME_ID_VALUE = "3DMVP_LOBBY_V1"; // Unique ID for your game
     private const string LOBBY_VERSION_KEY = "Version";
+    // New lobby status constants
+    private const string LOBBY_STATUS_KEY = "Status";
+    private const string LOBBY_STATUS_OPEN = "Open";
+    private const string LOBBY_STATUS_IN_PROGRESS = "InProgress";
+    private const string LOBBY_STATUS_CLOSED = "Closed";
 
     // Delegates
     public delegate void LobbyCreatedDelegate(bool success, CSteamID lobbyId);
@@ -308,6 +313,8 @@ public class SteamNetworkIntegration : MonoBehaviour
 
         SteamMatchmaking.AddRequestLobbyListStringFilter(LOBBY_GAME_ID_KEY, LOBBY_GAME_ID_VALUE, ELobbyComparison.k_ELobbyComparisonEqual);
         SteamMatchmaking.AddRequestLobbyListStringFilter(LOBBY_VERSION_KEY, Application.version, ELobbyComparison.k_ELobbyComparisonEqual);
+        // Only find open lobbies that are available for joining
+        SteamMatchmaking.AddRequestLobbyListStringFilter(LOBBY_STATUS_KEY, LOBBY_STATUS_OPEN, ELobbyComparison.k_ELobbyComparisonEqual);
         SteamMatchmaking.AddRequestLobbyListResultCountFilter(50); // Limit results
         SteamMatchmaking.RequestLobbyList();
     }
@@ -385,6 +392,69 @@ public class SteamNetworkIntegration : MonoBehaviour
             SteamMatchmaking.SetLobbyData(m_currentLobbyId, key, value);
         }
     }
+    
+    /// <summary>
+    /// Marks the current lobby as in-progress (unavailable for new players to join)
+    /// Call this when transitioning from character selection to combat
+    /// </summary>
+    public void MarkLobbyAsInProgress()
+    {
+        if (IsInLobby && IsUserSteamHost)
+        {
+            SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_STATUS_KEY, LOBBY_STATUS_IN_PROGRESS);
+            Debug.Log("SteamNetworkIntegration: Lobby marked as in-progress - no longer discoverable by new players");
+        }
+        else
+        {
+            Debug.LogWarning("SteamNetworkIntegration: Cannot mark lobby as in-progress - not lobby host or not in lobby");
+        }
+    }
+    
+    /// <summary>
+    /// Marks the current lobby as closed (completely unavailable)
+    /// Call this when the game ends or lobby should be permanently closed
+    /// </summary>
+    public void MarkLobbyAsClosed()
+    {
+        if (IsInLobby && IsUserSteamHost)
+        {
+            SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_STATUS_KEY, LOBBY_STATUS_CLOSED);
+            Debug.Log("SteamNetworkIntegration: Lobby marked as closed - completely unavailable");
+        }
+        else
+        {
+            Debug.LogWarning("SteamNetworkIntegration: Cannot mark lobby as closed - not lobby host or not in lobby");
+        }
+    }
+    
+    /// <summary>
+    /// Marks the current lobby as open (available for new players to join)
+    /// Call this when returning to character selection or starting a new game
+    /// </summary>
+    public void MarkLobbyAsOpen()
+    {
+        if (IsInLobby && IsUserSteamHost)
+        {
+            SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_STATUS_KEY, LOBBY_STATUS_OPEN);
+            Debug.Log("SteamNetworkIntegration: Lobby marked as open - available for new players");
+        }
+        else
+        {
+            Debug.LogWarning("SteamNetworkIntegration: Cannot mark lobby as open - not lobby host or not in lobby");
+        }
+    }
+    
+    /// <summary>
+    /// Gets the current lobby status
+    /// </summary>
+    public string GetCurrentLobbyStatus()
+    {
+        if (IsInLobby)
+        {
+            return GetLobbyData(m_currentLobbyId, LOBBY_STATUS_KEY);
+        }
+        return "None";
+    }
 
     public string GetLobbyData(CSteamID lobbyId, string key)
     {
@@ -411,6 +481,8 @@ public class SteamNetworkIntegration : MonoBehaviour
         SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_GAME_ID_KEY, LOBBY_GAME_ID_VALUE);
         SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_VERSION_KEY, Application.version);
         SteamMatchmaking.SetLobbyData(m_currentLobbyId, "HostName", GetPlayerName());
+        // Mark new lobby as open for joining
+        SteamMatchmaking.SetLobbyData(m_currentLobbyId, LOBBY_STATUS_KEY, LOBBY_STATUS_OPEN);
 
         OnLobbyCreatedEvent?.Invoke(true, m_currentLobbyId);
         RefreshPlayerList();
@@ -478,25 +550,28 @@ public class SteamNetworkIntegration : MonoBehaviour
     private void OnLobbyListCallback(LobbyMatchList_t param)
     {
         m_availableLobbies.Clear();
-        /* Debug.Log($"Found {param.m_nLobbiesMatching} lobbies matching criteria."); */
+        Debug.Log($"SteamNetworkIntegration: Found {param.m_nLobbiesMatching} open lobbies matching criteria");
 
         for (int i = 0; i < param.m_nLobbiesMatching; i++)
         {
             CSteamID lobbyId = SteamMatchmaking.GetLobbyByIndex(i);
             m_availableLobbies.Add(lobbyId);
-            // Debug.Log($"Lobby {i}: ID={lobbyId}, Name={GetLobbyData(lobbyId, "HostName")}, GameID={GetLobbyData(lobbyId, LOBBY_GAME_ID_KEY)}");
+            
+            string hostName = GetLobbyData(lobbyId, "HostName");
+            string status = GetLobbyData(lobbyId, LOBBY_STATUS_KEY);
+            Debug.Log($"SteamNetworkIntegration: Available lobby {i}: Host={hostName}, Status={status}, ID={lobbyId}");
         }
         OnLobbiesListedEvent?.Invoke(new List<CSteamID>(m_availableLobbies));
 
         // If lobbies were found, join the first one. Otherwise, create a new one.
         if (m_availableLobbies.Count > 0)
         {
-            Debug.Log($"Found {m_availableLobbies.Count} lobbies. Auto-joining the first one: {m_availableLobbies[0]}");
+            Debug.Log($"SteamNetworkIntegration: Found {m_availableLobbies.Count} open lobbies. Auto-joining the first one: {m_availableLobbies[0]}");
             JoinLobby(m_availableLobbies[0]); 
         }
-        else if (m_availableLobbies.Count == 0) // Changed to else if for clarity, though simple else would also work if the above is true
+        else
         {
-            /* Debug.Log("No lobbies found. Creating a new lobby automatically."); */
+            Debug.Log("SteamNetworkIntegration: No open lobbies found. Creating a new lobby automatically.");
             CreateLobby(); // Defaulting to public lobby
         }
         
@@ -749,6 +824,9 @@ public class SteamNetworkIntegration : MonoBehaviour
         
         // Mark this as an intentional disconnect to prevent unexpected disconnect handling
         m_intentionalDisconnect = true;
+        
+        // Mark lobby as closed before leaving (if we're the host)
+        MarkLobbyAsClosed();
         
         // FIRST: Reset to start phase while still connected (since GamePhaseManager is a NetworkObject)
         GamePhaseManager gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();

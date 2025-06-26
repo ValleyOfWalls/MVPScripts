@@ -519,6 +519,12 @@ public class CharacterSelectionManager : NetworkBehaviour
         // Small delay to ensure loading screen is visible before starting cleanup
         yield return new WaitForSeconds(0.1f);
         
+        // Mark lobby as in-progress (no longer discoverable by new players)
+        if (SteamNetworkIntegration.Instance != null)
+        {
+            SteamNetworkIntegration.Instance.MarkLobbyAsInProgress();
+        }
+        
         // Transition to combat phase
         if (gamePhaseManager != null)
         {

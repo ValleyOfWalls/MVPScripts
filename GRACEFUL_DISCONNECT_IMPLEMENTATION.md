@@ -32,6 +32,12 @@ Previously, when players tried to leave the character selection/lobby screen, th
 - **New Event**: `OnDisconnectedAndReturnedToStart`
   - Allows other systems to be notified when disconnect process completes
 
+- **Lobby Status System**: Prevents new players from joining in-progress games
+  - `MarkLobbyAsOpen()`: Marks lobby as available for new players (character selection)
+  - `MarkLobbyAsInProgress()`: Marks lobby as unavailable during draft/combat phases
+  - `MarkLobbyAsClosed()`: Completely closes lobby when game ends or players disconnect
+  - **Filtered Discovery**: Only shows open lobbies in `RequestLobbiesList()`
+
 #### 2. CharacterSelectionUIManager.cs - UI Integration
 - **Updated Method**: `LeaveGame()`
   - Now uses `SteamNetworkIntegration.Instance.DisconnectAndReturnToStart()`
@@ -173,6 +179,29 @@ The character selection models are cleaned up through:
 4. **PhaseNetworker errors**: Fixed by using RPC as primary method
 5. **Reconnection issues**: Check Steam lobby status and network object cleanup
 
+## Lobby Status Management
+
+### Automatic Status Updates
+The system automatically manages lobby availability to prevent new players from joining inappropriate game states:
+
+#### Status Transitions
+- **Open** → Character Selection Phase: New players can join and select characters/pets
+- **In-Progress** → Draft/Combat Phases: No new players allowed (game already started)
+- **Closed** → Game End/Disconnect: Lobby permanently unavailable
+
+#### Implementation Points
+- **Character Selection Entry**: `GamePhaseManager.ExecutePhaseSpecificLogic()` marks lobby as open
+- **Draft Phase Entry**: Automatically marked as in-progress to prevent mid-draft joins
+- **Combat Transition**: `CharacterSelectionManager.TransitionToCombat()` marks as in-progress
+- **Player Disconnect**: `SteamNetworkIntegration.DisconnectAndReturnToStart()` marks as closed
+- **Lobby Discovery**: `RequestLobbiesList()` only returns open lobbies
+
+### Benefits
+- **No Mid-Game Joins**: Players can't accidentally join games already in progress
+- **Cleaner Matchmaking**: Only shows lobbies that are actually available for new players
+- **Automatic Management**: No manual intervention required, status updates automatically
+- **Host Control**: Only lobby hosts can update status, preventing conflicts
+
 ## Future Enhancements
 
 ### Potential Improvements
@@ -180,4 +209,5 @@ The character selection models are cleaned up through:
 2. **Cancellation** - Allow users to cancel disconnect process
 3. **Auto-reconnect** - Option to automatically rejoin previous lobby
 4. **Batch Cleanup** - More efficient cleanup for large numbers of objects
-5. **Analytics** - Track disconnect success rates and common failure points 
+5. **Analytics** - Track disconnect success rates and common failure points
+6. **Lobby Browser UI** - Show lobby status and player counts in a browseable interface 

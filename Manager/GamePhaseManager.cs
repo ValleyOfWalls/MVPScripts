@@ -96,11 +96,29 @@ public class GamePhaseManager : MonoBehaviour
     /// </summary>
     private void ExecutePhaseSpecificLogic(GamePhase newPhase)
     {
-        if (newPhase == GamePhase.CharacterSelection && SteamNetworkIntegration.Instance != null)
+        if (SteamNetworkIntegration.Instance == null) return;
+        
+        switch (newPhase)
         {
-            // Start Steam lobby process when entering character selection (which now includes lobby functionality)
-            SteamNetworkIntegration.Instance.RequestLobbiesList();
-            Debug.Log("GamePhaseManager: Started Steam lobby process for character selection phase");
+            case GamePhase.CharacterSelection:
+                // Mark lobby as open when entering character selection (allows new players to join)
+                SteamNetworkIntegration.Instance.MarkLobbyAsOpen();
+                
+                // Start Steam lobby process when entering character selection (which now includes lobby functionality)
+                SteamNetworkIntegration.Instance.RequestLobbiesList();
+                Debug.Log("GamePhaseManager: Started Steam lobby process for character selection phase");
+                break;
+                
+            case GamePhase.Draft:
+                // Mark lobby as in-progress during draft (players can't join mid-draft)
+                SteamNetworkIntegration.Instance.MarkLobbyAsInProgress();
+                Debug.Log("GamePhaseManager: Lobby marked as in-progress for draft phase");
+                break;
+                
+            case GamePhase.Combat:
+                // Lobby status will be handled by CharacterSelectionManager when transitioning to combat
+                // No additional action needed here
+                break;
         }
     }
     
