@@ -222,7 +222,7 @@ public class Card : NetworkBehaviour
             return;
         }
 
-        /* Debug.Log($"Card {gameObject.name} (Server): BEGIN SetOwnerEntity - Target: {entity.EntityName.Value}"); */
+        Debug.Log($"[CARD_OWNERSHIP] Card {gameObject.name}: SetOwnerEntity called with entity '{entity.EntityName.Value}' (Type: {entity.EntityType}, ObjectId: {entity.GetComponent<NetworkObject>()?.ObjectId})");
         
         // Set the reference directly for server-side use
         ownerEntity = entity;
@@ -234,8 +234,19 @@ public class Card : NetworkBehaviour
         // This will trigger the OnChange event on clients if the value changes
         _ownerEntityId.Value = entityObjectId; 
         
-        /* Debug.Log($"Card {gameObject.name} (Server): - _ownerEntityId.Value set to {_ownerEntityId.Value}"); */
-        /* Debug.Log($"Card {gameObject.name} (Server): END SetOwnerEntity"); */
+        // Update CardTracker's owner entity reference
+        CardTracker cardTracker = GetComponent<CardTracker>();
+        if (cardTracker != null)
+        {
+            Debug.Log($"[CARD_OWNERSHIP] Card {gameObject.name}: Updating CardTracker with owner entity '{entity.EntityName.Value}'");
+            cardTracker.SetOwnerEntity(entity);
+        }
+        else
+        {
+            Debug.LogWarning($"[CARD_OWNERSHIP] Card {gameObject.name}: CardTracker component not found!");
+        }
+        
+        Debug.Log($"[CARD_OWNERSHIP] Card {gameObject.name}: SetOwnerEntity completed for '{entity.EntityName.Value}'");
     }
 
     // SyncVar hook called when _ownerEntityId changes
@@ -261,6 +272,13 @@ public class Card : NetworkBehaviour
         {
             Debug.Log($"Card {gameObject.name} (Client): _ownerEntityId changed to 0. Clearing ownerEntity reference.");
             ownerEntity = null;
+            
+            // Update CardTracker's owner entity reference
+            CardTracker cardTracker = GetComponent<CardTracker>();
+            if (cardTracker != null)
+            {
+                cardTracker.SetOwnerEntity(null);
+            }
         }
     }
 
@@ -416,6 +434,14 @@ public class Card : NetworkBehaviour
         {
             Debug.Log($"Card {gameObject.name}: FindOwnerEntityById - entityObjectId is 0. Clearing ownerEntity.");
             ownerEntity = null; // Clear if ID is 0
+            
+            // Update CardTracker's owner entity reference
+            CardTracker cardTracker = GetComponent<CardTracker>();
+            if (cardTracker != null)
+            {
+                cardTracker.SetOwnerEntity(null);
+            }
+            
             return;
         }
 
@@ -446,6 +472,14 @@ public class Card : NetworkBehaviour
             if (foundEntity != null)
             {
                 ownerEntity = foundEntity;
+                
+                // Update CardTracker's owner entity reference
+                CardTracker cardTracker = GetComponent<CardTracker>();
+                if (cardTracker != null)
+                {
+                    cardTracker.SetOwnerEntity(foundEntity);
+                }
+                
                 /* Debug.Log($"Card {gameObject.name}: - SUCCESS - Found and set ownerEntity to {ownerEntity.EntityName.Value} (GameObject: {ownerEntity.gameObject.name})"); */
             }
             else
@@ -792,4 +826,200 @@ public class Card : NetworkBehaviour
             }
         }
     }
+
+    /// <summary>
+    /// Update card data while preserving current state (for upgrades)
+    /// </summary>
+    /// <param name="newCardData">The new card data to apply</param>
+    /// <param name="preserveState">Whether to preserve current card state</param>
+    /// <returns>True if update was successful</returns>
+    public bool UpdateCardData(CardData newCardData, bool preserveState = true)
+    {
+        if (newCardData == null)
+        {
+            Debug.LogError("Card: Cannot update with null card data");
+            return false;
+        }
+
+        // Store current state if preserving
+        CardLocation currentLocation = preserveState ? CurrentContainer : CardLocation.Deck;
+        NetworkEntity currentOwner = preserveState ? ownerEntity : null;
+        bool wasPurchasable = preserveState ? IsPurchasable : false;
+        int oldCost = preserveState ? PurchaseCost : 0;
+
+        // Update card data
+        cardData = newCardData;
+        _cardId.Value = newCardData.CardId;
+
+        // Refresh visuals immediately
+        RefreshVisuals();
+
+        // Restore state if preserving
+        if (preserveState)
+        {
+            SetCurrentContainer(currentLocation);
+            if (currentOwner != null)
+            {
+                SetOwnerEntity(currentOwner);
+            }
+            if (wasPurchasable)
+            {
+                SetPurchasable(wasPurchasable, oldCost);
+            }
+        }
+
+        Debug.Log($"Card: Successfully updated card data to {newCardData.CardName}");
+        return true;
+    }
+
+    /// <summary>
+    /// Refresh all visual elements to match current card data
+    /// </summary>
+    public void RefreshVisuals()
+    {
+        if (cardData == null)
+        {
+            Debug.LogWarning("Card: Cannot refresh visuals - no card data assigned");
+            return;
+        }
+
+        // Update text elements
+        if (nameText != null) nameText.text = cardData.CardName;
+        if (descriptionText != null) descriptionText.text = cardData.Description;
+        if (energyCostText != null) energyCostText.text = cardData.EnergyCost.ToString();
+
+        // Update artwork
+        if (artworkImage != null && cardData.CardArtwork != null)
+        {
+            artworkImage.sprite = cardData.CardArtwork;
+        }
+
+        // Update card background/frame based on card type or other properties
+        UpdateCardVisualStyle();
+
+        // Trigger any other visual updates
+        UpdateCardAppearance();
+
+        Debug.Log($"Card: Refreshed visuals for {cardData.CardName}");
+    }
+
+    /// <summary>
+    /// Update card visual style based on card properties
+    /// </summary>
+    private void UpdateCardVisualStyle()
+    {
+        if (cardData == null || cardImage == null) return;
+
+        // Example: Change card background color based on card type
+        Color cardColor = Color.white;
+        switch (cardData.CardType)
+        {
+            case CardType.Attack:
+                cardColor = new Color(1f, 0.8f, 0.8f); // Light red
+                break;
+            case CardType.Skill:
+                cardColor = new Color(0.8f, 1f, 0.8f); // Light green
+                break;
+            case CardType.Spell:
+                cardColor = new Color(0.8f, 0.8f, 1f); // Light blue
+                break;
+            case CardType.Combo:
+                cardColor = new Color(1f, 1f, 0.8f); // Light yellow
+                break;
+            case CardType.Finisher:
+                cardColor = new Color(1f, 0.8f, 1f); // Light magenta
+                break;
+        }
+
+        cardImage.color = cardColor;
+    }
+
+    /// <summary>
+    /// Update card appearance (called during refresh and initialization)
+    /// </summary>
+    private void UpdateCardAppearance()
+    {
+        // Update any additional visual elements
+        // This method can be extended for more complex visual updates
+        
+        // Example: Show/hide elements based on card properties
+        if (cardData != null)
+        {
+            // Update energy cost visibility
+            if (energyCostText != null)
+            {
+                energyCostText.gameObject.SetActive(cardData.EnergyCost > 0);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get current card state for preservation during upgrades
+    /// </summary>
+    public CardState GetCurrentState()
+    {
+        return new CardState
+        {
+            container = CurrentContainer,
+            ownerEntityId = ownerEntity?.ObjectId ?? -1,
+            isPurchasable = IsPurchasable,
+            purchaseCost = PurchaseCost,
+            isDraftable = IsDraftable,
+            position = transform.position,
+            rotation = transform.rotation,
+            scale = transform.localScale
+        };
+    }
+
+    /// <summary>
+    /// Restore card state after upgrade
+    /// </summary>
+    public void RestoreState(CardState state)
+    {
+        if (state == null) return;
+
+        SetCurrentContainer(state.container);
+        
+        if (state.ownerEntityId != -1)
+        {
+            // Find entity by ID and restore ownership
+            var entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+            foreach (var entity in entities)
+            {
+                if (entity.ObjectId == state.ownerEntityId)
+                {
+                    SetOwnerEntity(entity);
+                    break;
+                }
+            }
+        }
+
+        if (state.isPurchasable)
+        {
+            SetPurchasable(state.isPurchasable, state.purchaseCost);
+        }
+
+        SetDraftable(state.isDraftable);
+
+        // Restore transform
+        transform.position = state.position;
+        transform.rotation = state.rotation;
+        transform.localScale = state.scale;
+    }
+}
+
+/// <summary>
+/// Data structure for preserving card state during upgrades
+/// </summary>
+[System.Serializable]
+public class CardState
+{
+    public CardLocation container;
+    public int ownerEntityId;
+    public bool isPurchasable;
+    public int purchaseCost;
+    public bool isDraftable;
+    public Vector3 position;
+    public Quaternion rotation;
+    public Vector3 scale;
 }

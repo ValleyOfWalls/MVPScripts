@@ -590,7 +590,13 @@ public class PlayerSpawner : MonoBehaviour
             playerRelationship.SetHand(playerHand);
             petRelationship.SetHand(petHand);
             
+            // Set proper names for hand entities based on their related player/pet entities
+            int clientId = player.Owner?.ClientId ?? -1;
+            playerHand.EntityName.Value = $"{player.EntityName.Value} Hand ({clientId})";
+            petHand.EntityName.Value = $"{pet.EntityName.Value} Hand ({clientId})";
+            
             Debug.Log($"Set up hand relationships - Player (ID: {player.ObjectId}) -> Hand (ID: {playerHand.ObjectId}), Pet (ID: {pet.ObjectId}) -> Hand (ID: {petHand.ObjectId})");
+            Debug.Log($"Set hand entity names - Player Hand: '{playerHand.EntityName.Value}', Pet Hand: '{petHand.EntityName.Value}'");
         }
         else
         {

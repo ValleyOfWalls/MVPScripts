@@ -45,7 +45,7 @@ public class CardTracker : NetworkBehaviour
         UpdateTrackingData();
     }
 
-    private void UpdateTrackingData()
+    public void UpdateTrackingData()
     {
         trackingData.timesPlayedThisFight = _timesPlayedThisFight.Value;
         
@@ -159,7 +159,14 @@ public class CardTracker : NetworkBehaviour
     {
         if (entity == null) return null;
 
-        // Find the hand entity through RelationshipManager
+        // Check if this entity is already a Hand entity
+        if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
+        {
+            // Entity is already a hand entity, get HandManager directly
+            return entity.GetComponent<HandManager>();
+        }
+
+        // Entity is a Player/Pet, find the hand entity through RelationshipManager
         var relationshipManager = entity.GetComponent<RelationshipManager>();
         if (relationshipManager?.HandEntity == null) return null;
 
@@ -280,8 +287,22 @@ public class CardTracker : NetworkBehaviour
     /// </summary>
     public void SetOwnerEntity(NetworkEntity entity)
     {
+        if (entity != null)
+        {
+            Debug.Log($"[CARD_OWNERSHIP] CardTracker {gameObject.name}: SetOwnerEntity called with entity '{entity.EntityName.Value}' (Type: {entity.EntityType}, ObjectId: {entity.GetComponent<NetworkObject>()?.ObjectId})");
+        }
+        else
+        {
+            Debug.Log($"[CARD_OWNERSHIP] CardTracker {gameObject.name}: SetOwnerEntity called with null entity");
+        }
+        
         ownerEntity = entity;
         UpdateTrackingData();
+        
+        if (entity != null)
+        {
+            Debug.Log($"[CARD_OWNERSHIP] CardTracker {gameObject.name}: Owner entity set to '{entity.EntityName.Value}' successfully");
+        }
     }
     
     /// <summary>
@@ -336,18 +357,40 @@ public class CardTracker : NetworkBehaviour
     [Server]
     public void RecordCardDrawn()
     {
-        if (!IsServerInitialized) return;
+        Debug.Log($"[CARD_UPGRADE] CardTracker.RecordCardDrawn() called for {card?.CardData?.CardName}, IsServerInitialized: {IsServerInitialized}");
+        
+        if (!IsServerInitialized) 
+        {
+            Debug.LogWarning($"[CARD_UPGRADE] RecordCardDrawn() called but server not initialized for {card?.CardData?.CardName}");
+            return;
+        }
         
         trackingData.timesDrawnThisFight++;
         trackingData.timesDrawnLifetime++;
+        
+        Debug.Log($"[CARD_UPGRADE] Updated draw counts for {card?.CardData?.CardName}: thisFight={trackingData.timesDrawnThisFight}, lifetime={trackingData.timesDrawnLifetime}");
         
         // Notify upgrade manager for persistent tracking
         if (CardUpgradeManager.Instance != null && card?.CardData != null)
         {
             CardUpgradeManager.Instance.UpdatePersistentDrawCount(card.CardData.CardId);
+            Debug.Log($"[CARD_UPGRADE] Updated persistent draw count for {card.CardData.CardName}");
         }
         
         Debug.Log($"CardTracker: Card {card?.CardData?.CardName} drawn {trackingData.timesDrawnThisFight} times this fight, {trackingData.timesDrawnLifetime} times lifetime");
+        
+        // Check for upgrades after draw (for conditions based on hand composition)
+        Debug.Log($"[CARD_UPGRADE] About to check upgrade conditions: CardUpgradeManager.Instance={CardUpgradeManager.Instance != null}, card={card != null}, ownerEntity={ownerEntity != null}");
+        
+        if (CardUpgradeManager.Instance != null && card != null && ownerEntity != null)
+        {
+            Debug.Log($"[CARD_UPGRADE] Checking upgrades after drawing {card?.CardData?.CardName} for owner {ownerEntity.EntityName.Value}");
+            CardUpgradeManager.Instance.OnCardDrawn(card, ownerEntity);
+        }
+        else
+        {
+            Debug.LogWarning($"[CARD_UPGRADE] Cannot check upgrades after drawing {card?.CardData?.CardName}: CardUpgradeManager.Instance={CardUpgradeManager.Instance != null}, card={card != null}, ownerEntity={ownerEntity != null}");
+        }
     }
     
     /// <summary>

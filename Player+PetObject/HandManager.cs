@@ -148,6 +148,8 @@ public class HandManager : NetworkBehaviour
         // Now draw as many cards as we can
         int cardsToDrawThisTime = Mathf.Min(remainingCardsToDraw, deckCards.Count);
         
+        Debug.Log($"[CARD_UPGRADE] HandManager: About to draw {cardsToDrawThisTime} cards for {entityName}");
+        
         for (int i = 0; i < cardsToDrawThisTime; i++)
         {
             GameObject card = deckCards[i];
@@ -157,8 +159,11 @@ public class HandManager : NetworkBehaviour
                 continue;
             }
             
+            Debug.Log($"[CARD_UPGRADE] HandManager: Moving card {card.name} to hand for {entityName}");
             MoveCardToHand(card);
         }
+        
+        Debug.Log($"[CARD_UPGRADE] HandManager: Finished drawing cards for {entityName}");
     }
 
     /// <summary>
@@ -512,10 +517,15 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
+        // Get the entity for better logging
+        NetworkEntity entity = GetComponent<NetworkEntity>();
+        string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
+
         // Update Card's CurrentContainer
         Card cardComponent = card.GetComponent<Card>();
         if (cardComponent != null)
         {
+            Debug.Log($"[CARD_UPGRADE] HandManager: About to move card {cardComponent.CardData?.CardName} to hand for {entityName}");
             Debug.Log($"HandManager: Setting {card.name} container to Hand for {gameObject.name}");
             cardComponent.SetCurrentContainer(CardLocation.Hand);
         }
@@ -551,6 +561,19 @@ public class HandManager : NetworkBehaviour
             cardAnimator.StoreOriginalState(); // Store fresh state with alpha = 1.0
             /* Debug.Log($"HandManager: Refreshed CardAnimator state for redrawn card {card.name}"); */
         }
+
+        // Record the card draw for tracking and potential upgrades
+        CardTracker cardTracker = card.GetComponent<CardTracker>();
+        if (cardTracker != null)
+        {
+            Debug.Log($"[CARD_UPGRADE] HandManager: About to call RecordCardDrawn for {cardComponent?.CardData?.CardName}");
+            Debug.Log($"[CARD_UPGRADE] HandManager: Calling RecordCardDrawn for {card.name}");
+            cardTracker.RecordCardDrawn();
+        }
+        else
+        {
+            Debug.LogWarning($"[CARD_UPGRADE] HandManager: No CardTracker found on {card.name}");
+        }
         
         // Only reset position if no HandLayoutManager is present to avoid interfering with custom layouts
         HandLayoutManager handLayoutManager = handTransform.GetComponent<HandLayoutManager>();
@@ -568,6 +591,8 @@ public class HandManager : NetworkBehaviour
         RpcSetCardEnabled(cardNetObj.ObjectId, true); 
         RpcSetCardParent(cardNetObj.ObjectId, parentEntityNetObj.ObjectId, "Hand");
         RpcResetCardVisualState(cardNetObj.ObjectId); // Reset alpha and visual state on clients
+
+        Debug.Log($"[CARD_UPGRADE] HandManager: Moving card {cardComponent?.CardData?.CardName} to hand for {entityName}");
     }
 
     [Server]
@@ -592,6 +617,19 @@ public class HandManager : NetworkBehaviour
         {
             Debug.Log($"HandManager: Setting {card.name} container to Discard for {gameObject.name}");
             cardComponent.SetCurrentContainer(CardLocation.Discard);
+            
+            // Notify upgrade manager about card discard
+            NetworkEntity ownerEntity = cardComponent.OwnerEntity;
+            if (ownerEntity != null && CardUpgradeManager.Instance != null)
+            {
+                // Determine if this was a manual discard (not from playing a card)
+                // Manual discards are typically from card effects or player choice, not from playing
+                bool wasManualDiscard = true; // For now, assume all discards from hand are manual
+                // In the future, you could track play state to distinguish between play discards and manual discards
+                
+                Debug.Log($"[CARD_UPGRADE] HandManager: Notifying upgrade manager of card discard: {cardComponent.CardData?.CardName} (manual: {wasManualDiscard})");
+                CardUpgradeManager.Instance.OnCardDiscarded(cardComponent, ownerEntity, wasManualDiscard);
+            }
         }
         else
         {
@@ -987,6 +1025,22 @@ public class HandManager : NetworkBehaviour
     public Transform GetHandTransform()
     {
         return handTransform;
+    }
+
+    /// <summary>
+    /// Gets the deck transform for direct access
+    /// </summary>
+    public Transform GetDeckTransform()
+    {
+        return deckTransform;
+    }
+
+    /// <summary>
+    /// Gets the discard transform for direct access
+    /// </summary>
+    public Transform GetDiscardTransform()
+    {
+        return discardTransform;
     }
 
     /// <summary>

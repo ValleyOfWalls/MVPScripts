@@ -751,6 +751,13 @@ public class CardEffectResolver : NetworkBehaviour
         {
             Debug.Log($"CardEffectResolver: Calling EffectHandler.AddEffect with potency={potency}");
             targetEffectHandler.AddEffect(effectName, potency, duration, sourceEntity);
+            
+            // Notify upgrade manager about status effect application
+            if (CardUpgradeManager.Instance != null)
+            {
+                Debug.Log($"[CARD_UPGRADE] CardEffectResolver: Notifying upgrade manager of status effect: {effectName} applied to {targetEntity.EntityName.Value}");
+                CardUpgradeManager.Instance.OnStatusEffectApplied(targetEntity, effectName);
+            }
         }
         else
         {

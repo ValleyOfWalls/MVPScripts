@@ -153,6 +153,12 @@ public class EntityTracker : NetworkBehaviour
         OnDamageDealt?.Invoke(amount);
         
         Debug.Log($"EntityTracker: {entity.EntityName.Value} dealt {amount} damage. Total this fight: {trackingData.damageDealtThisFight}");
+        
+        // Notify upgrade manager for upgrade checking
+        if (CardUpgradeManager.Instance != null)
+        {
+            // The upgrade manager is already subscribed to OnDamageDealt event, so no need for direct call
+        }
     }
 
     /// <summary>

@@ -1,6 +1,8 @@
 using UnityEngine;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using FishNet.Connection;
+using FishNet.Transporting;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -74,17 +76,57 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         base.OnStartServer();
         
+        Debug.Log("[CARD_UPGRADE] CardUpgradeManager started on server");
+        
         // Validate all upgrade data
         ValidateUpgradeData();
         
         // Subscribe to game events
         SubscribeToGameEvents();
+        
+        // Subscribe to entity spawning events for automatic event subscription
+        NetworkManager.ServerManager.OnRemoteConnectionState += OnClientConnectionStateChanged;
+    }
+    
+    /// <summary>
+    /// Called when client connection state changes - used to subscribe to new entities
+    /// </summary>
+    private void OnClientConnectionStateChanged(NetworkConnection conn, RemoteConnectionStateArgs args)
+    {
+        if (args.ConnectionState == RemoteConnectionState.Started)
+        {
+            // Delay subscription to allow entities to fully spawn
+            StartCoroutine(DelayedEntitySubscription());
+        }
+    }
+    
+    /// <summary>
+    /// Delayed subscription to new entities after they spawn
+    /// </summary>
+    private System.Collections.IEnumerator DelayedEntitySubscription()
+    {
+        yield return new WaitForSeconds(1.0f); // Wait for entities to spawn
+        
+        // Find any new entities and subscribe to their events
+        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>();
+        foreach (var entity in allEntities)
+        {
+            SubscribeToEntityEvents(entity);
+        }
+        
+        Debug.Log($"[CARD_UPGRADE] Subscribed to {allEntities.Length} entities after client connection");
     }
     
     public override void OnStopServer()
     {
         base.OnStopServer();
         UnsubscribeFromGameEvents();
+        
+        // Unsubscribe from connection events
+        if (NetworkManager.ServerManager != null)
+        {
+            NetworkManager.ServerManager.OnRemoteConnectionState -= OnClientConnectionStateChanged;
+        }
     }
     
     /// <summary>
@@ -95,12 +137,12 @@ public class CardUpgradeManager : NetworkBehaviour
         var availableUpgrades = GetUpgradeableCards();
         
         int validCount = availableUpgrades.Count;
-        /* Debug.Log($"CardUpgradeManager: Loaded {validCount} cards with upgrade conditions"); */
+        Debug.Log($"[CARD_UPGRADE] Loaded {validCount} cards with upgrade conditions");
         
         // Log each upgradeable card for debugging
         foreach (var card in availableUpgrades)
         {
-            Debug.Log($"  - {card.CardName} → {card.UpgradedVersion.CardName} (Condition: {card.UpgradeConditionType} {card.UpgradeComparisonType} {card.UpgradeRequiredValue})");
+            Debug.Log($"[CARD_UPGRADE]   - {card.CardName} → {card.UpgradedVersion.CardName} (Condition: {card.UpgradeConditionType} {card.UpgradeComparisonType} {card.UpgradeRequiredValue})");
         }
     }
     
@@ -142,8 +184,48 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void SubscribeToGameEvents()
     {
-        // We'll subscribe to events from EntityTracker and CardTracker
-        // This will be called when those components trigger events
+        Debug.Log("[CARD_UPGRADE] Subscribing to game events for comprehensive upgrade checking");
+        
+        // Find all entities in the scene and subscribe to their events
+        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>();
+        foreach (var entity in allEntities)
+        {
+            SubscribeToEntityEvents(entity);
+        }
+    }
+    
+    /// <summary>
+    /// Subscribe to a specific entity's events
+    /// </summary>
+    private void SubscribeToEntityEvents(NetworkEntity entity)
+    {
+        if (entity == null) return;
+        
+        // Subscribe to EntityTracker events
+        EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+        if (entityTracker != null)
+        {
+            entityTracker.OnDamageDealt += (amount) => OnDamageDealt(entity, amount);
+            entityTracker.OnDamageTaken += (amount) => OnDamageTaken(entity, amount);
+            entityTracker.OnHealingGiven += (amount) => OnHealingGiven(entity, amount);
+            entityTracker.OnHealingReceived += (amount) => OnHealingReceived(entity, amount);
+            entityTracker.OnStanceChanged += (oldStance, newStance) => OnStanceChanged(entity, oldStance, newStance);
+            entityTracker.OnComboChanged += (comboCount) => OnComboChanged(entity, comboCount);
+            entityTracker.OnStrengthChanged += (strengthStacks) => OnStrengthChanged(entity, strengthStacks);
+        }
+        
+        // Subscribe to LifeHandler events for more detailed health tracking
+        LifeHandler lifeHandler = entity.GetComponent<LifeHandler>();
+        if (lifeHandler != null)
+        {
+            lifeHandler.OnDamageTaken += (amount, source) => OnDetailedDamageTaken(entity, amount, source);
+            lifeHandler.OnHealingReceived += (amount, source) => OnDetailedHealingReceived(entity, amount, source);
+        }
+        
+        // Subscribe to health changes for low/high health conditions
+        entity.CurrentHealth.OnChange += (prev, next, asServer) => OnHealthChanged(entity, prev, next);
+        
+        Debug.Log($"[CARD_UPGRADE] Subscribed to events for entity: {entity.EntityName.Value}");
     }
     
     /// <summary>
@@ -151,7 +233,382 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void UnsubscribeFromGameEvents()
     {
-        // Cleanup event subscriptions
+        // Find all entities and unsubscribe from their events
+        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>();
+        foreach (var entity in allEntities)
+        {
+            UnsubscribeFromEntityEvents(entity);
+        }
+    }
+    
+    /// <summary>
+    /// Unsubscribe from a specific entity's events
+    /// </summary>
+    private void UnsubscribeFromEntityEvents(NetworkEntity entity)
+    {
+        if (entity == null) return;
+        
+        // Unsubscribe from EntityTracker events
+        EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+        if (entityTracker != null)
+        {
+            entityTracker.OnDamageDealt -= (amount) => OnDamageDealt(entity, amount);
+            entityTracker.OnDamageTaken -= (amount) => OnDamageTaken(entity, amount);
+            entityTracker.OnHealingGiven -= (amount) => OnHealingGiven(entity, amount);
+            entityTracker.OnHealingReceived -= (amount) => OnHealingReceived(entity, amount);
+            entityTracker.OnStanceChanged -= (oldStance, newStance) => OnStanceChanged(entity, oldStance, newStance);
+            entityTracker.OnComboChanged -= (comboCount) => OnComboChanged(entity, comboCount);
+            entityTracker.OnStrengthChanged -= (strengthStacks) => OnStrengthChanged(entity, strengthStacks);
+        }
+        
+        // Unsubscribe from LifeHandler events
+        LifeHandler lifeHandler = entity.GetComponent<LifeHandler>();
+        if (lifeHandler != null)
+        {
+            lifeHandler.OnDamageTaken -= (amount, source) => OnDetailedDamageTaken(entity, amount, source);
+            lifeHandler.OnHealingReceived -= (amount, source) => OnDetailedHealingReceived(entity, amount, source);
+        }
+        
+        // Unsubscribe from health changes
+        entity.CurrentHealth.OnChange -= (prev, next, asServer) => OnHealthChanged(entity, prev, next);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // EVENT HANDLERS FOR UPGRADE CHECKING
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// <summary>
+    /// Called when an entity deals damage - checks for damage-based upgrade conditions
+    /// </summary>
+    [Server]
+    private void OnDamageDealt(NetworkEntity entity, int amount)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnDamageDealt: {entity.EntityName.Value} dealt {amount} damage");
+        
+        // Check upgrades for all cards that might be affected by damage dealt
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.DamageDealtThisFight,
+            UpgradeConditionType.DamageDealtInSingleTurn
+        });
+    }
+    
+    /// <summary>
+    /// Called when an entity takes damage - checks for damage-based upgrade conditions
+    /// </summary>
+    [Server]
+    private void OnDamageTaken(NetworkEntity entity, int amount)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnDamageTaken: {entity.EntityName.Value} took {amount} damage");
+        
+        // Check upgrades for all cards that might be affected by damage taken
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.DamageTakenThisFight
+        });
+    }
+    
+    /// <summary>
+    /// Called when an entity gives healing - checks for healing-based upgrade conditions
+    /// </summary>
+    [Server]
+    private void OnHealingGiven(NetworkEntity entity, int amount)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnHealingGiven: {entity.EntityName.Value} gave {amount} healing");
+        
+        // Check upgrades for all cards that might be affected by healing given
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.HealingGivenThisFight
+        });
+    }
+    
+    /// <summary>
+    /// Called when an entity receives healing - checks for healing-based upgrade conditions
+    /// </summary>
+    [Server]
+    private void OnHealingReceived(NetworkEntity entity, int amount)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnHealingReceived: {entity.EntityName.Value} received {amount} healing");
+        
+        // Check upgrades for all cards that might be affected by healing received
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.HealingReceivedThisFight
+        });
+    }
+    
+    /// <summary>
+    /// Called when an entity changes stance - checks for stance-based upgrade conditions
+    /// </summary>
+    [Server]
+    private void OnStanceChanged(NetworkEntity entity, StanceType oldStance, StanceType newStance)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnStanceChanged: {entity.EntityName.Value} changed stance from {oldStance} to {newStance}");
+        
+        // Check upgrades for all cards that might be affected by stance changes
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.PlayedInStance
+        });
+    }
+    
+    /// <summary>
+    /// Called when an entity's combo count changes - checks for combo-based upgrade conditions
+    /// </summary>
+    [Server]
+    private void OnComboChanged(NetworkEntity entity, int comboCount)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnComboChanged: {entity.EntityName.Value} has {comboCount} combo");
+        
+        // Check upgrades for all cards that might be affected by combo count
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.ComboCountReached,
+            UpgradeConditionType.PlayedWithCombo
+        });
+    }
+    
+    /// <summary>
+    /// Called when an entity's strength changes - checks for strength-based upgrade conditions
+    /// </summary>
+    [Server]
+    private void OnStrengthChanged(NetworkEntity entity, int strengthStacks)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnStrengthChanged: {entity.EntityName.Value} has {strengthStacks} strength stacks");
+        
+        // Could add strength-based upgrade conditions in the future
+        // For now, this is just logged for potential future use
+    }
+    
+    /// <summary>
+    /// Called when an entity's health changes - checks for health-based upgrade conditions
+    /// </summary>
+    [Server]
+    private void OnHealthChanged(NetworkEntity entity, int previousHealth, int newHealth)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnHealthChanged: {entity.EntityName.Value} health changed from {previousHealth} to {newHealth}");
+        
+        // Check if entity is now at low/high health and trigger relevant upgrades
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.PlayedAtLowHealth,
+            UpgradeConditionType.PlayedAtHighHealth,
+            UpgradeConditionType.PlayedAtHalfHealth
+        });
+    }
+    
+    /// <summary>
+    /// Called when an entity takes damage with source info - checks for detailed damage conditions
+    /// </summary>
+    [Server]
+    private void OnDetailedDamageTaken(NetworkEntity entity, int amount, NetworkEntity source)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnDetailedDamageTaken: {entity.EntityName.Value} took {amount} damage from {(source != null ? source.EntityName.Value : "unknown")}");
+        
+        // This provides more detailed damage information for future upgrade conditions
+    }
+    
+    /// <summary>
+    /// Called when an entity receives healing with source info - checks for detailed healing conditions
+    /// </summary>
+    [Server]
+    private void OnDetailedHealingReceived(NetworkEntity entity, int amount, NetworkEntity source)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnDetailedHealingReceived: {entity.EntityName.Value} received {amount} healing from {(source != null ? source.EntityName.Value : "unknown")}");
+        
+        // This provides more detailed healing information for future upgrade conditions
+    }
+    
+    /// <summary>
+    /// Called when a card is discarded - checks for discard-based upgrade conditions
+    /// </summary>
+    [Server]
+    public void OnCardDiscarded(Card card, NetworkEntity entity, bool wasManualDiscard)
+    {
+        if (!IsServerInitialized || card?.CardData == null || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnCardDiscarded: {card.CardData.CardName} discarded by {entity.EntityName.Value} (manual: {wasManualDiscard})");
+        
+        if (wasManualDiscard)
+        {
+            int cardId = card.CardData.CardId;
+            UpdatePersistentDiscardCount(cardId);
+            
+            // Check upgrades for all cards that might be affected by manual discards
+            CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+                UpgradeConditionType.DiscardedManually,
+                UpgradeConditionType.DiscardedManuallyLifetime
+            });
+        }
+    }
+    
+    /// <summary>
+    /// Called when a card is held at turn end - checks for turn-end-based upgrade conditions
+    /// </summary>
+    [Server]
+    public void OnCardHeldAtTurnEnd(Card card, NetworkEntity entity)
+    {
+        if (!IsServerInitialized || card?.CardData == null || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnCardHeldAtTurnEnd: {card.CardData.CardName} held at turn end by {entity.EntityName.Value}");
+        
+        int cardId = card.CardData.CardId;
+        UpdatePersistentHeldAtTurnEndCount(cardId);
+        
+        // Check upgrades for all cards that might be affected by being held at turn end
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.HeldAtTurnEnd,
+            UpgradeConditionType.HeldAtTurnEndLifetime
+        });
+    }
+    
+    /// <summary>
+    /// Called when a card is the final card in hand - checks for final-card-based upgrade conditions
+    /// </summary>
+    [Server]
+    public void OnCardIsFinalInHand(Card card, NetworkEntity entity)
+    {
+        if (!IsServerInitialized || card?.CardData == null || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnCardIsFinalInHand: {card.CardData.CardName} is final card in hand for {entity.EntityName.Value}");
+        
+        int cardId = card.CardData.CardId;
+        UpdatePersistentFinalCardCount(cardId);
+        
+        // Check upgrades for all cards that might be affected by being the final card
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.FinalCardInHand,
+            UpgradeConditionType.FinalCardInHandLifetime
+        });
+    }
+    
+    /// <summary>
+    /// Called when a status effect is applied to an entity - checks for status-based upgrade conditions
+    /// </summary>
+    [Server]
+    public void OnStatusEffectApplied(NetworkEntity entity, string statusEffectName)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnStatusEffectApplied: {statusEffectName} applied to {entity.EntityName.Value}");
+        
+        // Record that the entity survived this status effect
+        EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+        if (entityTracker != null)
+        {
+            entityTracker.RecordSurvivedStatusEffect(statusEffectName);
+        }
+        
+        // Check upgrades for all cards that might be affected by status effects
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.SurvivedStatusEffect,
+            UpgradeConditionType.TotalStatusEffectsSurvived
+        });
+    }
+    
+    /// <summary>
+    /// Called when an entity wins or loses a fight - checks for victory/defeat-based upgrade conditions
+    /// </summary>
+    [Server]
+    public void OnFightOutcome(NetworkEntity entity, bool victory, List<Card> cardsUsedInFight)
+    {
+        if (!IsServerInitialized || entity == null) return;
+        
+        Debug.Log($"[CARD_UPGRADE] OnFightOutcome: {entity.EntityName.Value} {(victory ? "won" : "lost")} the fight");
+        
+        // Update persistent tracking for fight outcomes
+        int entityId = entity.ObjectId;
+        
+        if (persistentEntityFightsWon.ContainsKey(entityId))
+        {
+            if (victory) persistentEntityFightsWon[entityId]++;
+        }
+        else
+        {
+            persistentEntityFightsWon[entityId] = victory ? 1 : 0;
+        }
+        
+        if (persistentEntityFightsLost.ContainsKey(entityId))
+        {
+            if (!victory) persistentEntityFightsLost[entityId]++;
+        }
+        else
+        {
+            persistentEntityFightsLost[entityId] = victory ? 0 : 1;
+        }
+        
+        // Check for fight outcome-based upgrades
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.WonFightUsingCard,
+            UpgradeConditionType.LostFightWithCard,
+            UpgradeConditionType.SurvivedFightWithCard,
+            UpgradeConditionType.TotalFightsWon,
+            UpgradeConditionType.TotalFightsLost
+        });
+        
+        // Check for specific cards that were used to win/lose the fight
+        if (cardsUsedInFight != null)
+        {
+            foreach (var card in cardsUsedInFight)
+            {
+                if (card?.CardData != null)
+                {
+                    CheckUpgradeConditions(card, entity);
+                }
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Checks all cards for specific upgrade condition types
+    /// </summary>
+    [Server]
+    private void CheckAllCardsForUpgradeConditions(NetworkEntity entity, UpgradeConditionType[] conditionTypes)
+    {
+        if (!IsServerInitialized || entity == null || conditionTypes == null) return;
+        
+        // Get all cards in hand for this entity
+        CheckAllCardsInHandForUpgrades(entity);
+        
+        // Also check all cards in deck/discard that might have these conditions
+        // This is important for persistent upgrade conditions
+        var upgradeableCards = GetUpgradeableCards();
+        foreach (var cardData in upgradeableCards)
+        {
+            foreach (var conditionType in conditionTypes)
+            {
+                if (cardData.UpgradeConditionType == conditionType)
+                {
+                    // Create a temporary card reference for evaluation
+                    // In a real implementation, you might want to check all actual card instances
+                    Debug.Log($"[CARD_UPGRADE] Checking condition {conditionType} for {cardData.CardName}");
+                    
+                    // This is a simplified check - in practice you'd want to evaluate against all instances
+                    int currentValue = GetConditionValueForProgress(conditionType, cardData.CardId, entity);
+                    bool conditionMet = CompareValues(currentValue, cardData.UpgradeRequiredValue, cardData.UpgradeComparisonType);
+                    
+                    if (conditionMet)
+                    {
+                        Debug.Log($"[CARD_UPGRADE] Condition met for {cardData.CardName}: {currentValue} {cardData.UpgradeComparisonType} {cardData.UpgradeRequiredValue}");
+                        // Would need to find actual card instances to upgrade
+                    }
+                }
+            }
+        }
     }
     
     /// <summary>
@@ -165,14 +622,72 @@ public class CardUpgradeManager : NetworkBehaviour
         int cardId = card.CardData.CardId;
         int entityId = entity.ObjectId;
         
+        Debug.Log($"[CARD_UPGRADE] OnCardPlayed called for {card.CardData.CardName} (ID: {cardId}) by {entity.EntityName.Value}");
+        
         // Update persistent tracking
         UpdatePersistentTracking(cardId);
         
         // Update per-turn tracking
         UpdateTurnTracking(entityId, cardId);
         
-        // Check for upgrades
+        // Check for upgrades on the played card
         CheckUpgradeConditions(card, entity);
+        
+        // Check for play-specific upgrade conditions across all cards
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.TimesPlayedThisFight,
+            UpgradeConditionType.TimesPlayedAcrossFights,
+            UpgradeConditionType.PlayedMultipleTimesInTurn,
+            UpgradeConditionType.PlayedOnConsecutiveTurns,
+            UpgradeConditionType.PlayedWithCombo,
+            UpgradeConditionType.PlayedAsFinisher,
+            UpgradeConditionType.PlayedAtLowHealth,
+            UpgradeConditionType.PlayedAtHighHealth,
+            UpgradeConditionType.PlayedAtHalfHealth,
+            UpgradeConditionType.ZeroCostCardsThisTurn,
+            UpgradeConditionType.ZeroCostCardsThisFight,
+            UpgradeConditionType.ComboUseBackToBack,
+            UpgradeConditionType.OnlyCardPlayedThisTurn
+        });
+        
+        // Process immediate upgrades
+        ProcessImmediateUpgrades();
+    }
+    
+    /// <summary>
+    /// Called when a card is drawn - checks for upgrades based on hand composition
+    /// </summary>
+    [Server]
+    public void OnCardDrawn(Card card, NetworkEntity entity)
+    {
+        if (!IsServerInitialized || card?.CardData == null || entity == null) return;
+        
+        int cardId = card.CardData.CardId;
+        
+        Debug.Log($"[CARD_UPGRADE] OnCardDrawn called for {card.CardData.CardName} (ID: {cardId}) by {entity.EntityName.Value}");
+        
+        // Force update of card tracking data to reflect current hand state
+        CardTracker cardTracker = card.GetComponent<CardTracker>();
+        if (cardTracker != null)
+        {
+            cardTracker.UpdateTrackingData();
+        }
+        
+        // Update persistent draw tracking
+        UpdatePersistentDrawCount(cardId);
+        
+        // Check for upgrades for ALL cards in hand (not just the drawn card)
+        // This is important because drawing one card might change the conditions for other cards
+        CheckAllCardsInHandForUpgrades(entity);
+        
+        // Check for draw-specific upgrade conditions
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.DrawnOften,
+            UpgradeConditionType.DrawnOftenLifetime,
+            UpgradeConditionType.CopiesInHand,
+            UpgradeConditionType.CopiesInDeck,
+            UpgradeConditionType.CopiesInDiscard
+        });
         
         // Process immediate upgrades
         ProcessImmediateUpgrades();
@@ -188,11 +703,56 @@ public class CardUpgradeManager : NetworkBehaviour
         
         int entityId = entity.ObjectId;
         
+        Debug.Log($"[CARD_UPGRADE] OnTurnEnd called for {entity.EntityName.Value}");
+        
+        // Check for cards held at turn end and update their tracking
+        HandManager handManager = entity.GetComponent<HandManager>();
+        if (handManager != null)
+        {
+            var cardsInHand = handManager.GetCardsInHand();
+            foreach (var cardGameObject in cardsInHand)
+            {
+                if (cardGameObject != null)
+                {
+                    Card cardComponent = cardGameObject.GetComponent<Card>();
+                    if (cardComponent?.CardData != null)
+                    {
+                        OnCardHeldAtTurnEnd(cardComponent, entity);
+                    }
+                }
+            }
+            
+            // Check if any card is the final card in hand
+            if (cardsInHand.Count == 1 && cardsInHand[0] != null)
+            {
+                Card finalCardComponent = cardsInHand[0].GetComponent<Card>();
+                if (finalCardComponent?.CardData != null)
+                {
+                    OnCardIsFinalInHand(finalCardComponent, entity);
+                }
+            }
+        }
+        
+        // Check for turn-end based upgrade conditions
+        CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
+            UpgradeConditionType.HeldAtTurnEnd,
+            UpgradeConditionType.HeldAtTurnEndLifetime,
+            UpgradeConditionType.FinalCardInHand,
+            UpgradeConditionType.FinalCardInHandLifetime,
+            UpgradeConditionType.OnlyCardPlayedThisTurn,
+            UpgradeConditionType.OnlyCardPlayedInTurnLifetime,
+            UpgradeConditionType.PlayedOnConsecutiveTurns,
+            UpgradeConditionType.PlayedMultipleTimesInTurn
+        });
+        
         // Reset turn tracking
         if (turnPlayCounts.ContainsKey(entityId))
         {
             turnPlayCounts[entityId].Clear();
         }
+        
+        // Process any upgrades that might have been triggered
+        ProcessImmediateUpgrades();
     }
     
     /// <summary>
@@ -459,18 +1019,124 @@ public class CardUpgradeManager : NetworkBehaviour
         CardData cardData = card.CardData;
         int cardId = cardData.CardId;
         
+        Debug.Log($"[CARD_UPGRADE] Checking upgrade conditions for {cardData.CardName}");
+        
         // Check if this card can upgrade
         if (!cardData.CanUpgrade || cardData.UpgradedVersion == null)
+        {
+            Debug.Log($"[CARD_UPGRADE] {cardData.CardName} cannot upgrade (CanUpgrade: {cardData.CanUpgrade}, HasUpgradedVersion: {cardData.UpgradedVersion != null})");
             return;
+        }
             
         // Skip if already upgraded (each card can only upgrade once)
         if (HasBeenUpgraded(entity.ObjectId, cardId))
+        {
+            Debug.Log($"[CARD_UPGRADE] {cardData.CardName} already upgraded this fight");
             return;
+        }
+        
+        Debug.Log($"[CARD_UPGRADE] {cardData.CardName} can upgrade to {cardData.UpgradedVersion.CardName}. Checking condition: {cardData.UpgradeConditionType} {cardData.UpgradeComparisonType} {cardData.UpgradeRequiredValue}");
         
         // Check if upgrade condition is met
         if (EvaluateUpgradeCondition(cardData, card, entity))
         {
+            Debug.Log($"[CARD_UPGRADE] ✓ Upgrade condition met! Queueing upgrade for {cardData.CardName}");
             QueueUpgrade(cardData, card, entity);
+        }
+        else
+        {
+            Debug.Log($"[CARD_UPGRADE] ✗ Upgrade condition not met for {cardData.CardName}");
+        }
+    }
+    
+    /// <summary>
+    /// Checks upgrade conditions for all cards in an entity's hand
+    /// </summary>
+    private void CheckAllCardsInHandForUpgrades(NetworkEntity entity)
+    {
+        Debug.Log($"[CARD_UPGRADE] Checking all cards in hand for upgrades for {entity.EntityName.Value}");
+        
+        NetworkEntity handEntity = null;
+        NetworkEntity mainEntity = null;
+        
+        // Check if the entity is already a Hand entity
+        if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
+        {
+            handEntity = entity;
+            
+            // Find the main entity (Player/Pet) that owns this hand
+            var allEntities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+            foreach (var ent in allEntities)
+            {
+                if (ent.EntityType == EntityType.Player || ent.EntityType == EntityType.Pet)
+                {
+                    var relationshipManager = ent.GetComponent<RelationshipManager>();
+                    if (relationshipManager?.HandEntity != null)
+                    {
+                        var handNetworkEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+                        if (handNetworkEntity != null && handNetworkEntity.ObjectId == handEntity.ObjectId)
+                        {
+                            mainEntity = ent;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            Debug.Log($"[CARD_UPGRADE] Using hand entity directly: {handEntity.EntityName.Value}, main entity: {mainEntity?.EntityName.Value ?? "not found"}");
+        }
+        else
+        {
+            // Entity is a Player/Pet, find its Hand entity
+            var relationshipManager = entity.GetComponent<RelationshipManager>();
+            if (relationshipManager?.HandEntity == null)
+            {
+                Debug.Log($"[CARD_UPGRADE] No hand entity found for {entity.EntityName.Value}");
+                return;
+            }
+            
+            handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+            mainEntity = entity;
+            
+            Debug.Log($"[CARD_UPGRADE] Found hand entity: {handEntity?.EntityName.Value ?? "null"} for main entity: {mainEntity.EntityName.Value}");
+        }
+        
+        if (handEntity == null)
+        {
+            Debug.Log($"[CARD_UPGRADE] No valid hand entity found for {entity.EntityName.Value}");
+            return;
+        }
+        
+        var handManager = handEntity.GetComponent<HandManager>();
+        if (handManager == null)
+        {
+            Debug.Log($"[CARD_UPGRADE] No HandManager found on hand entity {handEntity.EntityName.Value}");
+            return;
+        }
+        
+        // Get all cards in hand
+        var cardsInHand = handManager.GetCardsInHand();
+        Debug.Log($"[CARD_UPGRADE] Found {cardsInHand.Count} cards in hand for {handEntity.EntityName.Value}");
+        
+        // Use main entity for upgrade checking if available, otherwise fall back to the passed entity
+        var entityForUpgradeCheck = mainEntity ?? entity;
+        Debug.Log($"[CARD_UPGRADE] Using entity for upgrade checks: {entityForUpgradeCheck.EntityName.Value}");
+        
+        // Check each card for upgrades
+        foreach (var cardObj in cardsInHand)
+        {
+            var card = cardObj.GetComponent<Card>();
+            if (card != null)
+            {
+                // Update tracking data before checking
+                var cardTracker = card.GetComponent<CardTracker>();
+                if (cardTracker != null)
+                {
+                    cardTracker.UpdateTrackingData();
+                }
+                
+                CheckUpgradeConditions(card, entityForUpgradeCheck);
+            }
         }
     }
     
@@ -483,7 +1149,11 @@ public class CardUpgradeManager : NetworkBehaviour
         int currentValue = GetConditionValue(cardData.UpgradeConditionType, card, entity);
         
         // Compare using the specified comparison type
-        return CompareValues(currentValue, cardData.UpgradeRequiredValue, cardData.UpgradeComparisonType);
+        bool result = CompareValues(currentValue, cardData.UpgradeRequiredValue, cardData.UpgradeComparisonType);
+        
+        Debug.Log($"[CARD_UPGRADE] Current value for {cardData.UpgradeConditionType}: {currentValue}, Required: {cardData.UpgradeRequiredValue} ({cardData.UpgradeComparisonType}), Result: {result}");
+        
+        return result;
     }
     
     // Removed EvaluateSingleCondition - now using simplified EvaluateUpgradeCondition
@@ -642,24 +1312,24 @@ public class CardUpgradeManager : NetworkBehaviour
                 return persistentSoloPlayCounts.ContainsKey(cardId) ? persistentSoloPlayCounts[cardId] : 0;
                 
             case UpgradeConditionType.TotalFightsWon:
-                int entityIdWon = entity.ObjectId;
-                return persistentEntityFightsWon.ContainsKey(entityIdWon) ? persistentEntityFightsWon[entityIdWon] : 0;
+                int entityIdForWins = entity.ObjectId;
+                return persistentEntityFightsWon.ContainsKey(entityIdForWins) ? persistentEntityFightsWon[entityIdForWins] : 0;
                 
             case UpgradeConditionType.TotalFightsLost:
-                int entityIdLost = entity.ObjectId;
-                return persistentEntityFightsLost.ContainsKey(entityIdLost) ? persistentEntityFightsLost[entityIdLost] : 0;
+                int entityIdForLosses = entity.ObjectId;
+                return persistentEntityFightsLost.ContainsKey(entityIdForLosses) ? persistentEntityFightsLost[entityIdForLosses] : 0;
                 
             case UpgradeConditionType.TotalBattleTurns:
-                int entityIdTurns = entity.ObjectId;
-                return persistentEntityBattleTurns.ContainsKey(entityIdTurns) ? persistentEntityBattleTurns[entityIdTurns] : 0;
+                int entityIdForTurns = entity.ObjectId;
+                return persistentEntityBattleTurns.ContainsKey(entityIdForTurns) ? persistentEntityBattleTurns[entityIdForTurns] : 0;
                 
             case UpgradeConditionType.TotalPerfectTurns:
-                int entityIdPerfect = entity.ObjectId;
-                return persistentEntityPerfectTurns.ContainsKey(entityIdPerfect) ? persistentEntityPerfectTurns[entityIdPerfect] : 0;
+                int entityIdForPerfect = entity.ObjectId;
+                return persistentEntityPerfectTurns.ContainsKey(entityIdForPerfect) ? persistentEntityPerfectTurns[entityIdForPerfect] : 0;
                 
             case UpgradeConditionType.TotalStatusEffectsSurvived:
-                int entityIdStatus = entity.ObjectId;
-                return persistentEntityStatusEffectsSurvived.ContainsKey(entityIdStatus) ? persistentEntityStatusEffectsSurvived[entityIdStatus] : 0;
+                int entityIdForStatus = entity.ObjectId;
+                return persistentEntityStatusEffectsSurvived.ContainsKey(entityIdForStatus) ? persistentEntityStatusEffectsSurvived[entityIdForStatus] : 0;
                 
             // Add more condition types as needed
             default:
@@ -747,16 +1417,43 @@ public class CardUpgradeManager : NetworkBehaviour
         }
         upgradedCardsThisFight[entityId].Add(cardId);
         
-        // Execute in-fight upgrade
-        ExecuteInFightUpgrade(upgrade);
+        // Queue upgrade animation, which will handle both in-combat and persistent upgrades
+        if (CardUpgrade.CardUpgradeAnimator.Instance != null)
+        {
+            CardUpgrade.CardUpgradeAnimator.Instance.QueueUpgradeAnimation(
+                upgrade.baseCardData, 
+                upgrade.upgradedCardData, 
+                upgrade.entity, 
+                upgrade.baseCardData.UpgradeAllCopies,
+                OnUpgradeAnimationComplete
+            );
+        }
+        else
+        {
+            Debug.LogError("CardUpgradeManager: CardUpgradeAnimator not found! Executing upgrade without animation.");
         
-        // Execute persistent upgrade
+            // Fallback: Execute upgrades without animation
+            ExecuteInFightUpgrade(upgrade);
         ExecutePersistentUpgrade(upgrade);
+            OnCardUpgraded?.Invoke(upgrade.baseCardData, upgrade.upgradedCardData, upgrade.entity);
+        }
+        
+        Debug.Log($"CardUpgradeManager: Queued upgrade animation {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName} for {upgrade.entity.EntityName.Value}");
+    }
+    
+    /// <summary>
+    /// Called when the upgrade animation completes
+    /// </summary>
+    private void OnUpgradeAnimationComplete(CardData baseCard, CardData upgradedCard, NetworkEntity entity, bool upgradeAllCopies)
+    {
+        // Execute the actual card replacements after animation
+        ExecuteInFightUpgrade(baseCard, upgradedCard, entity, upgradeAllCopies);
+        ExecutePersistentUpgrade(baseCard, upgradedCard, entity, upgradeAllCopies);
         
         // Trigger event
-        OnCardUpgraded?.Invoke(upgrade.baseCardData, upgrade.upgradedCardData, upgrade.entity);
+        OnCardUpgraded?.Invoke(baseCard, upgradedCard, entity);
         
-        /* Debug.Log($"CardUpgradeManager: Executed upgrade {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName} for {upgrade.entity.EntityName.Value}"); */
+        Debug.Log($"CardUpgradeManager: Completed upgrade {baseCard.CardName} -> {upgradedCard.CardName} for {entity.EntityName.Value}");
     }
     
     /// <summary>
@@ -764,9 +1461,28 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void ExecuteInFightUpgrade(QueuedUpgrade upgrade)
     {
-        // This would integrate with HandManager to replace card instances
-        // For now, we'll just log the action
-        Debug.Log($"CardUpgradeManager: In-fight upgrade executed for {upgrade.card.CardData.CardName}");
+        ExecuteInFightUpgrade(upgrade.baseCardData, upgrade.upgradedCardData, upgrade.entity, upgrade.baseCardData.UpgradeAllCopies);
+    }
+    
+    /// <summary>
+    /// Executes in-fight card upgrade with specified parameters
+    /// </summary>
+    private void ExecuteInFightUpgrade(CardData baseCard, CardData upgradedCard, NetworkEntity entity, bool upgradeAllCopies)
+    {
+        // Use the InCombatCardReplacer to replace cards in all combat zones
+        if (CardUpgrade.InCombatCardReplacer.Instance != null)
+        {
+            CardUpgrade.InCombatCardReplacer.Instance.ReplaceCardInAllZones(
+                baseCard.CardId, 
+                upgradedCard.CardId, 
+                entity, 
+                upgradeAllCopies
+            );
+        }
+        else
+        {
+            Debug.LogError("CardUpgradeManager: InCombatCardReplacer not found! In-combat upgrade failed.");
+        }
     }
     
     /// <summary>
@@ -774,7 +1490,15 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void ExecutePersistentUpgrade(QueuedUpgrade upgrade)
     {
-        var entityDeck = upgrade.entity.GetComponent<NetworkEntityDeck>();
+        ExecutePersistentUpgrade(upgrade.baseCardData, upgrade.upgradedCardData, upgrade.entity, upgrade.baseCardData.UpgradeAllCopies);
+    }
+    
+    /// <summary>
+    /// Executes persistent deck upgrade with specified parameters
+    /// </summary>
+    private void ExecutePersistentUpgrade(CardData baseCard, CardData upgradedCard, NetworkEntity entity, bool upgradeAllCopies)
+    {
+        var entityDeck = entity.GetComponent<NetworkEntityDeck>();
         
         if (entityDeck == null)
         {
@@ -782,14 +1506,14 @@ public class CardUpgradeManager : NetworkBehaviour
             return;
         }
         
-        int baseCardId = upgrade.baseCardData.CardId;
-        int upgradedCardId = upgrade.upgradedCardData.CardId;
+        int baseCardId = baseCard.CardId;
+        int upgradedCardId = upgradedCard.CardId;
         
-        if (upgrade.baseCardData.UpgradeAllCopies)
+        if (upgradeAllCopies)
         {
             // Replace all copies of the base card with the upgraded version
             int replacedCount = entityDeck.ReplaceCard(baseCardId, upgradedCardId);
-            Debug.Log($"CardUpgradeManager: Replaced {replacedCount} copies of {upgrade.baseCardData.CardName} with {upgrade.upgradedCardData.CardName}");
+            Debug.Log($"CardUpgradeManager: Replaced {replacedCount} copies of {baseCard.CardName} with {upgradedCard.CardName}");
         }
         else
         {
@@ -797,11 +1521,11 @@ public class CardUpgradeManager : NetworkBehaviour
             bool replaced = entityDeck.ReplaceSingleCard(baseCardId, upgradedCardId);
             if (replaced)
             {
-                /* Debug.Log($"CardUpgradeManager: Replaced one copy of {upgrade.baseCardData.CardName} with {upgrade.upgradedCardData.CardName}"); */
+                Debug.Log($"CardUpgradeManager: Replaced one copy of {baseCard.CardName} with {upgradedCard.CardName}");
             }
             else
             {
-                Debug.LogWarning($"CardUpgradeManager: Failed to replace {upgrade.baseCardData.CardName} - card not found in deck");
+                Debug.LogWarning($"CardUpgradeManager: Failed to replace {baseCard.CardName} - card not found in deck");
             }
         }
     }
