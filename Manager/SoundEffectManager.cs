@@ -48,6 +48,13 @@ public class SoundEffectManager : MonoBehaviour
     [SerializeField] private float maxDistance = 50f;
     [SerializeField] private AnimationCurve volumeRolloff = AnimationCurve.Linear(0, 1, 1, 0);
     
+    [Header("Anti-Pop Settings")]
+    [Tooltip("Enable fade-out to prevent audio popping when sounds finish")]
+    [SerializeField] private bool enableAntiPop = true;
+    [Tooltip("Duration of fade-out to prevent popping (in seconds)")]
+    [Range(0.01f, 0.5f)]
+    [SerializeField] private float fadeOutDuration = 0.1f;
+    
     [Header("Debug")]
     [SerializeField] private bool debugMode = false;
     
@@ -241,11 +248,41 @@ public class SoundEffectManager : MonoBehaviour
     /// </summary>
     private IEnumerator ReturnAudioSourceWhenFinished(AudioSource audioSource, float duration)
     {
-        yield return new WaitForSeconds(duration + 0.1f); // Small buffer
+        yield return new WaitForSeconds(duration - 0.1f); // Wait until near the end
+        
+        if (audioSource != null && audioSource.isPlaying && enableAntiPop)
+        {
+            // Add a quick fade-out to prevent popping
+            yield return StartCoroutine(FadeOutAudioSource(audioSource, fadeOutDuration));
+        }
         
         if (audioSource != null)
         {
             ReturnAudioSourceToPool(audioSource);
+        }
+    }
+    
+    /// <summary>
+    /// Fades out an audio source to prevent popping
+    /// </summary>
+    private IEnumerator FadeOutAudioSource(AudioSource audioSource, float fadeTime)
+    {
+        if (audioSource == null || !audioSource.isPlaying) yield break;
+        
+        float startVolume = audioSource.volume;
+        float elapsedTime = 0f;
+        
+        while (elapsedTime < fadeTime && audioSource != null && audioSource.isPlaying)
+        {
+            elapsedTime += Time.deltaTime;
+            float normalizedTime = elapsedTime / fadeTime;
+            audioSource.volume = Mathf.Lerp(startVolume, 0f, normalizedTime);
+            yield return null;
+        }
+        
+        if (audioSource != null)
+        {
+            audioSource.volume = 0f;
         }
     }
     
@@ -256,8 +293,18 @@ public class SoundEffectManager : MonoBehaviour
     {
         if (audioSource == null) return;
         
+        // Ensure volume is faded out before stopping (only if anti-pop is enabled)
+        if (enableAntiPop && audioSource.isPlaying && audioSource.volume > 0.01f)
+        {
+            audioSource.volume = 0f;
+            // Wait a frame to let the volume change take effect
+            StartCoroutine(DelayedStopAndPool(audioSource));
+            return;
+        }
+        
         audioSource.Stop();
         audioSource.clip = null;
+        audioSource.volume = 1f; // Reset volume for next use
         audioSource.transform.position = Vector3.zero;
         
         activeAudioSources.Remove(audioSource);
@@ -266,6 +313,30 @@ public class SoundEffectManager : MonoBehaviour
         if (debugMode)
         {
             Debug.Log("SoundEffectManager: Returned audio source to pool");
+        }
+    }
+    
+    /// <summary>
+    /// Delays the stop and pool operation by one frame to prevent popping
+    /// </summary>
+    private IEnumerator DelayedStopAndPool(AudioSource audioSource)
+    {
+        yield return null; // Wait one frame
+        
+        if (audioSource != null)
+        {
+            audioSource.Stop();
+            audioSource.clip = null;
+            audioSource.volume = 1f; // Reset volume for next use
+            audioSource.transform.position = Vector3.zero;
+            
+            activeAudioSources.Remove(audioSource);
+            audioSourcePool.Enqueue(audioSource);
+            
+            if (debugMode)
+            {
+                Debug.Log("SoundEffectManager: Returned audio source to pool (delayed)");
+            }
         }
     }
     
@@ -425,18 +496,33 @@ public class SoundEffectManager : MonoBehaviour
     /// </summary>
     public void StopAllSounds()
     {
-        foreach (var audioSource in activeAudioSources)
+        // Create a copy of the list to avoid modification during iteration
+        var audioSourcesToStop = new List<AudioSource>(activeAudioSources);
+        
+        foreach (var audioSource in audioSourcesToStop)
         {
             if (audioSource != null)
             {
-                audioSource.Stop();
+                // Use fade-out to prevent popping
+                StartCoroutine(FadeOutAndReturnToPool(audioSource, enableAntiPop ? fadeOutDuration : 0f));
             }
         }
+    }
+    
+    /// <summary>
+    /// Fades out an audio source and returns it to the pool
+    /// </summary>
+    private IEnumerator FadeOutAndReturnToPool(AudioSource audioSource, float fadeTime)
+    {
+        if (audioSource == null) yield break;
         
-        // Return all to pool
-        while (activeAudioSources.Count > 0)
+        // Fade out
+        yield return StartCoroutine(FadeOutAudioSource(audioSource, fadeTime));
+        
+        // Return to pool
+        if (audioSource != null)
         {
-            ReturnAudioSourceToPool(activeAudioSources[0]);
+            ReturnAudioSourceToPool(audioSource);
         }
     }
     

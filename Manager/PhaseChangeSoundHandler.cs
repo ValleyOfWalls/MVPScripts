@@ -401,7 +401,33 @@ public class PhaseChangeSoundHandler : MonoBehaviour
         
         if (fallbackAudioSource != null && fallbackAudioSource.isPlaying)
         {
+            // Use fade-out to prevent popping
+            StartCoroutine(FadeOutFallbackAudio(0.1f));
+        }
+    }
+    
+    /// <summary>
+    /// Fades out the fallback audio source to prevent popping
+    /// </summary>
+    private System.Collections.IEnumerator FadeOutFallbackAudio(float fadeTime)
+    {
+        if (fallbackAudioSource == null || !fallbackAudioSource.isPlaying) yield break;
+        
+        float startVolume = fallbackAudioSource.volume;
+        float elapsedTime = 0f;
+        
+        while (elapsedTime < fadeTime && fallbackAudioSource != null && fallbackAudioSource.isPlaying)
+        {
+            elapsedTime += Time.deltaTime;
+            float normalizedTime = elapsedTime / fadeTime;
+            fallbackAudioSource.volume = Mathf.Lerp(startVolume, 0f, normalizedTime);
+            yield return null;
+        }
+        
+        if (fallbackAudioSource != null)
+        {
             fallbackAudioSource.Stop();
+            fallbackAudioSource.volume = fallbackVolume * globalVolumeMultiplier; // Reset volume
         }
     }
     

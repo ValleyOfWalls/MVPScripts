@@ -241,6 +241,21 @@ public class EffectHandler : NetworkBehaviour
         
         if (activeEffects.ContainsKey(effectName))
         {
+            // Handle special cleanup for Strength effects
+            if (effectName == "Strength")
+            {
+                EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+                if (entityTracker != null && entityTracker.IsServerInitialized)
+                {
+                    int strengthPotency = GetEffectPotency(effectName);
+                    if (strengthPotency > 0)
+                    {
+                        entityTracker.RemoveStrength(strengthPotency);
+                        Debug.Log($"EffectHandler: Removed {strengthPotency} Strength from EntityTracker for {entity.EntityName.Value}");
+                    }
+                }
+            }
+            
             activeEffects.Remove(effectName);
             Debug.Log($"EffectHandler: Removed effect {effectName} from {entity.EntityName.Value}");
         }
@@ -253,6 +268,21 @@ public class EffectHandler : NetworkBehaviour
     public void ClearAllEffects()
     {
         if (!IsServerInitialized) return;
+        
+        // Clear EntityTracker strength stacks when clearing Strength effects
+        if (HasEffect("Strength"))
+        {
+            EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+            if (entityTracker != null && entityTracker.IsServerInitialized)
+            {
+                int strengthStacks = entityTracker.StrengthStacks;
+                if (strengthStacks > 0)
+                {
+                    entityTracker.RemoveStrength(strengthStacks);
+                    Debug.Log($"EffectHandler: Cleared {strengthStacks} Strength stacks from EntityTracker for {entity.EntityName.Value}");
+                }
+            }
+        }
         
         activeEffects.Clear();
         Debug.Log($"EffectHandler: Cleared all effects from {entity.EntityName.Value}");
@@ -634,6 +664,16 @@ public class EffectHandler : NetworkBehaviour
                 }
                 break;
                 
+            case "Strength":
+                // Update EntityTracker strength stacks for damage calculation compatibility
+                EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+                if (entityTracker != null && entityTracker.IsServerInitialized)
+                {
+                    entityTracker.AddStrength(potency);
+                    Debug.Log($"EffectHandler: Added {potency} Strength to EntityTracker for {entity.EntityName.Value}");
+                }
+                break;
+                
             // Add more immediate effect types here
         }
     }
@@ -841,8 +881,19 @@ public class EffectHandler : NetworkBehaviour
         
         if (HasEffect("Weak"))
         {
-            // Weak reduces damage dealt by 25% (this matches GameManager's WeakStatusModifier)
-            multiplier *= 0.75f;
+            // Use GameManager's WeakStatusModifier for consistency
+            GameManager gameManager = GameManager.Instance;
+            if (gameManager != null && gameManager.IsServerInitialized)
+            {
+                multiplier *= gameManager.WeakStatusModifier.Value;
+                /* Debug.Log($"EffectHandler: {entity.EntityName.Value} has Weak effect, using GameManager modifier: {gameManager.WeakStatusModifier.Value}"); */
+            }
+            else
+            {
+                // Fallback to hardcoded value if GameManager not available
+                multiplier *= 0.75f;
+                /* Debug.Log($"EffectHandler: {entity.EntityName.Value} has Weak effect, using fallback modifier: 0.75"); */
+            }
         }
         
         return multiplier;

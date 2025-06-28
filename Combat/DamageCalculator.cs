@@ -80,7 +80,7 @@ public class DamageCalculator : MonoBehaviour
             return 0; // No damage to calculate
         }
 
-        int modifiedDamage = baseDamage;
+        float modifiedDamage = baseDamage;
         
         /* Debug.Log($"DamageCalculator: Calculating damage from {source.EntityName.Value} to {target.EntityName.Value} - Base: {baseDamage}"); */
         
@@ -103,9 +103,9 @@ public class DamageCalculator : MonoBehaviour
         return finalDamage;
     }
     
-    private int ApplySourceModifiers(NetworkEntity source, int damage)
+    private float ApplySourceModifiers(NetworkEntity source, float damage)
     {
-        int modifiedDamage = damage;
+        float modifiedDamage = damage;
         
         // Get source entity's effect handler
         EffectHandler sourceEffects = source.GetComponent<EffectHandler>();
@@ -119,15 +119,8 @@ public class DamageCalculator : MonoBehaviour
             Debug.Log($"DamageCalculator: Source has curse effects, damage modified by {damageModification} to {modifiedDamage}");
         }
         
-        // Apply damage dealt multiplier (from effects like Weak)
-        float damageMultiplier = sourceEffects.GetDamageDealtMultiplier();
-        if (damageMultiplier != 1.0f)
-        {
-            modifiedDamage = Mathf.RoundToInt(modifiedDamage * damageMultiplier);
-            /* Debug.Log($"DamageCalculator: Source damage multiplier {damageMultiplier}, damage is now {modifiedDamage}"); */
-        }
-        
         // Check for Strength effect (positive damage bonus) - use EntityTracker for consistency
+        // NOTE: Strength must be applied BEFORE Weak multiplier to be affected by it
         EntityTracker sourceTracker = source.GetComponent<EntityTracker>();
         if (sourceTracker != null)
         {
@@ -139,12 +132,28 @@ public class DamageCalculator : MonoBehaviour
             }
         }
         
+        // Ensure damage doesn't go below 0 after curse/strength effects
+        if (modifiedDamage < 0)
+        {
+            Debug.Log($"DamageCalculator: Damage clamped from {modifiedDamage} to 0 (curse effects too strong)");
+            modifiedDamage = 0;
+        }
+        
+        // Apply damage dealt multiplier (from effects like Weak)
+        // NOTE: This must be applied AFTER flat bonuses/penalties (Strength/Curse)
+        float damageMultiplier = sourceEffects.GetDamageDealtMultiplier();
+        if (damageMultiplier != 1.0f)
+        {
+            modifiedDamage = modifiedDamage * damageMultiplier;
+            /* Debug.Log($"DamageCalculator: Source damage multiplier {damageMultiplier}, damage is now {modifiedDamage}"); */
+        }
+        
         return modifiedDamage;
     }
     
-    private int ApplyTargetModifiers(NetworkEntity target, int damage)
+    private float ApplyTargetModifiers(NetworkEntity target, float damage)
     {
-        int modifiedDamage = damage;
+        float modifiedDamage = damage;
         
         // Get target entity's effect handler
         EffectHandler targetEffects = target.GetComponent<EffectHandler>();
@@ -154,7 +163,7 @@ public class DamageCalculator : MonoBehaviour
         float damageTakenMultiplier = targetEffects.GetDamageTakenMultiplier();
         if (damageTakenMultiplier != 1.0f)
         {
-            modifiedDamage = Mathf.RoundToInt(modifiedDamage * damageTakenMultiplier);
+            modifiedDamage = modifiedDamage * damageTakenMultiplier;
             Debug.Log($"DamageCalculator: Target damage taken multiplier {damageTakenMultiplier}, damage is now {modifiedDamage}");
         }
         
@@ -169,7 +178,7 @@ public class DamageCalculator : MonoBehaviour
         return modifiedDamage;
     }
     
-    private int ApplyCriticalHitChance(NetworkEntity source, NetworkEntity target, int damage)
+    private float ApplyCriticalHitChance(NetworkEntity source, NetworkEntity target, float damage)
     {
         // Skip critical hit calculation if crits are disabled in GameManager
         if (!gameManager.CriticalHitsEnabled.Value)
@@ -198,7 +207,7 @@ public class DamageCalculator : MonoBehaviour
             
             // TODO: Consider notifying UI for critical hit display effect
             
-            return Mathf.RoundToInt(critDamage);
+            return critDamage;
         }
         
         return damage;
