@@ -4,6 +4,9 @@ using FishNet.Object;
 using TMPro;
 using System.Linq;
 using System.Collections;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 /// <summary>//
 /// Manages the UI elements for the combat phase, including turn indicators, and notifications.
@@ -15,6 +18,13 @@ public class CombatCanvasManager : NetworkBehaviour
     [SerializeField] private Button endTurnButton;
     [SerializeField] private Button spectateButton;
     [SerializeField] private Button returnToOwnFightButton;
+    
+    [Header("Testing Controls")]
+    [SerializeField] private Button testPlayerPerspectiveButton;
+    [SerializeField] private Button testOpponentPerspectiveButton;
+    [SerializeField] private Button stopTestsButton;
+    [SerializeField] private Button generateTestCardsButton;
+    [SerializeField] private Button generateTestDecksButton;
 
     [Header("UI References")]
     [SerializeField] private TextMeshProUGUI turnIndicatorText;
@@ -45,6 +55,7 @@ public class CombatCanvasManager : NetworkBehaviour
 
     private FightManager fightManager;
     private CombatManager combatManager;
+    private CombatTestManager testManager;
 
     // Public properties for accessing UI elements
     public Button SpectateButton => spectateButton;
@@ -109,6 +120,7 @@ public class CombatCanvasManager : NetworkBehaviour
         // Find managers if not already assigned
         if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
         if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
+        if (testManager == null) testManager = FindFirstObjectByType<CombatTestManager>();
 
         if (fightManager == null) Debug.LogError("FightManager not found by CombatCanvasManager.");
         if (combatManager == null) Debug.LogError("CombatManager not found by CombatCanvasManager.");
@@ -205,6 +217,7 @@ public class CombatCanvasManager : NetworkBehaviour
     private void InitializeButtonListeners()
     {
         SetupEndTurnButton();
+        SetupTestButtons();
     }
 
     /// <summary>
@@ -230,6 +243,125 @@ public class CombatCanvasManager : NetworkBehaviour
         else
         {
             Debug.LogError("End Turn Button not assigned in CombatCanvasManager");
+        }
+    }
+    
+    /// <summary>
+    /// Sets up the test buttons for combat testing
+    /// </summary>
+    private void SetupTestButtons()
+    {
+        // Test Player Perspective Button
+        if (testPlayerPerspectiveButton != null)
+        {
+            testPlayerPerspectiveButton.onClick.RemoveAllListeners();
+            testPlayerPerspectiveButton.onClick.AddListener(() => {
+                if (testManager != null)
+                {
+                    testManager.StartPlayerPerspectiveTests();
+                    Debug.Log("Starting player perspective tests...");
+                }
+                else
+                {
+                    Debug.LogWarning("CombatTestManager not found. Cannot start tests.");
+                }
+            });
+        }
+        
+        // Test Opponent Perspective Button
+        if (testOpponentPerspectiveButton != null)
+        {
+            testOpponentPerspectiveButton.onClick.RemoveAllListeners();
+            testOpponentPerspectiveButton.onClick.AddListener(() => {
+                if (testManager != null)
+                {
+                    testManager.StartOpponentPetPerspectiveTests();
+                    Debug.Log("Starting opponent pet perspective tests...");
+                }
+                else
+                {
+                    Debug.LogWarning("CombatTestManager not found. Cannot start tests.");
+                }
+            });
+        }
+        
+        // Stop Tests Button
+        if (stopTestsButton != null)
+        {
+            stopTestsButton.onClick.RemoveAllListeners();
+            stopTestsButton.onClick.AddListener(() => {
+                if (testManager != null)
+                {
+                    testManager.StopTests();
+                    Debug.Log("Stopping tests...");
+                }
+                else
+                {
+                    Debug.LogWarning("CombatTestManager not found. Cannot stop tests.");
+                }
+            });
+        }
+        
+        // Generate Test Cards Button (Editor only)
+        if (generateTestCardsButton != null)
+        {
+            generateTestCardsButton.onClick.RemoveAllListeners();
+            #if UNITY_EDITOR
+            generateTestCardsButton.onClick.AddListener(() => {
+                // Use reflection to get the TestCardGenerator type since it's in Editor assembly
+                var testCardGeneratorType = System.Type.GetType("TestCardGenerator");
+                if (testCardGeneratorType != null)
+                {
+                    var window = UnityEditor.EditorWindow.GetWindow(testCardGeneratorType, false, "Test Card Generator");
+                    window.Show();
+                    Debug.Log("Opening Test Card Generator window...");
+                }
+                else
+                {
+                    Debug.LogError("TestCardGenerator class not found. Make sure it's in the Editor folder.");
+                }
+            });
+            #else
+            generateTestCardsButton.onClick.AddListener(() => {
+                Debug.LogWarning("Test card generation is only available in the editor.");
+            });
+            #endif
+            
+            // Hide in builds since it's editor-only
+            #if !UNITY_EDITOR
+            generateTestCardsButton.gameObject.SetActive(false);
+            #endif
+        }
+        
+        // Generate Test Decks Button (Editor only)
+        if (generateTestDecksButton != null)
+        {
+            generateTestDecksButton.onClick.RemoveAllListeners();
+            #if UNITY_EDITOR
+            generateTestDecksButton.onClick.AddListener(() => {
+                // Use reflection to get the TestDeckGenerator type since it's in Editor assembly
+                var testDeckGeneratorType = System.Type.GetType("TestDeckGenerator");
+                if (testDeckGeneratorType != null)
+                {
+                    var window = UnityEditor.EditorWindow.GetWindow(testDeckGeneratorType, false, "Test Deck Generator");
+                    window.Show();
+                    Debug.Log("Opening Test Deck Generator window...");
+                }
+                else
+                {
+                    Debug.LogError("TestDeckGenerator class not found. Make sure it's in the Editor folder.");
+                }
+            });
+            #else
+            generateTestDecksButton.onClick.AddListener(() => {
+                Debug.LogWarning("Test deck generation is only available in the editor.");
+            });
+            #endif
+            
+            // Hide in builds since it's editor-only
+            #if !UNITY_EDITOR
+            generateTestDecksButton.gameObject.SetActive(false);
+            #endif
         }
     }
 

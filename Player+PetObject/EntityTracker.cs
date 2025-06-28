@@ -248,6 +248,20 @@ public class EntityTracker : NetworkBehaviour
     }
 
     /// <summary>
+    /// Sets the combo count directly (for testing purposes)
+    /// </summary>
+    [Server]
+    public void SetComboCount(int comboCount)
+    {
+        if (!IsServerInitialized) return;
+        
+        _comboCount.Value = comboCount;
+        OnComboChanged?.Invoke(_comboCount.Value);
+        
+        Debug.Log($"EntityTracker: {entity.EntityName.Value} combo count set to {comboCount}");
+    }
+
+    /// <summary>
     /// Sets the entity's combat stance
     /// </summary>
     [Server]

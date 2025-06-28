@@ -10,18 +10,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
-  m_Name: Assassinate
+  m_Name: TEST_Test_Enter_Defensive
   m_EditorClassIdentifier: 
-  _cardId: 3174
-  _cardName: Assassinate
-  _description: Deal 45 damage to opponent (+15.0 per combo). Requires 3 combo.
+  _cardId: 9067
+  _cardName: Test Enter Defensive
+  _description: 'Test card: Damage 2 to Opponent'
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
-  _cardType: 5
-  _energyCost: 50
+  _cardType: 1
+  _energyCost: 1
   _effects:
   - effectType: 0
-    amount: 45
+    amount: 2
     duration: 0
     targetType: 1
     elementalType: 0
@@ -31,8 +31,8 @@ MonoBehaviour:
     alternativeLogic: 0
     alternativeEffectType: 0
     alternativeEffectAmount: 1
-    scalingType: 9
-    scalingMultiplier: 15
+    scalingType: 0
+    scalingMultiplier: 1
     maxScaling: 10
     animationBehavior: 0
     customEffectName: 
@@ -45,18 +45,18 @@ MonoBehaviour:
     finishingAnimationDelay: 0.1
     instantEffectPrefab: {fileID: 0}
   _buildsCombo: 0
-  _requiresCombo: 1
-  _requiredComboAmount: 3
-  _changesStance: 0
-  _newStance: 1
+  _requiresCombo: 0
+  _requiredComboAmount: 1
+  _changesStance: 1
+  _newStance: 2
   _canAlsoTargetSelf: 0
   _canAlsoTargetAllies: 0
   _canAlsoTargetOpponent: 0
   _upgradedVersion: {fileID: 0}
   _trackPlayCount: 1
   _trackDamageHealing: 1
-  _canUpgrade: 1
-  _upgradeConditionType: 3
-  _upgradeRequiredValue: 1
+  _canUpgrade: 0
+  _upgradeConditionType: 0
+  _upgradeRequiredValue: 5
   _upgradeComparisonType: 0
   _upgradeAllCopies: 0

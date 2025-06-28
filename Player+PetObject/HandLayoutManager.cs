@@ -271,42 +271,42 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     public void UpdateLayout()
     {
-        Debug.Log($"[HandLayoutManager] UpdateLayout called on {gameObject.name}");
+        //Debug.Log($"[HandLayoutManager] UpdateLayout called on {gameObject.name}");
         
         // Update debounce timestamp
         lastLayoutUpdateTime = Time.time;
         
         if (layoutCoroutine != null)
         {
-            Debug.Log($"[HandLayoutManager] Stopping existing layout coroutine on {gameObject.name}");
+            //Debug.Log($"[HandLayoutManager] Stopping existing layout coroutine on {gameObject.name}");
             StopCoroutine(layoutCoroutine);
         }
         
         // Refresh card list
-        Debug.Log($"[HandLayoutManager] Refreshing card list on {gameObject.name}");
+        //Debug.Log($"[HandLayoutManager] Refreshing card list on {gameObject.name}");
         RefreshCardList();
-        Debug.Log($"[HandLayoutManager] Found {cardTransforms.Count} cards to layout on {gameObject.name}");
+        //Debug.Log($"[HandLayoutManager] Found {cardTransforms.Count} cards to layout on {gameObject.name}");
         
         // Skip layout if hand is empty
         if (cardTransforms.Count == 0)
         {
-            Debug.Log($"[HandLayoutManager] Skipping layout update - hand is empty on {gameObject.name}");
+            //Debug.Log($"[HandLayoutManager] Skipping layout update - hand is empty on {gameObject.name}");
             LogDebug("Skipping layout update - hand is empty");
             return;
         }
         
         if (enableLayoutAnimation && Application.isPlaying)
         {
-            Debug.Log($"[HandLayoutManager] Starting animated layout update on {gameObject.name}");
+            //Debug.Log($"[HandLayoutManager] Starting animated layout update on {gameObject.name}");
             layoutCoroutine = StartCoroutine(AnimateLayoutUpdate());
         }
         else
         {
-            Debug.Log($"[HandLayoutManager] Applying immediate layout update on {gameObject.name}");
+            //Debug.Log($"[HandLayoutManager] Applying immediate layout update on {gameObject.name}");
             ApplyLayoutImmediate();
         }
         
-        Debug.Log($"[HandLayoutManager] UpdateLayout completed on {gameObject.name}");
+        //Debug.Log($"[HandLayoutManager] UpdateLayout completed on {gameObject.name}");
     }
     
     /// <summary>
@@ -336,7 +336,7 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private void RefreshCardList()
     {
-        Debug.Log($"[HandLayoutManager] RefreshCardList called on {gameObject.name} - {transform.childCount} children");
+        //Debug.Log($"[HandLayoutManager] RefreshCardList called on {gameObject.name} - {transform.childCount} children");
         cardTransforms.Clear();
         
         // Get all child RectTransforms that have Card components
@@ -352,8 +352,8 @@ public class HandLayoutManager : MonoBehaviour
                 if (cardComponent != null)
                 {
                     cardTransforms.Add(childRect);
-                    Debug.Log($"[HandLayoutManager] Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
-                    LogDebug($"Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
+                  //  Debug.Log($"[HandLayoutManager] Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
+                  //  LogDebug($"Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
                 }
             }
         }
@@ -361,7 +361,7 @@ public class HandLayoutManager : MonoBehaviour
         // Sort by sibling index to maintain consistent order
         cardTransforms = cardTransforms.OrderBy(c => c.GetSiblingIndex()).ToList();
         
-        Debug.Log($"[HandLayoutManager] Refreshed card list: {cardTransforms.Count} cards found on {gameObject.name}");
+        //Debug.Log($"[HandLayoutManager] Refreshed card list: {cardTransforms.Count} cards found on {gameObject.name}");
         LogDebug($"Refreshed card list: {cardTransforms.Count} cards found");
     }
     
@@ -519,13 +519,13 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private IEnumerator AnimateLayoutUpdateForCards(List<RectTransform> cardsToLayout)
     {
-        Debug.Log($"[HandLayoutManager] AnimateLayoutUpdateForCards starting on {gameObject.name} with {cardsToLayout.Count} cards");
+       // Debug.Log($"[HandLayoutManager] AnimateLayoutUpdateForCards starting on {gameObject.name} with {cardsToLayout.Count} cards");
         
         CalculateCardLayoutData(cardsToLayout);
         
         if (cardsToLayout.Count == 0)
         {
-            Debug.Log($"[HandLayoutManager] No cards to animate on {gameObject.name} - ending early");
+           // Debug.Log($"[HandLayoutManager] No cards to animate on {gameObject.name} - ending early");
             layoutCoroutine = null;
             yield break;
         }
@@ -572,7 +572,7 @@ public class HandLayoutManager : MonoBehaviour
             yield return null;
         }
         
-        Debug.Log($"[HandLayoutManager] Animation loop completed on {gameObject.name} - {frameCount} frames processed");
+       // Debug.Log($"[HandLayoutManager] Animation loop completed on {gameObject.name} - {frameCount} frames processed");
         
         // Ensure final positions are exact
         foreach (var cardRect in cardsToLayout)
@@ -583,16 +583,16 @@ public class HandLayoutManager : MonoBehaviour
                 cardRect.localPosition = data.targetPosition;
                 cardRect.localScale = data.targetScale;
                 cardRect.localRotation = data.targetRotation;
-                Debug.Log($"[HandLayoutManager] Card {cardRect.name} final pos: {cardRect.localPosition}");
+              //  Debug.Log($"[HandLayoutManager] Card {cardRect.name} final pos: {cardRect.localPosition}");
             }
         }
         
-        Debug.Log($"[HandLayoutManager] AnimateLayoutUpdateForCards completed on {gameObject.name}");
+      //  Debug.Log($"[HandLayoutManager] AnimateLayoutUpdateForCards completed on {gameObject.name}");
         layoutCoroutine = null;
         
         // Force canvas update to ensure visual changes are applied (especially important on server/host)
         Canvas.ForceUpdateCanvases();
-        Debug.Log($"[HandLayoutManager] Forced canvas update on {gameObject.name}");
+       // Debug.Log($"[HandLayoutManager] Forced canvas update on {gameObject.name}");
     }
     
     /// <summary>
@@ -616,11 +616,11 @@ public class HandLayoutManager : MonoBehaviour
         if (cardTransforms.Count > 0)
         {
             ApplyLayoutImmediate();
-            LogDebug($"Forced layout update complete for {cardTransforms.Count} cards");
+           // LogDebug($"Forced layout update complete for {cardTransforms.Count} cards");
         }
         else
         {
-            LogDebug("Forced layout update skipped - hand is empty");
+           // LogDebug("Forced layout update skipped - hand is empty");
         }
     }
     
@@ -794,7 +794,7 @@ public class HandLayoutManager : MonoBehaviour
     public void EnableDebugLogging()
     {
         debugLogEnabled = true;
-        Debug.Log("[HandLayoutManager] Debug logging enabled");
+      //  Debug.Log("[HandLayoutManager] Debug logging enabled");
     }
     
     /// <summary>
@@ -804,7 +804,7 @@ public class HandLayoutManager : MonoBehaviour
     public void DisableDebugLogging()
     {
         debugLogEnabled = false;
-        Debug.Log("[HandLayoutManager] Debug logging disabled");
+       // Debug.Log("[HandLayoutManager] Debug logging disabled");
     }
     
     private void OnDrawGizmos()

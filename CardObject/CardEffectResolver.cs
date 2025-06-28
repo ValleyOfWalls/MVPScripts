@@ -366,7 +366,7 @@ public class CardEffectResolver : NetworkBehaviour
             {
                 // Replace logic: execute only alternative effect when condition is met
                 Debug.Log($"CardEffectResolver: Condition MET with Replace logic - executing alternative effect {effect.alternativeEffectType} with amount {effect.alternativeEffectAmount} INSTEAD of main effect");
-                ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, 0, ElementalType.None);
+                ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, effect.duration, effect.elementalType);
             }
             else
             {
@@ -386,7 +386,7 @@ public class CardEffectResolver : NetworkBehaviour
                 if (effect.hasAlternativeEffect && effect.alternativeLogic == AlternativeEffectLogic.Additional)
                 {
                     Debug.Log($"CardEffectResolver: Also executing additional alternative effect {effect.alternativeEffectType} with amount {effect.alternativeEffectAmount}");
-                    ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, 0, ElementalType.None);
+                    ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, effect.duration, effect.elementalType);
                 }
             }
         }
