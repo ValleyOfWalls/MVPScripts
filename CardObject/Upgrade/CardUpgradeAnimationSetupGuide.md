@@ -1,156 +1,141 @@
-# Card Upgrade Animation System Setup Guide
+# Card Upgrade Animation Setup Guide
+
+This guide walks you through setting up the card upgrade animation system that uses actual Card prefab instances to show the transition from base card to upgraded card.
 
 ## Overview
 
-This system provides dramatic upgrade animations when cards meet their upgrade criteria in combat. When a card upgrades, it will:
+The upgrade animation system consists of:
+- **CardUpgradeAnimator**: Manages the animation queue and creates temporary card instances
+- **InCombatCardReplacer**: Handles replacing cards in combat zones during fights  
+- **CardUpgradeManager**: Coordinates upgrade detection and triggers animations
 
-1. Show a large representation of the base card in the center of the screen
-2. Play a bombastic entrance animation
-3. Perform a wipe transition to the upgraded version
-4. Fade out after displaying the upgraded card
-5. Replace all instances of the card in combat zones (hand, deck, discard)
-6. Update the persistent deck with the upgraded version
+The system uses actual Card prefab instances for animations, eliminating the need for separate UI prefabs.
 
-## Setup Instructions
+## Setup Steps
 
-### 1. Generate the Upgrade Display Prefab
+### 1. CardUpgradeAnimator Setup
 
-First, you need to create the CardUpgradeDisplay prefab:
+The CardUpgradeAnimator automatically finds Card prefabs through the CardSpawner system, so no prefab setup is required.
 
-1. In Unity, go to **Tools > Card Upgrade > Generate Upgrade Display Prefab**
-2. Click **"Generate CardUpgradeDisplay Prefab"**
-3. The prefab will be created at `Assets/MVPScripts/CardObject/Upgrade/CardUpgradeDisplay.prefab`
+1. Add `CardUpgradeAnimator` component to a persistent GameObject (like GameManager)
+2. Configure animation settings:
+   - **Animation Timing**: Control duration of each animation phase
+   - **Animation Curves**: Customize easing curves for smooth transitions
+   - **Visual Effects**: Enable screen shake and transition effects
+   - **Animation Layout**: Position and scale of upgrade display cards
+   - **Audio**: Assign sound effects for upgrade events
 
-### 2. Setup the Singleton Components
+### 2. CardUpgradeManager Integration
 
-Add these components to a singleton GameObject in your scene (like GameManager):
+The CardUpgradeManager automatically triggers animations when upgrades occur:
 
-#### CardUpgradeAnimator
-- **Attach to**: A singleton GameObject (like GameManager or create a dedicated UpgradeManager)
-- **Purpose**: Manages upgrade animations, effects, and queuing
-- **Configuration**:
-  - **Card Upgrade Display Prefab**: Assign the generated CardUpgradeDisplay.prefab
-  - **Animation Timing**: Adjust durations for appear, display, transition, etc.
-  - **Audio**: Assign sound effects for upgrade start, transition, and complete
-  - **Visual Effects**: Enable/disable screen shake, set intensity
+1. Add `CardUpgradeManager` component to a persistent NetworkBehaviour GameObject
+2. The system will automatically detect CardSpawners and use their Card prefabs for animations
 
-#### InCombatCardReplacer
-- **Attach to**: Same singleton GameObject as CardUpgradeAnimator
-- **Purpose**: Handles replacing cards in all combat zones during a fight
-- **No configuration needed**: Works automatically
+### 3. CardSpawner Requirements
 
-### 3. Verify Integration
+Ensure all entities that can upgrade cards have CardSpawner components:
+- Player hand entities need CardSpawner with Card prefab assigned
+- Pet hand entities need CardSpawner with Card prefab assigned
 
-The system automatically integrates with the existing `CardUpgradeManager`. When a card meets its upgrade criteria:
+The Card prefab should have all standard Card components (Card, NetworkObject, UI elements).
 
-1. `CardUpgradeManager` detects the upgrade condition
-2. Queues the upgrade animation via `CardUpgradeAnimator`
-3. Shows the animation sequence
-4. Replaces cards in combat via `InCombatCardReplacer`
-5. Updates the persistent deck via `NetworkEntityDeck`
-
-## Component Descriptions
+## Component Details
 
 ### CardUpgradeAnimator
 
 **Location**: `CardObject/Upgrade/CardUpgradeAnimator.cs`
 
 **Key Features**:
-- **Animation Queuing**: Multiple upgrades are queued and played sequentially
-- **Timing Control**: Configurable durations for each animation phase
-- **Visual Effects**: Screen shake, scale animations, fade effects
-- **Audio Integration**: Sound effects for different animation phases
-- **Game Pause**: Optionally pause the game during upgrade animations
+- **Automatic Card Discovery**: Finds Card prefabs through entity CardSpawners
+- **Local Instance Creation**: Creates non-networked copies for animation purposes
+- **Component Cleanup**: Removes NetworkObject, drag/drop, and collider components from animation instances
+- **Animation Phases**: Appear → Display Base → Transition → Display Upgraded → Fade Out
+- **Visual Effects**: Screen shake, scale effects, and smooth transitions
 
-**Inspector Settings**:
-- **Animation Timing**: Control how long each phase lasts
-- **Animation Curves**: Customize the feel of scale and fade animations
-- **Visual Effects**: Toggle screen shake and adjust intensity
-- **Audio**: Assign sound clips for different events
-- **Prefab Reference**: Must be assigned to the CardUpgradeDisplay prefab
+**Configuration**:
+- **Animation Layout**: Position, scale, and separation of cards during animation
+- **Visual Effects**: Screen shake intensity and transition effects
+- **Audio**: Sound effects for different animation phases
 
-### CardUpgradeUIController
-
-**Location**: `CardObject/Upgrade/CardUpgradeUIController.cs`
-
-**Purpose**: Manages the UI elements of the upgrade display
-- Displays card information (name, description, artwork, effects)
-- Handles the wipe transition effect
-- Updates card visuals based on card data
-
-**Attachment**: Automatically added to the CardUpgradeDisplay prefab
-
-### InCombatCardReplacer
+### InCombatCardReplacer  
 
 **Location**: `CardObject/Upgrade/InCombatCardReplacer.cs`
 
-**Purpose**: Replaces cards in all combat zones (hand, deck, discard pile)
-- Finds all instances of the base card
-- Updates them with the upgraded version
-- Preserves card state and position
-- Supports upgrading all copies or just one
+**Purpose**: Replaces actual card instances in combat zones (hand, deck, discard)
 
-**Key Methods**:
-- `ReplaceCardInAllZones()`: Main entry point for card replacement
-- `FindAllCardInstances()`: Locates cards across all zones
-- `UpdateCardInstance()`: Updates individual card data
+**Key Features**:
+- Finds all card instances with specific IDs across all combat zones
+- Supports upgrading single cards or all copies
+- Maintains card positions and states during replacement
+- Validates replacements before executing
 
-## Animation Sequence
+### CardUpgradeManager
 
-When a card upgrade is triggered:
+**Location**: `CardObject/CardUpgradeManager.cs`  
 
-1. **Queueing**: Upgrade is added to the animation queue
-2. **Appear** (0.5s): Card scales in from zero with fade
-3. **Display Base** (1.0s): Shows the original card
-4. **Transition** (0.8s): Wipe effect covers and reveals upgraded card
-5. **Display Upgraded** (1.5s): Shows the new card with completion sound
-6. **Fade Out** (0.5s): Card fades away (only if this is the last queued animation)
-7. **Card Replacement**: Updates all card instances in combat and persistent deck
+**Purpose**: Detects upgrade conditions and coordinates the upgrade process
 
-## Advanced Configuration
+**Key Features**:
+- Monitors gameplay events for upgrade condition triggers
+- Queues animations through CardUpgradeAnimator
+- Handles both in-combat and persistent deck upgrades
+- Tracks upgrade progress and completion
 
-### Custom Animation Curves
+## Animation Flow
 
-The `CardUpgradeAnimator` uses animation curves for smooth transitions:
-- **Scale In Curve**: Controls how the card scales during appearance
-- **Fade In Curve**: Controls alpha fade during appearance
-- **Shake Intensity Curve**: Controls screen shake intensity over time
-
-### Audio Integration
-
-Assign audio clips for:
-- **Upgrade Start Sound**: Played when animation begins
-- **Transition Sound**: Played during the wipe effect
-- **Upgrade Complete Sound**: Played when showing the upgraded card
-
-### Visual Customization
-
-The `CardUpgradeUIController` automatically formats cards based on their properties:
-- Card background color changes based on card type
-- Stats are displayed only if relevant (damage, shield, etc.)
-- Effects are listed in human-readable format
+1. **Trigger**: CardUpgradeManager detects met upgrade condition
+2. **Queue**: Animation queued in CardUpgradeAnimator
+3. **Setup**: Temporary Card instances created from CardSpawner prefabs
+4. **Animate**: Base card appears → transition effect → upgraded card revealed
+5. **Execute**: InCombatCardReplacer updates actual game cards
+6. **Cleanup**: Temporary animation instances destroyed
 
 ## Troubleshooting
 
 ### Animation Not Playing
-- Ensure `CardUpgradeAnimator.Instance` is not null
-- Check that the CardUpgradeDisplay prefab is assigned
-- Verify the singleton is properly initialized
+- Check that CardUpgradeAnimator.Instance is available
+- Verify that CardSpawner exists on the entity or its hand entity
+- Ensure Card prefab is assigned in CardSpawner
 
-### Cards Not Replacing in Combat
-- Ensure `InCombatCardReplacer.Instance` is not null
-- Check that the entity has a `RelationshipManager` with a valid `HandEntity`
-- Verify the `HandManager` has proper transform references
+### Cards Not Upgrading in Combat
+- Verify InCombatCardReplacer.Instance is available
+- Check that card instances exist in expected locations (hand/deck/discard)
+- Confirm CardDatabase has the upgraded card data
 
-### UI Elements Missing
-- Regenerate the CardUpgradeDisplay prefab using the editor tool
-- Check that all UI references in `CardUpgradeUIController` are assigned
-- Ensure TextMeshPro is imported in the project
+### Visual Issues
+- Check Animation Layout settings in CardUpgradeAnimator
+- Verify Card prefab has proper UI components (nameText, artworkImage, etc.)
+- Ensure camera is properly positioned to see upgrade display area
 
-### Performance Issues
-- Reduce animation durations if needed
-- Disable screen shake for lower-end devices
-- Consider reducing the number of simultaneous upgrades
+### Network Issues
+- Animation uses local-only instances, so no network setup required
+- Actual card replacements are handled by existing network systems
+- Only the upgrade trigger needs to be networked (handled by CardUpgradeManager)
+
+## Customization
+
+### Animation Timing
+Adjust durations in CardUpgradeAnimator:
+- `appearDuration`: How long base card takes to appear
+- `displayBaseDuration`: How long to show base card
+- `transitionDuration`: Duration of card transition effect  
+- `displayUpgradedDuration`: How long to show upgraded card
+- `fadeOutDuration`: How long cards take to fade out
+
+### Visual Effects
+Customize in CardUpgradeAnimator:
+- `upgradeDisplayPosition`: World position for upgrade display
+- `cardScale`: Size of cards during animation
+- `cardSeparation`: Distance between base and upgraded cards
+- `enableScreenShake`: Toggle camera shake effect
+- `shakeIntensity`: Strength of camera shake
+
+### Audio
+Assign audio clips in CardUpgradeAnimator:
+- `upgradeStartSound`: Played when base card appears
+- `transitionSound`: Played during card transition  
+- `upgradeCompleteSound`: Played when upgraded card appears
 
 ## Example Usage
 

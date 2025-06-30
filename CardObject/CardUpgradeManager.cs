@@ -1367,6 +1367,17 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void QueueUpgrade(CardData cardData, Card card, NetworkEntity entity)
     {
+        // Check for duplicate upgrades to prevent the same card being upgraded multiple times
+        bool alreadyQueued = immediateUpgrades.Any(upgrade => 
+            upgrade.baseCardData.CardId == cardData.CardId && 
+            upgrade.entity == entity);
+            
+        if (alreadyQueued)
+        {
+            Debug.LogWarning($"[CARD_UPGRADE] Upgrade for {cardData.CardName} on {entity.name} already queued - skipping duplicate");
+            return;
+        }
+
         var queuedUpgrade = new QueuedUpgrade
         {
             baseCardData = cardData,
@@ -1379,7 +1390,7 @@ public class CardUpgradeManager : NetworkBehaviour
         // Queue for immediate processing (only timing type supported)
         immediateUpgrades.Add(queuedUpgrade);
         
-        Debug.Log($"CardUpgradeManager: Queued immediate upgrade for {cardData.CardName} -> {cardData.UpgradedVersion.CardName}");
+        Debug.Log($"[CARD_UPGRADE] Queued immediate upgrade for {cardData.CardName} -> {cardData.UpgradedVersion.CardName}");
     }
     
     /// <summary>
@@ -1387,8 +1398,11 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void ProcessImmediateUpgrades()
     {
+        Debug.Log($"[CARD_UPGRADE] ProcessImmediateUpgrades: Processing {immediateUpgrades.Count} queued upgrades");
+        
         foreach (var upgrade in immediateUpgrades)
         {
+            Debug.Log($"[CARD_UPGRADE] Processing upgrade: {upgrade.baseCardData?.CardName} -> {upgrade.upgradedCardData?.CardName}");
             ExecuteUpgrade(upgrade);
         }
         immediateUpgrades.Clear();
@@ -1401,14 +1415,18 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void ExecuteUpgrade(QueuedUpgrade upgrade)
     {
+        Debug.Log($"[CARD_UPGRADE] ExecuteUpgrade called for {upgrade.baseCardData?.CardName} -> {upgrade.upgradedCardData?.CardName}");
+        
         if (upgrade.card?.CardData == null || upgrade.entity == null || upgrade.baseCardData == null || upgrade.upgradedCardData == null)
         {
-            Debug.LogError("CardUpgradeManager: Cannot execute upgrade - missing card data or entity");
+            Debug.LogError($"[CARD_UPGRADE] Cannot execute upgrade - missing data: card={upgrade.card?.CardData != null}, entity={upgrade.entity != null}, baseCard={upgrade.baseCardData != null}, upgradedCard={upgrade.upgradedCardData != null}");
             return;
         }
         
         int cardId = upgrade.card.CardData.CardId;
         int entityId = upgrade.entity.ObjectId;
+        
+        Debug.Log($"[CARD_UPGRADE] Executing upgrade for card ID {cardId}, entity ID {entityId}");
         
         // Mark as upgraded
         if (!upgradedCardsThisFight.ContainsKey(entityId))
@@ -1417,9 +1435,13 @@ public class CardUpgradeManager : NetworkBehaviour
         }
         upgradedCardsThisFight[entityId].Add(cardId);
         
+        // Check if CardUpgradeAnimator instance exists
+        Debug.Log($"[CARD_UPGRADE] CardUpgradeAnimator.Instance = {CardUpgrade.CardUpgradeAnimator.Instance != null}");
+        
         // Queue upgrade animation, which will handle both in-combat and persistent upgrades
         if (CardUpgrade.CardUpgradeAnimator.Instance != null)
         {
+            Debug.Log($"[CARD_UPGRADE] Calling QueueUpgradeAnimation for {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName}");
             CardUpgrade.CardUpgradeAnimator.Instance.QueueUpgradeAnimation(
                 upgrade.baseCardData, 
                 upgrade.upgradedCardData, 

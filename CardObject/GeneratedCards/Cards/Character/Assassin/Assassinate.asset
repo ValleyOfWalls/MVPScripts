@@ -52,7 +52,7 @@ MonoBehaviour:
   _canAlsoTargetSelf: 0
   _canAlsoTargetAllies: 0
   _canAlsoTargetOpponent: 0
-  _upgradedVersion: {fileID: 0}
+  _upgradedVersion: {fileID: 11400000, guid: 63c9aa755f300d940a63aab5e1d80091, type: 2}
   _trackPlayCount: 1
   _trackDamageHealing: 1
   _canUpgrade: 1
