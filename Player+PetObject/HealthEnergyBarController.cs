@@ -3,7 +3,16 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Controls health and energy bars using a mask-based system where the bar image shrinks from right to left.
+/// Direction that the bar fills/empties
+/// </summary>
+public enum BarDirection
+{
+    LeftToRight,    // Bar fills from left to right (shrinks from right when losing value)
+    RightToLeft     // Bar fills from right to left (shrinks from left when losing value)
+}
+
+/// <summary>
+/// Controls health and energy bars using a mask-based system that supports both left-to-right and right-to-left directions.
 /// Attach to: The parent GameObject containing the health/energy bar UI elements.
 /// </summary>
 public class HealthEnergyBarController : MonoBehaviour
@@ -13,12 +22,14 @@ public class HealthEnergyBarController : MonoBehaviour
     [SerializeField] private Image healthBarFillImage;
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private float healthBarWidth = 200f; // Full width of the health bar
+    [SerializeField] private BarDirection healthBarDirection = BarDirection.LeftToRight;
     
     [Header("Energy Bar Configuration")]
     [SerializeField] private RectTransform energyBarFill;
     [SerializeField] private Image energyBarFillImage;
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private float energyBarWidth = 200f; // Full width of the energy bar
+    [SerializeField] private BarDirection energyBarDirection = BarDirection.LeftToRight;
     
     [Header("Animation Settings")]
     [SerializeField] private bool useAnimation = true;
@@ -298,9 +309,18 @@ public class HealthEnergyBarController : MonoBehaviour
         sizeDelta.x = width;
         healthBarFill.sizeDelta = sizeDelta;
         
-        // Keep it anchored to the left so it shrinks from the right
+        // Set anchor position based on bar direction
         Vector2 anchoredPosition = healthBarFill.anchoredPosition;
-        anchoredPosition.x = 0; // Always anchor to left
+        if (healthBarDirection == BarDirection.LeftToRight)
+        {
+            // Anchor to left so it shrinks from the right
+            anchoredPosition.x = 0;
+        }
+        else // RightToLeft
+        {
+            // Anchor to right so it shrinks from the left
+            anchoredPosition.x = healthBarWidth - width;
+        }
         healthBarFill.anchoredPosition = anchoredPosition;
     }
     
@@ -316,9 +336,18 @@ public class HealthEnergyBarController : MonoBehaviour
         sizeDelta.x = width;
         energyBarFill.sizeDelta = sizeDelta;
         
-        // Keep it anchored to the left so it shrinks from the right
+        // Set anchor position based on bar direction
         Vector2 anchoredPosition = energyBarFill.anchoredPosition;
-        anchoredPosition.x = 0; // Always anchor to left
+        if (energyBarDirection == BarDirection.LeftToRight)
+        {
+            // Anchor to left so it shrinks from the right
+            anchoredPosition.x = 0;
+        }
+        else // RightToLeft
+        {
+            // Anchor to right so it shrinks from the left
+            anchoredPosition.x = energyBarWidth - width;
+        }
         energyBarFill.anchoredPosition = anchoredPosition;
     }
     
@@ -337,6 +366,42 @@ public class HealthEnergyBarController : MonoBehaviour
         energyBarColor = color;
         if (energyBarFillImage != null)
             energyBarFillImage.color = color;
+    }
+    
+    /// <summary>
+    /// Sets the direction for the health bar
+    /// </summary>
+    public void SetHealthBarDirection(BarDirection direction)
+    {
+        healthBarDirection = direction;
+        // Force update to apply new direction
+        UpdateHealthBarWidth(healthCurrentWidth);
+    }
+    
+    /// <summary>
+    /// Sets the direction for the energy bar
+    /// </summary>
+    public void SetEnergyBarDirection(BarDirection direction)
+    {
+        energyBarDirection = direction;
+        // Force update to apply new direction
+        UpdateEnergyBarWidth(energyCurrentWidth);
+    }
+    
+    /// <summary>
+    /// Gets the current health bar direction
+    /// </summary>
+    public BarDirection GetHealthBarDirection()
+    {
+        return healthBarDirection;
+    }
+    
+    /// <summary>
+    /// Gets the current energy bar direction
+    /// </summary>
+    public BarDirection GetEnergyBarDirection()
+    {
+        return energyBarDirection;
     }
     
     /// <summary>

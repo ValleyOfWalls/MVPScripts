@@ -662,11 +662,20 @@ public class TextStyleHandler : MonoBehaviour
     }
     
     /// <summary>
+    /// Generic method to get text components based on a condition
+    /// </summary>
+    private TextMeshProUGUI[] GetTextByCondition(System.Func<TextStyleEntry, bool> condition)
+    {
+        return textStyles.Where(entry => entry.textComponent != null && condition(entry))
+                        .Select(entry => entry.textComponent).ToArray();
+    }
+    
+    /// <summary>
     /// Get list of all managed text components
     /// </summary>
     public TextMeshProUGUI[] GetAllManagedText()
     {
-        return textStyles.Where(entry => entry.textComponent != null).Select(entry => entry.textComponent).ToArray();
+        return GetTextByCondition(_ => true);
     }
     
     /// <summary>
@@ -674,7 +683,7 @@ public class TextStyleHandler : MonoBehaviour
     /// </summary>
     public TextMeshProUGUI[] GetTextWithReliableMenuText()
     {
-        return textStyles.Where(entry => entry.textComponent != null && entry.hasReliableMenuText).Select(entry => entry.textComponent).ToArray();
+        return GetTextByCondition(entry => entry.hasReliableMenuText);
     }
     
     /// <summary>
@@ -682,7 +691,7 @@ public class TextStyleHandler : MonoBehaviour
     /// </summary>
     public TextMeshProUGUI[] GetTextNeedingUpdate()
     {
-        return textStyles.Where(entry => entry.textComponent != null && entry.needsUpdate).Select(entry => entry.textComponent).ToArray();
+        return GetTextByCondition(entry => entry.needsUpdate);
     }
     
     /// <summary>

@@ -157,7 +157,7 @@ public class CardDatabase : MonoBehaviour
     /// <returns>List of random draftable cards, potentially with duplicates</returns>
     public List<CardData> GetRandomCardsWithDuplicates(int count)
     {
-        return GetRandomDraftableCardsWithDuplicates(count);
+        return GetRandomCardsFromList(draftableCardsList, count, true);
     }
 
     /// <summary>
@@ -167,24 +167,7 @@ public class CardDatabase : MonoBehaviour
     /// <returns>List of random draftable cards, potentially with duplicates</returns>
     public List<CardData> GetRandomDraftableCardsWithDuplicates(int count)
     {
-        if (count <= 0) return new List<CardData>();
-        
-        if (draftableCardsList.Count == 0)
-        {
-            Debug.LogWarning("CardDatabase: No draftable cards available to select from. Make sure draftable cards are assigned in the Inspector.");
-            return new List<CardData>();
-        }
-        
-        List<CardData> result = new List<CardData>();
-        
-        // Select random cards allowing duplicates
-        for (int i = 0; i < count; i++)
-        {
-            int randomIndex = Random.Range(0, draftableCardsList.Count);
-            result.Add(draftableCardsList[randomIndex]);
-        }
-        
-        return result;
+        return GetRandomCardsFromList(draftableCardsList, count, true);
     }
 
     /// <summary>
@@ -194,24 +177,7 @@ public class CardDatabase : MonoBehaviour
     /// <returns>List of random starter cards, potentially with duplicates</returns>
     public List<CardData> GetRandomStarterCardsWithDuplicates(int count)
     {
-        if (count <= 0) return new List<CardData>();
-        
-        if (starterCardsList.Count == 0)
-        {
-            Debug.LogWarning("CardDatabase: No starter cards available to select from.");
-            return new List<CardData>();
-        }
-        
-        List<CardData> result = new List<CardData>();
-        
-        // Select random cards allowing duplicates
-        for (int i = 0; i < count; i++)
-        {
-            int randomIndex = Random.Range(0, starterCardsList.Count);
-            result.Add(starterCardsList[randomIndex]);
-        }
-        
-        return result;
+        return GetRandomCardsFromList(starterCardsList, count, true);
     }
 
     /// <summary>
@@ -223,7 +189,10 @@ public class CardDatabase : MonoBehaviour
         
         if (sourceList.Count == 0)
         {
-            Debug.LogWarning("CardDatabase: Source list is empty.");
+            string listType = sourceList == draftableCardsList ? "draftable cards" :
+                             sourceList == starterCardsList ? "starter cards" :
+                             sourceList == upgradedCardsList ? "upgraded cards" : "cards";
+            Debug.LogWarning($"CardDatabase: No {listType} available to select from. Make sure cards are assigned in the Inspector.");
             return new List<CardData>();
         }
         

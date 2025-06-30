@@ -113,14 +113,14 @@ public class CardTracker : NetworkBehaviour
     }
 
     /// <summary>
-    /// Counts cards with the same name in hand
+    /// Generic method to count cards with a specific name in any card collection
     /// </summary>
-    private int CountCardsInHand(HandManager handManager, string cardName)
+    private int CountCardsWithNameInCollection(List<GameObject> cardCollection, string cardName)
     {
-        int count = 0;
-        List<GameObject> cardsInHand = handManager.GetCardsInHand();
+        if (cardCollection == null) return 0;
         
-        foreach (GameObject cardObj in cardsInHand)
+        int count = 0;
+        foreach (GameObject cardObj in cardCollection)
         {
             Card cardComponent = cardObj.GetComponent<Card>();
             if (cardComponent?.CardData != null && cardComponent.CardData.CardName == cardName)
@@ -128,8 +128,15 @@ public class CardTracker : NetworkBehaviour
                 count++;
             }
         }
-        
         return count;
+    }
+
+    /// <summary>
+    /// Counts cards with the same name in hand
+    /// </summary>
+    private int CountCardsInHand(HandManager handManager, string cardName)
+    {
+        return CountCardsWithNameInCollection(handManager.GetCardsInHand(), cardName);
     }
 
     /// <summary>
@@ -137,19 +144,7 @@ public class CardTracker : NetworkBehaviour
     /// </summary>
     private int CountCardsInDiscard(HandManager handManager, string cardName)
     {
-        int count = 0;
-        List<GameObject> cardsInDiscard = handManager.GetCardsInDiscard();
-        
-        foreach (GameObject cardObj in cardsInDiscard)
-        {
-            Card cardComponent = cardObj.GetComponent<Card>();
-            if (cardComponent?.CardData != null && cardComponent.CardData.CardName == cardName)
-            {
-                count++;
-            }
-        }
-        
-        return count;
+        return CountCardsWithNameInCollection(handManager.GetCardsInDiscard(), cardName);
     }
 
     /// <summary>
