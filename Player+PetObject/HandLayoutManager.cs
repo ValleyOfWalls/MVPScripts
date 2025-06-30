@@ -231,6 +231,13 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     public void UpdateLayoutWithDebounce()
     {
+        // Check ownership to prevent duplicate updates on host/client machines
+        if (!ShouldProcessLayoutUpdate())
+        {
+            LogDebug("Skipping UpdateLayoutWithDebounce - not owned by local client");
+            return;
+        }
+        
         // Check if enough time has passed since last update to prevent spam
         float currentTime = Time.time;
         if (currentTime - lastLayoutUpdateTime < LAYOUT_UPDATE_DEBOUNCE_TIME)
@@ -248,6 +255,13 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     public void RequestLayoutUpdate()
     {
+        // Check ownership to prevent duplicate updates on host/client machines
+        if (!ShouldProcessLayoutUpdate())
+        {
+            LogDebug("Skipping RequestLayoutUpdate - not owned by local client");
+            return;
+        }
+        
         // Only update if initialized and we have cards
         if (!isInitialized)
         {
@@ -272,6 +286,13 @@ public class HandLayoutManager : MonoBehaviour
     public void UpdateLayout()
     {
         //Debug.Log($"[HandLayoutManager] UpdateLayout called on {gameObject.name}");
+        
+        // Check ownership to prevent duplicate updates on host/client machines
+        if (!ShouldProcessLayoutUpdate())
+        {
+            LogDebug("Skipping UpdateLayout - not owned by local client");
+            return;
+        }
         
         // Update debounce timestamp
         lastLayoutUpdateTime = Time.time;
@@ -314,6 +335,13 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private void UpdateLayoutExcludingCard(RectTransform excludedCard)
     {
+        // Check ownership to prevent duplicate updates on host/client machines
+        if (!ShouldProcessLayoutUpdate())
+        {
+            LogDebug("Skipping UpdateLayoutExcludingCard - not owned by local client");
+            return;
+        }
+        
         if (layoutCoroutine != null)
         {
             StopCoroutine(layoutCoroutine);
@@ -596,32 +624,41 @@ public class HandLayoutManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Force updates layout immediately (useful for external calls)
+    /// Forces an immediate layout update without debouncing
+    /// Used when we need to ensure layout is updated immediately
     /// </summary>
     public void ForceUpdateLayout()
     {
-        // Update debounce timestamp since this is a forced update
-        lastLayoutUpdateTime = Time.time;
+        // Check ownership to prevent duplicate updates on host/client machines
+        if (!ShouldProcessLayoutUpdate())
+        {
+            LogDebug("Skipping ForceUpdateLayout - not owned by local client");
+            return;
+        }
         
+        // Stop any running layout animation
         if (layoutCoroutine != null)
         {
             StopCoroutine(layoutCoroutine);
-            layoutCoroutine = null;
         }
         
-        // Refresh card list before applying layout
+        // Refresh card list to ensure we have the latest state
         RefreshCardList();
         
-        // Only apply layout if we have cards
-        if (cardTransforms.Count > 0)
+        // Skip layout if hand is empty
+        if (cardTransforms.Count == 0)
         {
-            ApplyLayoutImmediate();
-           // LogDebug($"Forced layout update complete for {cardTransforms.Count} cards");
+            LogDebug("Skipping force layout update - hand is empty");
+            return;
         }
-        else
-        {
-           // LogDebug("Forced layout update skipped - hand is empty");
-        }
+        
+        // Apply layout immediately regardless of animation settings
+        ApplyLayoutImmediate();
+        
+        // Update timestamp
+        lastLayoutUpdateTime = Time.time;
+        
+        LogDebug("Forced immediate layout update completed");
     }
     
     /// <summary>
@@ -750,12 +787,47 @@ public class HandLayoutManager : MonoBehaviour
             return;
         }
         
+        // Check ownership to prevent duplicate updates on host/client machines
+        if (!ShouldProcessLayoutUpdate())
+        {
+            LogDebug("Skipping OnTransformChildrenChanged - not owned by local client");
+            return;
+        }
+        
         // Delay update slightly to ensure all changes are processed
         if (!layoutUpdatePending)
         {
             layoutUpdatePending = true;
             StartCoroutine(DelayedLayoutUpdate());
         }
+    }
+    
+    /// <summary>
+    /// Checks if this HandLayoutManager should process layout updates.
+    /// Prevents duplicate updates on host/client machines by checking ownership.
+    /// </summary>
+    private bool ShouldProcessLayoutUpdate()
+    {
+        // Find the NetworkEntity that contains this HandLayoutManager
+        // HandLayoutManager is attached to the hand transform, which is part of a Hand entity
+        NetworkEntity handEntity = GetComponentInParent<NetworkEntity>();
+        
+        if (handEntity == null)
+        {
+            // If no NetworkEntity found, allow the update (non-networked scenario)
+            LogDebug("No NetworkEntity found - allowing layout update (non-networked)");
+            return true;
+        }
+        
+        // Only process layout updates for local player entities (prevent double updates on host/client)
+        if (!handEntity.IsOwner)
+        {
+            LogDebug($"Skipping layout update for non-local hand entity {handEntity.name} (IsOwner: {handEntity.IsOwner})");
+            return false;
+        }
+        
+        LogDebug($"Processing layout update for local hand entity {handEntity.name}");
+        return true;
     }
     
     private IEnumerator DelayedLayoutUpdate()
