@@ -449,9 +449,9 @@ public class DeckPreviewController : MonoBehaviour
             if (cardCounts.ContainsKey(cardName))
             {
                 cardCounts[cardName].count++;
-            }
-            else
-            {
+        }
+        else
+        {
                 cardCounts[cardName] = new CardSummaryData
                 {
                     cardData = card,
@@ -870,7 +870,7 @@ public class DeckPreviewController : MonoBehaviour
             Debug.LogWarning("DeckPreviewController: Cannot setup hover - item or summaryObject is null");
             return;
         }
-        
+            
         // Validate that the canvas has a GraphicRaycaster for hover detection
         ValidateCanvasForHoverDetection(item.summaryObject);
         
@@ -960,7 +960,7 @@ public class DeckPreviewController : MonoBehaviour
             Debug.LogWarning("DeckPreviewController: Cannot show tooltip - cardData is null");
             return;
         }
-        
+            
         // Show tooltip immediately if no delay, otherwise use delay
         if (tooltipShowDelay <= 0f)
         {
@@ -1094,14 +1094,14 @@ public class DeckPreviewController : MonoBehaviour
             Debug.Log("DeckPreviewController: Removing NetworkObject from tooltip card");
             DestroyImmediate(networkObject);
         }
-
+        
         FishNet.Component.Transforming.NetworkTransform networkTransform = tooltipCard.GetComponent<FishNet.Component.Transforming.NetworkTransform>();
         if (networkTransform != null)
         {
             Debug.Log("DeckPreviewController: Removing NetworkTransform from tooltip card");
             DestroyImmediate(networkTransform);
         }
-
+        
         // Initialize the card AFTER disabling components
         Card cardComponent = tooltipCard.GetComponent<Card>();
         if (cardComponent != null)
@@ -1132,7 +1132,7 @@ public class DeckPreviewController : MonoBehaviour
         {
             dragDrop.enabled = false;
         }
-
+        
         Collider2D cardCollider = tooltipCard.GetComponent<Collider2D>();
         if (cardCollider != null)
         {
@@ -1478,11 +1478,11 @@ public class DeckPreviewController : MonoBehaviour
     }
     
     #endregion
-}
-
-/// <summary>
+    }
+    
+    /// <summary>
 /// Component for detecting hover events on card summary items
-/// </summary>
+    /// </summary>
 public class CardSummaryHoverDetector : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
     private CardData cardData;

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using FishNet.Object;
 using FishNet.Connection;
+using CharacterSelection;
 
 /// <summary>
 /// Manages the character selection UI interactions with Mario Kart-style shared selection grids.
@@ -47,6 +48,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     [Header("Selected Portrait Display")]
     [SerializeField] private Transform selectedCharacterPortraitParent; // Parent transform where selected character portrait prefab will be instantiated
     [SerializeField] private Transform selectedPetPortraitParent; // Parent transform where selected pet portrait prefab will be instantiated
+    
+    [Header("Formation Management")]
+    [SerializeField] private OtherPlayersFormationManager formationManager;
     
     [Header("Styling")]
     [SerializeField] private Color selectedColor = new Color(0.3f, 0.6f, 1f, 1f);
@@ -297,6 +301,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         uiAnimator.OnModelTransitionStarted += OnModelTransitionStarted;
         uiAnimator.OnModelTransitionCompleted += OnModelTransitionCompleted;
         
+        // DON'T initialize formation manager here - wait until after UIAnimator.Initialize() is called
+        // SetupFormationManager(); // MOVED to FinalizeUIAnimatorSetup()
+        
         // Validate grid parent references before setting them
         ValidateGridParentReferences();
         
@@ -309,13 +316,50 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         /* Debug.Log("CharacterSelectionUIManager: UI Animator created and basic setup complete"); */
     }
     
+    private void SetupFormationManager()
+    {
+        // Get or create the formation manager component
+        if (formationManager == null)
+        {
+            formationManager = GetComponent<OtherPlayersFormationManager>();
+            if (formationManager == null)
+            {
+                formationManager = gameObject.AddComponent<OtherPlayersFormationManager>();
+                Debug.Log("CharacterSelectionUIManager: Created new OtherPlayersFormationManager component");
+            }
+        }
+        
+        // Initialize formation manager if we have the required dependencies
+        if (selectedModelSpawn != null && selectionManager != null)
+        {
+            string playerID = GetPlayerID();
+            
+            formationManager.Initialize(
+                selectedModelSpawn, 
+                selectionManager, 
+                playerID
+            );
+            
+            Debug.Log($"CharacterSelectionUIManager: Formation manager initialized for player {playerID} with per-slot animation system (complete isolation from local player)");
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionUIManager: Cannot initialize formation manager - missing dependencies");
+            Debug.LogWarning($"  - selectedModelSpawn: {selectedModelSpawn?.name ?? "NULL"}");
+            Debug.LogWarning($"  - selectionManager: {selectionManager?.name ?? "NULL"}");
+        }
+    }
+    
     private void FinalizeUIAnimatorSetup()
     {
         // Initialize the animator with panel references (get shared deck panel from deck preview controller)
         GameObject deckPreviewPanel = deckPreviewController?.GetDeckPreviewPanel();
         uiAnimator.Initialize(playerListPanel, deckPreviewPanel);
         
-        Debug.Log("CharacterSelectionUIManager: UI Animator fully initialized with shared deck panel reference");
+        // NOW initialize formation manager after UIAnimator is fully set up (ModelDissolveAnimator is ready)
+        SetupFormationManager();
+        
+        Debug.Log("CharacterSelectionUIManager: UI Animator fully initialized with shared deck panel reference and formation manager set up");
     }
     
     private void InitializeDeckPreviewController()
@@ -1152,6 +1196,13 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         {
             deckPreviewController.ClearAllDeckPreviews();
             Debug.Log("[CHAR_SELECT_REVAMP] Cleared all deck preview cards");
+        }
+        
+        // Clean up formation models
+        if (formationManager != null)
+        {
+            formationManager.CleanupFormation();
+            Debug.Log("[CHAR_SELECT_REVAMP] Cleaned up formation models");
         }
         
         // Cleanup character portrait buttons
@@ -2504,6 +2555,12 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         
         // Always store the latest player info for when panel becomes visible
         latestPlayerInfos = new List<PlayerSelectionInfo>(playerInfos);
+        
+        // NEW: Update formation with other players' models
+        if (formationManager != null)
+        {
+            formationManager.UpdateFormation(playerInfos, myPlayerID);
+        }
         
         // Update player list panel if visible
         if (uiAnimator != null && uiAnimator.IsPlayerListVisible)
