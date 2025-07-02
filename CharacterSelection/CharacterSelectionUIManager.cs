@@ -42,6 +42,10 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     [Header("Model Spawning")]
     [SerializeField] private Transform selectedModelSpawn; // Shared location for both character and pet models
     
+    [Header("Selected Portrait Display")]
+    [SerializeField] private Transform selectedCharacterPortraitParent; // Parent transform where selected character portrait prefab will be instantiated
+    [SerializeField] private Transform selectedPetPortraitParent; // Parent transform where selected pet portrait prefab will be instantiated
+    
     [Header("Styling")]
     [SerializeField] private Color selectedColor = new Color(0.3f, 0.6f, 1f, 1f);
     [SerializeField] private Color unselectedColor = new Color(0.5f, 0.5f, 0.5f, 1f);
@@ -80,6 +84,10 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     // Spawned models
     private GameObject currentCharacterModel;
     private GameObject currentPetModel;
+    
+    // Selected portrait display objects (instantiated from selectionItemPrefab)
+    private GameObject selectedCharacterPortraitObject;
+    private GameObject selectedPetPortraitObject;
     
     // UI element lists
     private List<GameObject> playerListItems = new List<GameObject>();
@@ -148,7 +156,10 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         Debug.Log("[CHAR_SELECT_REVAMP] Creating portrait button grids...");
         CreatePortraitButtonGrids();
         
-        Debug.Log("[CHAR_SELECT_REVAMP] Making default selections (this will trigger model spawning)...");
+        Debug.Log("[CHAR_SELECT_REVAMP] Initializing selected portraits display...");
+        InitializeSelectedPortraitsDisplay();
+        
+        Debug.Log("[CHAR_SELECT_REVAMP] Making default selections (this will trigger model spawning and portrait display)...");
         MakeDefaultSelections();
         
         Debug.Log("[CHAR_SELECT_REVAMP] Updating ready button state...");
@@ -552,24 +563,37 @@ public class CharacterSelectionUIManager : NetworkBehaviour
          
          Debug.Log($"[CHAR_SELECT_REVAMP] Character selection changed to {availableCharacters[characterIndex].CharacterName}");
          
-         // Update selection
-         selectedCharacterIndex = characterIndex;
-         
-         // Request model transition (don't create model immediately - let animation system handle it)
-         RequestCharacterModelTransition(characterIndex);
-         
-         // Update visual selection
-         UpdateMySelectionVisuals();
-         
-         // Update deck preview
-         if (deckPreviewController != null)
+         try
          {
-             deckPreviewController.SetCurrentCharacterIndex(characterIndex);
-             deckPreviewController.ShowCharacterDeck(characterIndex, isReady);
+             // Update selection
+             selectedCharacterIndex = characterIndex;
+             Debug.Log($"[CHAR_SELECT_REVAMP] Set selectedCharacterIndex to {selectedCharacterIndex}");
+             
+             // Request model transition (don't create model immediately - let animation system handle it)
+             RequestCharacterModelTransition(characterIndex);
+             Debug.Log($"[CHAR_SELECT_REVAMP] Completed character model transition request");
+             
+             // Update visual selection
+             UpdateMySelectionVisuals();
+             Debug.Log($"[CHAR_SELECT_REVAMP] Completed visual selection update");
+             
+             // Update deck preview
+             if (deckPreviewController != null)
+             {
+                 deckPreviewController.SetCurrentCharacterIndex(characterIndex);
+                 deckPreviewController.ShowCharacterDeck(characterIndex, isReady);
+                 Debug.Log($"[CHAR_SELECT_REVAMP] Completed deck preview update");
+             }
+             
+             // Update selection state
+             Debug.Log($"[CHAR_SELECT_REVAMP] About to call UpdateSelectionState()");
+             UpdateSelectionState();
+             Debug.Log($"[CHAR_SELECT_REVAMP] Completed UpdateSelectionState()");
          }
-         
-         // Update selection state
-         UpdateSelectionState();
+         catch (System.Exception e)
+         {
+             Debug.LogError($"[CHAR_SELECT_REVAMP] Exception in OnCharacterSelectionChanged: {e.Message}\nStackTrace: {e.StackTrace}");
+         }
      }
 
          public void OnPetSelectionChanged(int petIndex)
@@ -613,13 +637,22 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             Button button = characterPortraitButtons[i];
             if (button != null)
             {
-                if (i == selectedCharacterIndex)
+                // Find the border or main visual element to highlight
+                Image visualElement = GetVisualSelectionElement(button);
+                if (visualElement != null)
                 {
-                    button.image.color = selectedColor;
-            }
-            else
-            {
-                    button.image.color = unselectedColor;
+                    if (i == selectedCharacterIndex)
+                    {
+                        visualElement.color = selectedColor;
+                    }
+                    else
+                    {
+                        visualElement.color = unselectedColor;
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[CHAR_SELECT_REVAMP] Character button {i} has no suitable visual element for selection highlighting");
                 }
             }
         }
@@ -630,60 +663,300 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             Button button = petPortraitButtons[i];
             if (button != null)
             {
-                if (i == selectedPetIndex)
+                // Find the border or main visual element to highlight
+                Image visualElement = GetVisualSelectionElement(button);
+                if (visualElement != null)
                 {
-                    button.image.color = selectedColor;
+                    if (i == selectedPetIndex)
+                    {
+                        visualElement.color = selectedColor;
+                    }
+                    else
+                    {
+                        visualElement.color = unselectedColor;
+                    }
                 }
                 else
                 {
-                    button.image.color = unselectedColor;
+                    Debug.LogWarning($"[CHAR_SELECT_REVAMP] Pet button {i} has no suitable visual element for selection highlighting");
                 }
             }
         }
     }
-
-    private void UpdateSelectionState()
+    
+    /// <summary>
+    /// Gets the best Image component to use for visual selection highlighting
+    /// </summary>
+    private Image GetVisualSelectionElement(Button button)
     {
-        hasValidSelection = selectedCharacterIndex >= 0 && selectedPetIndex >= 0;
+        if (button == null) return null;
         
-        // Update status text
-        if (statusText != null)
+        // Get all child Image components
+        Image[] childImages = button.GetComponentsInChildren<Image>();
+        
+        // Strategy 1: Look for a Border component specifically
+        foreach (Image img in childImages)
         {
-            if (hasValidSelection)
+            if (img.gameObject.name.ToLower().Contains("border"))
             {
-                string charName = !string.IsNullOrEmpty(customPlayerName) ? customPlayerName : availableCharacters[selectedCharacterIndex].CharacterName;
-                string petName = availablePets[selectedPetIndex].PetName;
-                statusText.text = $"Selected: {charName} & {petName}";
-            }
-            else if (selectedCharacterIndex >= 0)
-            {
-                statusText.text = "Now select a pet...";
-            }
-            else if (selectedPetIndex >= 0)
-            {
-                statusText.text = "Now select a character...";
-            }
-            else
-            {
-                statusText.text = "Select a character and pet to continue...";
+                Debug.Log($"[CHAR_SELECT_REVAMP] Using Border image for selection highlighting: {img.gameObject.name}");
+                return img;
             }
         }
         
-        // Update ready button
-        UpdateReadyButtonState();
-        
-        // Send selection to server if valid
-        if (hasValidSelection)
+        // Strategy 2: Look for InnerBox or Background
+        foreach (Image img in childImages)
         {
-            if (selectionManager != null)
+            string imgName = img.gameObject.name.ToLower();
+            if (imgName.Contains("innerbox") || imgName.Contains("background"))
             {
-                /* Debug.Log($"CharacterSelectionUIManager: Sending selection to server - Character: {selectedCharacterIndex}, Pet: {selectedPetIndex}, CustomName: '{customPlayerName}'"); */
-                selectionManager.RequestSelectionUpdate(selectedCharacterIndex, selectedPetIndex, customPlayerName, "");
+                Debug.Log($"[CHAR_SELECT_REVAMP] Using {img.gameObject.name} for selection highlighting");
+                return img;
+            }
+        }
+        
+        // Strategy 3: Use the root button's image (transparent background) as fallback
+        if (button.image != null)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Using root button image for selection highlighting (fallback)");
+            return button.image;
+        }
+        
+        // Strategy 4: Use first child image as last resort
+        if (childImages.Length > 0)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Using first child image for selection highlighting: {childImages[0].gameObject.name}");
+            return childImages[0];
+        }
+        
+        return null;
+    }
+
+    private void UpdateSelectionState()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] UpdateSelectionState() called - selectedCharacterIndex: {selectedCharacterIndex}, selectedPetIndex: {selectedPetIndex}");
+        
+        try
+        {
+            hasValidSelection = selectedCharacterIndex >= 0 && selectedPetIndex >= 0;
+            Debug.Log($"[CHAR_SELECT_REVAMP] hasValidSelection: {hasValidSelection}");
+            
+            // Update status text
+            if (statusText != null)
+            {
+                if (hasValidSelection)
+                {
+                    string charName = !string.IsNullOrEmpty(customPlayerName) ? customPlayerName : availableCharacters[selectedCharacterIndex].CharacterName;
+                    string petName = availablePets[selectedPetIndex].PetName;
+                    statusText.text = $"Selected: {charName} & {petName}";
+                }
+                else if (selectedCharacterIndex >= 0)
+                {
+                    statusText.text = "Now select a pet...";
+                }
+                else if (selectedPetIndex >= 0)
+                {
+                    statusText.text = "Now select a character...";
+                }
+                else
+                {
+                    statusText.text = "Select a character and pet to continue...";
+                }
+                Debug.Log($"[CHAR_SELECT_REVAMP] Updated status text: {statusText.text}");
+            }
+            
+            // Update selected portraits display
+            Debug.Log($"[CHAR_SELECT_REVAMP] About to call UpdateSelectedPortraitsDisplay()");
+            UpdateSelectedPortraitsDisplay();
+            Debug.Log($"[CHAR_SELECT_REVAMP] Completed UpdateSelectedPortraitsDisplay()");
+            
+            // Update ready button
+            UpdateReadyButtonState();
+            Debug.Log($"[CHAR_SELECT_REVAMP] Completed UpdateReadyButtonState()");
+            
+            // Send selection to server if valid
+            if (hasValidSelection)
+            {
+                if (selectionManager != null)
+                {
+                    /* Debug.Log($"CharacterSelectionUIManager: Sending selection to server - Character: {selectedCharacterIndex}, Pet: {selectedPetIndex}, CustomName: '{customPlayerName}'"); */
+                    selectionManager.RequestSelectionUpdate(selectedCharacterIndex, selectedPetIndex, customPlayerName, "");
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Sent selection update to server");
+                }
+                else
+                {
+                    Debug.LogWarning("CharacterSelectionUIManager: Cannot send selection - selectionManager is null");
+                }
+            }
+            
+            Debug.Log($"[CHAR_SELECT_REVAMP] UpdateSelectionState() completed successfully");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[CHAR_SELECT_REVAMP] Exception in UpdateSelectionState: {e.Message}\nStackTrace: {e.StackTrace}");
+        }
+    }
+    
+    /// <summary>
+    /// Initializes the selected portraits display on startup
+    /// </summary>
+    private void InitializeSelectedPortraitsDisplay()
+    {
+        Debug.Log("[CHAR_SELECT_REVAMP] Initializing selected portraits display");
+        
+        // Clean up any existing portrait objects
+        CleanupSelectedPortraitObjects();
+        
+        Debug.Log("[CHAR_SELECT_REVAMP] Selected portraits display initialized - portraits will be created when selections are made");
+    }
+    
+    /// <summary>
+    /// Updates the selected character and pet portrait displays using prefab instances
+    /// </summary>
+    private void UpdateSelectedPortraitsDisplay()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Updating selected portraits display - Character: {selectedCharacterIndex}, Pet: {selectedPetIndex}");
+        
+        try
+        {
+            // Update selected character portrait
+            Debug.Log($"[CHAR_SELECT_REVAMP] About to call UpdateSelectedCharacterPortrait()");
+            UpdateSelectedCharacterPortrait();
+            Debug.Log($"[CHAR_SELECT_REVAMP] Completed UpdateSelectedCharacterPortrait()");
+            
+            // Update selected pet portrait
+            Debug.Log($"[CHAR_SELECT_REVAMP] About to call UpdateSelectedPetPortrait()");
+            UpdateSelectedPetPortrait();
+            Debug.Log($"[CHAR_SELECT_REVAMP] Completed UpdateSelectedPetPortrait()");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[CHAR_SELECT_REVAMP] Exception in UpdateSelectedPortraitsDisplay: {e.Message}\nStackTrace: {e.StackTrace}");
+        }
+    }
+    
+    /// <summary>
+    /// Updates the selected character portrait using the selectionItemPrefab structure
+    /// </summary>
+    private void UpdateSelectedCharacterPortrait()
+    {
+        if (selectedCharacterPortraitParent == null)
+        {
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] selectedCharacterPortraitParent is null - cannot display character portrait");
+            return;
+        }
+        
+        // Clean up existing character portrait object
+        if (selectedCharacterPortraitObject != null)
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] Destroying existing selected character portrait object");
+            Destroy(selectedCharacterPortraitObject);
+            selectedCharacterPortraitObject = null;
+        }
+        
+        // Create new character portrait if character is selected
+        if (selectedCharacterIndex >= 0 && selectedCharacterIndex < availableCharacters.Count)
+        {
+            CharacterData selectedCharacter = availableCharacters[selectedCharacterIndex];
+            
+            if (selectionItemPrefab != null)
+            {
+                // Instantiate the selection item prefab
+                selectedCharacterPortraitObject = Instantiate(selectionItemPrefab, selectedCharacterPortraitParent);
+                
+                // Set up the portrait data using the same method as the selection grid BEFORE removing button
+                string displayName = !string.IsNullOrEmpty(customPlayerName) ? customPlayerName : selectedCharacter.CharacterName;
+                Button tempButton = selectedCharacterPortraitObject.GetComponent<Button>();
+                if (tempButton != null)
+                {
+                    SetupPortraitButton(tempButton, displayName, selectedCharacter.CharacterPortrait);
+                    
+                    // Remove Button component after setup since this is just for display
+                    Destroy(tempButton);
+                }
+                
+                Debug.Log($"[CHAR_SELECT_REVAMP] Created selected character portrait for {selectedCharacter.CharacterName}");
             }
             else
             {
-                Debug.LogWarning("CharacterSelectionUIManager: Cannot send selection - selectionManager is null");
+                Debug.LogError("[CHAR_SELECT_REVAMP] selectionItemPrefab is null - cannot create character portrait display");
             }
+        }
+        else
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] No character selected - removed character portrait display");
+        }
+    }
+    
+    /// <summary>
+    /// Updates the selected pet portrait using the selectionItemPrefab structure
+    /// </summary>
+    private void UpdateSelectedPetPortrait()
+    {
+        if (selectedPetPortraitParent == null)
+        {
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] selectedPetPortraitParent is null - cannot display pet portrait");
+            return;
+        }
+        
+        // Clean up existing pet portrait object
+        if (selectedPetPortraitObject != null)
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] Destroying existing selected pet portrait object");
+            Destroy(selectedPetPortraitObject);
+            selectedPetPortraitObject = null;
+        }
+        
+        // Create new pet portrait if pet is selected
+        if (selectedPetIndex >= 0 && selectedPetIndex < availablePets.Count)
+        {
+            PetData selectedPet = availablePets[selectedPetIndex];
+            
+            if (selectionItemPrefab != null)
+            {
+                // Instantiate the selection item prefab
+                selectedPetPortraitObject = Instantiate(selectionItemPrefab, selectedPetPortraitParent);
+                
+                // Set up the portrait data using the same method as the selection grid BEFORE removing button
+                Button tempButton = selectedPetPortraitObject.GetComponent<Button>();
+                if (tempButton != null)
+                {
+                    SetupPortraitButton(tempButton, selectedPet.PetName, selectedPet.PetPortrait);
+                    
+                    // Remove Button component after setup since this is just for display
+                    Destroy(tempButton);
+                }
+                
+                Debug.Log($"[CHAR_SELECT_REVAMP] Created selected pet portrait for {selectedPet.PetName}");
+            }
+            else
+            {
+                Debug.LogError("[CHAR_SELECT_REVAMP] selectionItemPrefab is null - cannot create pet portrait display");
+            }
+        }
+        else
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] No pet selected - removed pet portrait display");
+        }
+    }
+    
+    /// <summary>
+    /// Cleans up selected portrait objects
+    /// </summary>
+    private void CleanupSelectedPortraitObjects()
+    {
+        if (selectedCharacterPortraitObject != null)
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] Cleaning up selected character portrait object");
+            Destroy(selectedCharacterPortraitObject);
+            selectedCharacterPortraitObject = null;
+        }
+        
+        if (selectedPetPortraitObject != null)
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] Cleaning up selected pet portrait object");
+            Destroy(selectedPetPortraitObject);
+            selectedPetPortraitObject = null;
         }
     }
 
@@ -879,6 +1152,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             }
         }
         petPortraitButtons.Clear();
+        
+        // Cleanup selected portrait display objects
+        CleanupSelectedPortraitObjects();
         
         // Reset initialization flag so the UI can be properly initialized again when rejoining
         isInitialized = false;
@@ -1355,11 +1631,15 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         {
             Debug.Log($"[CHAR_SELECT_REVAMP] Processing character view switch - selectedCharacterIndex: {selectedCharacterIndex}");
             
-            // Only request character model if we don't already have one or it's not the right one
-            bool needsNewCharacterModel = currentCharacterModel == null || 
-                !currentCharacterModel.name.Contains(availableCharacters[selectedCharacterIndex].CharacterName);
+            // Check if the effectively visible model is the correct character model
+            GameObject effectivelyVisibleModel = GetEffectivelyVisibleModel();
+            string targetCharacterName = availableCharacters[selectedCharacterIndex].CharacterName;
+            
+            bool needsNewCharacterModel = effectivelyVisibleModel == null || 
+                !effectivelyVisibleModel.name.Contains("SelectedCharacter_") ||
+                !effectivelyVisibleModel.name.Contains(targetCharacterName);
                 
-            Debug.Log($"[CHAR_SELECT_REVAMP] Character model check - needsNewCharacterModel: {needsNewCharacterModel}");
+            Debug.Log($"[CHAR_SELECT_REVAMP] Character model check - needsNewCharacterModel: {needsNewCharacterModel} (effectively visible model: {effectivelyVisibleModel?.name ?? "null"}, target: {targetCharacterName}, animating: {uiAnimator?.IsModelTransitioning ?? false})");
                 
             if (needsNewCharacterModel)
             {
@@ -1368,7 +1648,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             }
             else
             {
-                Debug.Log($"[CHAR_SELECT_REVAMP] Character model already exists for {availableCharacters[selectedCharacterIndex].CharacterName}, no transition needed");
+                Debug.Log($"[CHAR_SELECT_REVAMP] Correct character model already visible for {targetCharacterName}, no transition needed");
             }
         }
         else if (!showCharacters)
@@ -1410,11 +1690,15 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             {
                 Debug.Log($"[CHAR_SELECT_REVAMP] Target pet: {availablePets[selectedPetIndex].PetName}");
                 
-                // Only request pet model if we don't already have one or it's not the right one
-                bool needsNewPetModel = currentPetModel == null || 
-                    !currentPetModel.name.Contains(availablePets[selectedPetIndex].PetName);
+                // Check if the effectively visible model is the correct pet model
+                GameObject effectivelyVisibleModel = GetEffectivelyVisibleModel();
+                string targetPetName = availablePets[selectedPetIndex].PetName;
+                
+                bool needsNewPetModel = effectivelyVisibleModel == null || 
+                    !effectivelyVisibleModel.name.Contains("SelectedPet_") ||
+                    !effectivelyVisibleModel.name.Contains(targetPetName);
                     
-                Debug.Log($"[CHAR_SELECT_REVAMP] Pet model check - needsNewPetModel: {needsNewPetModel} (currentPetModel is null: {currentPetModel == null})");
+                Debug.Log($"[CHAR_SELECT_REVAMP] Pet model check - needsNewPetModel: {needsNewPetModel} (effectively visible model: {effectivelyVisibleModel?.name ?? "null"}, target: {targetPetName}, animating: {uiAnimator?.IsModelTransitioning ?? false})");
                     
                 if (needsNewPetModel)
                 {
@@ -1423,7 +1707,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                 }
                 else
                 {
-                    Debug.Log($"[CHAR_SELECT_REVAMP] Pet model already exists for {availablePets[selectedPetIndex].PetName}, no transition needed");
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Correct pet model already visible for {targetPetName}, no transition needed");
                 }
             }
             else
@@ -1559,7 +1843,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         
         Debug.Log($"[CHAR_SELECT_REVAMP] MakeDefaultSelections completed - selectedCharacterIndex: {selectedCharacterIndex}, selectedPetIndex: {selectedPetIndex}");
         
-        // Update selection state and send to server
+        // Update selection state and send to server (this will also update portrait displays)
         UpdateSelectionState();
         
         // Check if auto-test runner wants us to auto-ready
@@ -1998,6 +2282,27 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         return null;
     }
 
+    /// <summary>
+    /// Gets the model that is effectively visible for decision-making purposes.
+    /// This considers animation states to avoid race conditions during rapid view switching.
+    /// </summary>
+    private GameObject GetEffectivelyVisibleModel()
+    {
+        // If no animation is running, use the standard visible model check
+        if (uiAnimator?.GetModelDissolveAnimator()?.IsAnimating != true)
+        {
+            return GetCurrentVisibleModel();
+        }
+        
+        // During animation, we cannot trust any model to be "effectively visible"
+        // because the animation system might be transitioning to a different model
+        // than what we expect. The safest approach is to return null, which will
+        // force a new transition request to ensure the correct model is shown.
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Animation in progress - returning null to force transition check");
+        return null;
+    }
+
     private void UpdateCurrentModelReferences()
     {
         Debug.Log($"[CHAR_SELECT_REVAMP] Updating current model references");
@@ -2308,6 +2613,27 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                 continue;
             }
             
+            // Ensure button has proper image component for visual selection
+            if (button.image == null)
+            {
+                Debug.LogWarning($"[CHAR_SELECT_REVAMP] Character button {i} has null image component - creating transparent background image");
+                
+                // Check if root already has an Image component
+                Image rootImage = button.GetComponent<Image>();
+                if (rootImage == null)
+                {
+                    // Add transparent Image component to root for button visual feedback
+                    rootImage = button.gameObject.AddComponent<Image>();
+                    rootImage.color = Color.clear; // Transparent background
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Added transparent background Image to character button {i}");
+                }
+                
+                // Assign the root image to button for visual feedback
+                button.image = rootImage;
+                button.targetGraphic = rootImage;
+                Debug.Log($"[CHAR_SELECT_REVAMP] Assigned root image as target graphic for character button {i}");
+            }
+            
             int index = i; // Capture for closure
             button.onClick.RemoveAllListeners();
             button.onClick.AddListener(() => OnCharacterSelectionChanged(index));
@@ -2337,6 +2663,27 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             {
                 Debug.LogError("[CHAR_SELECT_REVAMP] Selection Item Prefab is not a Button!");
                 continue;
+            }
+            
+            // Ensure button has proper image component for visual selection
+            if (button.image == null)
+            {
+                Debug.LogWarning($"[CHAR_SELECT_REVAMP] Pet button {i} has null image component - creating transparent background image");
+                
+                // Check if root already has an Image component
+                Image rootImage = button.GetComponent<Image>();
+                if (rootImage == null)
+                {
+                    // Add transparent Image component to root for button visual feedback
+                    rootImage = button.gameObject.AddComponent<Image>();
+                    rootImage.color = Color.clear; // Transparent background
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Added transparent background Image to pet button {i}");
+                }
+                
+                // Assign the root image to button for visual feedback
+                button.image = rootImage;
+                button.targetGraphic = rootImage;
+                Debug.Log($"[CHAR_SELECT_REVAMP] Assigned root image as target graphic for pet button {i}");
             }
             
             int index = i; // Capture for closure

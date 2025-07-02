@@ -76,6 +76,9 @@ namespace MVPScripts.Utility
         public System.Action<GameObject> OnTransitionStarted;
         public System.Action<GameObject> OnTransitionCompleted;
         
+        // Public properties for external access
+        public bool IsAnimating => queueManager?.IsAnimating ?? false;
+        
         #region Data Classes
         
         private enum TransitionType

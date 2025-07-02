@@ -761,7 +761,12 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     }
     
     // Properties and methods that delegate to ModelDissolveAnimator
-    public bool IsModelTransitioning => modelDissolveAnimator?.IsTransitioning ?? false;
+    public bool IsModelTransitioning => modelDissolveAnimator?.IsAnimating ?? false;
+    
+    /// <summary>
+    /// Get the ModelDissolveAnimator for external access to animation state
+    /// </summary>
+    public ModelDissolveAnimator GetModelDissolveAnimator() => modelDissolveAnimator;
     
     // Configuration delegation methods
     public void SetModelTransitionTiming(float outDuration, float inDuration) => modelDissolveAnimator?.SetTransitionTiming(outDuration, inDuration);
