@@ -19,7 +19,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     [SerializeField] private Transform characterGridParent; // Fallback if no sharedGridParent
 
     [SerializeField] private TextMeshProUGUI statusText;
-    [SerializeField] private TextMeshProUGUI readyCounterText;
+    
+    [Header("Ready State Circles")]
+    [SerializeField] private Transform readyCirclesContainer;
     
     [Header("Player List Panel")]
     [SerializeField] private Button showPlayersButton;
@@ -118,6 +120,12 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     
     // Store the latest player info for when panel becomes visible
     private List<PlayerSelectionInfo> latestPlayerInfos = new List<PlayerSelectionInfo>();
+
+    // Ready state circles system
+    private List<GameObject> readyCircles = new List<GameObject>();
+    private Dictionary<string, GameObject> playerCircleMap = new Dictionary<string, GameObject>();
+    private const float CIRCLE_FILL_DURATION = 1.0f;
+    private Sprite circleSprite;
 
     #region Initialization
 
@@ -272,9 +280,6 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         {
             statusText.text = "Select a character and pet to continue...";
         }
-        
-        // Initialize ready counter
-        UpdateReadyCounter(0, 1); // Start with 0/1 until we know player count
     }
     
     private void SetupUIAnimator()
@@ -286,10 +291,11 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             uiAnimator = gameObject.AddComponent<CharacterSelectionUIAnimator>();
         }
         
-        // Subscribe to visibility change events
+        // Subscribe to UI animator events
         uiAnimator.OnPlayerListVisibilityChanged += OnPlayerListVisibilityChanged;
-        uiAnimator.OnCharacterDeckVisibilityChanged += OnCharacterDeckVisibilityChanged;
-        uiAnimator.OnPetDeckVisibilityChanged += OnPetDeckVisibilityChanged;
+        uiAnimator.OnDeckPreviewVisibilityChanged += OnDeckPreviewVisibilityChanged;
+        uiAnimator.OnModelTransitionStarted += OnModelTransitionStarted;
+        uiAnimator.OnModelTransitionCompleted += OnModelTransitionCompleted;
         
         // Validate grid parent references before setting them
         ValidateGridParentReferences();
@@ -305,12 +311,11 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     
     private void FinalizeUIAnimatorSetup()
     {
-        // Initialize the animator with panel references (get deck panels from deck preview controller)
-        GameObject characterDeckPanel = deckPreviewController?.GetCharacterDeckPanel();
-        GameObject petDeckPanel = deckPreviewController?.GetPetDeckPanel();
-        uiAnimator.Initialize(playerListPanel, characterDeckPanel, petDeckPanel);
+        // Initialize the animator with panel references (get shared deck panel from deck preview controller)
+        GameObject deckPreviewPanel = deckPreviewController?.GetDeckPreviewPanel();
+        uiAnimator.Initialize(playerListPanel, deckPreviewPanel);
         
-        Debug.Log("CharacterSelectionUIManager: UI Animator fully initialized with panel references");
+        Debug.Log("CharacterSelectionUIManager: UI Animator fully initialized with shared deck panel reference");
     }
     
     private void InitializeDeckPreviewController()
@@ -389,16 +394,22 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
     }
     
-    private void OnCharacterDeckVisibilityChanged(bool isVisible)
+    private void OnDeckPreviewVisibilityChanged(bool isVisible)
     {
-        // Handle any additional logic when character deck visibility changes
-        Debug.Log($"CharacterSelectionUIManager: Character deck visibility changed to {isVisible}");
+        // Handle any additional logic when deck preview visibility changes
+        Debug.Log($"CharacterSelectionUIManager: Deck preview visibility changed to {isVisible}");
     }
     
-    private void OnPetDeckVisibilityChanged(bool isVisible)
+    private void OnModelTransitionStarted(GameObject model)
     {
-        // Handle any additional logic when pet deck visibility changes
-        Debug.Log($"CharacterSelectionUIManager: Pet deck visibility changed to {isVisible}");
+        // Handle any additional logic when model transition starts
+        Debug.Log($"CharacterSelectionUIManager: Model transition started for model: {model?.name}");
+    }
+    
+    private void OnModelTransitionCompleted(GameObject model)
+    {
+        // Handle any additional logic when model transition completes
+        Debug.Log($"CharacterSelectionUIManager: Model transition completed for model: {model?.name}");
     }
     
     private void SetupPlayerListPanel()
@@ -1065,12 +1076,24 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         // Clean up selection models to prevent memory leaks
         CleanupSelectionModels();
         
+        // Clean up circle sprite to prevent memory leaks
+        if (circleSprite != null)
+        {
+            if (circleSprite.texture != null)
+            {
+                Destroy(circleSprite.texture);
+            }
+            Destroy(circleSprite);
+            circleSprite = null;
+        }
+        
         // Unsubscribe from events to prevent memory leaks
         if (uiAnimator != null)
         {
             uiAnimator.OnPlayerListVisibilityChanged -= OnPlayerListVisibilityChanged;
-            uiAnimator.OnCharacterDeckVisibilityChanged -= OnCharacterDeckVisibilityChanged;
-            uiAnimator.OnPetDeckVisibilityChanged -= OnPetDeckVisibilityChanged;
+            uiAnimator.OnDeckPreviewVisibilityChanged -= OnDeckPreviewVisibilityChanged;
+            uiAnimator.OnModelTransitionStarted -= OnModelTransitionStarted;
+            uiAnimator.OnModelTransitionCompleted -= OnModelTransitionCompleted;
         }
     }
 
@@ -1155,6 +1178,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         
         // Cleanup selected portrait display objects
         CleanupSelectedPortraitObjects();
+        
+        // Clear all ready circles
+        ClearAllReadyCircles();
         
         // Reset initialization flag so the UI can be properly initialized again when rejoining
         isInitialized = false;
@@ -1625,6 +1651,13 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         
         showingCharacters = showCharacters;
         SetGridDisplayState(showCharacters);
+        
+        // Refresh deck preview when switching tabs
+        if (deckPreviewController != null)
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] Refreshing deck preview due to tab switch");
+            deckPreviewController.RefreshCurrentDeck();
+        }
         
         // Request appropriate model for the current view (only if needed)
         if (showCharacters && selectedCharacterIndex >= 0)
@@ -2416,10 +2449,8 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     {
         Debug.Log($"[CHAR_SELECT_REVAMP] UpdateOtherPlayersSelections called with {playerInfos.Count} players");
         
-        // Update ready counter
-        int readyCount = playerInfos.Count(p => p.isReady);
-        int totalCount = playerInfos.Count;
-        UpdateReadyCounter(readyCount, totalCount);
+        // Update ready circles for all players
+        UpdateReadyCircles(playerInfos);
         
         // Clear previous player data
         ClearAllPlayerSelections();
@@ -2540,14 +2571,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
     }
 
-    private void UpdateReadyCounter(int readyCount, int totalCount)
-    {
-        if (readyCounterText != null)
-        {
-            readyCounterText.text = $"{readyCount}/{totalCount} Ready";
-            readyCounterText.color = (readyCount == totalCount) ? readyColor : Color.white;
-        }
-    }
+
 
     private void SetupSharedGridParent()
     {
@@ -2813,6 +2837,274 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
         return depth;
     }
+
+    #region Ready State Circles Management
+    
+    /// <summary>
+    /// Creates a circle sprite programmatically for the ready state circles
+    /// </summary>
+    private Sprite CreateCircleSprite()
+    {
+        // Check if we already have a cached circle sprite
+        if (circleSprite == null)
+        {
+            // Create a 64x64 texture for the circle
+            int size = 64;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            
+            // Fill the texture with a circle
+            Color[] pixels = new Color[size * size];
+            Vector2 center = new Vector2(size * 0.5f, size * 0.5f);
+            float radius = size * 0.4f; // Slightly smaller than half to leave some padding
+            
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    Vector2 pixelPos = new Vector2(x, y);
+                    float distance = Vector2.Distance(pixelPos, center);
+                    
+                    if (distance <= radius)
+                    {
+                        pixels[y * size + x] = Color.white; // Inside circle
+                    }
+                    else
+                    {
+                        pixels[y * size + x] = Color.clear; // Outside circle
+                    }
+                }
+            }
+            
+            texture.SetPixels(pixels);
+            texture.Apply();
+            
+            // Create sprite from texture
+            circleSprite = Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+            circleSprite.name = "ReadyCircleSprite";
+        }
+        
+        return circleSprite;
+    }
+    
+    /// <summary>
+    /// Creates a ready state circle for a player
+    /// </summary>
+    private GameObject CreateReadyCircle(string playerName)
+    {
+        if (readyCirclesContainer == null)
+        {
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] readyCirclesContainer is null - cannot create ready circle");
+            return null;
+        }
+        
+        // Create circle GameObject
+        GameObject circleObj = new GameObject($"ReadyCircle_{playerName}");
+        circleObj.transform.SetParent(readyCirclesContainer, false);
+        
+        // Add RectTransform component
+        RectTransform rectTransform = circleObj.AddComponent<RectTransform>();
+        rectTransform.sizeDelta = new Vector2(40f, 40f); // 40x40 pixel circle
+        
+        // Add background circle (empty state)
+        Image backgroundImage = circleObj.AddComponent<Image>();
+        backgroundImage.sprite = CreateCircleSprite(); // Create a circle sprite
+        backgroundImage.color = new Color(0.3f, 0.3f, 0.3f, 0.8f); // Dark gray background
+        backgroundImage.type = Image.Type.Filled;
+        backgroundImage.fillMethod = Image.FillMethod.Radial360;
+        backgroundImage.fillAmount = 1.0f;
+        
+        // Create fill circle child (ready state)
+        GameObject fillObj = new GameObject("Fill");
+        fillObj.transform.SetParent(circleObj.transform, false);
+        
+        RectTransform fillRect = fillObj.AddComponent<RectTransform>();
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = Vector2.one;
+        fillRect.sizeDelta = Vector2.zero;
+        fillRect.anchoredPosition = Vector2.zero;
+        
+        Image fillImage = fillObj.AddComponent<Image>();
+        fillImage.sprite = CreateCircleSprite(); // Use the same circle sprite
+        fillImage.color = readyColor; // Use existing ready color
+        fillImage.type = Image.Type.Filled;
+        fillImage.fillMethod = Image.FillMethod.Radial360;
+        fillImage.fillAmount = 0.0f; // Start empty
+        
+        // Add tooltip system
+        AddCircleTooltip(circleObj, playerName);
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Created ready circle for player: {playerName}");
+        return circleObj;
+    }
+    
+    /// <summary>
+    /// Adds tooltip functionality to a ready circle
+    /// </summary>
+    private void AddCircleTooltip(GameObject circleObj, string playerName)
+    {
+        // Add a simple hover detection component
+        CircleTooltip tooltip = circleObj.AddComponent<CircleTooltip>();
+        tooltip.playerName = playerName;
+    }
+    
+    /// <summary>
+    /// Updates the fill state of a player's ready circle with animation
+    /// </summary>
+    private void UpdateCircleFillState(string playerName, bool isReady)
+    {
+        if (!playerCircleMap.TryGetValue(playerName, out GameObject circleObj) || circleObj == null)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] No circle found for player: {playerName}");
+            return;
+        }
+        
+        // Find the fill image component
+        Transform fillTransform = circleObj.transform.Find("Fill");
+        if (fillTransform == null)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] No fill component found for player circle: {playerName}");
+            return;
+        }
+        
+        Image fillImage = fillTransform.GetComponent<Image>();
+        if (fillImage == null)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] No fill image found for player circle: {playerName}");
+            return;
+        }
+        
+        // Animate the fill amount
+        float targetFill = isReady ? 1.0f : 0.0f;
+        StartCoroutine(AnimateCircleFill(fillImage, targetFill));
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Updated circle fill for {playerName}: {(isReady ? "Ready" : "Not Ready")}");
+    }
+    
+    /// <summary>
+    /// Animates the fill amount of a circle over time
+    /// </summary>
+    private System.Collections.IEnumerator AnimateCircleFill(Image fillImage, float targetFill)
+    {
+        if (fillImage == null) yield break;
+        
+        float startFill = fillImage.fillAmount;
+        float elapsed = 0f;
+        
+        while (elapsed < CIRCLE_FILL_DURATION)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / CIRCLE_FILL_DURATION;
+            
+            if (fillImage != null)
+            {
+                fillImage.fillAmount = Mathf.Lerp(startFill, targetFill, t);
+            }
+            
+            yield return null;
+        }
+        
+        // Ensure final value is set
+        if (fillImage != null)
+        {
+            fillImage.fillAmount = targetFill;
+        }
+    }
+    
+    /// <summary>
+    /// Removes a player's ready circle when they leave
+    /// </summary>
+    private void RemoveReadyCircle(string playerName)
+    {
+        if (playerCircleMap.TryGetValue(playerName, out GameObject circleObj))
+        {
+            readyCircles.Remove(circleObj);
+            playerCircleMap.Remove(playerName);
+            
+            if (circleObj != null)
+            {
+                Destroy(circleObj);
+                Debug.Log($"[CHAR_SELECT_REVAMP] Removed ready circle for player: {playerName}");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Clears all ready circles (used during cleanup)
+    /// </summary>
+    private void ClearAllReadyCircles()
+    {
+        foreach (GameObject circle in readyCircles)
+        {
+            if (circle != null)
+            {
+                Destroy(circle);
+            }
+        }
+        
+        readyCircles.Clear();
+        playerCircleMap.Clear();
+        
+        // Clean up circle sprite to prevent memory leaks
+        if (circleSprite != null)
+        {
+            if (circleSprite.texture != null)
+            {
+                Destroy(circleSprite.texture);
+            }
+            Destroy(circleSprite);
+            circleSprite = null;
+        }
+        
+        Debug.Log("[CHAR_SELECT_REVAMP] Cleared all ready circles");
+    }
+    
+    /// <summary>
+    /// Updates ready circles based on current player list
+    /// </summary>
+    private void UpdateReadyCircles(List<PlayerSelectionInfo> playerInfos)
+    {
+        // Create a set of current player names for comparison
+        HashSet<string> currentPlayers = new HashSet<string>();
+        
+        // Process each player in the current list
+        foreach (PlayerSelectionInfo info in playerInfos)
+        {
+            currentPlayers.Add(info.playerName);
+            
+            // Create circle if it doesn't exist
+            if (!playerCircleMap.ContainsKey(info.playerName))
+            {
+                GameObject newCircle = CreateReadyCircle(info.playerName);
+                if (newCircle != null)
+                {
+                    readyCircles.Add(newCircle);
+                    playerCircleMap[info.playerName] = newCircle;
+                }
+            }
+            
+            // Update the circle's ready state
+            UpdateCircleFillState(info.playerName, info.isReady);
+        }
+        
+        // Remove circles for players who are no longer in the game
+        List<string> playersToRemove = new List<string>();
+        foreach (string playerName in playerCircleMap.Keys)
+        {
+            if (!currentPlayers.Contains(playerName))
+            {
+                playersToRemove.Add(playerName);
+            }
+        }
+        
+        foreach (string playerName in playersToRemove)
+        {
+            RemoveReadyCircle(playerName);
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Updated ready circles - {playerCircleMap.Count} circles for {playerInfos.Count} players");
+    }
+    
+    #endregion
 }
 
 /// <summary>
@@ -2827,4 +3119,72 @@ public class PlayerSelectionDisplayInfo
     public bool hasSelection;
     public bool isReady;
     public Color playerColor;
+}
+
+/// <summary>
+/// Simple tooltip component for ready state circles
+/// </summary>
+public class CircleTooltip : MonoBehaviour, UnityEngine.EventSystems.IPointerEnterHandler, UnityEngine.EventSystems.IPointerExitHandler
+{
+    public string playerName;
+    private GameObject tooltipObject;
+    
+    public void OnPointerEnter(UnityEngine.EventSystems.PointerEventData eventData)
+    {
+        ShowTooltip();
+    }
+    
+    public void OnPointerExit(UnityEngine.EventSystems.PointerEventData eventData)
+    {
+        HideTooltip();
+    }
+    
+    private void ShowTooltip()
+    {
+        if (string.IsNullOrEmpty(playerName)) return;
+        
+        // Create tooltip GameObject
+        tooltipObject = new GameObject("CircleTooltip");
+        tooltipObject.transform.SetParent(transform, false);
+        
+        // Position above the circle
+        RectTransform tooltipRect = tooltipObject.AddComponent<RectTransform>();
+        tooltipRect.sizeDelta = new Vector2(100f, 30f);
+        tooltipRect.anchoredPosition = new Vector2(0f, 50f); // 50 pixels above circle
+        
+        // Add background
+        Image background = tooltipObject.AddComponent<Image>();
+        background.color = new Color(0f, 0f, 0f, 0.8f); // Semi-transparent black
+        
+        // Add text
+        GameObject textObj = new GameObject("Text");
+        textObj.transform.SetParent(tooltipObject.transform, false);
+        
+        RectTransform textRect = textObj.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.sizeDelta = Vector2.zero;
+        textRect.anchoredPosition = Vector2.zero;
+        
+        TMPro.TextMeshProUGUI text = textObj.AddComponent<TMPro.TextMeshProUGUI>();
+        text.text = playerName;
+        text.fontSize = 12f;
+        text.color = Color.white;
+        text.alignment = TMPro.TextAlignmentOptions.Center;
+        text.verticalAlignment = TMPro.VerticalAlignmentOptions.Middle;
+    }
+    
+    private void HideTooltip()
+    {
+        if (tooltipObject != null)
+        {
+            Destroy(tooltipObject);
+            tooltipObject = null;
+        }
+    }
+    
+    private void OnDestroy()
+    {
+        HideTooltip();
+    }
 }

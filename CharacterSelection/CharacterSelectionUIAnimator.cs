@@ -28,11 +28,9 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     // Panel references
     private GameObject playerListPanel;
-    private GameObject characterDeckPanel;
-    private GameObject petDeckPanel;
+    private GameObject deckPreviewPanel;
     private RectTransform playerListRect;
-    private RectTransform characterDeckRect;
-    private RectTransform petDeckRect;
+    private RectTransform deckPreviewRect;
     
     // Click detection areas
     private RectTransform characterGridParentRect;
@@ -40,19 +38,16 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     // Animation state
     private bool isPlayerListVisible = false;
-    private bool isCharacterDeckVisible = false;
-    private bool isPetDeckVisible = false;
+    private bool isDeckPreviewVisible = false;
     private Tween playerListTween;
-    private Tween characterDeckTween;
-    private Tween petDeckTween;
+    private Tween deckPreviewTween;
     
     // Click detection control
     private bool enableClickOutsideDetection = true;
     
     // Events for state changes
     public System.Action<bool> OnPlayerListVisibilityChanged;
-    public System.Action<bool> OnCharacterDeckVisibilityChanged;
-    public System.Action<bool> OnPetDeckVisibilityChanged;
+    public System.Action<bool> OnDeckPreviewVisibilityChanged;
     public System.Action<GameObject> OnModelTransitionStarted;
     public System.Action<GameObject> OnModelTransitionCompleted;
     
@@ -60,34 +55,28 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     #region Initialization
     
-    public void Initialize(GameObject playerListPanel, GameObject characterDeckPanel, GameObject petDeckPanel)
+    public void Initialize(GameObject playerListPanel, GameObject deckPreviewPanel)
     {
         this.playerListPanel = playerListPanel;
-        this.characterDeckPanel = characterDeckPanel;
-        this.petDeckPanel = petDeckPanel;
+        this.deckPreviewPanel = deckPreviewPanel;
         
         if (playerListPanel != null)
         {
             playerListRect = playerListPanel.GetComponent<RectTransform>();
         }
         
-        if (characterDeckPanel != null)
+        if (deckPreviewPanel != null)
         {
-            characterDeckRect = characterDeckPanel.GetComponent<RectTransform>();
+            deckPreviewRect = deckPreviewPanel.GetComponent<RectTransform>();
         }
         
-        if (petDeckPanel != null)
-        {
-            petDeckRect = petDeckPanel.GetComponent<RectTransform>();
-        }
-        
-        // Initialize panels in hidden state
+        // Initialize panels in their proper state (deck panel always visible, no animations)
         SetupInitialPanelPositions();
         
         // Setup model dissolve animator
         SetupModelDissolveAnimator();
         
-        /* Debug.Log("CharacterSelectionUIAnimator: Initialized with player list, character deck, and pet deck panels"); */
+        Debug.Log("CharacterSelectionUIAnimator: Initialized with player list and shared deck preview panel");
     }
     
     private void SetupInitialPanelPositions()
@@ -96,8 +85,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         
         // Set up all panels using the generic setup method (supports OffscreenPanelSetup)
         SetupPanel(playerListPanel, playerListRect, playerListHiddenOffset);
-        SetupPanel(characterDeckPanel, characterDeckRect, deckPreviewHiddenOffset);
-        SetupPanel(petDeckPanel, petDeckRect, deckPreviewHiddenOffset);
+        SetupPanel(deckPreviewPanel, deckPreviewRect, deckPreviewHiddenOffset);
     }
     
     /// <summary>
@@ -208,123 +196,52 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     
     #endregion
     
-    #region Character Deck Panel Animation
+    #region Deck Preview Panel Animation
     
-    public void ShowCharacterDeckPanel()
+    public void ShowDeckPreviewPanel()
     {
-        /* Debug.Log($"CharacterSelectionUIAnimator: ShowCharacterDeckPanel() called - characterDeckPanel: {characterDeckPanel?.name}, isVisible: {isCharacterDeckVisible}"); */
-        
-        if (characterDeckPanel == null || isCharacterDeckVisible) return;
+        if (deckPreviewPanel == null || isDeckPreviewVisible) return;
         
         // Kill existing tween
-        characterDeckTween?.Kill();
+        deckPreviewTween?.Kill();
         
-        characterDeckPanel.SetActive(true);
-        /* Debug.Log("CharacterSelectionUIAnimator: Character deck panel set to ACTIVE - starting slide-in animation"); */
-        isCharacterDeckVisible = true;
+        deckPreviewPanel.SetActive(true);
+        isDeckPreviewVisible = true;
         
         // Get positions from DeckPreviewPanelSetup if available
-        Vector2 hiddenPos = GetDeckPanelHiddenPosition(characterDeckPanel);
-        Vector2 targetPos = GetDeckPanelTargetPosition(characterDeckPanel);
+        Vector2 hiddenPos = GetDeckPanelHiddenPosition(deckPreviewPanel);
+        Vector2 targetPos = GetDeckPanelTargetPosition(deckPreviewPanel);
         
         // Set starting position and animate to target
-        characterDeckRect.anchoredPosition = hiddenPos;
-        characterDeckTween = characterDeckRect.DOAnchorPos(targetPos, slideAnimationDuration)
+        deckPreviewRect.anchoredPosition = hiddenPos;
+        deckPreviewTween = deckPreviewRect.DOAnchorPos(targetPos, slideAnimationDuration)
             .SetEase(slideInEase)
             .OnComplete(() => {
-                /* Debug.Log("CharacterSelectionUIAnimator: Character deck panel slide-in animation completed"); */
-                /* Debug.Log($"CharacterSelectionUIAnimator: Character deck panel active state after animation: {characterDeckPanel.activeInHierarchy}"); */
-                OnCharacterDeckVisibilityChanged?.Invoke(true);
+                OnDeckPreviewVisibilityChanged?.Invoke(true);
             });
         
-        /* Debug.Log("CharacterSelectionUIAnimator: Character deck panel sliding in from below with DOTween"); */
+        /* Debug.Log("CharacterSelectionUIAnimator: Deck preview panel sliding in from below with DOTween"); */
     }
     
-    public void HideCharacterDeckPanel()
+    public void HideDeckPreviewPanel()
     {
-        /* Debug.Log($"CharacterSelectionUIAnimator: HideCharacterDeckPanel() called - characterDeckPanel: {characterDeckPanel?.name}, isVisible: {isCharacterDeckVisible}"); */
-        
-        if (characterDeckPanel == null || !isCharacterDeckVisible) return;
+        if (deckPreviewPanel == null || !isDeckPreviewVisible) return;
         
         // Kill existing tween
-        characterDeckTween?.Kill();
+        deckPreviewTween?.Kill();
         
-        isCharacterDeckVisible = false;
+        isDeckPreviewVisible = false;
         
-        Vector2 hiddenPos = GetDeckPanelHiddenPosition(characterDeckPanel);
-        characterDeckTween = characterDeckRect.DOAnchorPos(hiddenPos, slideAnimationDuration)
+        Vector2 hiddenPos = GetDeckPanelHiddenPosition(deckPreviewPanel);
+        deckPreviewTween = deckPreviewRect.DOAnchorPos(hiddenPos, slideAnimationDuration)
             .SetEase(slideOutEase)
             .OnComplete(() => {
-                characterDeckPanel.SetActive(false);
-                Debug.Log("CharacterSelectionUIAnimator: Character deck panel set to INACTIVE after slide-out animation completed");
-                OnCharacterDeckVisibilityChanged?.Invoke(false);
+                deckPreviewPanel.SetActive(false);
+                Debug.Log("CharacterSelectionUIAnimator: Deck preview panel set to INACTIVE after slide-out animation completed");
+                OnDeckPreviewVisibilityChanged?.Invoke(false);
             });
         
-        Debug.Log("CharacterSelectionUIAnimator: Character deck panel sliding out to below with DOTween");
-    }
-    
-    #endregion
-    
-    #region Pet Deck Panel Animation
-    
-    public void ShowPetDeckPanel()
-    {
-        /* Debug.Log($"CharacterSelectionUIAnimator: ShowPetDeckPanel() called - petDeckPanel: {petDeckPanel?.name}, isVisible: {isPetDeckVisible}"); */
-        
-        if (petDeckPanel == null || isPetDeckVisible) return;
-        
-        // Kill existing tween
-        petDeckTween?.Kill();
-        
-        petDeckPanel.SetActive(true);
-        /* Debug.Log("CharacterSelectionUIAnimator: Pet deck panel set to ACTIVE - starting slide-in animation"); */
-        isPetDeckVisible = true;
-        
-        // Get positions from DeckPreviewPanelSetup if available
-        Vector2 hiddenPos = GetDeckPanelHiddenPosition(petDeckPanel);
-        Vector2 targetPos = GetDeckPanelTargetPosition(petDeckPanel);
-        
-        // Set starting position and animate to target
-        petDeckRect.anchoredPosition = hiddenPos;
-        petDeckTween = petDeckRect.DOAnchorPos(targetPos, slideAnimationDuration)
-            .SetEase(slideInEase)
-            .OnComplete(() => {
-                /* Debug.Log("CharacterSelectionUIAnimator: Pet deck panel slide-in animation completed"); */
-                /* Debug.Log($"CharacterSelectionUIAnimator: Pet deck panel active state after animation: {petDeckPanel.activeInHierarchy}"); */
-                OnPetDeckVisibilityChanged?.Invoke(true);
-            });
-        
-        /* Debug.Log("CharacterSelectionUIAnimator: Pet deck panel sliding in from below with DOTween"); */
-    }
-    
-    public void HidePetDeckPanel()
-    {
-        /* Debug.Log($"CharacterSelectionUIAnimator: HidePetDeckPanel() called - petDeckPanel: {petDeckPanel?.name}, isVisible: {isPetDeckVisible}"); */
-        
-        if (petDeckPanel == null || !isPetDeckVisible) return;
-        
-        // Kill existing tween
-        petDeckTween?.Kill();
-        
-        isPetDeckVisible = false;
-        
-        Vector2 hiddenPos = GetDeckPanelHiddenPosition(petDeckPanel);
-        petDeckTween = petDeckRect.DOAnchorPos(hiddenPos, slideAnimationDuration)
-            .SetEase(slideOutEase)
-            .OnComplete(() => {
-                petDeckPanel.SetActive(false);
-                Debug.Log("CharacterSelectionUIAnimator: Pet deck panel set to INACTIVE after slide-out animation completed");
-                OnPetDeckVisibilityChanged?.Invoke(false);
-            });
-        
-        Debug.Log("CharacterSelectionUIAnimator: Pet deck panel sliding out to below with DOTween");
-    }
-    
-    public void HideAllDeckPanels()
-    {
-        Debug.Log("CharacterSelectionUIAnimator: HideAllDeckPanels() called - hiding both character and pet deck panels");
-        HideCharacterDeckPanel();
-        HidePetDeckPanel();
+        Debug.Log("CharacterSelectionUIAnimator: Deck preview panel sliding out to below with DOTween");
     }
     
     #endregion
@@ -340,7 +257,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         }
         
         // Check for clicks outside of character/pet selections to hide deck previews
-        if (enableClickOutsideDetection && (isCharacterDeckVisible || isPetDeckVisible) && Input.GetMouseButtonDown(0))
+        if (enableClickOutsideDetection && (isDeckPreviewVisible) && Input.GetMouseButtonDown(0))
         {
             CheckClickOutsideSelections();
         }
@@ -395,7 +312,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         if (!isValidClick)
         {
             Debug.Log("CharacterSelectionUIAnimator: Click DETECTED outside character/pet selections - HIDING ALL DECK PANELS");
-            HideAllDeckPanels();
+            HideDeckPreviewPanel();
         }
         else
         {
@@ -669,8 +586,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         Debug.Log($"  - enableClickOutsideDetection: {enableClickOutsideDetection}");
         Debug.Log($"  - characterGridParentRect: {characterGridParentRect?.name ?? "NULL"}");
         Debug.Log($"  - petGridParentRect: {petGridParentRect?.name ?? "NULL"}");
-        Debug.Log($"  - isCharacterDeckVisible: {isCharacterDeckVisible}");
-        Debug.Log($"  - isPetDeckVisible: {isPetDeckVisible}");
+        Debug.Log($"  - isDeckPreviewVisible: {isDeckPreviewVisible}");
         Debug.Log($"  - Character selection phase active: {IsCharacterSelectionPhaseActive()}");
     }
     
@@ -899,15 +815,9 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         if (obj == null) return false;
         
         // Check if the object is a child of either deck panel
-        if (characterDeckPanel != null && obj.transform.IsChildOf(characterDeckPanel.transform))
+        if (deckPreviewPanel != null && obj.transform.IsChildOf(deckPreviewPanel.transform))
         {
-            Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of character deck panel");
-            return true;
-        }
-            
-        if (petDeckPanel != null && obj.transform.IsChildOf(petDeckPanel.transform))
-        {
-            Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of pet deck panel");
+            Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of deck preview panel");
             return true;
         }
             
@@ -1008,8 +918,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     {
         // Kill all tweens to prevent memory leaks
         playerListTween?.Kill();
-        characterDeckTween?.Kill();
-        petDeckTween?.Kill();
+        deckPreviewTween?.Kill();
         
         // Unsubscribe from model dissolve animator events
         if (modelDissolveAnimator != null)
@@ -1020,8 +929,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         
         // Clear all events
         OnPlayerListVisibilityChanged = null;
-        OnCharacterDeckVisibilityChanged = null;
-        OnPetDeckVisibilityChanged = null;
+        OnDeckPreviewVisibilityChanged = null;
         OnModelTransitionStarted = null;
         OnModelTransitionCompleted = null;
         
@@ -1032,8 +940,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     {
         // Kill all active tweens when disabled
         playerListTween?.Kill();
-        characterDeckTween?.Kill();
-        petDeckTween?.Kill();
+        deckPreviewTween?.Kill();
         
         // Force hide all panels immediately when disabled
         if (playerListPanel != null && isPlayerListVisible)
@@ -1042,16 +949,10 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             isPlayerListVisible = false;
         }
         
-        if (characterDeckPanel != null && isCharacterDeckVisible)
+        if (deckPreviewPanel != null && isDeckPreviewVisible)
         {
-            characterDeckPanel.SetActive(false);
-            isCharacterDeckVisible = false;
-        }
-        
-        if (petDeckPanel != null && isPetDeckVisible)
-        {
-            petDeckPanel.SetActive(false);
-            isPetDeckVisible = false;
+            deckPreviewPanel.SetActive(false);
+            isDeckPreviewVisible = false;
         }
         
         Debug.Log("CharacterSelectionUIAnimator: Disabled and force-closed all panels");
@@ -1078,9 +979,8 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     #region Public Properties
     
     public bool IsPlayerListVisible => isPlayerListVisible;
-    public bool IsCharacterDeckVisible => isCharacterDeckVisible;
-    public bool IsPetDeckVisible => isPetDeckVisible;
-    public bool IsAnyDeckVisible => isCharacterDeckVisible || isPetDeckVisible;
+    public bool IsDeckPreviewVisible => isDeckPreviewVisible;
+    public bool IsAnyDeckVisible => isDeckPreviewVisible;
     
     // Control methods for external systems
     public void SetClickOutsideDetectionEnabled(bool enabled)
