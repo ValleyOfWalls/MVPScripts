@@ -9,29 +9,14 @@ using FishNet.Object;
 using FishNet.Connection;
 
 /// <summary>
-/// Positioning mode for 3D models in character selection
-/// </summary>
-public enum ModelPositioningMode
-{
-    Grid,   // Use grid-based positioning with automatic layout
-    Manual  // Use manually specified world coordinates
-}
-
-/// <summary>
 /// Manages the character selection UI interactions with Mario Kart-style shared selection grids.
 /// </summary>
 public class CharacterSelectionUIManager : NetworkBehaviour
 {
     [Header("UI References - Set by CharacterSelectionCanvasSetup")]
     [SerializeField] private GameObject characterSelectionCanvas;
-    [SerializeField] private GameObject backgroundPanel;
-    [SerializeField] private TextMeshProUGUI titleText;
-    [SerializeField] private TMP_InputField playerNameInputField;
     [SerializeField] private Button readyButton;
-    [SerializeField] private ScrollRect characterScrollView;
-    [SerializeField] private Transform characterGridParent;
-    [SerializeField] private ScrollRect petScrollView;
-    [SerializeField] private Transform petGridParent;
+    [SerializeField] private Transform characterGridParent; // Fallback if no sharedGridParent
 
     [SerializeField] private TextMeshProUGUI statusText;
     [SerializeField] private TextMeshProUGUI readyCounterText;
@@ -49,28 +34,13 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     [SerializeField] private GameObject selectionItemPrefab;
     [SerializeField] private GameObject playerListItemPrefab;
     
-    [Header("3D Model Positioning")]
-    [SerializeField] private bool use3DModelPositioning = false;
-    [SerializeField] private ModelPositioningMode positioningMode = ModelPositioningMode.Grid;
-    [SerializeField] private Transform characterModelsParent;
-    [SerializeField] private Transform petModelsParent;
-    [SerializeField] private Camera modelViewCamera; // Camera for viewing the 3D models
+    [Header("Portrait Grid Toggle")]
+    [SerializeField] private Button charactersToggleButton;
+    [SerializeField] private Button petsToggleButton;
+    [SerializeField] private Transform sharedGridParent; // Single grid that shows either characters or pets
     
-    [Header("Grid Positioning Settings")]
-    [Header("Character Grid (relative to characterModelsParent)")]
-    [SerializeField] private Vector3 characterModelSpacing = new Vector3(2f, 0f, 0f);
-    [SerializeField] private int characterModelsPerRow = 4;
-    [SerializeField] private Vector3 characterRowOffset = new Vector3(0f, 0f, -2f);
-    
-    [Header("Pet Grid (relative to petModelsParent)")]
-    [SerializeField] private Vector3 petModelSpacing = new Vector3(2f, 0f, 0f);
-    [SerializeField] private int petModelsPerRow = 3;
-    [SerializeField] private Vector3 petRowOffset = new Vector3(0f, 0f, -2f);
-    
-    [Header("Manual Positioning Settings")]
-    [SerializeField] private List<Vector3> characterPositions = new List<Vector3>();
-    [SerializeField] private List<Vector3> petPositions = new List<Vector3>();
-    [SerializeField] private bool autoGeneratePositions = true; // Generate positions if lists are empty
+    [Header("Model Spawning")]
+    [SerializeField] private Transform selectedModelSpawn; // Shared location for both character and pet models
     
     [Header("Styling")]
     [SerializeField] private Color selectedColor = new Color(0.3f, 0.6f, 1f, 1f);
@@ -103,14 +73,19 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     private List<CharacterData> availableCharacters;
     private List<PetData> availablePets;
     
+    // Portrait button lists
+    private List<Button> characterPortraitButtons = new List<Button>();
+    private List<Button> petPortraitButtons = new List<Button>();
+    
+    // Spawned models
+    private GameObject currentCharacterModel;
+    private GameObject currentPetModel;
+    
     // UI element lists
-    private List<GameObject> characterItems = new List<GameObject>();
-    private List<GameObject> petItems = new List<GameObject>();
     private List<GameObject> playerListItems = new List<GameObject>();
     
-    // Entity selection controllers (for interfacing with prefab controllers)
-    private List<EntitySelectionController> characterControllers = new List<EntitySelectionController>();
-    private List<EntitySelectionController> petControllers = new List<EntitySelectionController>();
+    // Grid toggle state
+    private bool showingCharacters = true;
     
     // Deck preview controller
     private DeckPreviewController deckPreviewController;
@@ -140,15 +115,15 @@ public class CharacterSelectionUIManager : NetworkBehaviour
 
     public void Initialize(CharacterSelectionManager manager, List<CharacterData> characters, List<PetData> pets)
     {
-        /* Debug.Log($"CharacterSelectionUIManager: Initialize() called - isInitialized: {isInitialized}"); */
+        Debug.Log($"[CHAR_SELECT_REVAMP] Initialize() called - isInitialized: {isInitialized}");
         
         if (isInitialized)
         {
-            Debug.Log("CharacterSelectionUIManager: Already initialized, skipping duplicate initialization to prevent panel disruption");
+            Debug.Log("[CHAR_SELECT_REVAMP] Already initialized, skipping duplicate initialization to prevent panel disruption");
             return;
         }
         
-        /* Debug.Log("CharacterSelectionUIManager: Starting initialization sequence"); */
+        Debug.Log("[CHAR_SELECT_REVAMP] Starting initialization sequence");
         
         selectionManager = manager;
         availableCharacters = characters;
@@ -158,29 +133,29 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         myPlayerID = GetPlayerID();
         myPlayerColor = GetPlayerColor(myPlayerID);
         
-        /* Debug.Log("CharacterSelectionUIManager: Setting up UI (Part 1 - Core UI and Animator)..."); */
+        Debug.Log("[CHAR_SELECT_REVAMP] Setting up UI (Part 1 - Core UI and Animator)...");
         SetupCoreUI();
         
-        /* Debug.Log("CharacterSelectionUIManager: Initializing deck preview controller..."); */
+        Debug.Log("[CHAR_SELECT_REVAMP] Initializing deck preview controller...");
         InitializeDeckPreviewController();
         
-        /* Debug.Log("CharacterSelectionUIManager: Finalizing UI animator setup..."); */
+        Debug.Log("[CHAR_SELECT_REVAMP] Finalizing UI animator setup...");
         FinalizeUIAnimatorSetup();
         
-        /* Debug.Log("CharacterSelectionUIManager: Setting up UI (Part 2 - Panel setup)..."); */
+        Debug.Log("[CHAR_SELECT_REVAMP] Setting up UI (Part 2 - Panel setup)...");
         FinishUISetup();
         
-        /* Debug.Log("CharacterSelectionUIManager: Creating selection items..."); */
-        CreateSelectionItems();
+        Debug.Log("[CHAR_SELECT_REVAMP] Creating portrait button grids...");
+        CreatePortraitButtonGrids();
         
-        /* Debug.Log("CharacterSelectionUIManager: Making default selections (this will trigger deck previews)..."); */
+        Debug.Log("[CHAR_SELECT_REVAMP] Making default selections (this will trigger model spawning)...");
         MakeDefaultSelections();
         
-        /* Debug.Log("CharacterSelectionUIManager: Updating ready button state..."); */
+        Debug.Log("[CHAR_SELECT_REVAMP] Updating ready button state...");
         UpdateReadyButtonState();
         
         isInitialized = true;
-        /* Debug.Log($"CharacterSelectionUIManager: Initialized - Player ID: {myPlayerID}, Color: {myPlayerColor}"); */
+        Debug.Log($"[CHAR_SELECT_REVAMP] Initialized - Player ID: {myPlayerID}, Color: {myPlayerColor}");
     }
     
     /// <summary>
@@ -221,9 +196,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
         
         // Check if objects are already spawned
-        if (characterItems.Count > 0 || petItems.Count > 0)
+        if (characterPortraitButtons.Count > 0 || petPortraitButtons.Count > 0)
         {
-            Debug.Log($"CharacterSelectionUIManager: Selection objects already in lists - Characters: {characterItems.Count}, Pets: {petItems.Count}");
+            Debug.Log($"CharacterSelectionUIManager: Selection objects already in lists - Characters: {characterPortraitButtons.Count}, Pets: {petPortraitButtons.Count}");
             return;
         }
         
@@ -265,13 +240,6 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         
         // Set up UI animator first (needed by deck preview controller)
         SetupUIAnimator();
-        
-        // Set up input field
-        if (playerNameInputField != null)
-        {
-            playerNameInputField.onValueChanged.RemoveAllListeners();
-            playerNameInputField.onValueChanged.AddListener(OnPlayerNameChanged);
-        }
         
         // Set up ready button
         if (readyButton != null)
@@ -315,10 +283,10 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         // Validate grid parent references before setting them
         ValidateGridParentReferences();
         
-        // Set up click detection areas using the grid parents instead of scroll views
+        // Set up click detection areas using the shared grid parent
         uiAnimator.SetClickDetectionAreas(
-            characterGridParent?.GetComponent<RectTransform>(), 
-            petGridParent?.GetComponent<RectTransform>()
+            sharedGridParent?.GetComponent<RectTransform>(), 
+            sharedGridParent?.GetComponent<RectTransform>()
         );
         
         /* Debug.Log("CharacterSelectionUIManager: UI Animator created and basic setup complete"); */
@@ -352,41 +320,47 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     private void ValidateGridParentReferences()
     {
         // Check and log grid parent reference status
-        /* Debug.Log($"CharacterSelectionUIManager: Validating grid parent references:"); */
-        /* Debug.Log($"  - characterGridParent: {characterGridParent?.name ?? "NULL"}"); */
-        Debug.Log($"  - petGridParent: {petGridParent?.name ?? "NULL"}");
+        Debug.Log($"[CHAR_SELECT_REVAMP] Validating grid parent references:");
+        Debug.Log($"  - characterGridParent: {characterGridParent?.name ?? "NULL"}");
+        Debug.Log($"  - sharedGridParent: {sharedGridParent?.name ?? "NULL"}");
         
         if (characterGridParent == null)
         {
-            Debug.LogError("CharacterSelectionUIManager: characterGridParent is null! This will prevent click detection from working properly.");
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] characterGridParent is null! Using sharedGridParent or transform as fallback.");
         }
         else
         {
             RectTransform rectTransform = characterGridParent.GetComponent<RectTransform>();
             if (rectTransform == null)
             {
-                Debug.LogError($"CharacterSelectionUIManager: characterGridParent '{characterGridParent.name}' has no RectTransform component!");
+                Debug.LogError($"[CHAR_SELECT_REVAMP] characterGridParent '{characterGridParent.name}' has no RectTransform component!");
             }
             else
             {
-                Debug.Log($"CharacterSelectionUIManager: characterGridParent '{characterGridParent.name}' has {characterGridParent.childCount} children");
+                Debug.Log($"[CHAR_SELECT_REVAMP] characterGridParent '{characterGridParent.name}' has {characterGridParent.childCount} children");
             }
         }
         
-        if (petGridParent == null)
+        if (sharedGridParent == null)
         {
-            Debug.LogError("CharacterSelectionUIManager: petGridParent is null! This will prevent click detection from working properly.");
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] sharedGridParent is null! Portrait buttons will use fallback parent and may not layout correctly.");
         }
         else
         {
-            RectTransform rectTransform = petGridParent.GetComponent<RectTransform>();
+            RectTransform rectTransform = sharedGridParent.GetComponent<RectTransform>();
             if (rectTransform == null)
             {
-                Debug.LogError($"CharacterSelectionUIManager: petGridParent '{petGridParent.name}' has no RectTransform component!");
+                Debug.LogError($"[CHAR_SELECT_REVAMP] sharedGridParent '{sharedGridParent.name}' has no RectTransform component!");
             }
             else
             {
-                /* Debug.Log($"CharacterSelectionUIManager: petGridParent '{petGridParent.name}' has {petGridParent.childCount} children"); */
+                Debug.Log($"[CHAR_SELECT_REVAMP] sharedGridParent '{sharedGridParent.name}' has {sharedGridParent.childCount} children");
+                
+                GridLayoutGroup gridLayout = sharedGridParent.GetComponent<GridLayoutGroup>();
+                if (gridLayout == null)
+                {
+                    Debug.LogWarning("[CHAR_SELECT_REVAMP] sharedGridParent does not have a GridLayoutGroup component. Portrait buttons may not layout correctly.");
+                }
             }
         }
     }
@@ -452,49 +426,24 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
     }
 
+    #endregion
+
     private void CreateSelectionItems()
     {
-        // Check if network is ready, if not wait for it
-        if (!IsNetworkManagerReady())
-        {
-            Debug.Log("CharacterSelectionUIManager: Network not ready, waiting...");
-            StartCoroutine(WaitForNetworkAndCreateItems());
-            return;
-        }
+        Debug.Log("[CHAR_SELECT_REVAMP] Using new portrait button system - skipping old network object spawning");
         
-        // First, check if there are already spawned selection objects (for late-joining clients)
-        SelectionNetworkObject[] existingObjects = FindObjectsOfType<SelectionNetworkObject>();
-        if (existingObjects.Length > 0)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Found {existingObjects.Length} existing spawned selection objects, registering them");
-            DiscoverAndRegisterSpawnedObjects(existingObjects);
-            return;
-        }
-        
-        // If we're the server (or host) and no objects exist, spawn them
-        if (FishNet.InstanceFinder.IsServerStarted)
-        {
-            /* Debug.Log("CharacterSelectionUIManager: Server spawning new selection objects"); */
-            CreateCharacterItems();
-            CreatePetItems();
-        }
-        else
-        {
-            // We're a client and no objects exist yet, wait for them
-            /* Debug.Log("CharacterSelectionUIManager: Client waiting for server to spawn selection objects"); */
-            StartCoroutine(WaitForServerSpawnedObjects());
-        }
+        // Use the new portrait button system instead of the old network object system
+        CreatePortraitButtonGrids();
     }
 
     private void CreateCharacterItems()
     {
         // Clear existing items and controllers
-        foreach (GameObject item in characterItems)
+        foreach (Button button in characterPortraitButtons)
         {
-            if (item != null) Destroy(item);
+            if (button != null) Destroy(button.gameObject);
         }
-        characterItems.Clear();
-        characterControllers.Clear();
+        characterPortraitButtons.Clear();
         
         // Create character selection items
         for (int i = 0; i < availableCharacters.Count; i++)
@@ -502,51 +451,58 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             CharacterData character = availableCharacters[i];
             if (character == null) continue;
             
-            GameObject item;
-            EntitySelectionController controller;
-            
-            if (use3DModelPositioning)
+            Button button = Instantiate(selectionItemPrefab, characterGridParent).GetComponent<Button>();
+            if (button == null)
             {
-                // Create 3D model-based selection item
-                item = Create3DSelectionItem(character, i, true);
-                controller = item.GetComponent<EntitySelectionController>();
-                if (controller == null)
-                {
-                    controller = item.AddComponent<EntitySelectionController>();
-                }
-                
-                // Set to 3D model mode and configure
-                controller.SetSelectionMode(EntitySelectionController.SelectionMode.Model_3D);
-                
-                // Set the camera for raycast detection
-                if (modelViewCamera != null)
-                {
-                    // We'll need to add a method to set the camera in EntitySelectionController
-                    SetControllerCamera(controller, modelViewCamera);
-                }
-            }
-            else
-            {
-                // Create traditional UI-based selection item
-                item = CreateSelectionItem(characterGridParent, character.CharacterName, character.CharacterPortrait, character.CharacterDescription, true, i);
-                controller = item.GetComponent<EntitySelectionController>();
-                if (controller == null)
-                {
-                    controller = item.AddComponent<EntitySelectionController>();
-                }
+                Debug.LogError("CharacterSelectionUIManager: Selection Item Prefab is not a Button!");
+                continue;
             }
             
-            if (item != null && controller != null)
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => OnCharacterSelectionChanged(i));
+            
+            characterPortraitButtons.Add(button);
+            
+            // Set up the item data using the prefab structure
+            // Find the name text component
+            TextMeshProUGUI nameText = button.GetComponentInChildren<TextMeshProUGUI>();
+            if (nameText != null)
             {
-                controller.InitializeWithCharacter(character, i, this, deckPreviewController, selectionManager);
-                characterControllers.Add(controller);
-                characterItems.Add(item);
-                
-                // Position 3D model if using 3D positioning
-                if (use3DModelPositioning)
+                nameText.text = character.CharacterName;
+            }
+            
+            // Find the portrait image component specifically (not the root image)
+            // Look for an Image component that's likely the portrait (not the background)
+            Image[] images = button.GetComponentsInChildren<Image>();
+            Image portraitImage = null;
+            
+            // Try to find portrait by name or component order
+            foreach (Image img in images)
+            {
+                // Look for portrait-specific naming or the second image (assuming first is background)
+                if (img.gameObject.name.ToLower().Contains("portrait") || 
+                    img.gameObject.name.ToLower().Contains("image") ||
+                    img != button.GetComponent<Image>()) // Not the root image
                 {
-                    Position3DModel(item, i, true);
+                    portraitImage = img;
+                    break;
                 }
+            }
+            
+            // If no specific portrait found, use the second image component (skip root)
+            if (portraitImage == null && images.Length > 1)
+            {
+                portraitImage = images[1]; // Assume index 0 is root background
+            }
+            
+            // Set the portrait sprite
+            if (portraitImage != null && character.CharacterPortrait != null)
+            {
+                portraitImage.sprite = character.CharacterPortrait;
+            }
+            else if (character.CharacterPortrait != null)
+            {
+                Debug.LogWarning($"CharacterSelectionUIManager: Could not find portrait Image component in prefab for {character.CharacterName}");
             }
         }
     }
@@ -554,12 +510,11 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     private void CreatePetItems()
     {
         // Clear existing items and controllers
-        foreach (GameObject item in petItems)
+        foreach (Button button in petPortraitButtons)
         {
-            if (item != null) Destroy(item);
+            if (button != null) Destroy(button.gameObject);
         }
-        petItems.Clear();
-        petControllers.Clear();
+        petPortraitButtons.Clear();
         
         // Create pet selection items
         for (int i = 0; i < availablePets.Count; i++)
@@ -567,250 +522,402 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             PetData pet = availablePets[i];
             if (pet == null) continue;
             
-            GameObject item;
-            EntitySelectionController controller;
-            
-            if (use3DModelPositioning)
+            Button button = Instantiate(selectionItemPrefab, characterGridParent).GetComponent<Button>();
+            if (button == null)
             {
-                // Create 3D model-based selection item
-                item = Create3DSelectionItem(pet, i, false);
-                controller = item.GetComponent<EntitySelectionController>();
-                if (controller == null)
+                Debug.LogError("CharacterSelectionUIManager: Selection Item Prefab is not a Button!");
+                continue;
+            }
+            
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => OnPetSelectionChanged(i));
+            
+            petPortraitButtons.Add(button);
+            
+            // Set up the item data using the prefab structure
+            SetupPortraitButton(button, pet.PetName, pet.PetPortrait);
+        }
+    }
+
+         public void OnCharacterSelectionChanged(int characterIndex)
+     {
+         if (characterIndex < 0 || characterIndex >= availableCharacters.Count) return;
+         
+         // Prevent re-selecting the same character (no action if already selected)
+         if (characterIndex == selectedCharacterIndex)
+         {
+             Debug.Log($"[CHAR_SELECT_REVAMP] Character {availableCharacters[characterIndex].CharacterName} already selected, ignoring duplicate selection");
+             return;
+         }
+         
+         Debug.Log($"[CHAR_SELECT_REVAMP] Character selection changed to {availableCharacters[characterIndex].CharacterName}");
+         
+         // Update selection
+         selectedCharacterIndex = characterIndex;
+         
+         // Request model transition (don't create model immediately - let animation system handle it)
+         RequestCharacterModelTransition(characterIndex);
+         
+         // Update visual selection
+         UpdateMySelectionVisuals();
+         
+         // Update deck preview
+         if (deckPreviewController != null)
+         {
+             deckPreviewController.SetCurrentCharacterIndex(characterIndex);
+             deckPreviewController.ShowCharacterDeck(characterIndex, isReady);
+         }
+         
+         // Update selection state
+         UpdateSelectionState();
+     }
+
+         public void OnPetSelectionChanged(int petIndex)
+     {
+         if (petIndex < 0 || petIndex >= availablePets.Count) return;
+         
+         // Prevent re-selecting the same pet (no action if already selected)
+         if (petIndex == selectedPetIndex)
+         {
+             Debug.Log($"[CHAR_SELECT_REVAMP] Pet {availablePets[petIndex].PetName} already selected, ignoring duplicate selection");
+             return;
+         }
+         
+         Debug.Log($"[CHAR_SELECT_REVAMP] Pet selection changed to {availablePets[petIndex].PetName}");
+         
+         // Update selection
+         selectedPetIndex = petIndex;
+         
+         // Request model transition (don't create model immediately - let animation system handle it)
+         RequestPetModelTransition(petIndex);
+         
+         // Update visual selection
+         UpdateMySelectionVisuals();
+         
+         // Update deck preview
+         if (deckPreviewController != null)
+         {
+             deckPreviewController.SetCurrentPetIndex(petIndex);
+             deckPreviewController.ShowPetDeck(petIndex, isReady);
+         }
+         
+         // Update selection state
+         UpdateSelectionState();
+     }
+
+    private void UpdateMySelectionVisuals()
+    {
+        // Update character selection border using controllers
+        for (int i = 0; i < characterPortraitButtons.Count; i++)
+        {
+            Button button = characterPortraitButtons[i];
+            if (button != null)
+            {
+                if (i == selectedCharacterIndex)
                 {
-                    controller = item.AddComponent<EntitySelectionController>();
-                }
-                
-                // Set to 3D model mode and configure
-                controller.SetSelectionMode(EntitySelectionController.SelectionMode.Model_3D);
-                
-                // Set the camera for raycast detection
-                if (modelViewCamera != null)
-                {
-                    SetControllerCamera(controller, modelViewCamera);
-                }
+                    button.image.color = selectedColor;
             }
             else
             {
-                // Create traditional UI-based selection item
-                item = CreateSelectionItem(petGridParent, pet.PetName, pet.PetPortrait, pet.PetDescription, false, i);
-                controller = item.GetComponent<EntitySelectionController>();
-                if (controller == null)
-                {
-                    controller = item.AddComponent<EntitySelectionController>();
+                    button.image.color = unselectedColor;
                 }
             }
-            
-            if (item != null && controller != null)
+        }
+        
+        // Update pet selection border using controllers
+        for (int i = 0; i < petPortraitButtons.Count; i++)
+        {
+            Button button = petPortraitButtons[i];
+            if (button != null)
             {
-                controller.InitializeWithPet(pet, i, this, deckPreviewController, selectionManager);
-                petControllers.Add(controller);
-                petItems.Add(item);
-                
-                // Position 3D model if using 3D positioning
-                if (use3DModelPositioning)
+                if (i == selectedPetIndex)
                 {
-                    Position3DModel(item, i, false);
+                    button.image.color = selectedColor;
+                }
+                else
+                {
+                    button.image.color = unselectedColor;
                 }
             }
         }
     }
 
-    private GameObject CreateSelectionItem(Transform parent, string itemName, Sprite portrait, string description, bool isCharacter, int index)
+    private void UpdateSelectionState()
     {
-        // Since prefab is provided, we should always use it
-        if (selectionItemPrefab == null)
+        hasValidSelection = selectedCharacterIndex >= 0 && selectedPetIndex >= 0;
+        
+        // Update status text
+        if (statusText != null)
         {
-            Debug.LogError("CharacterSelectionUIManager: Selection Item Prefab is not assigned!");
-            return null;
-        }
-        
-        GameObject item = Instantiate(selectionItemPrefab, parent);
-        
-        // Set up the item data using the prefab structure
-        // Find the name text component
-        TextMeshProUGUI nameText = item.GetComponentInChildren<TextMeshProUGUI>();
-        if (nameText != null)
-        {
-            nameText.text = itemName;
-        }
-        
-        // Find the portrait image component specifically (not the root image)
-        // Look for an Image component that's likely the portrait (not the background)
-        Image[] images = item.GetComponentsInChildren<Image>();
-        Image portraitImage = null;
-        
-        // Try to find portrait by name or component order
-        foreach (Image img in images)
-        {
-            // Look for portrait-specific naming or the second image (assuming first is background)
-            if (img.gameObject.name.ToLower().Contains("portrait") || 
-                img.gameObject.name.ToLower().Contains("image") ||
-                img != item.GetComponent<Image>()) // Not the root image
+            if (hasValidSelection)
             {
-                portraitImage = img;
-                break;
+                string charName = !string.IsNullOrEmpty(customPlayerName) ? customPlayerName : availableCharacters[selectedCharacterIndex].CharacterName;
+                string petName = availablePets[selectedPetIndex].PetName;
+                statusText.text = $"Selected: {charName} & {petName}";
+            }
+            else if (selectedCharacterIndex >= 0)
+            {
+                statusText.text = "Now select a pet...";
+            }
+            else if (selectedPetIndex >= 0)
+            {
+                statusText.text = "Now select a character...";
+            }
+            else
+            {
+                statusText.text = "Select a character and pet to continue...";
             }
         }
         
-        // If no specific portrait found, use the second image component (skip root)
-        if (portraitImage == null && images.Length > 1)
-        {
-            portraitImage = images[1]; // Assume index 0 is root background
-        }
+        // Update ready button
+        UpdateReadyButtonState();
         
-        // Set the portrait sprite
-        if (portraitImage != null && portrait != null)
+        // Send selection to server if valid
+        if (hasValidSelection)
         {
-            portraitImage.sprite = portrait;
-        }
-        else if (portrait != null)
-        {
-            Debug.LogWarning($"CharacterSelectionUIManager: Could not find portrait Image component in prefab for {itemName}");
-        }
-        
-        return item;
-    }
-    
-    /// <summary>
-    /// Creates a 3D model-based selection item for characters or pets using prefabs
-    /// </summary>
-    private GameObject Create3DSelectionItem(object data, int index, bool isCharacter)
-    {
-        GameObject prefabToUse = null;
-        
-        // Get the appropriate prefab from the selection manager
-        if (isCharacter)
-        {
-            prefabToUse = selectionManager.GetCharacterPrefabByIndex(index);
-        }
-        else
-        {
-            prefabToUse = selectionManager.GetPetPrefabByIndex(index);
-        }
-        
-        if (prefabToUse == null)
-        {
-            Debug.LogError($"CharacterSelectionUIManager: No prefab found for {(isCharacter ? "character" : "pet")} at index {index}");
-            return null;
-        }
-        
-        // Set parent based on type
-        Transform parentTransform = isCharacter ? 
-            (characterModelsParent != null ? characterModelsParent : transform) : 
-            (petModelsParent != null ? petModelsParent : transform);
-        
-        GameObject item;
-        
-        // Check if the prefab has a NetworkObject component
-        NetworkObject networkObjectComponent = prefabToUse.GetComponent<NetworkObject>();
-        if (networkObjectComponent != null)
-        {
-            // Since we're in a networked context, spawn the NetworkObject properly
-            /* Debug.Log($"CharacterSelectionUIManager: Detected NetworkObject on {prefabToUse.name}, spawning through network system for character selection"); */
-            item = SpawnNetworkObjectForSelection(prefabToUse, parentTransform, index, isCharacter);
-        }
-        else
-        {
-            // Instantiate normally if no NetworkObject
-            item = Instantiate(prefabToUse, parentTransform);
-            item.name = isCharacter ? $"Character_{index}_{prefabToUse.name}" : $"Pet_{index}_{prefabToUse.name}";
-        }
-        
-        if (item == null)
-        {
-            Debug.LogError($"CharacterSelectionUIManager: Failed to create selection item for {(isCharacter ? "character" : "pet")} at index {index}");
-            return null;
-        }
-        
-        // Ensure the item has an EntitySelectionController
-        EntitySelectionController controller = item.GetComponent<EntitySelectionController>();
-        if (controller == null)
-        {
-            controller = item.AddComponent<EntitySelectionController>();
-        }
-        
-        // Set the prefab's 3D model as the selection target
-        // The prefab itself contains the visual model, so we set it as the model3D
-        controller.SetModel3D(item);
-        
-        return item;
-    }
-    
-    /// <summary>
-    /// Spawns a NetworkObject prefab for character selection using the network system
-    /// </summary>
-    private GameObject SpawnNetworkObjectForSelection(GameObject networkPrefab, Transform parent, int index, bool isCharacter)
-    {
-        // Only the server should spawn NetworkObjects
-        if (!FishNet.InstanceFinder.IsServerStarted)
-        {
-            Debug.LogWarning($"CharacterSelectionUIManager: Client cannot spawn NetworkObjects. Server should handle character selection spawning. Skipping {networkPrefab.name}");
-            return null;
-        }
-        
-        // Check if we have a valid network manager
-        if (!IsNetworkManagerReady())
-        {
-            Debug.LogError($"CharacterSelectionUIManager: Network manager not ready, cannot spawn NetworkObject for selection");
-            return null;
-        }
-        
-        try
-        {
-            // Spawn the NetworkObject at root level first (FishNet default behavior)
-            GameObject spawnedObject = Instantiate(networkPrefab);
-            spawnedObject.name = isCharacter ? $"Character_{index}_{networkPrefab.name}" : $"Pet_{index}_{networkPrefab.name}";
-            
-            // Get the NetworkObject component
-            NetworkObject networkObject = spawnedObject.GetComponent<NetworkObject>();
-            if (networkObject == null)
+            if (selectionManager != null)
             {
-                Debug.LogError($"CharacterSelectionUIManager: NetworkObject component missing on {spawnedObject.name}");
-                Destroy(spawnedObject);
-                return null;
+                /* Debug.Log($"CharacterSelectionUIManager: Sending selection to server - Character: {selectedCharacterIndex}, Pet: {selectedPetIndex}, CustomName: '{customPlayerName}'"); */
+                selectionManager.RequestSelectionUpdate(selectedCharacterIndex, selectedPetIndex, customPlayerName, "");
+            }
+            else
+            {
+                Debug.LogWarning("CharacterSelectionUIManager: Cannot send selection - selectionManager is null");
+            }
+        }
+    }
+
+    private void OnPlayerNameChanged(string newName)
+    {
+        customPlayerName = newName;
+        UpdateSelectionState();
+    }
+
+    private void OnReadyButtonClicked()
+    {
+        if (!hasValidSelection) return;
+        
+        // Prevent rapid button clicks with cooldown
+        float currentTime = Time.time;
+        if (currentTime - lastReadyButtonClickTime < READY_BUTTON_COOLDOWN)
+        {
+            Debug.Log($"CharacterSelectionUIManager: Ready button click ignored due to cooldown ({currentTime - lastReadyButtonClickTime:F2}s since last click)");
+            return;
+        }
+        
+        lastReadyButtonClickTime = currentTime;
+        
+        // Don't change local isReady state immediately - let server be authoritative
+        // The server will broadcast the update back to us and we'll update then
+        
+        if (selectionManager != null)
+        {
+            Debug.Log("CharacterSelectionUIManager: Sending ready toggle request to server");
+            selectionManager.RequestReadyToggle();
+        }
+    }
+    
+    private void OnShowPlayersButtonClicked()
+    {
+        if (uiAnimator != null)
+        {
+            uiAnimator.TogglePlayerListPanel();
+        }
+    }
+    
+    private void OnLeaveGameButtonClicked()
+    {
+        // Leave the game and return to start screen
+        LeaveGame();
+    }
+    
+    private void OnPlayerListCloseButtonClicked()
+    {
+        if (uiAnimator != null)
+        {
+            uiAnimator.HidePlayerListPanel();
+        }
+    }
+
+    private void UpdateReadyButtonState()
+    {
+        if (readyButton != null)
+        {
+            readyButton.interactable = hasValidSelection;
+            
+            Image buttonImage = readyButton.GetComponent<Image>();
+            if (buttonImage != null)
+            {
+                buttonImage.color = isReady ? readyColor : (hasValidSelection ? selectedColor : notReadyColor);
             }
             
-            // Spawn the object on the network for all clients to see
-            FishNet.InstanceFinder.ServerManager.Spawn(networkObject);
-            /* Debug.Log($"CharacterSelectionUIManager: Server spawned NetworkObject {spawnedObject.name} for character selection"); */
-            
-            // Mark this as a selection object with desired parent info
-            SelectionNetworkObject selectionMarker = spawnedObject.AddComponent<SelectionNetworkObject>();
-            selectionMarker.isCharacterSelectionObject = true;
-            selectionMarker.selectionIndex = index;
-            selectionMarker.isCharacter = isCharacter;
-            selectionMarker.SetDesiredParent(parent);
-            
-            // Use a coroutine to handle parenting after the object is fully spawned and synchronized
-            StartCoroutine(ParentNetworkObjectAfterSpawn(spawnedObject, parent, index, isCharacter));
-            
-            return spawnedObject;
+            TextMeshProUGUI buttonText = readyButton.GetComponentInChildren<TextMeshProUGUI>();
+            if (buttonText != null)
+            {
+                buttonText.text = isReady ? "Not Ready" : "Ready";
+            }
         }
-        catch (System.Exception ex)
+    }
+
+    private void LeaveGame()
+    {
+        Debug.Log("CharacterSelectionUIManager: Player requested to leave game");
+        
+        // Find the SteamNetworkIntegration to handle graceful disconnection and return to start
+        SteamNetworkIntegration steamNetwork = SteamNetworkIntegration.Instance;
+        if (steamNetwork != null)
         {
-            Debug.LogError($"CharacterSelectionUIManager: Error spawning NetworkObject for selection: {ex.Message}");
-            return null;
+            // Use the comprehensive disconnect and return to start method
+            steamNetwork.DisconnectAndReturnToStart();
+        }
+        else
+        {
+            Debug.LogError("CharacterSelectionUIManager: SteamNetworkIntegration.Instance not found, cannot gracefully disconnect");
+            
+            // Fallback: basic disconnect without proper transition
+            FishNet.InstanceFinder.ClientManager?.StopConnection();
+            FishNet.InstanceFinder.ServerManager?.StopConnection(true);
+            
+            // Try to transition through GamePhaseManager as fallback
+            GamePhaseManager gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            if (gamePhaseManager != null)
+            {
+                gamePhaseManager.SetStartPhase();
+            }
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Clean up selection models to prevent memory leaks
+        CleanupSelectionModels();
+        
+        // Unsubscribe from events to prevent memory leaks
+        if (uiAnimator != null)
+        {
+            uiAnimator.OnPlayerListVisibilityChanged -= OnPlayerListVisibilityChanged;
+            uiAnimator.OnCharacterDeckVisibilityChanged -= OnCharacterDeckVisibilityChanged;
+            uiAnimator.OnPetDeckVisibilityChanged -= OnPetDeckVisibilityChanged;
+        }
+    }
+
+    public void ShowTransitionMessage(string message)
+    {
+        if (statusText != null)
+        {
+            statusText.text = message;
+        }
+        
+        // Disable interactions during transition
+        if (readyButton != null)
+        {
+            readyButton.interactable = false;
+        }
+    }
+
+    public void HideCharacterSelectionUI()
+    {
+        if (characterSelectionCanvas != null)
+        {
+            characterSelectionCanvas.SetActive(false);
+        }
+        
+        // Clean up character selection models to free memory
+        CleanupSelectionModels();
+    }
+    
+    /// <summary>
+    /// Cleans up all instantiated character and pet selection models to free memory
+    /// Called automatically during combat transition and UI destruction.
+    /// This system ensures that character selection models don't persist into combat,
+    /// preventing memory leaks and visual conflicts.
+    /// </summary>
+    public void CleanupSelectionModels()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Cleaning up {characterPortraitButtons.Count} character buttons and {petPortraitButtons.Count} pet buttons, plus spawned models");
+        
+        // Clean up spawned character and pet models
+        if (currentCharacterModel != null)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Destroying spawned character model: {currentCharacterModel.name}");
+            Destroy(currentCharacterModel);
+            currentCharacterModel = null;
+        }
+        
+        if (currentPetModel != null)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Destroying spawned pet model: {currentPetModel.name}");
+            Destroy(currentPetModel);
+            currentPetModel = null;
+        }
+        
+        // Clean up deck preview cards to prevent NetworkTransform errors
+        if (deckPreviewController != null)
+        {
+            deckPreviewController.ClearAllDeckPreviews();
+            Debug.Log("[CHAR_SELECT_REVAMP] Cleared all deck preview cards");
+        }
+        
+        // Cleanup character portrait buttons
+        foreach (Button button in characterPortraitButtons)
+        {
+            if (button != null)
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Cleaning up character portrait button: {button.gameObject.name}");
+                Destroy(button.gameObject);
+            }
+        }
+        characterPortraitButtons.Clear();
+        
+        // Cleanup pet portrait buttons
+        foreach (Button button in petPortraitButtons)
+        {
+            if (button != null)
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Cleaning up pet portrait button: {button.gameObject.name}");
+                Destroy(button.gameObject);
+            }
+        }
+        petPortraitButtons.Clear();
+        
+        // Reset initialization flag so the UI can be properly initialized again when rejoining
+        isInitialized = false;
+        
+        Debug.Log("[CHAR_SELECT_REVAMP] Selection model cleanup complete");
+    }
+    
+    /// <summary>
+    /// Forces cleanup on all entity selection controllers before destroying them
+    /// </summary>
+    private void ForceCleanupAllControllers()
+    {
+        // Cleanup character controllers
+        foreach (Button button in characterPortraitButtons)
+        {
+            if (button != null)
+            {
+                Debug.Log($"CharacterSelectionUIManager: Force cleaning model from character controller: {button.gameObject.name}");
+            }
+        }
+        
+        // Cleanup pet controllers
+        foreach (Button button in petPortraitButtons)
+        {
+            if (button != null)
+            {
+                Debug.Log($"CharacterSelectionUIManager: Force cleaning model from pet controller: {button.gameObject.name}");
+            }
         }
     }
     
     /// <summary>
-    /// Parents a NetworkObject after it has been spawned and synchronized
+    /// Hides any existing lobby UI (compatibility method for transition period)
     /// </summary>
-    private System.Collections.IEnumerator ParentNetworkObjectAfterSpawn(GameObject spawnedObject, Transform parent, int index, bool isCharacter)
+    public void HideLobbyUI()
     {
-        // Wait a frame to ensure the object is fully spawned
-        yield return null;
-        
-        if (spawnedObject != null && parent != null)
-        {
-            // Move to desired position in hierarchy
-            spawnedObject.transform.SetParent(parent, false);
-            
-            // Position the object correctly
-            Position3DModel(spawnedObject, index, isCharacter);
-            
-            Debug.Log($"CharacterSelectionUIManager: Successfully parented NetworkObject {spawnedObject.name} to {parent.name}");
-        }
+        // This method exists for compatibility during the transition from separate lobby phase
+        // Since we no longer have a separate lobby UI, this method doesn't need to do anything
+        Debug.Log("CharacterSelectionUIManager: HideLobbyUI called (no action needed - lobby UI is integrated)");
     }
     
     /// <summary>
@@ -972,10 +1079,8 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         /* Debug.Log($"CharacterSelectionUIManager: Client registering {spawnedObjects.Length} discovered selection objects"); */
         
         // Clear any existing items
-        characterItems.Clear();
-        petItems.Clear();
-        characterControllers.Clear();
-        petControllers.Clear();
+        characterPortraitButtons.Clear();
+        petPortraitButtons.Clear();
         
         // Sort objects by type and index
         System.Array.Sort(spawnedObjects, (a, b) => 
@@ -991,8 +1096,8 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             
             // CRITICAL: Set the correct parent for this object on the client
             Transform targetParent = selectionObj.isCharacter ? 
-                (characterModelsParent != null ? characterModelsParent : transform) : 
-                (petModelsParent != null ? petModelsParent : transform);
+                (characterGridParent != null ? characterGridParent : transform) : 
+                (characterGridParent != null ? characterGridParent : transform);
             
             if (targetParent != null && item.transform.parent != targetParent)
             {
@@ -1019,8 +1124,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                     controller.InitializeWithCharacter(availableCharacters[selectionObj.selectionIndex], 
                                                      selectionObj.selectionIndex, this, deckPreviewController, selectionManager);
                 }
-                characterItems.Add(item);
-                characterControllers.Add(controller);
+                characterPortraitButtons.Add(item.GetComponent<Button>());
                 
                 // Position the model correctly
                 Position3DModel(item, selectionObj.selectionIndex, true);
@@ -1033,8 +1137,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                     controller.InitializeWithPet(availablePets[selectionObj.selectionIndex], 
                                                 selectionObj.selectionIndex, this, deckPreviewController, selectionManager);
                 }
-                petItems.Add(item);
-                petControllers.Add(controller);
+                petPortraitButtons.Add(item.GetComponent<Button>());
                 
                 // Position the model correctly
                 Position3DModel(item, selectionObj.selectionIndex, false);
@@ -1043,7 +1146,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             /* Debug.Log($"CharacterSelectionUIManager: Client registered {(selectionObj.isCharacter ? "character" : "pet")} selection object at index {selectionObj.selectionIndex}"); */
         }
         
-        /* Debug.Log($"CharacterSelectionUIManager: Client registration complete - {characterItems.Count} characters, {petItems.Count} pets"); */
+        /* Debug.Log($"CharacterSelectionUIManager: Client registration complete - {characterPortraitButtons.Count} characters, {petPortraitButtons.Count} pets"); */
     }
     
     /// <summary>
@@ -1055,710 +1158,15 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         
         Vector3 position;
         
-        switch (positioningMode)
-        {
-            case ModelPositioningMode.Grid:
-                position = CalculateGridPosition(index, isCharacter);
-                break;
-                
-            case ModelPositioningMode.Manual:
-                position = GetManualPosition(index, isCharacter);
-                break;
-                
-            default:
-                position = CalculateGridPosition(index, isCharacter);
-                break;
-        }
+        // Implement the logic to position the model based on the current mode
+        // This is a placeholder and should be replaced with the actual implementation
+        position = Vector3.zero; // Placeholder position
         
         // Set the position
         modelItem.transform.position = position;
         
         /* Debug.Log($"CharacterSelectionUIManager: Positioned {(isCharacter ? "character" : "pet")} model {index} at {position} using {positioningMode} mode"); */
     }
-    
-    /// <summary>
-    /// Calculates a grid-based position for a model
-    /// </summary>
-    private Vector3 CalculateGridPosition(int index, bool isCharacter)
-    {
-        if (isCharacter)
-        {
-            // Calculate character grid position relative to characterModelsParent
-            int row = index / characterModelsPerRow;
-            int col = index % characterModelsPerRow;
-            
-            // Calculate center offset - center the grid horizontally around the parent
-            float centerOffset = -(characterModelsPerRow - 1) * characterModelSpacing.x / 2f;
-            Vector3 gridStartOffset = new Vector3(centerOffset, 0f, 0f);
-            
-            Vector3 relativePosition = gridStartOffset + (col * characterModelSpacing) + (row * characterRowOffset);
-            
-            // Convert to world position using the parent transform
-            if (characterModelsParent != null)
-            {
-                return characterModelsParent.TransformPoint(relativePosition);
-            }
-            else
-            {
-                Debug.LogWarning("CharacterSelectionUIManager: characterModelsParent is null, using world coordinates");
-                return relativePosition;
-            }
-        }
-        else
-        {
-            // Calculate pet grid position relative to petModelsParent
-            int row = index / petModelsPerRow;
-            int col = index % petModelsPerRow;
-            
-            // Calculate center offset - center the grid horizontally around the parent
-            float centerOffset = -(petModelsPerRow - 1) * petModelSpacing.x / 2f;
-            Vector3 gridStartOffset = new Vector3(centerOffset, 0f, 0f);
-            
-            Vector3 relativePosition = gridStartOffset + (col * petModelSpacing) + (row * petRowOffset);
-            
-            // Convert to world position using the parent transform
-            if (petModelsParent != null)
-            {
-                return petModelsParent.TransformPoint(relativePosition);
-            }
-            else
-            {
-                Debug.LogWarning("CharacterSelectionUIManager: petModelsParent is null, using world coordinates");
-                return relativePosition;
-            }
-        }
-    }
-    
-    /// <summary>
-    /// Gets a manually specified position for a model
-    /// </summary>
-    private Vector3 GetManualPosition(int index, bool isCharacter)
-    {
-        List<Vector3> positions = isCharacter ? characterPositions : petPositions;
-        
-        // Check if we have enough positions defined
-        if (index < positions.Count)
-        {
-            return positions[index];
-        }
-        
-        // Handle missing positions
-        if (autoGeneratePositions)
-        {
-            // Generate a position based on grid layout as fallback
-            Vector3 generatedPosition = CalculateGridPosition(index, isCharacter);
-            
-            // Add missing positions to the list up to this index
-            while (positions.Count <= index)
-            {
-                Vector3 fallbackPosition = CalculateGridPosition(positions.Count, isCharacter);
-                positions.Add(fallbackPosition);
-                /* Debug.Log($"CharacterSelectionUIManager: Auto-generated {(isCharacter ? "character" : "pet")} position {positions.Count - 1}: {fallbackPosition}"); */
-            }
-            
-            return positions[index];
-        }
-        else
-        {
-            // Use grid position as fallback without modifying the lists
-            Debug.LogWarning($"CharacterSelectionUIManager: No manual position defined for {(isCharacter ? "character" : "pet")} {index}, using grid fallback");
-            return CalculateGridPosition(index, isCharacter);
-        }
-    }
-    
-    /// <summary>
-    /// Sets the raycast camera for an EntitySelectionController
-    /// </summary>
-    private void SetControllerCamera(EntitySelectionController controller, Camera camera)
-    {
-        if (controller != null)
-        {
-            controller.SetRaycastCamera(camera);
-        }
-    }
-    
-    /// <summary>
-    /// Updates the positioning of all 3D models
-    /// </summary>
-    public void RefreshModelPositioning()
-    {
-        if (!use3DModelPositioning) return;
-        
-        // Reposition character models
-        for (int i = 0; i < characterItems.Count; i++)
-        {
-            if (characterItems[i] != null)
-            {
-                Position3DModel(characterItems[i], i, true);
-            }
-        }
-        
-        // Reposition pet models
-        for (int i = 0; i < petItems.Count; i++)
-        {
-            if (petItems[i] != null)
-            {
-                Position3DModel(petItems[i], i, false);
-            }
-        }
-    }
-    
-    /// <summary>
-    /// Switches between UI and 3D model positioning modes
-    /// </summary>
-    public void SetUse3DModelPositioning(bool use3D)
-    {
-        if (use3DModelPositioning == use3D) return;
-        
-        use3DModelPositioning = use3D;
-        
-        // Recreate all selection items with new positioning mode
-        CreateSelectionItems();
-        MakeDefaultSelections();
-        
-        Debug.Log($"CharacterSelectionUIManager: Switched to {(use3D ? "3D model" : "UI")} positioning mode");
-    }
-    
-    /// <summary>
-    /// Sets the positioning mode for 3D models
-    /// </summary>
-    public void SetPositioningMode(ModelPositioningMode mode)
-    {
-        if (positioningMode == mode) return;
-        
-        positioningMode = mode;
-        
-        // Refresh positioning if using 3D models
-        if (use3DModelPositioning)
-        {
-            RefreshModelPositioning();
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Switched positioning mode to {mode}");
-    }
-    
-    /// <summary>
-    /// Sets character positions for manual positioning mode
-    /// </summary>
-    public void SetCharacterPositions(List<Vector3> positions)
-    {
-        characterPositions = new List<Vector3>(positions);
-        
-        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
-        {
-            RefreshModelPositioning();
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Set {positions.Count} character positions");
-    }
-    
-    /// <summary>
-    /// Sets pet positions for manual positioning mode
-    /// </summary>
-    public void SetPetPositions(List<Vector3> positions)
-    {
-        petPositions = new List<Vector3>(positions);
-        
-        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
-        {
-            RefreshModelPositioning();
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Set {positions.Count} pet positions");
-    }
-    
-    /// <summary>
-    /// Adds a character position to the manual positions list
-    /// </summary>
-    public void AddCharacterPosition(Vector3 position)
-    {
-        characterPositions.Add(position);
-        
-        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
-        {
-            RefreshModelPositioning();
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Added character position {characterPositions.Count - 1}: {position}");
-    }
-    
-    /// <summary>
-    /// Adds a pet position to the manual positions list
-    /// </summary>
-    public void AddPetPosition(Vector3 position)
-    {
-        petPositions.Add(position);
-        
-        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
-        {
-            RefreshModelPositioning();
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Added pet position {petPositions.Count - 1}: {position}");
-    }
-    
-    /// <summary>
-    /// Clears all manual positions and optionally regenerates them
-    /// </summary>
-    public void ClearManualPositions(bool regenerate = true)
-    {
-        characterPositions.Clear();
-        petPositions.Clear();
-        
-        if (regenerate && autoGeneratePositions && use3DModelPositioning && positioningMode == ModelPositioningMode.Manual)
-        {
-            RefreshModelPositioning();
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Cleared all manual positions{(regenerate ? " and regenerated" : "")}");
-    }
-    
-    /// <summary>
-    /// Gets a copy of the current character positions
-    /// </summary>
-    public List<Vector3> GetCharacterPositions()
-    {
-        return new List<Vector3>(characterPositions);
-    }
-    
-    /// <summary>
-    /// Gets a copy of the current pet positions
-    /// </summary>
-    public List<Vector3> GetPetPositions()
-    {
-        return new List<Vector3>(petPositions);
-    }
-    
-    /// <summary>
-    /// Configures the character grid layout (relative to characterModelsParent)
-    /// </summary>
-    public void SetCharacterGridLayout(Vector3 spacing, int modelsPerRow, Vector3 rowOffset)
-    {
-        characterModelSpacing = spacing;
-        characterModelsPerRow = modelsPerRow;
-        characterRowOffset = rowOffset;
-        
-        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Grid)
-        {
-            RefreshModelPositioning();
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Updated character grid - Spacing: {spacing}, Per Row: {modelsPerRow}, Row Offset: {rowOffset}");
-    }
-    
-    /// <summary>
-    /// Configures the pet grid layout (relative to petModelsParent)
-    /// </summary>
-    public void SetPetGridLayout(Vector3 spacing, int modelsPerRow, Vector3 rowOffset)
-    {
-        petModelSpacing = spacing;
-        petModelsPerRow = modelsPerRow;
-        petRowOffset = rowOffset;
-        
-        if (use3DModelPositioning && positioningMode == ModelPositioningMode.Grid)
-        {
-            RefreshModelPositioning();
-        }
-        
-        Debug.Log($"CharacterSelectionUIManager: Updated pet grid - Spacing: {spacing}, Per Row: {modelsPerRow}, Row Offset: {rowOffset}");
-    }
-    
-    /// <summary>
-    /// Gets the current character grid configuration
-    /// </summary>
-    public (Vector3 spacing, int modelsPerRow, Vector3 rowOffset) GetCharacterGridConfig()
-    {
-        return (characterModelSpacing, characterModelsPerRow, characterRowOffset);
-    }
-    
-    /// <summary>
-    /// Gets the current pet grid configuration
-    /// </summary>
-    public (Vector3 spacing, int modelsPerRow, Vector3 rowOffset) GetPetGridConfig()
-    {
-        return (petModelSpacing, petModelsPerRow, petRowOffset);
-    }
-
-    private void MakeDefaultSelections()
-    {
-        /* Debug.Log($"CharacterSelectionUIManager: MakeDefaultSelections() called - availableCharacters: {availableCharacters.Count}, availablePets: {availablePets.Count}"); */
-        
-        // Auto-select first character and first pet if available
-        if (availableCharacters.Count > 0 && characterControllers.Count > 0)
-        {
-            /* Debug.Log($"CharacterSelectionUIManager: Auto-selecting first character: {availableCharacters[0].CharacterName}"); */
-            
-            // Trigger selection through the first character controller
-            EntitySelectionController firstCharacterController = characterControllers[0];
-            if (firstCharacterController != null && firstCharacterController.IsInitialized())
-            {
-                // Simulate the selection logic that would happen in EntitySelectionController
-                OnCharacterSelectionChanged(0);
-                
-                // Trigger deck preview
-                if (deckPreviewController != null)
-                {
-                    deckPreviewController.SetCurrentCharacterIndex(0);
-                    deckPreviewController.ShowCharacterDeck(0, isReady);
-                }
-                
-                /* Debug.Log($"CharacterSelectionUIManager: Auto-selected first character: {availableCharacters[0].CharacterName}"); */
-            }
-        }
-        
-        if (availablePets.Count > 0 && petControllers.Count > 0)
-        {
-            /* Debug.Log($"CharacterSelectionUIManager: Auto-selecting first pet: {availablePets[0].PetName}"); */
-            
-            // Trigger selection through the first pet controller
-            EntitySelectionController firstPetController = petControllers[0];
-            if (firstPetController != null && firstPetController.IsInitialized())
-            {
-                // Simulate the selection logic that would happen in EntitySelectionController
-                OnPetSelectionChanged(0);
-                
-                // Trigger deck preview
-                if (deckPreviewController != null)
-                {
-                    deckPreviewController.SetCurrentPetIndex(0);
-                    deckPreviewController.ShowPetDeck(0, isReady);
-                }
-                
-                /* Debug.Log($"CharacterSelectionUIManager: Auto-selected first pet: {availablePets[0].PetName}"); */
-            }
-        }
-        
-        // Update selection state and send to server
-        UpdateSelectionState();
-        
-        // Check if auto-test runner wants us to auto-ready
-        AutoTestRunner autoTestRunner = FindFirstObjectByType<AutoTestRunner>();
-        if (autoTestRunner != null && autoTestRunner.enableAutoTesting)
-        {
-            // Auto-ready after a short delay to ensure UI is set up
-            /* Debug.Log("CharacterSelectionUIManager: Auto-test runner detected, will auto-ready after delay"); */
-            StartCoroutine(AutoReadyAfterDelay());
-        }
-    }
-    
-    private System.Collections.IEnumerator AutoReadyAfterDelay()
-    {
-        yield return new WaitForSeconds(0.5f); // Allow UI to update
-        
-        if (hasValidSelection)
-        {
-            Debug.Log("CharacterSelectionUIManager: Auto-ready triggered by AutoTestRunner");
-            OnReadyButtonClicked();
-        }
-    }
-
-    #endregion
-
-    #region Selection Handling
-
-    /// <summary>
-    /// Called by EntitySelectionController when character selection changes
-    /// </summary>
-    public void OnCharacterSelectionChanged(int characterIndex)
-    {
-        /* Debug.Log($"CharacterSelectionUIManager: OnCharacterSelectionChanged({characterIndex}) called via EntitySelectionController"); */
-        
-        if (characterIndex < 0 || characterIndex >= availableCharacters.Count) return;
-        
-        // Update selection
-        selectedCharacterIndex = characterIndex;
-        
-        // Update visual selection
-        UpdateMySelectionVisuals();
-        
-        Debug.Log($"CharacterSelectionUIManager: Character selection changed to {availableCharacters[characterIndex].CharacterName}");
-    }
-
-    /// <summary>
-    /// Called by EntitySelectionController when pet selection changes
-    /// </summary>
-    public void OnPetSelectionChanged(int petIndex)
-    {
-        /* Debug.Log($"CharacterSelectionUIManager: OnPetSelectionChanged({petIndex}) called via EntitySelectionController"); */
-        
-        if (petIndex < 0 || petIndex >= availablePets.Count) return;
-        
-        // Update selection
-        selectedPetIndex = petIndex;
-        
-        // Update visual selection
-        UpdateMySelectionVisuals();
-        
-        Debug.Log($"CharacterSelectionUIManager: Pet selection changed to {availablePets[petIndex].PetName}");
-    }
-
-    /// <summary>
-    /// Called by EntitySelectionController to finalize selection and update server
-    /// </summary>
-    public void UpdateSelectionFromController(EntitySelectionController.EntityType entityType, int selectionIndex)
-    {
-        Debug.Log($"CharacterSelectionUIManager: UpdateSelectionFromController({entityType}, {selectionIndex}) called");
-        
-        // Update selection state
-        UpdateSelectionState();
-    }
-
-    private void UpdateMySelectionVisuals()
-    {
-        // Update character selection border using controllers
-        for (int i = 0; i < characterControllers.Count; i++)
-        {
-            EntitySelectionController controller = characterControllers[i];
-            if (controller != null)
-            {
-                if (i == selectedCharacterIndex)
-                {
-                    controller.AddPlayerSelection(myPlayerID, myPlayerColor);
-                }
-                else
-                {
-                    controller.RemovePlayerSelection(myPlayerID);
-                }
-            }
-        }
-        
-        // Update pet selection border using controllers
-        for (int i = 0; i < petControllers.Count; i++)
-        {
-            EntitySelectionController controller = petControllers[i];
-            if (controller != null)
-            {
-                if (i == selectedPetIndex)
-                {
-                    controller.AddPlayerSelection(myPlayerID, myPlayerColor);
-                }
-                else
-                {
-                    controller.RemovePlayerSelection(myPlayerID);
-                }
-            }
-        }
-    }
-
-    private void UpdateSelectionState()
-    {
-        hasValidSelection = selectedCharacterIndex >= 0 && selectedPetIndex >= 0;
-        
-        // Update status text
-        if (statusText != null)
-        {
-            if (hasValidSelection)
-            {
-                string charName = !string.IsNullOrEmpty(customPlayerName) ? customPlayerName : availableCharacters[selectedCharacterIndex].CharacterName;
-                string petName = availablePets[selectedPetIndex].PetName;
-                statusText.text = $"Selected: {charName} & {petName}";
-            }
-            else if (selectedCharacterIndex >= 0)
-            {
-                statusText.text = "Now select a pet...";
-            }
-            else if (selectedPetIndex >= 0)
-            {
-                statusText.text = "Now select a character...";
-            }
-            else
-            {
-                statusText.text = "Select a character and pet to continue...";
-            }
-        }
-        
-        // Update ready button
-        UpdateReadyButtonState();
-        
-        // Send selection to server if valid
-        if (hasValidSelection)
-        {
-            if (selectionManager != null)
-            {
-                /* Debug.Log($"CharacterSelectionUIManager: Sending selection to server - Character: {selectedCharacterIndex}, Pet: {selectedPetIndex}, CustomName: '{customPlayerName}'"); */
-                selectionManager.RequestSelectionUpdate(selectedCharacterIndex, selectedPetIndex, customPlayerName, "");
-            }
-            else
-            {
-                Debug.LogWarning("CharacterSelectionUIManager: Cannot send selection - selectionManager is null");
-            }
-        }
-    }
-
-    #endregion
-
-    #region UI Event Handlers
-
-    private void OnPlayerNameChanged(string newName)
-    {
-        customPlayerName = newName;
-        UpdateSelectionState();
-    }
-
-    private void OnReadyButtonClicked()
-    {
-        if (!hasValidSelection) return;
-        
-        // Prevent rapid button clicks with cooldown
-        float currentTime = Time.time;
-        if (currentTime - lastReadyButtonClickTime < READY_BUTTON_COOLDOWN)
-        {
-            Debug.Log($"CharacterSelectionUIManager: Ready button click ignored due to cooldown ({currentTime - lastReadyButtonClickTime:F2}s since last click)");
-            return;
-        }
-        
-        lastReadyButtonClickTime = currentTime;
-        
-        // Don't change local isReady state immediately - let server be authoritative
-        // The server will broadcast the update back to us and we'll update then
-        
-        if (selectionManager != null)
-        {
-            Debug.Log("CharacterSelectionUIManager: Sending ready toggle request to server");
-            selectionManager.RequestReadyToggle();
-        }
-    }
-    
-    private void OnShowPlayersButtonClicked()
-    {
-        if (uiAnimator != null)
-        {
-            uiAnimator.TogglePlayerListPanel();
-        }
-    }
-    
-    private void OnLeaveGameButtonClicked()
-    {
-        // Leave the game and return to start screen
-        LeaveGame();
-    }
-    
-    private void OnPlayerListCloseButtonClicked()
-    {
-        if (uiAnimator != null)
-        {
-            uiAnimator.HidePlayerListPanel();
-        }
-    }
-
-    private void UpdateReadyButtonState()
-    {
-        if (readyButton != null)
-        {
-            readyButton.interactable = hasValidSelection;
-            
-            Image buttonImage = readyButton.GetComponent<Image>();
-            if (buttonImage != null)
-            {
-                buttonImage.color = isReady ? readyColor : (hasValidSelection ? selectedColor : notReadyColor);
-            }
-            
-            TextMeshProUGUI buttonText = readyButton.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = isReady ? "Not Ready" : "Ready";
-            }
-        }
-    }
-
-    #endregion
-
-    #region Mario Kart Style Updates
-
-    public void UpdateOtherPlayersSelections(List<PlayerSelectionInfo> playerInfos)
-    {
-        // Update ready counter
-        int readyCount = playerInfos.Count(p => p.isReady);
-        int totalCount = playerInfos.Count;
-        UpdateReadyCounter(readyCount, totalCount);
-        
-        // Clear previous player data
-        ClearAllPlayerSelections();
-        
-        // Update visual indicators for each player
-        foreach (PlayerSelectionInfo info in playerInfos)
-        {
-            // Check if this is the local player and update ready state
-            if (info.playerName == myPlayerID)
-            {
-                // Update local ready state from server
-                bool wasReady = isReady;
-                isReady = info.isReady;
-                UpdateReadyButtonState();
-                
-                // Update deck preview controller with ready state
-                if (wasReady != isReady && deckPreviewController != null)
-                {
-                    deckPreviewController.SetPlayerReadyState(isReady);
-                    /* Debug.Log($"CharacterSelectionUIManager: Player ready state changed to {isReady} - updated deck preview controller"); */
-                }
-                continue; // Skip showing selection indicators for self
-            }
-            
-            Color playerColor = GetPlayerColor(info.playerName);
-            
-            // Show character selection using controllers
-            if (info.hasSelection && info.characterIndex >= 0 && info.characterIndex < characterControllers.Count)
-            {
-                EntitySelectionController controller = characterControllers[info.characterIndex];
-                if (controller != null)
-                {
-                    controller.AddPlayerSelection(info.playerName, playerColor);
-                }
-            }
-            
-            // Show pet selection using controllers
-            if (info.hasSelection && info.petIndex >= 0 && info.petIndex < petControllers.Count)
-            {
-                EntitySelectionController controller = petControllers[info.petIndex];
-                if (controller != null)
-                {
-                    controller.AddPlayerSelection(info.playerName, playerColor);
-                }
-            }
-        }
-        
-        // Always store the latest player info for when panel becomes visible
-        latestPlayerInfos = new List<PlayerSelectionInfo>(playerInfos);
-        
-        // Update player list panel if visible
-        if (uiAnimator != null && uiAnimator.IsPlayerListVisible)
-        {
-            UpdatePlayerListPanel(playerInfos);
-        }
-    }
-
-    private void ClearAllPlayerSelections()
-    {
-        // Clear character selections using controllers
-        foreach (EntitySelectionController controller in characterControllers)
-        {
-            if (controller != null)
-            {
-                controller.ClearAllPlayerSelectionsExcept(myPlayerID);
-            }
-        }
-        
-        // Clear pet selections using controllers
-        foreach (EntitySelectionController controller in petControllers)
-        {
-            if (controller != null)
-            {
-                controller.ClearAllPlayerSelectionsExcept(myPlayerID);
-            }
-        }
-    }
-
-    private void UpdateReadyCounter(int readyCount, int totalCount)
-    {
-        if (readyCounterText != null)
-        {
-            readyCounterText.text = $"{readyCount}/{totalCount} Ready";
-            readyCounterText.color = (readyCount == totalCount) ? readyColor : Color.white;
-        }
-    }
-
-    #endregion
     
     #region Player List Panel
     
@@ -1872,214 +1280,1105 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
     }
     
-    private void LeaveGame()
+    #endregion
+
+    private void CreatePortraitButtonGrids()
     {
-        Debug.Log("CharacterSelectionUIManager: Player requested to leave game");
+        Debug.Log($"[CHAR_SELECT_REVAMP] CreatePortraitButtonGrids() called");
         
-        // Find the SteamNetworkIntegration to handle graceful disconnection and return to start
-        SteamNetworkIntegration steamNetwork = SteamNetworkIntegration.Instance;
-        if (steamNetwork != null)
+        // Clear existing grids if any
+        CleanupPortraitGrids();
+        
+        // Setup toggle button listeners
+        SetupToggleButtons();
+        
+        // Create character portrait buttons
+        CreateCharacterPortraitButtons();
+        
+        // Create pet portrait buttons
+        CreatePetPortraitButtons();
+        
+        // Ensure we use the shared grid parent if specified, otherwise fall back to original parents
+        SetupSharedGridParent();
+        
+        // Set initial display state (showing characters)
+        SetGridDisplayState(true);
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Portrait grids created - Characters: {characterPortraitButtons.Count}, Pets: {petPortraitButtons.Count}");
+    }
+    
+    private void CleanupPortraitGrids()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Cleaning up existing portrait grids");
+        
+        foreach (Button button in characterPortraitButtons)
         {
-            // Use the comprehensive disconnect and return to start method
-            steamNetwork.DisconnectAndReturnToStart();
+            if (button != null) Destroy(button.gameObject);
         }
-        else
+        characterPortraitButtons.Clear();
+        
+        foreach (Button button in petPortraitButtons)
         {
-            Debug.LogError("CharacterSelectionUIManager: SteamNetworkIntegration.Instance not found, cannot gracefully disconnect");
-            
-            // Fallback: basic disconnect without proper transition
-            FishNet.InstanceFinder.ClientManager?.StopConnection();
-            FishNet.InstanceFinder.ServerManager?.StopConnection(true);
-            
-            // Try to transition through GamePhaseManager as fallback
-            GamePhaseManager gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-            if (gamePhaseManager != null)
+            if (button != null) Destroy(button.gameObject);
+        }
+        petPortraitButtons.Clear();
+    }
+    
+    private void SetupToggleButtons()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Setting up toggle buttons");
+        
+        if (charactersToggleButton != null)
+        {
+            charactersToggleButton.onClick.RemoveAllListeners();
+            charactersToggleButton.onClick.AddListener(() => OnToggleGridDisplay(true));
+        }
+        
+        if (petsToggleButton != null)
+        {
+            petsToggleButton.onClick.RemoveAllListeners();
+            petsToggleButton.onClick.AddListener(() => OnToggleGridDisplay(false));
+        }
+    }
+    
+    private void OnToggleGridDisplay(bool showCharacters)
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Toggling grid display to show {(showCharacters ? "characters" : "pets")}");
+        showingCharacters = showCharacters;
+        SetGridDisplayState(showCharacters);
+        
+        // Request appropriate model for the current view (only if needed)
+        if (showCharacters && selectedCharacterIndex >= 0)
+        {
+            // Only request character model if we don't already have one or it's not the right one
+            bool needsNewCharacterModel = currentCharacterModel == null || 
+                !currentCharacterModel.name.Contains(availableCharacters[selectedCharacterIndex].CharacterName);
+                
+            if (needsNewCharacterModel)
             {
-                gamePhaseManager.SetStartPhase();
+                Debug.Log($"[CHAR_SELECT_REVAMP] Switching to character view - requesting character model for index {selectedCharacterIndex}");
+                RequestCharacterModelTransition(selectedCharacterIndex);
+            }
+            else
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Character model already exists for {availableCharacters[selectedCharacterIndex].CharacterName}, no transition needed");
+            }
+        }
+        else if (!showCharacters && selectedPetIndex >= 0)
+        {
+            // Only request pet model if we don't already have one or it's not the right one
+            bool needsNewPetModel = currentPetModel == null || 
+                !currentPetModel.name.Contains(availablePets[selectedPetIndex].PetName);
+                
+            if (needsNewPetModel)
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Switching to pet view - requesting pet model for index {selectedPetIndex}");
+                RequestPetModelTransition(selectedPetIndex);
+            }
+            else
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Pet model already exists for {availablePets[selectedPetIndex].PetName}, no transition needed");
             }
         }
     }
     
-    private void OnDestroy()
+    private void SetGridDisplayState(bool showCharacters)
     {
-        // Clean up selection models to prevent memory leaks
-        CleanupSelectionModels();
+        Debug.Log($"[CHAR_SELECT_REVAMP] Setting grid display state - showing characters: {showCharacters}");
         
-        // Unsubscribe from events to prevent memory leaks
+        // Show/hide character buttons
+        foreach (Button button in characterPortraitButtons)
+        {
+            if (button != null) button.gameObject.SetActive(showCharacters);
+        }
+        
+        // Show/hide pet buttons
+        foreach (Button button in petPortraitButtons)
+        {
+            if (button != null) button.gameObject.SetActive(!showCharacters);
+        }
+        
+        // Update toggle button states
+        UpdateToggleButtonVisuals(showCharacters);
+    }
+    
+    private void UpdateToggleButtonVisuals(bool showingCharacters)
+    {
+        if (charactersToggleButton != null)
+        {
+            Image charButtonImage = charactersToggleButton.GetComponent<Image>();
+            if (charButtonImage != null)
+            {
+                charButtonImage.color = showingCharacters ? selectedColor : unselectedColor;
+            }
+        }
+        
+        if (petsToggleButton != null)
+        {
+            Image petButtonImage = petsToggleButton.GetComponent<Image>();
+            if (petButtonImage != null)
+            {
+                petButtonImage.color = !showingCharacters ? selectedColor : unselectedColor;
+            }
+        }
+    }
+
+    private void MakeDefaultSelections()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] MakeDefaultSelections() called - availableCharacters: {availableCharacters.Count}, availablePets: {availablePets.Count}");
+        
+        // Auto-select first character and first pet if available (but only spawn character model due to mutual exclusivity)
+        if (availableCharacters.Count > 0)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Auto-selecting first character: {availableCharacters[0].CharacterName}");
+            
+            // For the initial selection, create the model directly without animation
+            selectedCharacterIndex = 0;
+            GameObject initialCharacterModel = CreateCharacterModel(0);
+            if (initialCharacterModel != null)
+            {
+                currentCharacterModel = initialCharacterModel;
+                HandleModelVisibility(currentCharacterModel, true);
+                Debug.Log($"[CHAR_SELECT_REVAMP] Created initial character model: {initialCharacterModel.name}");
+            }
+            
+            // Update visual selection and deck preview
+            UpdateMySelectionVisuals();
+                if (deckPreviewController != null)
+                {
+                    deckPreviewController.SetCurrentCharacterIndex(0);
+                    deckPreviewController.ShowCharacterDeck(0, isReady);
+                }
+        }
+        else
+        {
+            Debug.LogError("[CHAR_SELECT_REVAMP] No available characters to auto-select! Check if character data is properly loaded.");
+        }
+        
+        if (availablePets.Count > 0)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Auto-selecting first pet: {availablePets[0].PetName}");
+            selectedPetIndex = 0;
+                
+            // NOTE: Don't spawn pet model here due to mutual exclusivity with character model
+            // The pet model will be shown when user toggles to pet view or selects a different pet
+            Debug.Log($"[CHAR_SELECT_REVAMP] Pet selection registered but model not spawned (character model has priority by default)");
+                
+            // Set up deck preview data (but don't show it since character deck is shown)
+                if (deckPreviewController != null)
+                {
+                    deckPreviewController.SetCurrentPetIndex(0);
+                // Note: ShowPetDeck not called here - character deck has priority by default
+            }
+        }
+        
+        // Update selection state and send to server
+        UpdateSelectionState();
+        
+        // Check if auto-test runner wants us to auto-ready
+        AutoTestRunner autoTestRunner = FindFirstObjectByType<AutoTestRunner>();
+        if (autoTestRunner != null && autoTestRunner.enableAutoTesting)
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] Auto-test runner detected, will auto-ready after delay");
+            StartCoroutine(AutoReadyAfterDelay());
+        }
+    }
+    
+    private System.Collections.IEnumerator AutoReadyAfterDelay()
+    {
+        yield return new WaitForSeconds(0.5f); // Allow UI to update
+        
+        if (hasValidSelection)
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] Auto-ready triggered by AutoTestRunner");
+            OnReadyButtonClicked();
+        }
+    }
+
+    private void SpawnCharacterModel(int characterIndex)
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] SpawnCharacterModel({characterIndex}) called");
+        
+        if (characterIndex < 0 || characterIndex >= availableCharacters.Count)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] Invalid character index for model spawning: {characterIndex} (available: 0-{availableCharacters.Count - 1})");
+            return;
+        }
+        
+        if (selectedModelSpawn == null)
+        {
+            Debug.LogError("[CHAR_SELECT_REVAMP] selectedModelSpawn is null - CANNOT SPAWN CHARACTER MODEL! Please assign the selectedModelSpawn Transform in the inspector.");
+            return;
+        }
+        
+        // Check if we already have the correct character model
+        string targetCharacterName = availableCharacters[characterIndex].CharacterName;
+        if (currentCharacterModel != null && currentCharacterModel.name.Contains(targetCharacterName))
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Character model for {targetCharacterName} already exists, skipping spawn");
+            return;
+        }
+        
+        // Get the character prefab from selection manager
+        if (selectionManager == null)
+        {
+            Debug.LogError("[CHAR_SELECT_REVAMP] Selection manager is null - cannot get character prefab");
+            return;
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Getting character prefab for index {characterIndex} from selection manager...");
+        GameObject characterPrefab = selectionManager.GetCharacterPrefabByIndex(characterIndex);
+        if (characterPrefab == null)
+        {
+            Debug.LogError($"[CHAR_SELECT_REVAMP] No character prefab found for index: {characterIndex}. Check if CharacterSelectionManager has character prefabs assigned.");
+            return;
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Found character prefab: {characterPrefab.name}");
+        
+        // Create the new character model
+        GameObject newCharacterModel = Instantiate(characterPrefab, selectedModelSpawn);
+        newCharacterModel.name = $"SelectedCharacter_{availableCharacters[characterIndex].CharacterName}";
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Created character model: {newCharacterModel.name} at {selectedModelSpawn.position}");
+        
+        // Determine what old model to animate out (character or pet - mutual exclusivity)
+        GameObject oldModel = currentCharacterModel != null ? currentCharacterModel : currentPetModel;
+        
+        // Use the UI animator for smooth transition if available
         if (uiAnimator != null)
         {
-            uiAnimator.OnPlayerListVisibilityChanged -= OnPlayerListVisibilityChanged;
-            uiAnimator.OnCharacterDeckVisibilityChanged -= OnCharacterDeckVisibilityChanged;
-            uiAnimator.OnPetDeckVisibilityChanged -= OnPetDeckVisibilityChanged;
-        }
-    }
-
-    #endregion
-
-    #region External Interface
-
-    public void ShowTransitionMessage(string message)
-    {
-        if (statusText != null)
-        {
-            statusText.text = message;
-        }
-        
-        // Disable interactions during transition
-        if (readyButton != null)
-        {
-            readyButton.interactable = false;
-        }
-    }
-
-    public void HideCharacterSelectionUI()
-    {
-        if (characterSelectionCanvas != null)
-        {
-            characterSelectionCanvas.SetActive(false);
-        }
-        
-        // Clean up character selection models to free memory
-        CleanupSelectionModels();
-    }
-
-    /// <summary>
-    /// Cleans up all instantiated character and pet selection models to free memory
-    /// Called automatically during combat transition and UI destruction.
-    /// This system ensures that character selection models don't persist into combat,
-    /// preventing memory leaks and visual conflicts.
-    /// </summary>
-    public void CleanupSelectionModels()
-    {
-        /* Debug.Log($"CharacterSelectionUIManager: Cleaning up {characterItems.Count} character models and {petItems.Count} pet models"); */
-        
-        // Force cleanup on all controllers first to ensure proper cleanup of dynamically created models
-        ForceCleanupAllControllers();
-        
-        // Clean up deck preview cards to prevent NetworkTransform errors
-        if (deckPreviewController != null)
-        {
-            deckPreviewController.ClearAllDeckPreviews();
-            Debug.Log("CharacterSelectionUIManager: Cleared all deck preview cards");
-        }
-        
-        // Cleanup character selection models (including NetworkObjects)
-        foreach (GameObject item in characterItems)
-        {
-            if (item != null)
-            {
-                Debug.Log($"CharacterSelectionUIManager: Cleaning up character selection model: {item.name}");
-                CleanupSelectionItem(item);
-            }
-        }
-        characterItems.Clear();
-        characterControllers.Clear();
-        
-        // Cleanup pet selection models (including NetworkObjects)
-        foreach (GameObject item in petItems)
-        {
-            if (item != null)
-            {
-                /* Debug.Log($"CharacterSelectionUIManager: Cleaning up pet selection model: {item.name}"); */
-                CleanupSelectionItem(item);
-            }
-        }
-        petItems.Clear();
-        petControllers.Clear();
-        
-        // Reset initialization flag so the UI can be properly initialized again when rejoining
-        isInitialized = false;
-        
-        /* Debug.Log("CharacterSelectionUIManager: Selection model cleanup complete"); */
-    }
-    
-    /// <summary>
-    /// Properly cleans up a selection item, handling both regular GameObjects and NetworkObjects
-    /// </summary>
-    private void CleanupSelectionItem(GameObject item)
-    {
-        if (item == null) return;
-        
-        // Check if this is a selection NetworkObject
-        SelectionNetworkObject selectionMarker = item.GetComponent<SelectionNetworkObject>();
-        if (selectionMarker != null)
-        {
-            // Use the proper cleanup method for NetworkObjects
-            selectionMarker.CleanupSelectionObject();
+            Debug.Log($"[CHAR_SELECT_REVAMP] Starting animated transition - Old: {oldModel?.name ?? "None"}, New: {newCharacterModel.name}");
+            
+            // Hide the new model initially so the animation can control its appearance
+            PrepareModelForAnimation(newCharacterModel);
+            
+            uiAnimator.AnimateModelTransition(oldModel, newCharacterModel, () => {
+                // Callback when animation completes
+                Debug.Log($"[CHAR_SELECT_REVAMP] Character model transition completed");
+                
+                // Clean up old model references
+                if (currentCharacterModel != null && currentCharacterModel != newCharacterModel)
+                {
+                    Destroy(currentCharacterModel);
+                }
+                if (currentPetModel != null)
+                {
+                    Destroy(currentPetModel);
+                    currentPetModel = null;
+                }
+                
+                // Set new model as current
+                currentCharacterModel = newCharacterModel;
+            });
         }
         else
         {
-            // Regular GameObject cleanup
-            Destroy(item);
+            // Fallback to instant spawning if no animator available
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] No UI animator available - using instant spawning fallback");
+            
+            // Clean up existing models instantly
+            if (currentCharacterModel != null)
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Destroying existing character model: {currentCharacterModel.name}");
+                Destroy(currentCharacterModel);
+            }
+            if (currentPetModel != null)
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Destroying existing pet model for character exclusivity: {currentPetModel.name}");
+                Destroy(currentPetModel);
+                currentPetModel = null;
+            }
+            
+            currentCharacterModel = newCharacterModel;
+            HandleModelVisibility(currentCharacterModel, true);
+        }
+    }
+    
+    private void SpawnPetModel(int petIndex)
+    {
+        if (petIndex < 0 || petIndex >= availablePets.Count)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] Invalid pet index for model spawning: {petIndex}");
+            return;
+        }
+        
+        if (selectedModelSpawn == null)
+        {
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] selectedModelSpawn is null - cannot spawn pet model");
+            return;
+        }
+        
+        // Check if we already have the correct pet model
+        string targetPetName = availablePets[petIndex].PetName;
+        if (currentPetModel != null && currentPetModel.name.Contains(targetPetName))
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Pet model for {targetPetName} already exists, skipping spawn");
+            return;
+        }
+        
+        // Get the pet prefab from selection manager
+        if (selectionManager == null)
+        {
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] Selection manager is null - cannot get pet prefab");
+            return;
+        }
+        
+        GameObject petPrefab = selectionManager.GetPetPrefabByIndex(petIndex);
+        if (petPrefab == null)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] No pet prefab found for index: {petIndex}");
+            return;
+        }
+        
+        // Create the new pet model
+        GameObject newPetModel = Instantiate(petPrefab, selectedModelSpawn);
+        newPetModel.name = $"SelectedPet_{availablePets[petIndex].PetName}";
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Created pet model: {newPetModel.name} at {selectedModelSpawn.position}");
+        
+        // Determine what old model to animate out (pet or character - mutual exclusivity)
+        GameObject oldModel = currentPetModel != null ? currentPetModel : currentCharacterModel;
+        
+        // Use the UI animator for smooth transition if available
+        if (uiAnimator != null)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Starting animated transition - Old: {oldModel?.name ?? "None"}, New: {newPetModel.name}");
+            
+            // Hide the new model initially so the animation can control its appearance
+            PrepareModelForAnimation(newPetModel);
+            
+            uiAnimator.AnimateModelTransition(oldModel, newPetModel, () => {
+                // Callback when animation completes
+                Debug.Log($"[CHAR_SELECT_REVAMP] Pet model transition completed");
+                
+                // Clean up old model references
+                if (currentPetModel != null && currentPetModel != newPetModel)
+                {
+                    Destroy(currentPetModel);
+                }
+                if (currentCharacterModel != null)
+                {
+                    Destroy(currentCharacterModel);
+                    currentCharacterModel = null;
+                }
+                
+                // Set new model as current
+                currentPetModel = newPetModel;
+            });
+                }
+                else
+                {
+            // Fallback to instant spawning if no animator available
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] No UI animator available - using instant spawning fallback");
+            
+            // Clean up existing models instantly
+            if (currentPetModel != null)
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Destroying existing pet model: {currentPetModel.name}");
+                Destroy(currentPetModel);
+            }
+            if (currentCharacterModel != null)
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Destroying existing character model for pet exclusivity: {currentCharacterModel.name}");
+                Destroy(currentCharacterModel);
+                currentCharacterModel = null;
+            }
+            
+            currentPetModel = newPetModel;
+            HandleModelVisibility(currentPetModel, false);
         }
     }
     
     /// <summary>
-    /// Debug method to manually trigger cleanup from the inspector
+    /// Prepares a newly created model for animation by making it initially invisible
+    /// This prevents visual conflicts when the animation system takes control
     /// </summary>
-    [ContextMenu("Force Cleanup Selection Models")]
-    public void ForceCleanupSelectionModels()
+    private void PrepareModelForAnimation(GameObject model)
     {
-        CleanupSelectionModels();
+        if (model == null) return;
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Preparing model for animation: {model.name}");
+        
+        // Make all renderers initially invisible so the animation can control the appearance
+        Renderer[] renderers = model.GetComponentsInChildren<Renderer>();
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer != null)
+            {
+                renderer.enabled = false;
+            }
+        }
+        
+        // Keep the GameObject active but invisible through renderer control
+        model.SetActive(true);
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Model {model.name} prepared for animation - {renderers.Length} renderers disabled, awaiting animation");
     }
 
-    /// <summary>
-    /// Forces cleanup on all entity selection controllers before destroying them
-    /// </summary>
-    private void ForceCleanupAllControllers()
+    private void RequestCharacterModelTransition(int characterIndex)
     {
-        // Cleanup character controllers
-        foreach (EntitySelectionController controller in characterControllers)
+        Debug.Log($"[CHAR_SELECT_REVAMP] Requesting character model transition to index {characterIndex}");
+        
+        // Get current model
+        GameObject currentModel = GetCurrentVisibleModel();
+        
+        // Use animation system to handle the transition (it will create the target model)
+        if (uiAnimator != null)
         {
-            if (controller != null && controller.IsUsing3DModel())
+            uiAnimator.RequestModelTransition(currentModel, null, () => CreateCharacterModelForAnimation(characterIndex), () => {
+                // Callback when animation completes
+                Debug.Log($"[CHAR_SELECT_REVAMP] Character model transition to {availableCharacters[characterIndex].CharacterName} completed");
+                
+                // Update current model references
+                UpdateCurrentModelReferences();
+            });
+        }
+    }
+
+    private void RequestPetModelTransition(int petIndex)
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Requesting pet model transition to index {petIndex}");
+        
+        // Get current model
+        GameObject currentModel = GetCurrentVisibleModel();
+        
+        // Use animation system to handle the transition (it will create the target model)
+        if (uiAnimator != null)
+        {
+            uiAnimator.RequestModelTransition(currentModel, null, () => CreatePetModelForAnimation(petIndex), () => {
+                // Callback when animation completes
+                Debug.Log($"[CHAR_SELECT_REVAMP] Pet model transition to {availablePets[petIndex].PetName} completed");
+                
+                // Update current model references
+                UpdateCurrentModelReferences();
+            });
+        }
+    }
+
+    private GameObject CreateCharacterModelForAnimation(int characterIndex)
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Creating character model for animation: index {characterIndex}");
+        
+        // CRITICAL: With immediate cleanup system, we should NEVER reuse models
+        // Always create a fresh model to prevent race conditions
+        
+        if (characterIndex < 0 || characterIndex >= availableCharacters.Count)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] Invalid character index for model creation: {characterIndex} (available: 0-{availableCharacters.Count - 1})");
+            return null;
+        }
+        
+        // Create new model - no reuse to prevent conflicts
+        var newModel = CreateCharacterModel(characterIndex);
+        if (newModel != null)
+        {
+            PrepareModelForAnimation(newModel);
+            Debug.Log($"[CHAR_SELECT_REVAMP] Created fresh character model: {newModel.name}");
+        }
+        else
+        {
+            Debug.LogError($"[CHAR_SELECT_REVAMP] Failed to create character model for index {characterIndex}");
+        }
+        return newModel;
+    }
+
+    private GameObject CreatePetModelForAnimation(int petIndex)
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Creating pet model for animation: index {petIndex}");
+        
+        // CRITICAL: With immediate cleanup system, we should NEVER reuse models
+        // Always create a fresh model to prevent race conditions
+        
+        if (petIndex < 0 || petIndex >= availablePets.Count)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] Invalid pet index for model creation: {petIndex} (available: 0-{availablePets.Count - 1})");
+            return null;
+        }
+        
+        // Create new model - no reuse to prevent conflicts
+        var newModel = CreatePetModel(petIndex);
+        if (newModel != null)
+        {
+            PrepareModelForAnimation(newModel);
+            Debug.Log($"[CHAR_SELECT_REVAMP] Created fresh pet model: {newModel.name}");
+        }
+        else
+        {
+            Debug.LogError($"[CHAR_SELECT_REVAMP] Failed to create pet model for index {petIndex}");
+        }
+        return newModel;
+    }
+
+    private GameObject CreateCharacterModel(int characterIndex)
+    {
+        if (characterIndex < 0 || characterIndex >= availableCharacters.Count)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] Invalid character index for model creation: {characterIndex} (available: 0-{availableCharacters.Count - 1})");
+            return null;
+        }
+        
+        if (selectedModelSpawn == null)
+        {
+            Debug.LogError("[CHAR_SELECT_REVAMP] selectedModelSpawn is null - CANNOT CREATE CHARACTER MODEL! Please assign the selectedModelSpawn Transform in the inspector.");
+            return null;
+        }
+        
+        // Get the character prefab from selection manager
+        if (selectionManager == null)
+        {
+            Debug.LogError("[CHAR_SELECT_REVAMP] Selection manager is null - cannot get character prefab");
+            return null;
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Getting character prefab for index {characterIndex} from selection manager...");
+        GameObject characterPrefab = selectionManager.GetCharacterPrefabByIndex(characterIndex);
+        if (characterPrefab == null)
+        {
+            Debug.LogError($"[CHAR_SELECT_REVAMP] No character prefab found for index: {characterIndex}. Check if CharacterSelectionManager has character prefabs assigned.");
+            return null;
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Found character prefab: {characterPrefab.name}");
+        
+        // Create the new character model
+        GameObject newCharacterModel = Instantiate(characterPrefab, selectedModelSpawn);
+        newCharacterModel.name = $"SelectedCharacter_{availableCharacters[characterIndex].CharacterName}";
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Created character model: {newCharacterModel.name} at {selectedModelSpawn.position}");
+        
+        return newCharacterModel;
+    }
+
+    private GameObject CreatePetModel(int petIndex)
+    {
+        if (petIndex < 0 || petIndex >= availablePets.Count)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] Invalid pet index for model creation: {petIndex}");
+            return null;
+        }
+        
+        if (selectedModelSpawn == null)
+        {
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] selectedModelSpawn is null - cannot create pet model");
+            return null;
+        }
+        
+        // Get the pet prefab from selection manager
+        if (selectionManager == null)
+        {
+            Debug.LogWarning("[CHAR_SELECT_REVAMP] Selection manager is null - cannot get pet prefab");
+            return null;
+        }
+        
+        GameObject petPrefab = selectionManager.GetPetPrefabByIndex(petIndex);
+        if (petPrefab == null)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] No pet prefab found for index: {petIndex}");
+            return null;
+        }
+        
+        // Create the new pet model
+        GameObject newPetModel = Instantiate(petPrefab, selectedModelSpawn);
+        newPetModel.name = $"SelectedPet_{availablePets[petIndex].PetName}";
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Created pet model: {newPetModel.name} at {selectedModelSpawn.position}");
+        
+        return newPetModel;
+    }
+
+    private GameObject GetCurrentVisibleModel()
+    {
+        // Look for currently visible models
+        if (currentCharacterModel != null)
+        {
+            Renderer[] renderers = currentCharacterModel.GetComponentsInChildren<Renderer>();
+            if (renderers.Any(r => r.enabled))
             {
-                // The controller's OnDestroy will handle cleanup, but we can call RefreshModel3DFromData 
-                // with null to force cleanup of any dynamically created models
-                try
+                return currentCharacterModel;
+            }
+        }
+        
+        if (currentPetModel != null)
+        {
+            Renderer[] renderers = currentPetModel.GetComponentsInChildren<Renderer>();
+            if (renderers.Any(r => r.enabled))
+            {
+                return currentPetModel;
+            }
+        }
+        
+        return null;
+    }
+
+    private void UpdateCurrentModelReferences()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Updating current model references");
+        
+        // With immediate cleanup system, we just need to find the one remaining model
+        // The ModelDissolveAnimator handles cleanup, so there should only be one model
+        
+        // Clear old references if models were destroyed
+        if (currentCharacterModel != null && !IsModelValid(currentCharacterModel))
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Clearing invalid character model reference");
+            currentCharacterModel = null;
+        }
+        
+        if (currentPetModel != null && !IsModelValid(currentPetModel))
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Clearing invalid pet model reference");
+            currentPetModel = null;
+        }
+        
+        // Find the current model (there should only be one after immediate cleanup)
+        GameObject[] allModels = FindAllModelsInScene();
+        
+        if (allModels.Length > 1)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] Multiple models found ({allModels.Length}) - immediate cleanup may have failed!");
+            foreach (GameObject model in allModels)
+            {
+                Debug.LogWarning($"[CHAR_SELECT_REVAMP] Found model: {model.name}");
+            }
+        }
+        
+        // Update references to the single remaining model
+        foreach (GameObject model in allModels)
+        {
+            if (model.name.StartsWith("SelectedCharacter_"))
+            {
+                currentCharacterModel = model;
+                currentPetModel = null; // Ensure mutual exclusivity
+                Debug.Log($"[CHAR_SELECT_REVAMP] Updated character model reference to: {model.name}");
+            }
+            else if (model.name.StartsWith("SelectedPet_"))
+            {
+                currentPetModel = model;
+                currentCharacterModel = null; // Ensure mutual exclusivity
+                Debug.Log($"[CHAR_SELECT_REVAMP] Updated pet model reference to: {model.name}");
+            }
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Model references updated - Character: {currentCharacterModel?.name ?? "None"}, Pet: {currentPetModel?.name ?? "None"}");
+    }
+
+    private GameObject[] FindAllModelsInScene()
+    {
+        var models = new List<GameObject>();
+        
+        // Find all GameObjects that start with "SelectedCharacter_" or "SelectedPet_"
+        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+        foreach (GameObject obj in allObjects)
+        {
+            if (obj.name.StartsWith("SelectedCharacter_") || obj.name.StartsWith("SelectedPet_"))
+            {
+                models.Add(obj);
+            }
+        }
+        
+        return models.ToArray();
+    }
+
+    private bool IsModelValid(GameObject model)
+    {
+        return model != null && model.gameObject != null;
+    }
+
+    private void HandleModelVisibility(GameObject model, bool isCharacter)
+    {
+        if (model == null) return;
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Handling visibility for {(isCharacter ? "character" : "pet")} model: {model.name}");
+        
+        // Character/Pet selection preview models should always be visible during character selection
+        // These are local preview models, not NetworkEntity objects managed by EntityVisibilityManager
+        
+        // Ensure all renderers in the model are enabled
+        Renderer[] renderers = model.GetComponentsInChildren<Renderer>();
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer != null)
+            {
+                renderer.enabled = true;
+            }
+        }
+        
+        // Ensure the GameObject itself is active
+        model.SetActive(true);
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] {(isCharacter ? "Character" : "Pet")} model {model.name} set to visible - {renderers.Length} renderers enabled");
+        
+        // EntityVisibilityManager is for NetworkEntity objects in combat/multiplayer scenarios
+        // Our selection preview models are local GameObjects that should bypass that system
+        EntityVisibilityManager visibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        if (visibilityManager != null)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] EntityVisibilityManager present but bypassed for local selection preview model");
+        }
+    }
+
+    #region Mario Kart Style Updates
+
+    public void UpdateOtherPlayersSelections(List<PlayerSelectionInfo> playerInfos)
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] UpdateOtherPlayersSelections called with {playerInfos.Count} players");
+        
+        // Update ready counter
+        int readyCount = playerInfos.Count(p => p.isReady);
+        int totalCount = playerInfos.Count;
+        UpdateReadyCounter(readyCount, totalCount);
+        
+        // Clear previous player data
+        ClearAllPlayerSelections();
+        
+        // Update visual indicators for each player
+        foreach (PlayerSelectionInfo info in playerInfos)
+        {
+            // Check if this is the local player and update ready state
+            if (info.playerName == myPlayerID)
+            {
+                // Update local ready state from server
+                bool wasReady = isReady;
+                isReady = info.isReady;
+                UpdateReadyButtonState();
+                
+                // Update deck preview controller with ready state
+                if (wasReady != isReady && deckPreviewController != null)
                 {
-                    if (controller.GetModel3D() != null)
-                    {
-                        Debug.Log($"CharacterSelectionUIManager: Force cleaning model from character controller: {controller.name}");
-                    }
+                    deckPreviewController.SetPlayerReadyState(isReady);
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Player ready state changed to {isReady} - updated deck preview controller");
                 }
-                catch (System.Exception e)
+                continue; // Skip showing selection indicators for self
+            }
+            
+            Color playerColor = GetPlayerColor(info.playerName);
+            
+            // Show character selection using button highlighting
+            if (info.hasSelection && info.characterIndex >= 0 && info.characterIndex < characterPortraitButtons.Count)
+            {
+                Button characterButton = characterPortraitButtons[info.characterIndex];
+                if (characterButton != null)
                 {
-                    Debug.LogWarning($"CharacterSelectionUIManager: Error during character controller cleanup: {e.Message}");
+                    // Add a subtle border or glow effect to show other players' selections
+                    AddPlayerSelectionIndicator(characterButton.gameObject, info.playerName, playerColor);
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Added selection indicator for player {info.playerName} on character {info.characterIndex}");
+                }
+            }
+            
+            // Show pet selection using button highlighting  
+            if (info.hasSelection && info.petIndex >= 0 && info.petIndex < petPortraitButtons.Count)
+            {
+                Button petButton = petPortraitButtons[info.petIndex];
+                if (petButton != null)
+                {
+                    // Add a subtle border or glow effect to show other players' selections
+                    AddPlayerSelectionIndicator(petButton.gameObject, info.playerName, playerColor);
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Added selection indicator for player {info.playerName} on pet {info.petIndex}");
                 }
             }
         }
         
-        // Cleanup pet controllers
-        foreach (EntitySelectionController controller in petControllers)
+        // Always store the latest player info for when panel becomes visible
+        latestPlayerInfos = new List<PlayerSelectionInfo>(playerInfos);
+        
+        // Update player list panel if visible
+        if (uiAnimator != null && uiAnimator.IsPlayerListVisible)
         {
-            if (controller != null && controller.IsUsing3DModel())
+            UpdatePlayerListPanel(playerInfos);
+        }
+    }
+    
+    private void AddPlayerSelectionIndicator(GameObject button, string playerName, Color playerColor)
+    {
+        // For now, we'll implement a simple approach
+        // In a full implementation, you might add an outline component or child indicator object
+        
+        // Create a simple colored indicator (e.g., a small colored square in the corner)
+        GameObject indicator = new GameObject($"PlayerIndicator_{playerName}");
+        indicator.transform.SetParent(button.transform, false);
+        
+        // Add an Image component to show the player's color
+        UnityEngine.UI.Image indicatorImage = indicator.AddComponent<UnityEngine.UI.Image>();
+        indicatorImage.color = playerColor;
+        
+        // Position it in the bottom-right corner
+        RectTransform indicatorRect = indicator.GetComponent<RectTransform>();
+        indicatorRect.anchorMin = new Vector2(0.8f, 0.1f);
+        indicatorRect.anchorMax = new Vector2(0.95f, 0.25f);
+        indicatorRect.offsetMin = Vector2.zero;
+        indicatorRect.offsetMax = Vector2.zero;
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Added visual indicator for player {playerName} with color {playerColor}");
+    }
+
+    private void ClearAllPlayerSelections()
+    {
+        Debug.Log("[CHAR_SELECT_REVAMP] Clearing all player selection indicators");
+        
+        // Clear character selection indicators
+        foreach (Button button in characterPortraitButtons)
+        {
+            if (button != null)
             {
-                try
-                {
-                    if (controller.GetModel3D() != null)
-                    {
-                        /* Debug.Log($"CharacterSelectionUIManager: Force cleaning model from pet controller: {controller.name}"); */
-                    }
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogWarning($"CharacterSelectionUIManager: Error during pet controller cleanup: {e.Message}");
-                }
+                ClearPlayerIndicators(button.gameObject);
+            }
+        }
+        
+        // Clear pet selection indicators
+        foreach (Button button in petPortraitButtons)
+        {
+            if (button != null)
+            {
+                ClearPlayerIndicators(button.gameObject);
+            }
+        }
+    }
+    
+    private void ClearPlayerIndicators(GameObject button)
+    {
+        // Find and destroy all player indicator children
+        Transform[] children = button.GetComponentsInChildren<Transform>();
+        foreach (Transform child in children)
+        {
+            if (child.name.StartsWith("PlayerIndicator_"))
+            {
+                Destroy(child.gameObject);
             }
         }
     }
 
-    /// <summary>
-    /// Hides any existing lobby UI (compatibility method for transition period)
-    /// </summary>
-    public void HideLobbyUI()
+    private void UpdateReadyCounter(int readyCount, int totalCount)
     {
-        // This method exists for compatibility during the transition from separate lobby phase
-        // Since we no longer have a separate lobby UI, this method doesn't need to do anything
-        Debug.Log("CharacterSelectionUIManager: HideLobbyUI called (no action needed - lobby UI is integrated)");
+        if (readyCounterText != null)
+        {
+            readyCounterText.text = $"{readyCount}/{totalCount} Ready";
+            readyCounterText.color = (readyCount == totalCount) ? readyColor : Color.white;
+        }
     }
 
+    private void SetupSharedGridParent()
+    {
+        // If we have a shared grid parent, move all buttons to it
+        if (sharedGridParent != null)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Setting up shared grid parent - moving {characterPortraitButtons.Count} character buttons and {petPortraitButtons.Count} pet buttons");
+            
+            // Move character buttons to shared parent
+            foreach (Button button in characterPortraitButtons)
+            {
+                if (button != null)
+                {
+                    button.transform.SetParent(sharedGridParent, false);
+                }
+            }
+            
+            // Move pet buttons to shared parent
+            foreach (Button button in petPortraitButtons)
+            {
+                if (button != null)
+                {
+                    button.transform.SetParent(sharedGridParent, false);
+                }
+            }
+            
+            Debug.Log("[CHAR_SELECT_REVAMP] All portrait buttons moved to shared grid parent");
+        }
+        else
+        {
+            Debug.Log("[CHAR_SELECT_REVAMP] No shared grid parent specified - using separate character and pet grid parents");
+        }
+    }
+    
     #endregion
+
+    /// <summary>
+    /// Called by EntitySelectionController to finalize selection and update server
+    /// </summary>
+    public void UpdateSelectionFromController(EntitySelectionController.EntityType entityType, int selectionIndex)
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] UpdateSelectionFromController({entityType}, {selectionIndex}) called");
+        
+        // Update selection state
+        UpdateSelectionState();
+    }
+
+    private void CreateCharacterPortraitButtons()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Creating {availableCharacters.Count} character portrait buttons");
+        
+        for (int i = 0; i < availableCharacters.Count; i++)
+        {
+            CharacterData character = availableCharacters[i];
+            if (character == null) continue;
+            
+            // Use characterGridParent initially, then move to shared parent later if needed
+            Transform parentTransform = characterGridParent != null ? characterGridParent : transform;
+            Button button = Instantiate(selectionItemPrefab, parentTransform).GetComponent<Button>();
+            if (button == null)
+            {
+                Debug.LogError("[CHAR_SELECT_REVAMP] Selection Item Prefab is not a Button!");
+                continue;
+            }
+            
+            int index = i; // Capture for closure
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => OnCharacterSelectionChanged(index));
+            
+            characterPortraitButtons.Add(button);
+            
+            // Set up the item data using the prefab structure
+            SetupPortraitButton(button, character.CharacterName, character.CharacterPortrait);
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Created {characterPortraitButtons.Count} character portrait buttons");
+    }
+    
+    private void CreatePetPortraitButtons()
+    {
+        Debug.Log($"[CHAR_SELECT_REVAMP] Creating {availablePets.Count} pet portrait buttons");
+        
+        for (int i = 0; i < availablePets.Count; i++)
+        {
+            PetData pet = availablePets[i];
+            if (pet == null) continue;
+            
+            // Use characterGridParent initially, then move to shared parent later if needed
+            Transform parentTransform = characterGridParent != null ? characterGridParent : transform;
+            Button button = Instantiate(selectionItemPrefab, parentTransform).GetComponent<Button>();
+            if (button == null)
+            {
+                Debug.LogError("[CHAR_SELECT_REVAMP] Selection Item Prefab is not a Button!");
+                continue;
+            }
+            
+            int index = i; // Capture for closure
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => OnPetSelectionChanged(index));
+            
+            petPortraitButtons.Add(button);
+            
+            // Set up the item data using the prefab structure
+            SetupPortraitButton(button, pet.PetName, pet.PetPortrait);
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] Created {petPortraitButtons.Count} pet portrait buttons");
+    }
+    
+    private void SetupPortraitButton(Button button, string entityName, Sprite portraitSprite)
+    {
+        // Find the name text component
+        TextMeshProUGUI nameText = button.GetComponentInChildren<TextMeshProUGUI>();
+        if (nameText != null)
+        {
+            nameText.text = entityName;
+        }
+        
+        // Find the portrait image component more reliably
+        Image portraitImage = FindPortraitImageComponent(button);
+        
+        // Set the portrait sprite and preserve scaling
+        if (portraitImage != null && portraitSprite != null)
+        {
+            // Store original scale before changing sprite
+            Vector3 originalScale = portraitImage.transform.localScale;
+            
+            // Set the sprite
+            portraitImage.sprite = portraitSprite;
+            
+            // Restore the original scale to respect prefab scaling
+            portraitImage.transform.localScale = originalScale;
+            
+            Debug.Log($"[CHAR_SELECT_REVAMP] Set portrait for {entityName} on {portraitImage.gameObject.name} with scale {originalScale}");
+        }
+        else if (portraitSprite != null)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] Could not find portrait Image component in prefab for {entityName}");
+        }
+    }
+
+    private Image FindPortraitImageComponent(Button button)
+    {
+        // Get all Image components in the button hierarchy
+        Image[] images = button.GetComponentsInChildren<Image>();
+        Image buttonRootImage = button.GetComponent<Image>();
+        
+        // Strategy 1: Look for "Portrait" specifically in the name
+        foreach (Image img in images)
+        {
+            if (img.gameObject.name.Equals("Portrait", System.StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Found Portrait image by exact name match: {img.gameObject.name}");
+                return img;
+            }
+        }
+        
+        // Strategy 2: Look for names containing "portrait" 
+        foreach (Image img in images)
+        {
+            if (img.gameObject.name.ToLower().Contains("portrait"))
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Found Portrait image by name pattern: {img.gameObject.name}");
+                return img;
+            }
+        }
+        
+        // Strategy 3: Exclude known non-portrait names and find the deepest/most nested Image
+        Image deepestImage = null;
+        int maxDepth = -1;
+        
+        foreach (Image img in images)
+        {
+            // Skip the button's root image and known non-portrait components
+            if (img == buttonRootImage) continue;
+            
+            string imgName = img.gameObject.name.ToLower();
+            if (imgName.Contains("border") || imgName.Contains("background") || imgName.Contains("innerbox")) 
+                continue;
+            
+            // Calculate depth in hierarchy
+            int depth = GetTransformDepth(img.transform, button.transform);
+            if (depth > maxDepth)
+            {
+                maxDepth = depth;
+                deepestImage = img;
+            }
+        }
+        
+        if (deepestImage != null)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Found Portrait image by depth analysis: {deepestImage.gameObject.name} (depth: {maxDepth})");
+            return deepestImage;
+        }
+        
+        // Strategy 4: Last resort - use the last Image component (often the most specific one)
+        if (images.Length > 1)
+        {
+            for (int i = images.Length - 1; i >= 0; i--)
+            {
+                if (images[i] != buttonRootImage)
+                {
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Found Portrait image by last resort: {images[i].gameObject.name}");
+                    return images[i];
+                }
+            }
+        }
+        
+        Debug.LogWarning("[CHAR_SELECT_REVAMP] Could not find suitable Portrait Image component");
+        return null;
+    }
+    
+    private int GetTransformDepth(Transform child, Transform root)
+    {
+        int depth = 0;
+        Transform current = child;
+        while (current != null && current != root)
+        {
+            depth++;
+            current = current.parent;
+        }
+        return depth;
+    }
 }
 
 /// <summary>

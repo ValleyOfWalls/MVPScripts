@@ -26,7 +26,7 @@ public class WeaponTeleportEffect : MonoBehaviour
     [SerializeField] private Vector3 startScale = new Vector3(0.1f, 0.1f, 0.1f);
     [SerializeField] private Vector3 endScale = Vector3.one;
     [SerializeField] private AnimationCurve scaleCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-    
+    //
     [Header("Dissolve Effect")]
     [SerializeField] private string dissolvePropertyName = "_DissolveAmount";
     [SerializeField] private float dissolveStart = 1f;

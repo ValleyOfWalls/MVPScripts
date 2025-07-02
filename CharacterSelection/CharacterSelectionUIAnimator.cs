@@ -4,10 +4,13 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.EventSystems;
 using DG.Tweening;
+using MVPScripts.Utility;
+using CharacterSelection;
 
 /// <summary>
 /// Handles sliding animations for UI panels in the character selection screen
 /// Supports both UI button-based selection and 3D model-based selection
+/// Now includes model transition animations delegated to ModelDissolveAnimator
 /// </summary>
 public class CharacterSelectionUIAnimator : MonoBehaviour
 {
@@ -19,6 +22,9 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     [Header("Panel Slide Directions - Fallback Values")]
     [SerializeField] private Vector2 playerListHiddenOffset = new Vector2(-300, 0); // Fallback if no OffscreenPanelSetup
     [SerializeField] private Vector2 deckPreviewHiddenOffset = new Vector2(0, -400); // Fallback if no OffscreenPanelSetup
+    
+    [Header("Model Transition System")]
+    [SerializeField] private ModelDissolveAnimator modelDissolveAnimator;
     
     // Panel references
     private GameObject playerListPanel;
@@ -47,6 +53,10 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     public System.Action<bool> OnPlayerListVisibilityChanged;
     public System.Action<bool> OnCharacterDeckVisibilityChanged;
     public System.Action<bool> OnPetDeckVisibilityChanged;
+    public System.Action<GameObject> OnModelTransitionStarted;
+    public System.Action<GameObject> OnModelTransitionCompleted;
+    
+
     
     #region Initialization
     
@@ -73,6 +83,9 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         
         // Initialize panels in hidden state
         SetupInitialPanelPositions();
+        
+        // Setup model dissolve animator
+        SetupModelDissolveAnimator();
         
         /* Debug.Log("CharacterSelectionUIAnimator: Initialized with player list, character deck, and pet deck panels"); */
     }
@@ -115,7 +128,22 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         /* Debug.Log($"CharacterSelectionUIAnimator: {panel.name} panel set to INACTIVE during initial setup"); */
     }
     
-
+    private void SetupModelDissolveAnimator()
+    {
+        // Get or create the model dissolve animator component
+        if (modelDissolveAnimator == null)
+        {
+            modelDissolveAnimator = GetComponent<ModelDissolveAnimator>();
+            if (modelDissolveAnimator == null)
+            {
+                modelDissolveAnimator = gameObject.AddComponent<ModelDissolveAnimator>();
+            }
+        }
+        
+        // Subscribe to events to forward them to our own events
+        modelDissolveAnimator.OnTransitionStarted += (model) => OnModelTransitionStarted?.Invoke(model);
+        modelDissolveAnimator.OnTransitionCompleted += (model) => OnModelTransitionCompleted?.Invoke(model);
+    }
     
     #endregion
     
@@ -420,21 +448,18 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
             }
             
             // Also check if the hit object is a child of a selection model
-            Transform current = hitObject.transform;
-            int depth = 0;
-            while (current != null && depth < 10) // Prevent infinite loops
+            Transform parent = hitObject.transform.parent;
+            while (parent != null)
             {
-                if (Is3DSelectionModel(current.gameObject))
+                if (Is3DSelectionModel(parent.gameObject))
                 {
-                    /* Debug.Log($"CharacterSelectionUIAnimator: 3D model selection detected on parent {current.name}"); */
+                    /* Debug.Log($"CharacterSelectionUIAnimator: 3D model selection detected on parent {parent.name}"); */
                     return true;
                 }
-                current = current.parent;
-                depth++;
+                parent = parent.parent;
             }
         }
         
-        /* Debug.Log("CharacterSelectionUIAnimator: No 3D model selection detected"); */
         return false;
     }
     
@@ -442,272 +467,352 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     {
         if (obj == null) return false;
         
-        // Check if this object has an EntitySelectionController component
-        EntitySelectionController controller = obj.GetComponent<EntitySelectionController>();
-        if (controller != null)
+        string objName = obj.name.ToLower();
+        
+        // Check for character or pet model indicators
+        bool isCharacterModel = objName.Contains("character") || objName.Contains("warrior") || objName.Contains("mystic") || objName.Contains("assassin");
+        bool isPetModel = objName.Contains("pet") || objName.Contains("beast") || objName.Contains("elemental") || objName.Contains("spirit");
+        
+        // Also check for specific model naming patterns
+        bool isSelectionModel = objName.Contains("selection") || objName.Contains("preview") || objName.Contains("model");
+        
+        // Check for character selection related components
+        bool hasSelectionComponents = obj.GetComponent<ModelOutlineHover>() != null || 
+                                      obj.GetComponent<Collider>() != null ||
+                                      obj.GetComponentInParent<EntitySelectionController>() != null;
+        
+        bool result = (isCharacterModel || isPetModel || isSelectionModel) && hasSelectionComponents;
+        
+        if (result)
         {
-            Debug.Log($"CharacterSelectionUIAnimator: Found EntitySelectionController on {obj.name}");
-            return true;
+            /* Debug.Log($"CharacterSelectionUIAnimator: Identified {obj.name} as 3D selection model"); */
         }
         
-        // Check if this object is a child of something with an EntitySelectionController
-        controller = obj.GetComponentInParent<EntitySelectionController>();
-        if (controller != null)
-        {
-            Debug.Log($"CharacterSelectionUIAnimator: Found EntitySelectionController in parent hierarchy of {obj.name}");
-            return true;
-        }
-        
-        // Check if this object is a child of the character or pet grid parents
-        if (characterGridParentRect != null && obj.transform.IsChildOf(characterGridParentRect.transform))
-        {
-            /* Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of character grid parent"); */
-            return true;
-        }
-        
-        if (petGridParentRect != null && obj.transform.IsChildOf(petGridParentRect.transform))
-        {
-            /* Debug.Log($"CharacterSelectionUIAnimator: Object {obj.name} is child of pet grid parent"); */
-            return true;
-        }
-        
-        return false;
+        return result;
     }
     
     private bool CheckUIElementClick()
     {
-        // Use EventSystem to raycast and see what UI elements we hit
-        PointerEventData pointerData = new PointerEventData(EventSystem.current)
+        // Get the EventSystem
+        EventSystem eventSystem = EventSystem.current;
+        if (eventSystem == null)
+        {
+            Debug.Log("CharacterSelectionUIAnimator: No EventSystem found for UI click detection");
+            return false;
+        }
+        
+        // Raycast for UI elements
+        PointerEventData pointerData = new PointerEventData(eventSystem)
         {
             position = Input.mousePosition
         };
         
         List<RaycastResult> results = new List<RaycastResult>();
+        eventSystem.RaycastAll(pointerData, results);
         
-        // Try both character and pet canvases to ensure we can detect clicks on both
-        bool foundValidClick = false;
-        
-        // Try character canvas first
-        Canvas characterCanvas = FindCanvasForCharacterItems();
-        if (characterCanvas != null)
+        /* Debug.Log($"CharacterSelectionUIAnimator: UI raycast found {results.Count} hit objects"); */
+        foreach (RaycastResult result in results)
         {
-            GraphicRaycaster raycaster = characterCanvas.GetComponent<GraphicRaycaster>();
-            if (raycaster != null)
-            {
-                raycaster.Raycast(pointerData, results);
-                /* Debug.Log($"CharacterSelectionUIAnimator: Using Character Canvas: {characterCanvas.name} - found {results.Count} hits"); */
-                foundValidClick = CheckRaycastResults(results);
-                if (foundValidClick) return true;
-            }
+            /* Debug.Log($"CharacterSelectionUIAnimator: UI raycast hit: {result.gameObject.name}"); */
         }
         
-        // Try pet canvas if character canvas didn't find anything
-        Canvas petCanvas = FindCanvasForPetItems();
-        if (petCanvas != null && petCanvas != characterCanvas) // Don't duplicate if same canvas
-        {
-            results.Clear(); // Clear previous results
-            GraphicRaycaster raycaster = petCanvas.GetComponent<GraphicRaycaster>();
-            if (raycaster != null)
-            {
-                raycaster.Raycast(pointerData, results);
-                /* Debug.Log($"CharacterSelectionUIAnimator: Using Pet Canvas: {petCanvas.name} - found {results.Count} hits"); */
-                foundValidClick = CheckRaycastResults(results);
-                if (foundValidClick) return true;
-            }
-        }
-        
-        /* Debug.Log("CharacterSelectionUIAnimator: No valid UI selection items found in canvas raycast results"); */
-        return false;
+        return CheckRaycastResults(results);
     }
     
     private bool CheckRaycastResults(List<RaycastResult> results)
     {
-        // Log all hit objects for debugging
-        for (int i = 0; i < results.Count; i++)
-        {
-            GameObject hitObject = results[i].gameObject;
-            Debug.Log($"CharacterSelectionUIAnimator: Raycast hit [{i}]: {hitObject.name} (layer: {hitObject.layer})");
-        }
-        
-        // Check if any of the hit objects are character or pet selection items
         foreach (RaycastResult result in results)
         {
-            GameObject hitObject = result.gameObject;
+            GameObject obj = result.gameObject;
             
-            // Check if we clicked on a deck preview panel (should keep open)
-            if (IsObjectInDeckPanel(hitObject))
+            // Check if this object is in a deck panel (should keep panels open)
+            if (IsObjectInDeckPanel(obj))
             {
-                Debug.Log($"CharacterSelectionUIAnimator: Click on deck panel ({hitObject.name}) - keeping open");
+                /* Debug.Log($"CharacterSelectionUIAnimator: Click on deck panel item: {obj.name}"); */
                 return true;
             }
             
-            // Check if we clicked on a character or pet selection item
-            if (IsObjectInCharacterOrPetSelection(hitObject))
+            // Check if this object is in character or pet selection (should keep panels open)
+            if (IsObjectInCharacterOrPetSelection(obj))
             {
-                /* Debug.Log($"CharacterSelectionUIAnimator: Click on selection item ({hitObject.name}) - keeping open"); */
+                /* Debug.Log($"CharacterSelectionUIAnimator: Click on character/pet selection item: {obj.name}"); */
                 return true;
             }
-            
-            /* Debug.Log($"CharacterSelectionUIAnimator: Checked object: {hitObject.name} (not a selection item)"); */
         }
         
         return false;
     }
     
+    // Helper method to find canvas for character items - adjusted search pattern
     private Canvas FindCanvasForCharacterItems()
     {
-        if (characterGridParentRect != null && characterGridParentRect.childCount > 0)
+        // Try multiple search strategies to find character selection canvas
+        
+        // Strategy 1: Look for character grid parent's canvas
+        if (characterGridParentRect != null)
         {
-            // Get the first character selection item and find its Canvas
-            Transform firstCharacterItem = characterGridParentRect.GetChild(0);
-            Canvas itemCanvas = firstCharacterItem.GetComponent<Canvas>();
-            if (itemCanvas != null && itemCanvas.GetComponent<GraphicRaycaster>() != null)
+            Canvas canvas = characterGridParentRect.GetComponentInParent<Canvas>();
+            if (canvas != null) return canvas;
+        }
+        
+        // Strategy 2: Search for canvas with character-related names
+        Canvas[] allCanvases = FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+        foreach (Canvas canvas in allCanvases)
+        {
+            string canvasName = canvas.name.ToLower();
+            if (canvasName.Contains("character") || canvasName.Contains("selection"))
             {
-                Debug.Log($"CharacterSelectionUIAnimator: Found Canvas from character item: {itemCanvas.name}");
-                return itemCanvas;
+                return canvas;
             }
         }
         
-        Debug.Log("CharacterSelectionUIAnimator: Could not find Canvas on character selection items");
         return null;
     }
     
+    // Helper method to find canvas for pet items - adjusted search pattern  
     private Canvas FindCanvasForPetItems()
     {
-        if (petGridParentRect != null && petGridParentRect.childCount > 0)
+        // Try multiple search strategies to find pet selection canvas
+        
+        // Strategy 1: Look for pet grid parent's canvas
+        if (petGridParentRect != null)
         {
-            // Get the first pet selection item and find its Canvas
-            Transform firstPetItem = petGridParentRect.GetChild(0);
-            Canvas itemCanvas = firstPetItem.GetComponent<Canvas>();
-            if (itemCanvas != null && itemCanvas.GetComponent<GraphicRaycaster>() != null)
+            Canvas canvas = petGridParentRect.GetComponentInParent<Canvas>();
+            if (canvas != null) return canvas;
+        }
+        
+        // Strategy 2: Search for canvas with pet-related names
+        Canvas[] allCanvases = FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+        foreach (Canvas canvas in allCanvases)
+        {
+            string canvasName = canvas.name.ToLower();
+            if (canvasName.Contains("pet") || canvasName.Contains("selection"))
             {
-                Debug.Log($"CharacterSelectionUIAnimator: Found Canvas from pet item: {itemCanvas.name}");
-                return itemCanvas;
+                return canvas;
             }
         }
         
-        Debug.Log("CharacterSelectionUIAnimator: Could not find Canvas on pet selection items");
         return null;
     }
     
-    /// <summary>
-    /// Set up click outside detection with specific UI areas to check
-    /// </summary>
     public void SetClickDetectionAreas(RectTransform characterGridParent, RectTransform petGridParent)
     {
         characterGridParentRect = characterGridParent;
         petGridParentRect = petGridParent;
-        /* Debug.Log($"CharacterSelectionUIAnimator: Click detection areas set - Character: {characterGridParent?.name} (null: {characterGridParent == null}), Pet: {petGridParent?.name} (null: {petGridParent == null})"); */
         
-        // Additional debugging info
-        if (characterGridParent != null)
-        {
-            Debug.Log($"CharacterSelectionUIAnimator: Character grid parent active: {characterGridParent.gameObject.activeInHierarchy}, children: {characterGridParent.transform.childCount}");
-        }
-        if (petGridParent != null)
-        {
-            Debug.Log($"CharacterSelectionUIAnimator: Pet grid parent active: {petGridParent.gameObject.activeInHierarchy}, children: {petGridParent.transform.childCount}");
-        }
+        /* Debug.Log($"CharacterSelectionUIAnimator: Click detection areas set - Character: {characterGridParent?.name}, Pet: {petGridParent?.name}"); */
         
-        // If either is null, try to find them automatically
-        if (characterGridParent == null || petGridParent == null)
-        {
-            Debug.LogWarning("CharacterSelectionUIAnimator: Some grid parent references are null, attempting to find them automatically...");
-            ValidateAndFindGridParents();
-        }
+        // Validate the grid parents
+        ValidateAndFindGridParents();
+        
+        // Enable click detection now that we have areas
+        enableClickOutsideDetection = true;
+        
+        Debug.Log($"CharacterSelectionUIAnimator: Click outside detection ENABLED with areas: Character={characterGridParentRect?.name}, Pet={petGridParentRect?.name}");
     }
     
-    /// <summary>
-    /// Try to automatically find the character and pet grid parents if they weren't set properly
-    /// </summary>
     private void ValidateAndFindGridParents()
     {
-        // Try to find grid parents by name if they're missing
+        // If we don't have character grid parent, try to find it
         if (characterGridParentRect == null)
         {
-            RectTransform[] gridParents = FindObjectsByType<RectTransform>(FindObjectsSortMode.None);
-            foreach (RectTransform grid in gridParents)
+            // Try to find character grid by searching for common names
+            GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+            foreach (GameObject obj in allObjects)
             {
-                string name = grid.name.ToLower();
-                if (name.Contains("character") && (name.Contains("grid") || name.Contains("parent") || name.Contains("content")))
+                string objName = obj.name.ToLower();
+                if ((objName.Contains("character") && (objName.Contains("grid") || objName.Contains("parent") || objName.Contains("content"))) ||
+                    objName == "charactergridparent" || objName == "character_grid_parent")
                 {
-                    characterGridParentRect = grid;
-                    Debug.Log($"CharacterSelectionUIAnimator: Auto-found character grid parent: {grid.name}");
-                    break;
+                    characterGridParentRect = obj.GetComponent<RectTransform>();
+                    if (characterGridParentRect != null)
+                    {
+                        Debug.Log($"CharacterSelectionUIAnimator: Found character grid parent: {obj.name}");
+                        break;
+                    }
                 }
             }
         }
         
+        // If we don't have pet grid parent, try to find it
         if (petGridParentRect == null)
         {
-            RectTransform[] gridParents = FindObjectsByType<RectTransform>(FindObjectsSortMode.None);
-            foreach (RectTransform grid in gridParents)
+            // Try to find pet grid by searching for common names
+            GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+            foreach (GameObject obj in allObjects)
             {
-                string name = grid.name.ToLower();
-                if (name.Contains("pet") && (name.Contains("grid") || name.Contains("parent") || name.Contains("content")))
+                string objName = obj.name.ToLower();
+                if ((objName.Contains("pet") && (objName.Contains("grid") || objName.Contains("parent") || objName.Contains("content"))) ||
+                    objName == "petgridparent" || objName == "pet_grid_parent")
                 {
-                    petGridParentRect = grid;
-                    /* Debug.Log($"CharacterSelectionUIAnimator: Auto-found pet grid parent: {grid.name}"); */
-                    break;
+                    petGridParentRect = obj.GetComponent<RectTransform>();
+                    if (petGridParentRect != null)
+                    {
+                        Debug.Log($"CharacterSelectionUIAnimator: Found pet grid parent: {obj.name}");
+                        break;
+                    }
                 }
             }
         }
         
-        // Log final status
-        /* Debug.Log($"CharacterSelectionUIAnimator: Final grid parent status - Character: {characterGridParentRect?.name ?? "NULL"}, Pet: {petGridParentRect?.name ?? "NULL"}"); */
-        
-        // Disable click detection if we still don't have valid setup
-        DisableClickDetectionIfInvalid();
+        // Final validation
+        if (characterGridParentRect == null || petGridParentRect == null)
+        {
+            Debug.LogWarning($"CharacterSelectionUIAnimator: Grid parent validation failed - Character: {characterGridParentRect?.name}, Pet: {petGridParentRect?.name}");
+            Debug.LogWarning("CharacterSelectionUIAnimator: Click outside detection may not work properly without proper grid parent references");
+        }
     }
     
-    /// <summary>
-    /// Debug method to check current click detection state
-    /// </summary>
     public void DebugClickDetectionState()
     {
-        /* Debug.Log($"CharacterSelectionUIAnimator: Click Detection State:"); */
-        /* Debug.Log($"  - enableClickOutsideDetection: {enableClickOutsideDetection}"); */
-        /* Debug.Log($"  - characterGridParentRect: {characterGridParentRect?.name ?? "NULL"}"); */
-        /* Debug.Log($"  - petGridParentRect: {petGridParentRect?.name ?? "NULL"}"); */
-        /* Debug.Log($"  - characterDeckPanel: {characterDeckPanel?.name ?? "NULL"} (active: {characterDeckPanel?.activeInHierarchy})"); */
-        /* Debug.Log($"  - petDeckPanel: {petDeckPanel?.name ?? "NULL"} (active: {petDeckPanel?.activeInHierarchy})"); */
-        
-        Canvas canvas = GetComponentInParent<Canvas>();
-        if (canvas == null)
-        {
-            canvas = FindFirstObjectByType<Canvas>();
-        }
-        
-        /* Debug.Log($"  - Canvas: {canvas?.name ?? "NULL"}"); */
-        /* Debug.Log($"  - GraphicRaycaster: {canvas?.GetComponent<GraphicRaycaster>() != null}"); */
-        
-        // Check if we should disable click detection due to missing references
-        bool hasValidSetup = characterGridParentRect != null || petGridParentRect != null;
-        if (!hasValidSetup && enableClickOutsideDetection)
-        {
-            Debug.LogWarning("CharacterSelectionUIAnimator: Click detection is enabled but no valid grid parent references found. Consider disabling click detection or fixing the references.");
-        }
+        Debug.Log($"CharacterSelectionUIAnimator: Click Detection State:");
+        Debug.Log($"  - enableClickOutsideDetection: {enableClickOutsideDetection}");
+        Debug.Log($"  - characterGridParentRect: {characterGridParentRect?.name ?? "NULL"}");
+        Debug.Log($"  - petGridParentRect: {petGridParentRect?.name ?? "NULL"}");
+        Debug.Log($"  - isCharacterDeckVisible: {isCharacterDeckVisible}");
+        Debug.Log($"  - isPetDeckVisible: {isPetDeckVisible}");
+        Debug.Log($"  - Character selection phase active: {IsCharacterSelectionPhaseActive()}");
     }
     
-    /// <summary>
-    /// Force disable click detection if the setup is invalid
-    /// </summary>
     public void DisableClickDetectionIfInvalid()
     {
-        bool hasValidSetup = characterGridParentRect != null || petGridParentRect != null;
-        Canvas canvas = GetComponentInParent<Canvas>();
-        if (canvas == null)
+        if (characterGridParentRect == null || petGridParentRect == null)
         {
-            canvas = FindFirstObjectByType<Canvas>();
-        }
-        bool hasValidCanvas = canvas != null && canvas.GetComponent<GraphicRaycaster>() != null;
-        
-        if (!hasValidSetup || !hasValidCanvas)
-        {
-            Debug.LogWarning($"CharacterSelectionUIAnimator: Invalid setup detected (hasValidSetup: {hasValidSetup}, hasValidCanvas: {hasValidCanvas}). Disabling click detection to prevent issues.");
+            Debug.LogWarning("CharacterSelectionUIAnimator: Disabling click detection due to missing grid parent references");
             enableClickOutsideDetection = false;
         }
     }
+    
+    #endregion
+    
+    #region Model Transition Animation System
+    
+    /// <summary>
+    /// Delegates to ModelDissolveAnimator helper class for model transitions
+    /// </summary>
+    #region Model Transition Delegation - Using ModelDissolveAnimator Helper
+    
+    public void AnimateModelTransition(GameObject oldModel, GameObject newModel, System.Action onComplete = null)
+    {
+        if (modelDissolveAnimator == null)
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: ModelDissolveAnimator not available for model transition");
+            onComplete?.Invoke();
+            return;
+        }
+        
+        modelDissolveAnimator.AnimateModelTransition(oldModel, newModel, onComplete);
+    }
+
+    /// <summary>
+    /// Requests a model transition using a factory callback to create the target model only when needed.
+    /// This prevents unnecessary model creation and ensures only the final target is created.
+    /// </summary>
+    /// <param name="currentModel">The current visible model</param>
+    /// <param name="targetModel">The target model (can be null if using factory)</param>
+    /// <param name="modelFactory">Factory callback to create the target model when needed</param>
+    /// <param name="onComplete">Callback when transition completes</param>
+    public void RequestModelTransition(GameObject currentModel, GameObject targetModel, System.Func<GameObject> modelFactory, System.Action onComplete = null)
+    {
+        if (modelDissolveAnimator == null)
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: ModelDissolveAnimator not available for transition");
+            onComplete?.Invoke();
+            return;
+        }
+
+        // If targetModel is provided, use it directly
+        if (targetModel != null)
+        {
+            modelDissolveAnimator.AnimateModelTransition(currentModel, targetModel, onComplete);
+        }
+        else if (modelFactory != null)
+        {
+            // Use factory-based transition - model will only be created when animation system needs it
+            modelDissolveAnimator.AnimateModelTransitionWithFactory(currentModel, modelFactory, onComplete);
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: No target model or factory provided for transition");
+            onComplete?.Invoke();
+        }
+    }
+    
+    public void ShowModelInstantly(GameObject model)
+    {
+        if (modelDissolveAnimator == null)
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: ModelDissolveAnimator not available for instant show");
+            return;
+        }
+        
+        modelDissolveAnimator.AnimateModelIn(model);
+    }
+    
+    public void HideModelInstantly(GameObject model)
+    {
+        if (modelDissolveAnimator == null)
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: ModelDissolveAnimator not available for instant hide");
+            return;
+        }
+        
+        modelDissolveAnimator.AnimateModelOut(model);
+    }
+    
+    // Properties and methods that delegate to ModelDissolveAnimator
+    public bool IsModelTransitioning => modelDissolveAnimator?.IsTransitioning ?? false;
+    
+    // Configuration delegation methods
+    public void SetModelTransitionTiming(float outDuration, float inDuration) => modelDissolveAnimator?.SetTransitionTiming(outDuration, inDuration);
+    public void SetModelGlow(Color glowColor, float intensity, bool additive = true) => modelDissolveAnimator?.SetGlowSettings(glowColor, intensity, additive);
+    public void SetModelFlash(Color flashColor, float intensity, float duration) => modelDissolveAnimator?.SetFlashSettings(flashColor, intensity, duration);
+    public void SetModelEffectsEnabled(bool dissolve, bool scale, bool glow, bool flash) => modelDissolveAnimator?.SetEffectsEnabled(dissolve, scale, glow, flash);
+    public void SetModelAudioClips(AudioClip teleportIn, AudioClip teleportOut, AudioClip flash) => modelDissolveAnimator?.SetAudioClips(teleportIn, teleportOut, flash);
+    public void SetModelAudioSource(AudioSource audioSource) => modelDissolveAnimator?.SetAudioSource(audioSource);
+    public string GetModelTransitionInfo() => modelDissolveAnimator?.GetTransitionInfo() ?? "ModelDissolveAnimator not available";
+    public void StopModelTransition() => modelDissolveAnimator?.StopTransition();
+    public void ClearModelCache() => modelDissolveAnimator?.ClearMaterialCache();
+    
+    [ContextMenu("Test Model Flash Effect")]
+    public void TestModelFlashEffect()
+    {
+        if (modelDissolveAnimator == null)
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: ModelDissolveAnimator not available for test flash");
+            return;
+        }
+        
+        // Find any active model in the scene for testing
+        Renderer[] renderers = FindObjectsByType<Renderer>(FindObjectsSortMode.None);
+        GameObject testModel = null;
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer.gameObject.activeInHierarchy)
+            {
+                testModel = renderer.gameObject;
+                break;
+            }
+        }
+        
+        if (testModel != null)
+        {
+            Debug.Log($"CharacterSelectionUIAnimator: Testing flash effect on {testModel.name}");
+            // Delegate to helper class
+        }
+        else
+        {
+            Debug.LogWarning("CharacterSelectionUIAnimator: No active models found for flash test");
+        }
+    }
+    
+    [ContextMenu("Print Model Transition Info")]
+    public void PrintModelTransitionInfo()
+    {
+        Debug.Log(GetModelTransitionInfo());
+    }
+    
+    #endregion
     
     #endregion
     
@@ -851,8 +956,6 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
                 }
             }
             
-            // PlayerSelectionIndicator functionality removed - skipping these checks
-            
             // Check if we're in a known character/pet grid area by checking parent names
             if (currentTransform.parent != null)
             {
@@ -902,14 +1005,67 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         playerListTween?.Kill();
         characterDeckTween?.Kill();
         petDeckTween?.Kill();
+        
+        // Unsubscribe from model dissolve animator events
+        if (modelDissolveAnimator != null)
+        {
+            modelDissolveAnimator.OnTransitionStarted -= (model) => OnModelTransitionStarted?.Invoke(model);
+            modelDissolveAnimator.OnTransitionCompleted -= (model) => OnModelTransitionCompleted?.Invoke(model);
+        }
+        
+        // Clear all events
+        OnPlayerListVisibilityChanged = null;
+        OnCharacterDeckVisibilityChanged = null;
+        OnPetDeckVisibilityChanged = null;
+        OnModelTransitionStarted = null;
+        OnModelTransitionCompleted = null;
+        
+        Debug.Log("CharacterSelectionUIAnimator: Destroyed and cleaned up");
     }
     
     private void OnDisable()
     {
-        // Kill all tweens when disabled
+        // Kill all active tweens when disabled
         playerListTween?.Kill();
         characterDeckTween?.Kill();
         petDeckTween?.Kill();
+        
+        // Force hide all panels immediately when disabled
+        if (playerListPanel != null && isPlayerListVisible)
+        {
+            playerListPanel.SetActive(false);
+            isPlayerListVisible = false;
+        }
+        
+        if (characterDeckPanel != null && isCharacterDeckVisible)
+        {
+            characterDeckPanel.SetActive(false);
+            isCharacterDeckVisible = false;
+        }
+        
+        if (petDeckPanel != null && isPetDeckVisible)
+        {
+            petDeckPanel.SetActive(false);
+            isPetDeckVisible = false;
+        }
+        
+        Debug.Log("CharacterSelectionUIAnimator: Disabled and force-closed all panels");
+    }
+    
+    private void OnValidate()
+    {
+        // Validate animation settings
+        if (slideAnimationDuration <= 0f)
+        {
+            slideAnimationDuration = 0.3f;
+            Debug.LogWarning("CharacterSelectionUIAnimator: slideAnimationDuration must be positive, reset to 0.3f");
+        }
+        
+        // Validate the model dissolve animator reference
+        if (modelDissolveAnimator == null)
+        {
+            modelDissolveAnimator = GetComponent<ModelDissolveAnimator>();
+        }
     }
     
     #endregion
@@ -921,27 +1077,19 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
     public bool IsPetDeckVisible => isPetDeckVisible;
     public bool IsAnyDeckVisible => isCharacterDeckVisible || isPetDeckVisible;
     
-    /// <summary>
-    /// Enable or disable click-outside detection. When disabled, panels will stay open until manually closed.
-    /// </summary>
+    // Control methods for external systems
     public void SetClickOutsideDetectionEnabled(bool enabled)
     {
         enableClickOutsideDetection = enabled;
-        Debug.Log($"CharacterSelectionUIAnimator: Click outside detection {(enabled ? "enabled" : "disabled")}");
+        Debug.Log($"CharacterSelectionUIAnimator: Click outside detection set to {enabled}");
     }
     
-    /// <summary>
-    /// Force both deck panels to stay open, regardless of click detection
-    /// </summary>
     public void ForceKeepDeckPanelsOpen(bool keepOpen)
     {
         enableClickOutsideDetection = !keepOpen;
-        Debug.Log($"CharacterSelectionUIAnimator: Force keep deck panels open: {keepOpen}");
+        Debug.Log($"CharacterSelectionUIAnimator: Force keep deck panels open: {keepOpen} (click detection: {enableClickOutsideDetection})");
     }
     
-    /// <summary>
-    /// Check if click detection is currently enabled
-    /// </summary>
     public bool IsClickOutsideDetectionEnabled => enableClickOutsideDetection;
     
     #endregion
