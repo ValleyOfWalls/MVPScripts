@@ -1344,15 +1344,22 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     private void OnToggleGridDisplay(bool showCharacters)
     {
         Debug.Log($"[CHAR_SELECT_REVAMP] Toggling grid display to show {(showCharacters ? "characters" : "pets")}");
+        Debug.Log($"[CHAR_SELECT_REVAMP] Current state - selectedCharacterIndex: {selectedCharacterIndex}, selectedPetIndex: {selectedPetIndex}");
+        Debug.Log($"[CHAR_SELECT_REVAMP] Current models - currentCharacterModel: {currentCharacterModel?.name ?? "null"}, currentPetModel: {currentPetModel?.name ?? "null"}");
+        
         showingCharacters = showCharacters;
         SetGridDisplayState(showCharacters);
         
         // Request appropriate model for the current view (only if needed)
         if (showCharacters && selectedCharacterIndex >= 0)
         {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Processing character view switch - selectedCharacterIndex: {selectedCharacterIndex}");
+            
             // Only request character model if we don't already have one or it's not the right one
             bool needsNewCharacterModel = currentCharacterModel == null || 
                 !currentCharacterModel.name.Contains(availableCharacters[selectedCharacterIndex].CharacterName);
+                
+            Debug.Log($"[CHAR_SELECT_REVAMP] Character model check - needsNewCharacterModel: {needsNewCharacterModel}");
                 
             if (needsNewCharacterModel)
             {
@@ -1364,21 +1371,69 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                 Debug.Log($"[CHAR_SELECT_REVAMP] Character model already exists for {availableCharacters[selectedCharacterIndex].CharacterName}, no transition needed");
             }
         }
-        else if (!showCharacters && selectedPetIndex >= 0)
+        else if (!showCharacters)
         {
-            // Only request pet model if we don't already have one or it's not the right one
-            bool needsNewPetModel = currentPetModel == null || 
-                !currentPetModel.name.Contains(availablePets[selectedPetIndex].PetName);
-                
-            if (needsNewPetModel)
+            Debug.Log($"[CHAR_SELECT_REVAMP] Processing pet view switch - selectedPetIndex: {selectedPetIndex}");
+            Debug.Log($"[CHAR_SELECT_REVAMP] Pet data available - availablePets.Count: {availablePets?.Count ?? 0}");
+            
+            // Auto-select first pet if none is selected
+            if (selectedPetIndex < 0 && availablePets != null && availablePets.Count > 0)
             {
-                Debug.Log($"[CHAR_SELECT_REVAMP] Switching to pet view - requesting pet model for index {selectedPetIndex}");
-                RequestPetModelTransition(selectedPetIndex);
+                Debug.Log($"[CHAR_SELECT_REVAMP] No pet selected, auto-selecting first pet: {availablePets[0].PetName}");
+                selectedPetIndex = 0;
+                
+                try
+                {
+                    // Update UI visuals and deck preview
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Updating UI visuals after pet auto-selection");
+                    UpdateMySelectionVisuals();
+                    
+                    if (deckPreviewController != null)
+                    {
+                        Debug.Log($"[CHAR_SELECT_REVAMP] Setting deck preview for pet index 0");
+                        deckPreviewController.SetCurrentPetIndex(0);
+                        deckPreviewController.ShowPetDeck(0, isReady);
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[CHAR_SELECT_REVAMP] deckPreviewController is null during pet auto-selection in OnToggleGridDisplay");
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"[CHAR_SELECT_REVAMP] Exception during pet auto-selection: {e.Message}\nStackTrace: {e.StackTrace}");
+                    // Continue with model transition even if UI update fails
+                }
+            }
+            
+            if (selectedPetIndex >= 0 && selectedPetIndex < availablePets.Count)
+            {
+                Debug.Log($"[CHAR_SELECT_REVAMP] Target pet: {availablePets[selectedPetIndex].PetName}");
+                
+                // Only request pet model if we don't already have one or it's not the right one
+                bool needsNewPetModel = currentPetModel == null || 
+                    !currentPetModel.name.Contains(availablePets[selectedPetIndex].PetName);
+                    
+                Debug.Log($"[CHAR_SELECT_REVAMP] Pet model check - needsNewPetModel: {needsNewPetModel} (currentPetModel is null: {currentPetModel == null})");
+                    
+                if (needsNewPetModel)
+                {
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Switching to pet view - requesting pet model for index {selectedPetIndex}");
+                    RequestPetModelTransition(selectedPetIndex);
+                }
+                else
+                {
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Pet model already exists for {availablePets[selectedPetIndex].PetName}, no transition needed");
+                }
             }
             else
             {
-                Debug.Log($"[CHAR_SELECT_REVAMP] Pet model already exists for {availablePets[selectedPetIndex].PetName}, no transition needed");
+                Debug.LogError($"[CHAR_SELECT_REVAMP] Invalid selectedPetIndex {selectedPetIndex} - available pets: {availablePets?.Count ?? 0}");
             }
+        }
+        else
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] No model transition needed - showCharacters: {showCharacters}, selectedCharacterIndex: {selectedCharacterIndex}, selectedPetIndex: {selectedPetIndex}");
         }
     }
     
@@ -1432,45 +1487,77 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         {
             Debug.Log($"[CHAR_SELECT_REVAMP] Auto-selecting first character: {availableCharacters[0].CharacterName}");
             
-            // For the initial selection, create the model directly without animation
-            selectedCharacterIndex = 0;
-            GameObject initialCharacterModel = CreateCharacterModel(0);
-            if (initialCharacterModel != null)
+            try
             {
-                currentCharacterModel = initialCharacterModel;
-                HandleModelVisibility(currentCharacterModel, true);
-                Debug.Log($"[CHAR_SELECT_REVAMP] Created initial character model: {initialCharacterModel.name}");
-            }
-            
-            // Update visual selection and deck preview
-            UpdateMySelectionVisuals();
+                // Set selection index first
+                selectedCharacterIndex = 0;
+                
+                // Use the animation system for the initial model creation to get proper dissolve in
+                Debug.Log($"[CHAR_SELECT_REVAMP] Requesting initial character model transition with animation");
+                RequestCharacterModelTransition(0);
+                
+                // Update visual selection and deck preview
+                Debug.Log($"[CHAR_SELECT_REVAMP] About to update character visuals and deck preview");
+                UpdateMySelectionVisuals();
                 if (deckPreviewController != null)
                 {
                     deckPreviewController.SetCurrentCharacterIndex(0);
                     deckPreviewController.ShowCharacterDeck(0, isReady);
+                    Debug.Log($"[CHAR_SELECT_REVAMP] Character deck preview setup completed");
                 }
+                else
+                {
+                    Debug.LogWarning("[CHAR_SELECT_REVAMP] deckPreviewController is null during character auto-selection");
+                }
+                Debug.Log($"[CHAR_SELECT_REVAMP] Character auto-selection completed successfully");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[CHAR_SELECT_REVAMP] Exception during character auto-selection: {e.Message}\nStackTrace: {e.StackTrace}");
+                // Continue to pet selection even if character selection fails
+            }
         }
         else
         {
             Debug.LogError("[CHAR_SELECT_REVAMP] No available characters to auto-select! Check if character data is properly loaded.");
         }
         
-        if (availablePets.Count > 0)
+        Debug.Log($"[CHAR_SELECT_REVAMP] About to process pet auto-selection - availablePets null: {availablePets == null}, Count: {availablePets?.Count ?? 0}");
+        
+        if (availablePets != null && availablePets.Count > 0)
         {
             Debug.Log($"[CHAR_SELECT_REVAMP] Auto-selecting first pet: {availablePets[0].PetName}");
             selectedPetIndex = 0;
+            Debug.Log($"[CHAR_SELECT_REVAMP] Set selectedPetIndex to {selectedPetIndex}");
                 
             // NOTE: Don't spawn pet model here due to mutual exclusivity with character model
             // The pet model will be shown when user toggles to pet view or selects a different pet
             Debug.Log($"[CHAR_SELECT_REVAMP] Pet selection registered but model not spawned (character model has priority by default)");
                 
             // Set up deck preview data (but don't show it since character deck is shown)
-                if (deckPreviewController != null)
-                {
-                    deckPreviewController.SetCurrentPetIndex(0);
+            if (deckPreviewController != null)
+            {
+                deckPreviewController.SetCurrentPetIndex(0);
                 // Note: ShowPetDeck not called here - character deck has priority by default
             }
+            else
+            {
+                Debug.LogWarning("[CHAR_SELECT_REVAMP] deckPreviewController is null during pet auto-selection in MakeDefaultSelections");
+            }
         }
+        else
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] No available pets to auto-select! availablePets null: {availablePets == null}, Count: {availablePets?.Count ?? 0}");
+        }
+        
+        // Ensure pet selection is properly set (safety check)
+        if (selectedPetIndex < 0 && availablePets != null && availablePets.Count > 0)
+        {
+            Debug.LogWarning($"[CHAR_SELECT_REVAMP] selectedPetIndex is still -1 after auto-selection! Force setting to 0");
+            selectedPetIndex = 0;
+        }
+        
+        Debug.Log($"[CHAR_SELECT_REVAMP] MakeDefaultSelections completed - selectedCharacterIndex: {selectedCharacterIndex}, selectedPetIndex: {selectedPetIndex}");
         
         // Update selection state and send to server
         UpdateSelectionState();

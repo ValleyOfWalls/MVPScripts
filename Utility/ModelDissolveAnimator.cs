@@ -54,26 +54,16 @@ namespace MVPScripts.Utility
         [SerializeField] private float audioVolume = 0.5f;
         
         // Animation state tracking - NEVER interrupt running animations
-        private AnimationState currentAnimationState = AnimationState.Idle;
         private Coroutine currentAnimationCoroutine = null;
         private GameObject currentlyAnimatingModel = null;
-        
-        // Queue system that respects running animations
-        private Queue<TransitionRequest> transitionQueue = new Queue<TransitionRequest>();
-        private bool isProcessingQueue = false;
         private GameObject currentModel = null; // Track the currently visible model
+        
+        // Animation queue manager - handles all queueing and optimization
+        private AnimationQueueManager<TransitionRequest> queueManager;
         
         // Factory protection (but no immediate cleanup)
         private bool isFactoryCallInProgress = false;
         private readonly object factoryLock = new object();
-        
-        // Animation state enum
-        private enum AnimationState
-        {
-            Idle,           // No animation running - can start immediately
-            FadingOut,      // Currently fading out - CANNOT interrupt
-            FadingIn        // Currently fading in - CANNOT interrupt  
-        }
         
         // Material caching for effects
         private Dictionary<GameObject, ModelMaterialCache> materialCache = new Dictionary<GameObject, ModelMaterialCache>();
@@ -166,6 +156,26 @@ namespace MVPScripts.Utility
         {
             InitializeDissolveShader();
             CreateDefaultNoiseTexture();
+            InitializeQueueManager();
+        }
+        
+        private void InitializeQueueManager()
+        {
+            // Create and configure the animation queue manager
+            queueManager = new AnimationQueueManager<TransitionRequest>(this);
+            
+            // Set up delegates for customization
+            queueManager.ExecuteRequest = ExecuteAnimationRespectingRequest;
+            queueManager.OptimizeQueue = OptimizeTransitionRequests;
+            queueManager.RequiresFadeOut = RequiresFadeOutForRequest;
+            queueManager.CreateFadeOutRequest = CreateFadeOutRequest;
+            
+            // Set up event handlers
+            queueManager.OnAnimationStateChanged = OnAnimationStateChanged;
+            queueManager.OnQueueProcessingStarted = (count) => Debug.Log($"ModelDissolveAnimator: Queue processing started with {count} requests");
+            queueManager.OnQueueProcessingCompleted = () => Debug.Log("ModelDissolveAnimator: Queue processing completed");
+            
+            Debug.Log("ModelDissolveAnimator: Queue manager initialized");
         }
         
         private void InitializeDissolveShader()
@@ -292,20 +302,19 @@ namespace MVPScripts.Utility
         /// </summary>
         public void StopTransition()
         {
-            Debug.Log($"ModelDissolveAnimator: StopTransition called - Animation state: {currentAnimationState}");
+            Debug.Log($"ModelDissolveAnimator: StopTransition called - Animation state: {queueManager?.CurrentAnimationState}");
             
-            if (currentAnimationState != AnimationState.Idle)
+            if (queueManager?.IsAnimating == true)
             {
                 Debug.Log("ModelDissolveAnimator: CANNOT stop transition - animation is running and must complete");
                 // Clear queue but don't interrupt running animation
-                transitionQueue.Clear();
+                queueManager.ClearQueue();
                 Debug.Log("ModelDissolveAnimator: Cleared queue but preserved running animation");
                 return;
             }
             
             // Only stop if no animation is running
-            transitionQueue.Clear();
-            isProcessingQueue = false;
+            queueManager?.StopAndClear();
             Debug.Log("ModelDissolveAnimator: Stopped transition - no animation was running");
         }
         
@@ -315,41 +324,25 @@ namespace MVPScripts.Utility
         private void QueueTransition(TransitionRequest request)
         {
             Debug.Log($"ModelDissolveAnimator: New transition request - Old: {request.oldModel?.name ?? "None"}, New: {(request.newModel?.name ?? (request.modelFactory != null ? "Factory-Created" : "None"))}");
-            Debug.Log($"ModelDissolveAnimator: Current animation state: {currentAnimationState}");
+            Debug.Log($"ModelDissolveAnimator: Current animation state: {queueManager?.CurrentAnimationState}");
             
             lock (factoryLock)
             {
-                // Add request to queue
-                transitionQueue.Enqueue(request);
-                Debug.Log($"ModelDissolveAnimator: Added request to queue - Queue size: {transitionQueue.Count}");
-                
-                // Optimize queue to maintain proper fade flow while removing unnecessary intermediate steps
-                OptimizeQueueRespectingAnimations();
-                
-                // Start processing if we're not already doing so
-                if (!isProcessingQueue)
-                {
-                    isProcessingQueue = true;
-                    StartCoroutine(AnimationRespectingProcessQueue());
-                }
+                // Queue the request using the queue manager
+                queueManager?.QueueRequest(request);
             }
         }
         
+        #region Queue Manager Delegate Methods
+        
         /// <summary>
-        /// Optimizes queue while respecting running animations and maintaining fade out/in flow
+        /// Optimize transition requests by removing redundant intermediate transitions
         /// </summary>
-        private void OptimizeQueueRespectingAnimations()
+        private List<TransitionRequest> OptimizeTransitionRequests(List<TransitionRequest> requests)
         {
-            if (transitionQueue.Count <= 1)
-            {
-                Debug.Log("ModelDissolveAnimator: Nothing to optimize (1 or fewer requests)");
-                return;
-            }
+            if (requests.Count <= 1) return requests;
             
-            var requests = new List<TransitionRequest>(transitionQueue);
-            transitionQueue.Clear();
-            
-            Debug.Log($"ModelDissolveAnimator: Optimizing {requests.Count} requests while respecting animations");
+            Debug.Log($"ModelDissolveAnimator: Optimizing {requests.Count} requests");
             
             // Find the final target (what the user ultimately wants)
             GameObject finalTarget = null;
@@ -367,20 +360,22 @@ namespace MVPScripts.Utility
                 }
             }
             
+            var optimizedRequests = new List<TransitionRequest>();
+            
             // Build optimized sequence based on current animation state
-            if (currentAnimationState == AnimationState.Idle)
+            if (queueManager?.CurrentAnimationState == AnimationQueueManager<TransitionRequest>.AnimationState.Idle)
             {
                 // No animation running - can start optimal sequence immediately
                 if (currentModel != null && (finalTarget == null || currentModel != finalTarget))
                 {
                     // Need to fade out current, then fade in new
-                    var outRequest = TransitionRequest.ModelOutOnly(currentModel);
+                    optimizedRequests.Add(TransitionRequest.ModelOutOnly(currentModel));
+                    
                     var inRequest = finalFactory != null 
                         ? TransitionRequest.WithFactory(TransitionType.ModelIn, null, finalFactory, finalCallback)
                         : TransitionRequest.WithModel(TransitionType.ModelIn, null, finalTarget, finalCallback);
+                    optimizedRequests.Add(inRequest);
                     
-                    transitionQueue.Enqueue(outRequest);
-                    transitionQueue.Enqueue(inRequest);
                     Debug.Log($"ModelDissolveAnimator: Optimized to: OUT {currentModel.name} → IN {finalTarget?.name ?? "Factory-Created"}");
                 }
                 else if (finalTarget != null || finalFactory != null)
@@ -389,96 +384,58 @@ namespace MVPScripts.Utility
                     var inRequest = finalFactory != null 
                         ? TransitionRequest.WithFactory(TransitionType.ModelIn, null, finalFactory, finalCallback)
                         : TransitionRequest.WithModel(TransitionType.ModelIn, null, finalTarget, finalCallback);
+                    optimizedRequests.Add(inRequest);
                     
-                    transitionQueue.Enqueue(inRequest);
                     Debug.Log($"ModelDissolveAnimator: Optimized to: Direct IN {finalTarget?.name ?? "Factory-Created"}");
                 }
             }
             else
             {
                 // Animation is running - must wait for completion, then add optimal next steps
-                Debug.Log($"ModelDissolveAnimator: Animation {currentAnimationState} is running - will optimize after completion");
+                Debug.Log($"ModelDissolveAnimator: Animation {queueManager?.CurrentAnimationState} is running - will optimize after completion");
                 
-                // We'll handle this in the processing queue - just keep the final request for now
+                // Just keep the final request for now
                 if (finalFactory != null)
                 {
-                    var finalRequest = TransitionRequest.WithFactory(TransitionType.ModelTransition, currentModel, finalFactory, finalCallback);
-                    transitionQueue.Enqueue(finalRequest);
+                    optimizedRequests.Add(TransitionRequest.WithFactory(TransitionType.ModelTransition, currentModel, finalFactory, finalCallback));
                 }
                 else if (finalTarget != null)
                 {
-                    var finalRequest = TransitionRequest.WithModel(TransitionType.ModelTransition, currentModel, finalTarget, finalCallback);
-                    transitionQueue.Enqueue(finalRequest);
+                    optimizedRequests.Add(TransitionRequest.WithModel(TransitionType.ModelTransition, currentModel, finalTarget, finalCallback));
                 }
             }
             
-            Debug.Log($"ModelDissolveAnimator: Queue optimized to {transitionQueue.Count} requests");
+            Debug.Log($"ModelDissolveAnimator: Queue optimized from {requests.Count} to {optimizedRequests.Count} requests");
+            return optimizedRequests;
         }
         
         /// <summary>
-        /// Animation-respecting queue processor - waits for running animations to complete
+        /// Check if a request requires a fade out for proper animation flow
         /// </summary>
-        private IEnumerator AnimationRespectingProcessQueue()
+        private bool RequiresFadeOutForRequest(TransitionRequest request)
         {
-            Debug.Log("ModelDissolveAnimator: ANIMATION-RESPECTING PROCESSING - Starting");
-            
-            while (transitionQueue.Count > 0 && isProcessingQueue)
-            {
-                // CRITICAL: Wait for any running animation to complete before proceeding
-                while (currentAnimationState != AnimationState.Idle)
-                {
-                    Debug.Log($"ModelDissolveAnimator: Waiting for {currentAnimationState} animation to complete...");
-                    yield return new WaitForSeconds(0.1f); // Check every 100ms
-                }
-                
-                // Now safe to process next request
-                if (transitionQueue.Count > 0)
-                {
-                    var request = transitionQueue.Dequeue();
-                    Debug.Log($"ModelDissolveAnimator: Processing {request.type} - Old: {request.oldModel?.name ?? "None"}, New: {(request.newModel?.name ?? (request.modelFactory != null ? "Factory-Created" : "None"))}");
-                    
-                    // Execute the request and wait for completion
-                    yield return StartCoroutine(ExecuteAnimationRespectingRequest(request));
-                    
-                    // After completing an animation, check if we need to add follow-up animations for proper flow
-                    if (transitionQueue.Count > 0)
-                    {
-                        Debug.Log($"ModelDissolveAnimator: More requests in queue ({transitionQueue.Count}), checking for flow optimization");
-                        HandleAnimationFlowOptimization();
-                    }
-                }
-            }
-            
-            isProcessingQueue = false;
-            Debug.Log("ModelDissolveAnimator: ANIMATION-RESPECTING PROCESSING - Completed all requests");
+            // If we have a current model and the next request needs a different model, we need fade out
+            return currentModel != null && 
+                   (request.newModel != currentModel || request.modelFactory != null);
         }
         
         /// <summary>
-        /// Handles flow optimization after an animation completes
+        /// Create a fade out request for proper animation flow
         /// </summary>
-        private void HandleAnimationFlowOptimization()
+        private TransitionRequest CreateFadeOutRequest()
         {
-            // If we just finished a fade in but have more requests, we need to add a fade out first
-            if (currentAnimationState == AnimationState.Idle && currentModel != null && transitionQueue.Count > 0)
-            {
-                var nextRequest = transitionQueue.Peek();
-                
-                // If the next request needs a different model, we need to fade out current first
-                if (nextRequest.newModel != currentModel && nextRequest.modelFactory != null)
-                {
-                    Debug.Log($"ModelDissolveAnimator: Adding fade out for proper flow - current: {currentModel.name}");
-                    
-                    // Remove the next request temporarily
-                    var originalRequest = transitionQueue.Dequeue();
-                    
-                    // Add fade out first, then the original request
-                    var fadeOutRequest = TransitionRequest.ModelOutOnly(currentModel);
-                    transitionQueue = new Queue<TransitionRequest>(new[] { fadeOutRequest }.Concat(new[] { originalRequest }));
-                    
-                    Debug.Log("ModelDissolveAnimator: Inserted fade out for proper animation flow");
-                }
-            }
+            return currentModel != null ? TransitionRequest.ModelOutOnly(currentModel) : null;
         }
+        
+        /// <summary>
+        /// Handle animation state changes from the queue manager
+        /// </summary>
+        private void OnAnimationStateChanged(AnimationQueueManager<TransitionRequest>.AnimationState newState)
+        {
+            Debug.Log($"ModelDissolveAnimator: Animation state changed to {newState}");
+        }
+        
+        #endregion
         
 
         
@@ -588,7 +545,7 @@ namespace MVPScripts.Utility
             // Phase 1: Animate out old model (if exists)
             if (oldModel != null)
             {
-                currentAnimationState = AnimationState.FadingOut;
+                queueManager?.SetAnimationState(AnimationQueueManager<TransitionRequest>.AnimationState.FadingOut);
                 currentlyAnimatingModel = oldModel;
                 Debug.Log($"ModelDissolveAnimator: Starting FADE OUT animation for {oldModel.name}");
                 
@@ -602,7 +559,7 @@ namespace MVPScripts.Utility
             // Phase 2: Animate in new model (if exists)
             if (newModel != null)
             {
-                currentAnimationState = AnimationState.FadingIn;
+                queueManager?.SetAnimationState(AnimationQueueManager<TransitionRequest>.AnimationState.FadingIn);
                 currentlyAnimatingModel = newModel;
                 currentModel = newModel; // Update tracking
                 Debug.Log($"ModelDissolveAnimator: Starting FADE IN animation for {newModel.name}");
@@ -614,7 +571,7 @@ namespace MVPScripts.Utility
             }
             
             // Reset animation state
-            currentAnimationState = AnimationState.Idle;
+            queueManager?.SetAnimationState(AnimationQueueManager<TransitionRequest>.AnimationState.Idle);
             currentlyAnimatingModel = null;
             
             OnTransitionCompleted?.Invoke(newModel);
@@ -628,7 +585,7 @@ namespace MVPScripts.Utility
         /// </summary>
         private IEnumerator AnimationStateAwareModelIn(GameObject model, System.Action onComplete)
         {
-            currentAnimationState = AnimationState.FadingIn;
+            queueManager?.SetAnimationState(AnimationQueueManager<TransitionRequest>.AnimationState.FadingIn);
             currentlyAnimatingModel = model;
             currentModel = model; // Update tracking
             Debug.Log($"ModelDissolveAnimator: Starting FADE IN ONLY animation for {model.name}");
@@ -639,7 +596,7 @@ namespace MVPScripts.Utility
             yield return StartCoroutine(AnimateModelInCoroutine(model));
             
             // Reset animation state
-            currentAnimationState = AnimationState.Idle;
+            queueManager?.SetAnimationState(AnimationQueueManager<TransitionRequest>.AnimationState.Idle);
             currentlyAnimatingModel = null;
             
             OnTransitionCompleted?.Invoke(model);
@@ -653,7 +610,7 @@ namespace MVPScripts.Utility
         /// </summary>
         private IEnumerator AnimationStateAwareModelOut(GameObject model, System.Action onComplete)
         {
-            currentAnimationState = AnimationState.FadingOut;
+            queueManager?.SetAnimationState(AnimationQueueManager<TransitionRequest>.AnimationState.FadingOut);
             currentlyAnimatingModel = model;
             Debug.Log($"ModelDissolveAnimator: Starting FADE OUT ONLY animation for {model.name}");
             
@@ -670,7 +627,7 @@ namespace MVPScripts.Utility
             }
             
             // Reset animation state
-            currentAnimationState = AnimationState.Idle;
+            queueManager?.SetAnimationState(AnimationQueueManager<TransitionRequest>.AnimationState.Idle);
             currentlyAnimatingModel = null;
             
             OnTransitionCompleted?.Invoke(model);
@@ -812,7 +769,7 @@ namespace MVPScripts.Utility
         
         #region Properties
         
-        public bool IsTransitioning => currentAnimationState != AnimationState.Idle;
+        public bool IsTransitioning => queueManager?.IsAnimating == true;
         
         public string GetTransitionInfo()
         {
@@ -1307,7 +1264,7 @@ namespace MVPScripts.Utility
             }
             
             // Reset animation state
-            currentAnimationState = AnimationState.Idle;
+            queueManager?.SetAnimationState(AnimationQueueManager<TransitionRequest>.AnimationState.Idle);
             currentlyAnimatingModel = null;
             
             // Clean up all cached materials
