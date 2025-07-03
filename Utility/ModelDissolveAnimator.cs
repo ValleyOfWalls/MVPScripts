@@ -417,15 +417,9 @@ namespace MVPScripts.Utility
         /// </summary>
         private bool RequiresFadeOutForRequest(TransitionRequest request)
         {
-            // ModelTransition handles its own fade-out internally, so no auto fade-out needed
-            if (request.type == TransitionType.ModelTransition)
-            {
-                return false;
-            }
-            
-            // ModelIn only requests need fade-out if there's a current model to fade out first
-            // ModelOut only requests never need additional fade-out
-            return currentModel != null && request.type == TransitionType.ModelIn;
+            // If we have a current model and the next request needs a different model, we need fade out
+            return currentModel != null && 
+                   (request.newModel != currentModel || request.modelFactory != null);
         }
         
         /// <summary>
@@ -445,6 +439,12 @@ namespace MVPScripts.Utility
         }
         
         #endregion
+        
+
+        
+
+        
+
         
         /// <summary>
         /// Executes animation request while properly tracking animation state
@@ -717,6 +717,8 @@ namespace MVPScripts.Utility
             Debug.Log($"ModelDissolveAnimator: Force restored original materials for {model?.name ?? "null"}");
         }
         
+        #endregion
+        
         #region Configuration Methods
         
         public void SetTransitionTiming(float outDuration, float inDuration)
@@ -784,6 +786,8 @@ namespace MVPScripts.Utility
         }
         
         #endregion
+        
+        // Removed old Core Animation Logic methods that used deprecated variables
         
         #region Model Setup and Cleanup
         

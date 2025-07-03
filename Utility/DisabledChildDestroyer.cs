@@ -301,6 +301,9 @@ namespace MVPScripts.Utility
                 // Remove from tracking
                 RemoveMonitoringForChild(child);
                 
+                // Recursively destroy all grandchildren and great-grandchildren
+                DestroyAllDescendants(child);
+                
                 // Destroy the child
                 Destroy(child);
             }
@@ -315,6 +318,39 @@ namespace MVPScripts.Utility
                 if (child != null && scheduledDestruction.ContainsKey(child))
                 {
                     scheduledDestruction.Remove(child);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Recursively destroy all descendants (grandchildren, great-grandchildren, etc.)
+        /// </summary>
+        private void DestroyAllDescendants(GameObject parent)
+        {
+            if (parent == null) return;
+            
+            // Get all children before destroying them (copy to avoid modification during iteration)
+            Transform[] children = new Transform[parent.transform.childCount];
+            for (int i = 0; i < parent.transform.childCount; i++)
+            {
+                children[i] = parent.transform.GetChild(i);
+            }
+            
+            // Recursively destroy each child and its descendants
+            foreach (Transform child in children)
+            {
+                if (child != null && child.gameObject != null)
+                {
+                    if (enableDebugLogging)
+                    {
+                        Debug.Log($"DisabledChildDestroyer: Recursively destroying descendant: {child.name}");
+                    }
+                    
+                    // Recursively destroy grandchildren first
+                    DestroyAllDescendants(child.gameObject);
+                    
+                    // Then destroy this child
+                    Destroy(child.gameObject);
                 }
             }
         }

@@ -341,6 +341,13 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             );
             
             Debug.Log($"CharacterSelectionUIManager: Formation manager initialized for player {playerID} with per-slot animation system (complete isolation from local player)");
+            
+            // Immediately capture any players that were already in the lobby when we joined
+            if (latestPlayerInfos != null && latestPlayerInfos.Count > 0)
+            {
+                Debug.Log($"CharacterSelectionUIManager: Capturing {latestPlayerInfos.Count} existing players for formation on initialization");
+                formationManager.UpdateFormation(latestPlayerInfos, playerID);
+            }
         }
         else
         {

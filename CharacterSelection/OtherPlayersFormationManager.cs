@@ -217,17 +217,27 @@ namespace CharacterSelection
             // Handle player count changes (additions/removals)
             HandlePlayerChanges(otherPlayers);
             
-            // Update individual player selections
-            foreach (var player in otherPlayers)
-            {
-                UpdatePlayerModels(player);
-            }
-            
-            // Recalculate formation if needed
+            // Recalculate formation IMMEDIATELY if needed (before trying to create models)
             if (needsFormationRecalculation)
             {
                 RecalculateFormation();
                 needsFormationRecalculation = false;
+                
+                // IMPORTANT: If formation recalculation triggered repositioning animations,
+                // delay new model creation to avoid visual artifacts from overlapping animations
+                bool hasRepositioningAnimations = HasActiveRepositioningAnimations();
+                if (hasRepositioningAnimations)
+                {
+                    Debug.Log("OtherPlayersFormationManager: Repositioning animations in progress - delaying new model creation");
+                    StartCoroutine(DelayedUpdatePlayerModels(otherPlayers, 0.1f)); // Small delay to let repositioning start
+                    return;
+                }
+            }
+            
+            // Update individual player selections (now that slot indices are assigned)
+            foreach (var player in otherPlayers)
+            {
+                UpdatePlayerModels(player);
             }
         }
         
@@ -293,14 +303,11 @@ namespace CharacterSelection
         private void AddNewPlayer(PlayerSelectionInfo player)
         {
             var playerData = new OtherPlayerModels(player.playerName, player.playerName);
-            playerData.characterIndex = player.characterIndex;
-            playerData.petIndex = player.petIndex;
-            playerData.hasCharacter = player.characterIndex >= 0;
-            playerData.hasPet = player.petIndex >= 0;
+            // Don't set indices yet - leave them at -1 so UpdatePlayerModels will detect changes
             
             otherPlayerModels[player.playerName] = playerData;
             
-            Debug.Log($"OtherPlayersFormationManager: Added player {player.playerName} - Character: {player.characterIndex}, Pet: {player.petIndex}");
+            Debug.Log($"OtherPlayersFormationManager: Added player {player.playerName} - will create models for Character: {player.characterIndex}, Pet: {player.petIndex}");
         }
         
         private void RemovePlayer(string playerID)
@@ -344,11 +351,17 @@ namespace CharacterSelection
             
             var playerData = otherPlayerModels[player.playerName];
             
+            Debug.Log($"OtherPlayersFormationManager: UpdatePlayerModels for {player.playerName} - Current: Char={playerData.characterIndex}, Pet={playerData.petIndex} | New: Char={player.characterIndex}, Pet={player.petIndex}");
+            
             // Handle character selection change
             if (player.characterIndex != playerData.characterIndex)
             {
                 Debug.Log($"OtherPlayersFormationManager: Character change for {player.playerName}: {playerData.characterIndex} -> {player.characterIndex}");
                 HandleCharacterChange(playerData, player);
+            }
+            else
+            {
+                Debug.Log($"OtherPlayersFormationManager: No character change for {player.playerName} (both {player.characterIndex})");
             }
             
             // Handle pet selection change
@@ -356,6 +369,10 @@ namespace CharacterSelection
             {
                 Debug.Log($"OtherPlayersFormationManager: Pet change for {player.playerName}: {playerData.petIndex} -> {player.petIndex}");
                 HandlePetChange(playerData, player);
+            }
+            else
+            {
+                Debug.Log($"OtherPlayersFormationManager: No pet change for {player.playerName} (both {player.petIndex})");
             }
         }
         
@@ -389,29 +406,51 @@ namespace CharacterSelection
             
             if (slotAnimator != null)
             {
-                // For first spawn (oldModel == null), the animation system will handle dissolve-in only
-                // For model changes (oldModel != null), it will handle dissolve-out then dissolve-in
-                slotAnimator.AnimateModelTransitionWithFactory(
-                    oldModel, // This can be null for first spawn - animation system handles it
-                    () => CreateCharacterModelForOtherPlayer(newInfo.characterIndex, playerData.formationSlotIndex),
-                    () => {
-                        // Animation completed callback
-                        Debug.Log($"OtherPlayersFormationManager: Character transition completed for {playerData.playerName} in slot {playerData.formationSlotIndex}");
-                        
-                        // Update the reference to the new model
-                        var newModel = FindLatestCharacterModel(playerData.formationSlotIndex);
-                        if (newModel != null)
-                        {
-                            playerData.characterModel = newModel;
-                        }
-                        
-                        // Cleanup old model reference if it's different from the new one
-                        if (oldModel != null && oldModel != playerData.characterModel)
-                        {
-                            Destroy(oldModel);
-                        }
+                if (oldModel == null)
+                {
+                    // First spawn - just dissolve in the new model
+                    GameObject newModel = CreateCharacterModelForOtherPlayer(newInfo.characterIndex, playerData.formationSlotIndex);
+                    if (newModel != null)
+                    {
+                        PrepareModelForAnimation(newModel);
+                        playerData.characterModel = newModel;
+                        slotAnimator.AnimateModelIn(newModel, () => {
+                            Debug.Log($"OtherPlayersFormationManager: Character spawn completed for {playerData.playerName} in slot {playerData.formationSlotIndex}");
+                        });
                     }
-                );
+                }
+                else
+                {
+                    // Model change - use proper transition (don't pass oldModel to avoid double fade-out)
+                    slotAnimator.AnimateModelTransitionWithFactory(
+                        null, // Let the animation system handle the current model detection automatically
+                        () => {
+                            GameObject newModel = CreateCharacterModelForOtherPlayer(newInfo.characterIndex, playerData.formationSlotIndex);
+                            if (newModel != null)
+                            {
+                                PrepareModelForAnimation(newModel);
+                            }
+                            return newModel;
+                        },
+                        () => {
+                            // Animation completed callback
+                            Debug.Log($"OtherPlayersFormationManager: Character transition completed for {playerData.playerName} in slot {playerData.formationSlotIndex}");
+                            
+                            // Update the reference to the new model
+                            var newModel = FindLatestCharacterModel(playerData.formationSlotIndex);
+                            if (newModel != null)
+                            {
+                                playerData.characterModel = newModel;
+                            }
+                            
+                            // Cleanup old model reference
+                            if (oldModel != null)
+                            {
+                                Destroy(oldModel);
+                            }
+                        }
+                    );
+                }
             }
             else
             {
@@ -452,29 +491,51 @@ namespace CharacterSelection
             
             if (slotAnimator != null)
             {
-                // For first spawn (oldModel == null), the animation system will handle dissolve-in only
-                // For model changes (oldModel != null), it will handle dissolve-out then dissolve-in
-                slotAnimator.AnimateModelTransitionWithFactory(
-                    oldModel, // This can be null for first spawn - animation system handles it
-                    () => CreatePetModelForOtherPlayer(newInfo.petIndex, playerData.formationSlotIndex),
-                    () => {
-                        // Animation completed callback
-                        Debug.Log($"OtherPlayersFormationManager: Pet transition completed for {playerData.playerName} in slot {playerData.formationSlotIndex}");
-                        
-                        // Update the reference to the new model
-                        var newModel = FindLatestPetModel(playerData.formationSlotIndex);
-                        if (newModel != null)
-                        {
-                            playerData.petModel = newModel;
-                        }
-                        
-                        // Cleanup old model reference if it's different from the new one
-                        if (oldModel != null && oldModel != playerData.petModel)
-                        {
-                            Destroy(oldModel);
-                        }
+                if (oldModel == null)
+                {
+                    // First spawn - just dissolve in the new model
+                    GameObject newModel = CreatePetModelForOtherPlayer(newInfo.petIndex, playerData.formationSlotIndex);
+                    if (newModel != null)
+                    {
+                        PrepareModelForAnimation(newModel);
+                        playerData.petModel = newModel;
+                        slotAnimator.AnimateModelIn(newModel, () => {
+                            Debug.Log($"OtherPlayersFormationManager: Pet spawn completed for {playerData.playerName} in slot {playerData.formationSlotIndex}");
+                        });
                     }
-                );
+                }
+                else
+                {
+                    // Model change - use proper transition (don't pass oldModel to avoid double fade-out)
+                    slotAnimator.AnimateModelTransitionWithFactory(
+                        null, // Let the animation system handle the current model detection automatically
+                        () => {
+                            GameObject newModel = CreatePetModelForOtherPlayer(newInfo.petIndex, playerData.formationSlotIndex);
+                            if (newModel != null)
+                            {
+                                PrepareModelForAnimation(newModel);
+                            }
+                            return newModel;
+                        },
+                        () => {
+                            // Animation completed callback
+                            Debug.Log($"OtherPlayersFormationManager: Pet transition completed for {playerData.playerName} in slot {playerData.formationSlotIndex}");
+                            
+                            // Update the reference to the new model
+                            var newModel = FindLatestPetModel(playerData.formationSlotIndex);
+                            if (newModel != null)
+                            {
+                                playerData.petModel = newModel;
+                            }
+                            
+                            // Cleanup old model reference
+                            if (oldModel != null)
+                            {
+                                Destroy(oldModel);
+                            }
+                        }
+                    );
+                }
             }
             else
             {
@@ -637,12 +698,18 @@ namespace CharacterSelection
             
             Debug.Log($"OtherPlayersFormationManager: Recalculating formation for {playerCount} other players");
             
-            // Calculate new formation positions
+            // Check if any players have existing models that need to be faded out first
+            var playersWithModels = otherPlayerModels.Values.Where(p => p.characterModel != null || p.petModel != null).ToList();
+            if (playersWithModels.Count > 0)
+            {
+                Debug.Log($"OtherPlayersFormationManager: {playersWithModels.Count} players have existing models - starting coordinated fade out/in sequence");
+                StartCoordinatedFormationRebuild(playerCount);
+                return;
+            }
+            
+            // No existing models, just calculate and assign normally
             CalculateFormationPositions(playerCount);
-            
-            // Assign players to slots and update positions
             AssignPlayersToSlots();
-            
             Debug.Log($"OtherPlayersFormationManager: Formation recalculated - {formationSlots.Count} slots created");
         }
         
@@ -676,8 +743,8 @@ namespace CharacterSelection
                 // Calculate angle for this player (spread across arc)
                 float angle = playersInRow > 1 ? (i * arcStep) - (arcAngle * 0.5f) : 0f;
                 
-                // Convert to world position relative to focal point
-                Vector3 direction = Quaternion.Euler(0, angle, 0) * Vector3.back;
+                // Convert to world position relative to focal point (behind the main character)
+                Vector3 direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
                 Vector3 basePosition = focalPoint.position + (direction * rowDistance);
                 
                 // Create slot pair for this player (character + pet side by side)
@@ -697,16 +764,20 @@ namespace CharacterSelection
         {
             var playerList = otherPlayerModels.Values.ToList();
             
+            Debug.Log($"OtherPlayersFormationManager: AssignPlayersToSlots - {playerList.Count} players, {formationSlots.Count} slots");
+            
             for (int i = 0; i < playerList.Count && i < formationSlots.Count; i++)
             {
                 var player = playerList[i];
                 var slot = formationSlots[i];
                 
-                // Assign slot to player
+                Debug.Log($"OtherPlayersFormationManager: Assigning player {player.playerName} to slot {i}");
+                
+                // Assign new slot to player
                 player.formationSlotIndex = i;
                 slot.AssignToPlayer(player.playerID);
                 
-                // Update existing model positions
+                // Update model positions (no animation needed here - handled by coordinated rebuild)
                 UpdatePlayerModelPositions(player, slot);
             }
         }
@@ -723,6 +794,286 @@ namespace CharacterSelection
             {
                 player.petModel.transform.position = slot.petPosition;
                 player.petModel.transform.rotation = slot.petRotation;
+            }
+        }
+        
+        /// <summary>
+        /// Animates a player's models from their old slot positions to new slot positions
+        /// using dissolve out/in animations when formation recalculates
+        /// </summary>
+        private void AnimatePlayerReposition(OtherPlayerModels player, FormationSlot newSlot, int oldSlotIndex)
+        {
+            // Animate character model reposition if it exists
+            if (player.characterModel != null && player.characterIndex >= 0)
+            {
+                ModelDissolveAnimator oldCharAnimator = GetSlotAnimator(oldSlotIndex, true);
+                ModelDissolveAnimator newCharAnimator = GetSlotAnimator(player.formationSlotIndex, true);
+                
+                if (oldCharAnimator != null && newCharAnimator != null)
+                {
+                    // Create factory for repositioned character model
+                    System.Func<GameObject> charFactory = () => {
+                        GameObject repositionedModel = CreateCharacterModelForOtherPlayer(player.characterIndex, player.formationSlotIndex);
+                        return repositionedModel;
+                    };
+                    
+                    // Animate transition from old slot to new slot
+                    oldCharAnimator.AnimateModelTransitionWithFactory(
+                        null, // Let system detect current model
+                        charFactory,
+                        () => {
+                            // Update reference to new model
+                            var newModel = FindLatestCharacterModel(player.formationSlotIndex);
+                            if (newModel != null)
+                            {
+                                player.characterModel = newModel;
+                            }
+                            Debug.Log($"OtherPlayersFormationManager: Character reposition completed for {player.playerName} to slot {player.formationSlotIndex}");
+                        }
+                    );
+                }
+            }
+            
+            // Animate pet model reposition if it exists
+            if (player.petModel != null && player.petIndex >= 0)
+            {
+                ModelDissolveAnimator oldPetAnimator = GetSlotAnimator(oldSlotIndex, false);
+                ModelDissolveAnimator newPetAnimator = GetSlotAnimator(player.formationSlotIndex, false);
+                
+                if (oldPetAnimator != null && newPetAnimator != null)
+                {
+                    // Create factory for repositioned pet model
+                    System.Func<GameObject> petFactory = () => {
+                        GameObject repositionedModel = CreatePetModelForOtherPlayer(player.petIndex, player.formationSlotIndex);
+                        return repositionedModel;
+                    };
+                    
+                    // Animate transition from old slot to new slot
+                    oldPetAnimator.AnimateModelTransitionWithFactory(
+                        null, // Let system detect current model
+                        petFactory,
+                        () => {
+                            // Update reference to new model
+                            var newModel = FindLatestPetModel(player.formationSlotIndex);
+                            if (newModel != null)
+                            {
+                                player.petModel = newModel;
+                            }
+                            Debug.Log($"OtherPlayersFormationManager: Pet reposition completed for {player.playerName} to slot {player.formationSlotIndex}");
+                        }
+                    );
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Coordinated formation rebuild: fade out all existing models, then fade in all models at new positions
+        /// </summary>
+        private void StartCoordinatedFormationRebuild(int playerCount)
+        {
+            // Pre-calculate new formation positions
+            CalculateFormationPositions(playerCount);
+            
+            // Collect all existing models that need to fade out
+            var modelsToFadeOut = new List<GameObject>();
+            var playerData = new List<(OtherPlayerModels player, int newSlotIndex)>();
+            
+            var playerList = otherPlayerModels.Values.ToList();
+            for (int i = 0; i < playerList.Count && i < formationSlots.Count; i++)
+            {
+                var player = playerList[i];
+                playerData.Add((player, i));
+                
+                if (player.characterModel != null)
+                    modelsToFadeOut.Add(player.characterModel);
+                if (player.petModel != null)
+                    modelsToFadeOut.Add(player.petModel);
+            }
+            
+            if (modelsToFadeOut.Count == 0)
+            {
+                // No models to fade out, just assign slots normally
+                AssignPlayersToSlots();
+                return;
+            }
+            
+            Debug.Log($"OtherPlayersFormationManager: Starting coordinated rebuild - fading out {modelsToFadeOut.Count} existing models");
+            
+            // Start fade out for all existing models simultaneously
+            StartCoroutine(CoordinatedFormationRebuildSequence(playerData, modelsToFadeOut));
+        }
+        
+        /// <summary>
+        /// Coroutine to handle the coordinated fade out → fade in sequence
+        /// </summary>
+        private System.Collections.IEnumerator CoordinatedFormationRebuildSequence(
+            List<(OtherPlayerModels player, int newSlotIndex)> playerData, 
+            List<GameObject> modelsToFadeOut)
+        {
+            // Phase 1: Fade out all existing models simultaneously
+            var fadeOutTasks = new List<System.Action>();
+            foreach (var model in modelsToFadeOut)
+            {
+                if (model != null)
+                {
+                    fadeOutTasks.Add(() => {
+                        AnimateModelOut(model, () => {
+                            // Model faded out successfully
+                        });
+                    });
+                }
+            }
+            
+            // Execute all fade outs
+            foreach (var task in fadeOutTasks)
+            {
+                task();
+            }
+            
+            // Wait for fade out animations to complete (typical fade duration)
+            yield return new WaitForSeconds(1.0f);
+            
+            Debug.Log("OtherPlayersFormationManager: All models faded out - now assigning new slots and fading in");
+            
+            // Phase 2: Clear old model references and assign new slots
+            foreach (var (player, newSlotIndex) in playerData)
+            {
+                // Clear old references (models should be destroyed by fade out)
+                player.characterModel = null;
+                player.petModel = null;
+                
+                // Assign new slot
+                player.formationSlotIndex = newSlotIndex;
+                if (newSlotIndex < formationSlots.Count)
+                {
+                    formationSlots[newSlotIndex].AssignToPlayer(player.playerID);
+                }
+            }
+            
+            Debug.Log("OtherPlayersFormationManager: Formation rebuild completed - slots reassigned, now forcing model recreation");
+            
+            // Phase 3: Force recreation of models for all players
+            foreach (var (player, newSlotIndex) in playerData)
+            {
+                if (player.characterIndex >= 0)
+                {
+                    Debug.Log($"OtherPlayersFormationManager: Recreating character model for {player.playerName} at slot {newSlotIndex}");
+                    ForceRecreateCharacterModel(player, newSlotIndex);
+                }
+                
+                if (player.petIndex >= 0)
+                {
+                    Debug.Log($"OtherPlayersFormationManager: Recreating pet model for {player.playerName} at slot {newSlotIndex}");
+                    ForceRecreatePetModel(player, newSlotIndex);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Force recreation of a character model after coordinated rebuild
+        /// </summary>
+        private void ForceRecreateCharacterModel(OtherPlayerModels player, int slotIndex)
+        {
+            ModelDissolveAnimator slotAnimator = GetSlotAnimator(slotIndex, true);
+            if (slotAnimator != null)
+            {
+                GameObject newModel = CreateCharacterModelForOtherPlayer(player.characterIndex, slotIndex);
+                if (newModel != null)
+                {
+                    // Prepare model for animation to prevent pop-in
+                    PrepareModelForAnimation(newModel);
+                    
+                    player.characterModel = newModel;
+                    slotAnimator.AnimateModelIn(newModel, () => {
+                        Debug.Log($"OtherPlayersFormationManager: Character recreation completed for {player.playerName} in slot {slotIndex}");
+                    });
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"OtherPlayersFormationManager: Could not get slot animator for character recreation in slot {slotIndex}");
+            }
+        }
+        
+        /// <summary>
+        /// Force recreation of a pet model after coordinated rebuild
+        /// </summary>
+        private void ForceRecreatePetModel(OtherPlayerModels player, int slotIndex)
+        {
+            ModelDissolveAnimator slotAnimator = GetSlotAnimator(slotIndex, false);
+            if (slotAnimator != null)
+            {
+                GameObject newModel = CreatePetModelForOtherPlayer(player.petIndex, slotIndex);
+                if (newModel != null)
+                {
+                    // Prepare model for animation to prevent pop-in
+                    PrepareModelForAnimation(newModel);
+                    
+                    player.petModel = newModel;
+                    slotAnimator.AnimateModelIn(newModel, () => {
+                        Debug.Log($"OtherPlayersFormationManager: Pet recreation completed for {player.playerName} in slot {slotIndex}");
+                    });
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"OtherPlayersFormationManager: Could not get slot animator for pet recreation in slot {slotIndex}");
+            }
+        }
+        
+        /// <summary>
+        /// Prepare a model for animation by disabling all renderers to prevent pop-in effect
+        /// </summary>
+        private void PrepareModelForAnimation(GameObject model)
+        {
+            if (model == null) return;
+            
+            Debug.Log($"OtherPlayersFormationManager: Preparing model for animation: {model.name}");
+            
+            // Make all renderers initially invisible so the animation can control the appearance
+            Renderer[] renderers = model.GetComponentsInChildren<Renderer>();
+            foreach (Renderer renderer in renderers)
+            {
+                if (renderer != null)
+                {
+                    renderer.enabled = false;
+                }
+            }
+            
+            // Keep the GameObject active but invisible through renderer control
+            model.SetActive(true);
+            
+            Debug.Log($"OtherPlayersFormationManager: Model {model.name} prepared for animation - {renderers.Length} renderers disabled, awaiting animation");
+        }
+        
+        /// <summary>
+        /// Check if any slot animators are currently running repositioning animations
+        /// </summary>
+        private bool HasActiveRepositioningAnimations()
+        {
+            foreach (var slotAnimator in slotAnimators.Values)
+            {
+                if (slotAnimator != null && slotAnimator.IsTransitioning)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        /// <summary>
+        /// Coroutine to delay UpdatePlayerModels to avoid overlapping animations
+        /// </summary>
+        private System.Collections.IEnumerator DelayedUpdatePlayerModels(List<PlayerSelectionInfo> players, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            
+            Debug.Log("OtherPlayersFormationManager: Delayed model updates starting after repositioning animations");
+            
+            // Update individual player selections
+            foreach (var player in players)
+            {
+                UpdatePlayerModels(player);
             }
         }
         
