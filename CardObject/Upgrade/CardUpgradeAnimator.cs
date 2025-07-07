@@ -65,7 +65,7 @@ namespace CardUpgrade
             if (Instance == null)
             {
                 Instance = this;
-                DontDestroyOnLoad(gameObject);
+                //DontDestroyOnLoad(gameObject);
                 Initialize();
             }
             else
@@ -309,7 +309,7 @@ namespace CardUpgrade
             if (handLayoutManager != null)
             {
                 Debug.Log($"[CARD_UPGRADE] Triggering hand layout update");
-                handLayoutManager.UpdateLayoutWithDebounce();
+                handLayoutManager.UpdateLayout();
                 
                 // Wait a bit for the layout to apply
                 yield return new WaitForSeconds(0.2f);

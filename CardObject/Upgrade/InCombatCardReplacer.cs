@@ -20,7 +20,7 @@ namespace CardUpgrade
             if (Instance == null)
             {
                 Instance = this;
-                DontDestroyOnLoad(gameObject);
+                //DontDestroyOnLoad(gameObject);
                 Debug.Log("InCombatCardReplacer initialized successfully");
             }
             else

@@ -68,7 +68,7 @@ public class CardUpgradeManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogWarning("CardUpgradeManager: Multiple instances detected. This should be a singleton.");
+            //Debug.LogWarning("CardUpgradeManager: Multiple instances detected. This should be a singleton.");
         }
     }
     
@@ -76,7 +76,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         base.OnStartServer();
         
-        Debug.Log("[CARD_UPGRADE] CardUpgradeManager started on server");
+       // Debug.Log("[CARD_UPGRADE] CardUpgradeManager started on server");
         
         // Validate all upgrade data
         ValidateUpgradeData();
@@ -114,7 +114,7 @@ public class CardUpgradeManager : NetworkBehaviour
             SubscribeToEntityEvents(entity);
         }
         
-        Debug.Log($"[CARD_UPGRADE] Subscribed to {allEntities.Length} entities after client connection");
+       // Debug.Log($"[CARD_UPGRADE] Subscribed to {allEntities.Length} entities after client connection");
     }
     
     public override void OnStopServer()
@@ -137,12 +137,12 @@ public class CardUpgradeManager : NetworkBehaviour
         var availableUpgrades = GetUpgradeableCards();
         
         int validCount = availableUpgrades.Count;
-        Debug.Log($"[CARD_UPGRADE] Loaded {validCount} cards with upgrade conditions");
+        //Debug.Log($"[CARD_UPGRADE] Loaded {validCount} cards with upgrade conditions");
         
         // Log each upgradeable card for debugging
         foreach (var card in availableUpgrades)
         {
-            Debug.Log($"[CARD_UPGRADE]   - {card.CardName} → {card.UpgradedVersion.CardName} (Condition: {card.UpgradeConditionType} {card.UpgradeComparisonType} {card.UpgradeRequiredValue})");
+          //  Debug.Log($"[CARD_UPGRADE]   - {card.CardName} → {card.UpgradedVersion.CardName} (Condition: {card.UpgradeConditionType} {card.UpgradeComparisonType} {card.UpgradeRequiredValue})");
         }
     }
     
@@ -184,7 +184,7 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void SubscribeToGameEvents()
     {
-        Debug.Log("[CARD_UPGRADE] Subscribing to game events for comprehensive upgrade checking");
+       // Debug.Log("[CARD_UPGRADE] Subscribing to game events for comprehensive upgrade checking");
         
         // Find all entities in the scene and subscribe to their events
         NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>();
@@ -225,7 +225,7 @@ public class CardUpgradeManager : NetworkBehaviour
         // Subscribe to health changes for low/high health conditions
         entity.CurrentHealth.OnChange += (prev, next, asServer) => OnHealthChanged(entity, prev, next);
         
-        Debug.Log($"[CARD_UPGRADE] Subscribed to events for entity: {entity.EntityName.Value}");
+       // Debug.Log($"[CARD_UPGRADE] Subscribed to events for entity: {entity.EntityName.Value}");
     }
     
     /// <summary>
@@ -285,7 +285,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnDamageDealt: {entity.EntityName.Value} dealt {amount} damage");
+       // Debug.Log($"[CARD_UPGRADE] OnDamageDealt: {entity.EntityName.Value} dealt {amount} damage");
         
         // Check upgrades for all cards that might be affected by damage dealt
         CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
@@ -302,7 +302,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnDamageTaken: {entity.EntityName.Value} took {amount} damage");
+       // Debug.Log($"[CARD_UPGRADE] OnDamageTaken: {entity.EntityName.Value} took {amount} damage");
         
         // Check upgrades for all cards that might be affected by damage taken
         CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
@@ -318,7 +318,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnHealingGiven: {entity.EntityName.Value} gave {amount} healing");
+       // Debug.Log($"[CARD_UPGRADE] OnHealingGiven: {entity.EntityName.Value} gave {amount} healing");
         
         // Check upgrades for all cards that might be affected by healing given
         CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
@@ -334,7 +334,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnHealingReceived: {entity.EntityName.Value} received {amount} healing");
+      //  Debug.Log($"[CARD_UPGRADE] OnHealingReceived: {entity.EntityName.Value} received {amount} healing");
         
         // Check upgrades for all cards that might be affected by healing received
         CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
@@ -350,7 +350,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnStanceChanged: {entity.EntityName.Value} changed stance from {oldStance} to {newStance}");
+       // Debug.Log($"[CARD_UPGRADE] OnStanceChanged: {entity.EntityName.Value} changed stance from {oldStance} to {newStance}");
         
         // Check upgrades for all cards that might be affected by stance changes
         CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
@@ -366,7 +366,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnComboChanged: {entity.EntityName.Value} has {comboCount} combo");
+       // Debug.Log($"[CARD_UPGRADE] OnComboChanged: {entity.EntityName.Value} has {comboCount} combo");
         
         // Check upgrades for all cards that might be affected by combo count
         CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
@@ -383,7 +383,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnStrengthChanged: {entity.EntityName.Value} has {strengthStacks} strength stacks");
+       // Debug.Log($"[CARD_UPGRADE] OnStrengthChanged: {entity.EntityName.Value} has {strengthStacks} strength stacks");
         
         // Could add strength-based upgrade conditions in the future
         // For now, this is just logged for potential future use
@@ -397,7 +397,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnHealthChanged: {entity.EntityName.Value} health changed from {previousHealth} to {newHealth}");
+       // Debug.Log($"[CARD_UPGRADE] OnHealthChanged: {entity.EntityName.Value} health changed from {previousHealth} to {newHealth}");
         
         // Check if entity is now at low/high health and trigger relevant upgrades
         CheckAllCardsForUpgradeConditions(entity, new UpgradeConditionType[] {
@@ -415,7 +415,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnDetailedDamageTaken: {entity.EntityName.Value} took {amount} damage from {(source != null ? source.EntityName.Value : "unknown")}");
+      //  Debug.Log($"[CARD_UPGRADE] OnDetailedDamageTaken: {entity.EntityName.Value} took {amount} damage from {(source != null ? source.EntityName.Value : "unknown")}");
         
         // This provides more detailed damage information for future upgrade conditions
     }
@@ -428,7 +428,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnDetailedHealingReceived: {entity.EntityName.Value} received {amount} healing from {(source != null ? source.EntityName.Value : "unknown")}");
+      //  Debug.Log($"[CARD_UPGRADE] OnDetailedHealingReceived: {entity.EntityName.Value} received {amount} healing from {(source != null ? source.EntityName.Value : "unknown")}");
         
         // This provides more detailed healing information for future upgrade conditions
     }
@@ -441,7 +441,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || card?.CardData == null || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnCardDiscarded: {card.CardData.CardName} discarded by {entity.EntityName.Value} (manual: {wasManualDiscard})");
+       // Debug.Log($"[CARD_UPGRADE] OnCardDiscarded: {card.CardData.CardName} discarded by {entity.EntityName.Value} (manual: {wasManualDiscard})");
         
         if (wasManualDiscard)
         {
@@ -464,7 +464,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || card?.CardData == null || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnCardHeldAtTurnEnd: {card.CardData.CardName} held at turn end by {entity.EntityName.Value}");
+       // Debug.Log($"[CARD_UPGRADE] OnCardHeldAtTurnEnd: {card.CardData.CardName} held at turn end by {entity.EntityName.Value}");
         
         int cardId = card.CardData.CardId;
         UpdatePersistentHeldAtTurnEndCount(cardId);
@@ -484,7 +484,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || card?.CardData == null || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnCardIsFinalInHand: {card.CardData.CardName} is final card in hand for {entity.EntityName.Value}");
+       // Debug.Log($"[CARD_UPGRADE] OnCardIsFinalInHand: {card.CardData.CardName} is final card in hand for {entity.EntityName.Value}");
         
         int cardId = card.CardData.CardId;
         UpdatePersistentFinalCardCount(cardId);
@@ -504,7 +504,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnStatusEffectApplied: {statusEffectName} applied to {entity.EntityName.Value}");
+       // Debug.Log($"[CARD_UPGRADE] OnStatusEffectApplied: {statusEffectName} applied to {entity.EntityName.Value}");
         
         // Record that the entity survived this status effect
         EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
@@ -528,7 +528,7 @@ public class CardUpgradeManager : NetworkBehaviour
     {
         if (!IsServerInitialized || entity == null) return;
         
-        Debug.Log($"[CARD_UPGRADE] OnFightOutcome: {entity.EntityName.Value} {(victory ? "won" : "lost")} the fight");
+       // Debug.Log($"[CARD_UPGRADE] OnFightOutcome: {entity.EntityName.Value} {(victory ? "won" : "lost")} the fight");
         
         // Update persistent tracking for fight outcomes
         int entityId = entity.ObjectId;
@@ -595,7 +595,7 @@ public class CardUpgradeManager : NetworkBehaviour
                 {
                     // Create a temporary card reference for evaluation
                     // In a real implementation, you might want to check all actual card instances
-                    Debug.Log($"[CARD_UPGRADE] Checking condition {conditionType} for {cardData.CardName}");
+                  //  Debug.Log($"[CARD_UPGRADE] Checking condition {conditionType} for {cardData.CardName}");
                     
                     // This is a simplified check - in practice you'd want to evaluate against all instances
                     int currentValue = GetConditionValueForProgress(conditionType, cardData.CardId, entity);
@@ -603,7 +603,7 @@ public class CardUpgradeManager : NetworkBehaviour
                     
                     if (conditionMet)
                     {
-                        Debug.Log($"[CARD_UPGRADE] Condition met for {cardData.CardName}: {currentValue} {cardData.UpgradeComparisonType} {cardData.UpgradeRequiredValue}");
+                       // Debug.Log($"[CARD_UPGRADE] Condition met for {cardData.CardName}: {currentValue} {cardData.UpgradeComparisonType} {cardData.UpgradeRequiredValue}");
                         // Would need to find actual card instances to upgrade
                     }
                 }
@@ -622,7 +622,7 @@ public class CardUpgradeManager : NetworkBehaviour
         int cardId = card.CardData.CardId;
         int entityId = entity.ObjectId;
         
-        Debug.Log($"[CARD_UPGRADE] OnCardPlayed called for {card.CardData.CardName} (ID: {cardId}) by {entity.EntityName.Value}");
+       // Debug.Log($"[CARD_UPGRADE] OnCardPlayed called for {card.CardData.CardName} (ID: {cardId}) by {entity.EntityName.Value}");
         
         // Update persistent tracking
         UpdatePersistentTracking(cardId);
@@ -664,7 +664,7 @@ public class CardUpgradeManager : NetworkBehaviour
         
         int cardId = card.CardData.CardId;
         
-        Debug.Log($"[CARD_UPGRADE] OnCardDrawn called for {card.CardData.CardName} (ID: {cardId}) by {entity.EntityName.Value}");
+       // Debug.Log($"[CARD_UPGRADE] OnCardDrawn called for {card.CardData.CardName} (ID: {cardId}) by {entity.EntityName.Value}");
         
         // Force update of card tracking data to reflect current hand state
         CardTracker cardTracker = card.GetComponent<CardTracker>();
@@ -703,7 +703,7 @@ public class CardUpgradeManager : NetworkBehaviour
         
         int entityId = entity.ObjectId;
         
-        Debug.Log($"[CARD_UPGRADE] OnTurnEnd called for {entity.EntityName.Value}");
+       // Debug.Log($"[CARD_UPGRADE] OnTurnEnd called for {entity.EntityName.Value}");
         
         // Check for cards held at turn end and update their tracking
         HandManager handManager = entity.GetComponent<HandManager>();
@@ -1019,33 +1019,33 @@ public class CardUpgradeManager : NetworkBehaviour
         CardData cardData = card.CardData;
         int cardId = cardData.CardId;
         
-        Debug.Log($"[CARD_UPGRADE] Checking upgrade conditions for {cardData.CardName}");
+      //  Debug.Log($"[CARD_UPGRADE] Checking upgrade conditions for {cardData.CardName}");
         
         // Check if this card can upgrade
         if (!cardData.CanUpgrade || cardData.UpgradedVersion == null)
         {
-            Debug.Log($"[CARD_UPGRADE] {cardData.CardName} cannot upgrade (CanUpgrade: {cardData.CanUpgrade}, HasUpgradedVersion: {cardData.UpgradedVersion != null})");
+         //   Debug.Log($"[CARD_UPGRADE] {cardData.CardName} cannot upgrade (CanUpgrade: {cardData.CanUpgrade}, HasUpgradedVersion: {cardData.UpgradedVersion != null})");
             return;
         }
             
         // Skip if already upgraded (each card can only upgrade once)
         if (HasBeenUpgraded(entity.ObjectId, cardId))
         {
-            Debug.Log($"[CARD_UPGRADE] {cardData.CardName} already upgraded this fight");
+          //  Debug.Log($"[CARD_UPGRADE] {cardData.CardName} already upgraded this fight");
             return;
         }
         
-        Debug.Log($"[CARD_UPGRADE] {cardData.CardName} can upgrade to {cardData.UpgradedVersion.CardName}. Checking condition: {cardData.UpgradeConditionType} {cardData.UpgradeComparisonType} {cardData.UpgradeRequiredValue}");
+       // Debug.Log($"[CARD_UPGRADE] {cardData.CardName} can upgrade to {cardData.UpgradedVersion.CardName}. Checking condition: {cardData.UpgradeConditionType} {cardData.UpgradeComparisonType} {cardData.UpgradeRequiredValue}");
         
         // Check if upgrade condition is met
         if (EvaluateUpgradeCondition(cardData, card, entity))
         {
-            Debug.Log($"[CARD_UPGRADE] ✓ Upgrade condition met! Queueing upgrade for {cardData.CardName}");
+          //  Debug.Log($"[CARD_UPGRADE] ✓ Upgrade condition met! Queueing upgrade for {cardData.CardName}");
             QueueUpgrade(cardData, card, entity);
         }
         else
         {
-            Debug.Log($"[CARD_UPGRADE] ✗ Upgrade condition not met for {cardData.CardName}");
+          //  Debug.Log($"[CARD_UPGRADE] ✗ Upgrade condition not met for {cardData.CardName}");
         }
     }
     
@@ -1054,7 +1054,7 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void CheckAllCardsInHandForUpgrades(NetworkEntity entity)
     {
-        Debug.Log($"[CARD_UPGRADE] Checking all cards in hand for upgrades for {entity.EntityName.Value}");
+       // Debug.Log($"[CARD_UPGRADE] Checking all cards in hand for upgrades for {entity.EntityName.Value}");
         
         NetworkEntity handEntity = null;
         NetworkEntity mainEntity = null;
@@ -1083,7 +1083,7 @@ public class CardUpgradeManager : NetworkBehaviour
                 }
             }
             
-            Debug.Log($"[CARD_UPGRADE] Using hand entity directly: {handEntity.EntityName.Value}, main entity: {mainEntity?.EntityName.Value ?? "not found"}");
+           // Debug.Log($"[CARD_UPGRADE] Using hand entity directly: {handEntity.EntityName.Value}, main entity: {mainEntity?.EntityName.Value ?? "not found"}");
         }
         else
         {
@@ -1091,36 +1091,36 @@ public class CardUpgradeManager : NetworkBehaviour
             var relationshipManager = entity.GetComponent<RelationshipManager>();
             if (relationshipManager?.HandEntity == null)
             {
-                Debug.Log($"[CARD_UPGRADE] No hand entity found for {entity.EntityName.Value}");
+               // Debug.Log($"[CARD_UPGRADE] No hand entity found for {entity.EntityName.Value}");
                 return;
             }
             
             handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
             mainEntity = entity;
             
-            Debug.Log($"[CARD_UPGRADE] Found hand entity: {handEntity?.EntityName.Value ?? "null"} for main entity: {mainEntity.EntityName.Value}");
+           // Debug.Log($"[CARD_UPGRADE] Found hand entity: {handEntity?.EntityName.Value ?? "null"} for main entity: {mainEntity.EntityName.Value}");
         }
         
         if (handEntity == null)
         {
-            Debug.Log($"[CARD_UPGRADE] No valid hand entity found for {entity.EntityName.Value}");
+           // Debug.Log($"[CARD_UPGRADE] No valid hand entity found for {entity.EntityName.Value}");
             return;
         }
         
         var handManager = handEntity.GetComponent<HandManager>();
         if (handManager == null)
         {
-            Debug.Log($"[CARD_UPGRADE] No HandManager found on hand entity {handEntity.EntityName.Value}");
+          //  Debug.Log($"[CARD_UPGRADE] No HandManager found on hand entity {handEntity.EntityName.Value}");
             return;
         }
         
         // Get all cards in hand
         var cardsInHand = handManager.GetCardsInHand();
-        Debug.Log($"[CARD_UPGRADE] Found {cardsInHand.Count} cards in hand for {handEntity.EntityName.Value}");
+      //  Debug.Log($"[CARD_UPGRADE] Found {cardsInHand.Count} cards in hand for {handEntity.EntityName.Value}");
         
         // Use main entity for upgrade checking if available, otherwise fall back to the passed entity
         var entityForUpgradeCheck = mainEntity ?? entity;
-        Debug.Log($"[CARD_UPGRADE] Using entity for upgrade checks: {entityForUpgradeCheck.EntityName.Value}");
+        //Debug.Log($"[CARD_UPGRADE] Using entity for upgrade checks: {entityForUpgradeCheck.EntityName.Value}");
         
         // Check each card for upgrades
         foreach (var cardObj in cardsInHand)
@@ -1151,7 +1151,7 @@ public class CardUpgradeManager : NetworkBehaviour
         // Compare using the specified comparison type
         bool result = CompareValues(currentValue, cardData.UpgradeRequiredValue, cardData.UpgradeComparisonType);
         
-        Debug.Log($"[CARD_UPGRADE] Current value for {cardData.UpgradeConditionType}: {currentValue}, Required: {cardData.UpgradeRequiredValue} ({cardData.UpgradeComparisonType}), Result: {result}");
+       // Debug.Log($"[CARD_UPGRADE] Current value for {cardData.UpgradeConditionType}: {currentValue}, Required: {cardData.UpgradeRequiredValue} ({cardData.UpgradeComparisonType}), Result: {result}");
         
         return result;
     }
@@ -1333,7 +1333,7 @@ public class CardUpgradeManager : NetworkBehaviour
                 
             // Add more condition types as needed
             default:
-                Debug.LogWarning($"CardUpgradeManager: Unhandled condition type {conditionType}");
+               // Debug.LogWarning($"CardUpgradeManager: Unhandled condition type {conditionType}");
                 return 0;
         }
     }
@@ -1374,7 +1374,7 @@ public class CardUpgradeManager : NetworkBehaviour
             
         if (alreadyQueued)
         {
-            Debug.LogWarning($"[CARD_UPGRADE] Upgrade for {cardData.CardName} on {entity.name} already queued - skipping duplicate");
+          //  Debug.LogWarning($"[CARD_UPGRADE] Upgrade for {cardData.CardName} on {entity.name} already queued - skipping duplicate");
             return;
         }
 
@@ -1390,7 +1390,7 @@ public class CardUpgradeManager : NetworkBehaviour
         // Queue for immediate processing (only timing type supported)
         immediateUpgrades.Add(queuedUpgrade);
         
-        Debug.Log($"[CARD_UPGRADE] Queued immediate upgrade for {cardData.CardName} -> {cardData.UpgradedVersion.CardName}");
+       // Debug.Log($"[CARD_UPGRADE] Queued immediate upgrade for {cardData.CardName} -> {cardData.UpgradedVersion.CardName}");
     }
     
     /// <summary>
@@ -1398,11 +1398,11 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void ProcessImmediateUpgrades()
     {
-        Debug.Log($"[CARD_UPGRADE] ProcessImmediateUpgrades: Processing {immediateUpgrades.Count} queued upgrades");
+      //  Debug.Log($"[CARD_UPGRADE] ProcessImmediateUpgrades: Processing {immediateUpgrades.Count} queued upgrades");
         
         foreach (var upgrade in immediateUpgrades)
         {
-            Debug.Log($"[CARD_UPGRADE] Processing upgrade: {upgrade.baseCardData?.CardName} -> {upgrade.upgradedCardData?.CardName}");
+        //    Debug.Log($"[CARD_UPGRADE] Processing upgrade: {upgrade.baseCardData?.CardName} -> {upgrade.upgradedCardData?.CardName}");
             ExecuteUpgrade(upgrade);
         }
         immediateUpgrades.Clear();
@@ -1415,18 +1415,18 @@ public class CardUpgradeManager : NetworkBehaviour
     /// </summary>
     private void ExecuteUpgrade(QueuedUpgrade upgrade)
     {
-        Debug.Log($"[CARD_UPGRADE] ExecuteUpgrade called for {upgrade.baseCardData?.CardName} -> {upgrade.upgradedCardData?.CardName}");
+       // Debug.Log($"[CARD_UPGRADE] ExecuteUpgrade called for {upgrade.baseCardData?.CardName} -> {upgrade.upgradedCardData?.CardName}");
         
         if (upgrade.card?.CardData == null || upgrade.entity == null || upgrade.baseCardData == null || upgrade.upgradedCardData == null)
         {
-            Debug.LogError($"[CARD_UPGRADE] Cannot execute upgrade - missing data: card={upgrade.card?.CardData != null}, entity={upgrade.entity != null}, baseCard={upgrade.baseCardData != null}, upgradedCard={upgrade.upgradedCardData != null}");
+          //  Debug.LogError($"[CARD_UPGRADE] Cannot execute upgrade - missing data: card={upgrade.card?.CardData != null}, entity={upgrade.entity != null}, baseCard={upgrade.baseCardData != null}, upgradedCard={upgrade.upgradedCardData != null}");
             return;
         }
         
         int cardId = upgrade.card.CardData.CardId;
         int entityId = upgrade.entity.ObjectId;
         
-        Debug.Log($"[CARD_UPGRADE] Executing upgrade for card ID {cardId}, entity ID {entityId}");
+      //  Debug.Log($"[CARD_UPGRADE] Executing upgrade for card ID {cardId}, entity ID {entityId}");
         
         // Mark as upgraded
         if (!upgradedCardsThisFight.ContainsKey(entityId))
@@ -1436,12 +1436,12 @@ public class CardUpgradeManager : NetworkBehaviour
         upgradedCardsThisFight[entityId].Add(cardId);
         
         // Check if CardUpgradeAnimator instance exists
-        Debug.Log($"[CARD_UPGRADE] CardUpgradeAnimator.Instance = {CardUpgrade.CardUpgradeAnimator.Instance != null}");
+       // Debug.Log($"[CARD_UPGRADE] CardUpgradeAnimator.Instance = {CardUpgrade.CardUpgradeAnimator.Instance != null}");
         
         // Queue upgrade animation, which will handle both in-combat and persistent upgrades
         if (CardUpgrade.CardUpgradeAnimator.Instance != null)
         {
-            Debug.Log($"[CARD_UPGRADE] Calling QueueUpgradeAnimation for {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName}");
+          //  Debug.Log($"[CARD_UPGRADE] Calling QueueUpgradeAnimation for {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName}");
             CardUpgrade.CardUpgradeAnimator.Instance.QueueUpgradeAnimation(
                 upgrade.baseCardData, 
                 upgrade.upgradedCardData, 
@@ -1452,7 +1452,7 @@ public class CardUpgradeManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogError("CardUpgradeManager: CardUpgradeAnimator not found! Executing upgrade without animation.");
+           // Debug.LogError("CardUpgradeManager: CardUpgradeAnimator not found! Executing upgrade without animation.");
         
             // Fallback: Execute upgrades without animation
             ExecuteInFightUpgrade(upgrade);
@@ -1460,7 +1460,7 @@ public class CardUpgradeManager : NetworkBehaviour
             OnCardUpgraded?.Invoke(upgrade.baseCardData, upgrade.upgradedCardData, upgrade.entity);
         }
         
-        Debug.Log($"CardUpgradeManager: Queued upgrade animation {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName} for {upgrade.entity.EntityName.Value}");
+       // Debug.Log($"CardUpgradeManager: Queued upgrade animation {upgrade.baseCardData.CardName} -> {upgrade.upgradedCardData.CardName} for {upgrade.entity.EntityName.Value}");
     }
     
     /// <summary>
@@ -1475,7 +1475,7 @@ public class CardUpgradeManager : NetworkBehaviour
         // Trigger event
         OnCardUpgraded?.Invoke(baseCard, upgradedCard, entity);
         
-        Debug.Log($"CardUpgradeManager: Completed upgrade {baseCard.CardName} -> {upgradedCard.CardName} for {entity.EntityName.Value}");
+       // Debug.Log($"CardUpgradeManager: Completed upgrade {baseCard.CardName} -> {upgradedCard.CardName} for {entity.EntityName.Value}");
     }
     
     /// <summary>
@@ -1503,7 +1503,7 @@ public class CardUpgradeManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogError("CardUpgradeManager: InCombatCardReplacer not found! In-combat upgrade failed.");
+          //  Debug.LogError("CardUpgradeManager: InCombatCardReplacer not found! In-combat upgrade failed.");
         }
     }
     
@@ -1524,7 +1524,7 @@ public class CardUpgradeManager : NetworkBehaviour
         
         if (entityDeck == null)
         {
-            Debug.LogError("CardUpgradeManager: Cannot execute persistent upgrade - missing NetworkEntityDeck component");
+           // Debug.LogError("CardUpgradeManager: Cannot execute persistent upgrade - missing NetworkEntityDeck component");
             return;
         }
         
@@ -1535,7 +1535,7 @@ public class CardUpgradeManager : NetworkBehaviour
         {
             // Replace all copies of the base card with the upgraded version
             int replacedCount = entityDeck.ReplaceCard(baseCardId, upgradedCardId);
-            Debug.Log($"CardUpgradeManager: Replaced {replacedCount} copies of {baseCard.CardName} with {upgradedCard.CardName}");
+           // Debug.Log($"CardUpgradeManager: Replaced {replacedCount} copies of {baseCard.CardName} with {upgradedCard.CardName}");
         }
         else
         {
@@ -1543,11 +1543,11 @@ public class CardUpgradeManager : NetworkBehaviour
             bool replaced = entityDeck.ReplaceSingleCard(baseCardId, upgradedCardId);
             if (replaced)
             {
-                Debug.Log($"CardUpgradeManager: Replaced one copy of {baseCard.CardName} with {upgradedCard.CardName}");
+             ///   Debug.Log($"CardUpgradeManager: Replaced one copy of {baseCard.CardName} with {upgradedCard.CardName}");
             }
             else
             {
-                Debug.LogWarning($"CardUpgradeManager: Failed to replace {baseCard.CardName} - card not found in deck");
+              //  Debug.LogWarning($"CardUpgradeManager: Failed to replace {baseCard.CardName} - card not found in deck");
             }
         }
     }

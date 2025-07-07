@@ -30,6 +30,9 @@ public class HandleCardPlay : NetworkBehaviour
     // Flag to track if energy has already been deducted (to prevent double deduction)
     private bool energyAlreadyDeducted = false;
     
+    // Flag to track if this card is currently queued
+    private bool isCurrentlyQueued = false;
+    
     // Static tracking to prevent multiple damage animations on the same target
     private static Dictionary<int, Coroutine> activeDamageAnimations = new Dictionary<int, Coroutine>();
     
@@ -92,6 +95,20 @@ public class HandleCardPlay : NetworkBehaviour
         if (!CanPlayCard())
         {
             Debug.LogWarning($"CARDPLAY_DEBUG: Cannot play card {card.CardData?.CardName}. Reason: {playBlockReason}");
+            return;
+        }
+
+        // Check if this card is already queued - if so, unqueue it
+        if (isCurrentlyQueued)
+        {
+            Debug.Log($"CARDPLAY_DEBUG: Card {card.CardData?.CardName} is already queued, unqueueing it");
+            
+            // Get source ID for unqueueing
+            var unqueueSourceEntity = sourceAndTargetIdentifier.SourceEntity;
+            int unqueueSourceId = unqueueSourceEntity != null ? unqueueSourceEntity.ObjectId : 0;
+            
+            // Call server to unqueue the card
+            ServerUnqueueCard(unqueueSourceId);
             return;
         }
 
@@ -195,14 +212,35 @@ public class HandleCardPlay : NetworkBehaviour
 
         Debug.Log($"CARDPLAY_DEBUG: Found {targetEntities.Count} valid targets");
 
-        // Check energy cost
-        if (sourceEntity.CurrentEnergy.Value < card.CardData.EnergyCost)
+        // Check energy cost - need to account for already queued cards
+        int currentCardCost = card.CardData.EnergyCost;
+        int queuedCardsCost = 0;
+        
+        // Calculate total energy cost of already queued cards for this entity
+        if (CombatCardQueue.Instance != null)
+        {
+            var queuedCards = CombatCardQueue.Instance.GetQueuedCardPlays(sourceId);
+            foreach (var queuedCard in queuedCards)
+            {
+                if (queuedCard.cardData != null)
+                {
+                    queuedCardsCost += queuedCard.cardData.EnergyCost;
+                }
+            }
+        }
+        
+        int totalEnergyCost = currentCardCost + queuedCardsCost;
+        int availableEnergy = sourceEntity.CurrentEnergy.Value;
+        
+        if (availableEnergy < totalEnergyCost)
         {
             canPlay = false;
-            playBlockReason = $"Not enough energy (need {card.CardData.EnergyCost}, have {sourceEntity.CurrentEnergy.Value})";
-            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Not enough energy");
+            playBlockReason = $"Not enough energy (need {totalEnergyCost} total: {currentCardCost} for this card + {queuedCardsCost} for queued cards, have {availableEnergy})";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Not enough energy for queued cards. Current card: {currentCardCost}, Queued: {queuedCardsCost}, Total needed: {totalEnergyCost}, Available: {availableEnergy}");
             return false;
         }
+        
+        Debug.Log($"CARDPLAY_DEBUG: Energy validation passed - Current card: {currentCardCost}, Queued: {queuedCardsCost}, Total: {totalEnergyCost}, Available: {availableEnergy}");
 
         // Check combo requirements
         if (card.CardData.RequiresCombo)
@@ -289,14 +327,35 @@ public class HandleCardPlay : NetworkBehaviour
 
         Debug.Log($"CARDPLAY_DEBUG: Found {allTargets.Count} valid targets");
 
-        // Check energy cost
-        if (sourceEntity.CurrentEnergy.Value < card.CardData.EnergyCost)
+        // Check energy cost - need to account for already queued cards
+        int currentCardCost = card.CardData.EnergyCost;
+        int queuedCardsCost = 0;
+        
+        // Calculate total energy cost of already queued cards for this entity
+        if (CombatCardQueue.Instance != null)
+        {
+            var queuedCards = CombatCardQueue.Instance.GetQueuedCardPlays(sourceEntity.ObjectId);
+            foreach (var queuedCard in queuedCards)
+            {
+                if (queuedCard.cardData != null)
+                {
+                    queuedCardsCost += queuedCard.cardData.EnergyCost;
+                }
+            }
+        }
+        
+        int totalEnergyCost = currentCardCost + queuedCardsCost;
+        int availableEnergy = sourceEntity.CurrentEnergy.Value;
+        
+        if (availableEnergy < totalEnergyCost)
         {
             canPlay = false;
-            playBlockReason = $"Not enough energy (need {card.CardData.EnergyCost}, have {sourceEntity.CurrentEnergy.Value})";
-            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Not enough energy");
+            playBlockReason = $"Not enough energy (need {totalEnergyCost} total: {currentCardCost} for this card + {queuedCardsCost} for queued cards, have {availableEnergy})";
+            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Not enough energy for queued cards. Current card: {currentCardCost}, Queued: {queuedCardsCost}, Total needed: {totalEnergyCost}, Available: {availableEnergy}");
             return false;
         }
+        
+        Debug.Log($"CARDPLAY_DEBUG: Energy validation passed - Current card: {currentCardCost}, Queued: {queuedCardsCost}, Total: {totalEnergyCost}, Available: {availableEnergy}");
 
         // Check combo requirements
         if (card.CardData.RequiresCombo)
@@ -379,14 +438,58 @@ public class HandleCardPlay : NetworkBehaviour
     }
 
     /// <summary>
-    /// Server method to validate and process card play
+    /// Gets the total energy cost including this card and all currently queued cards
+    /// </summary>
+    public int GetTotalEnergyCostWithQueued()
+    {
+        if (card?.CardData == null || sourceAndTargetIdentifier?.SourceEntity == null)
+            return 0;
+        
+        int currentCardCost = card.CardData.EnergyCost;
+        int queuedCardsCost = 0;
+        
+        // Calculate total energy cost of already queued cards for this entity
+        if (CombatCardQueue.Instance != null)
+        {
+            var queuedCards = CombatCardQueue.Instance.GetQueuedCardPlays(sourceAndTargetIdentifier.SourceEntity.ObjectId);
+            foreach (var queuedCard in queuedCards)
+            {
+                if (queuedCard.cardData != null)
+                {
+                    queuedCardsCost += queuedCard.cardData.EnergyCost;
+                }
+            }
+        }
+        
+        // If this card is already queued, don't double-count it
+        if (isCurrentlyQueued)
+        {
+            return queuedCardsCost; // This card is already included in the queued cost
+        }
+        else
+        {
+            return currentCardCost + queuedCardsCost; // Add this card to the existing queued cost
+        }
+    }
+    
+    /// <summary>
+    /// Gets the current available energy for the source entity
+    /// </summary>
+    public int GetAvailableEnergy()
+    {
+        if (sourceAndTargetIdentifier?.SourceEntity == null)
+            return 0;
+        
+        return sourceAndTargetIdentifier.SourceEntity.CurrentEnergy.Value;
+    }
+
+    /// <summary>
+    /// Server method to validate and queue card play instead of executing immediately
     /// </summary>
     [ServerRpc(RequireOwnership = false)]
     public void ServerPlayCard(int sourceId, int[] targetIds, NetworkConnection conn = null)
     {
         Debug.Log($"CARDPLAY_DEBUG: ServerPlayCard called for card {gameObject.name} - CardData: {card?.CardData?.CardName}");
-        Debug.Log($"CARDPLAY_DEBUG: Network ownership - IsOwner: {IsOwner}, HasOwner: {Owner != null}, OwnerClientId: {(Owner != null ? Owner.ClientId : -1)}");
-        Debug.Log($"CARDPLAY_DEBUG: Server state - IsServer: {IsServerInitialized}, IsHost: {IsHost}, IsClient: {IsClientInitialized}");
         
         if (card?.CardData != null)
         {
@@ -396,21 +499,6 @@ public class HandleCardPlay : NetworkBehaviour
         {
             Debug.LogWarning($"CARDPLAY_DEBUG: Card or CardData is null for GameObject: {gameObject.name}");
             return;
-        }
-        
-        // Check source entity ownership
-        if (sourceId > 0)
-        {
-            NetworkEntity sourceEntity = FindEntityById(sourceId);
-            if (sourceEntity != null)
-            {
-                Debug.Log($"CARDPLAY_DEBUG: Source entity: {sourceEntity.EntityName.Value}, Type: {sourceEntity.EntityType}");
-                Debug.Log($"CARDPLAY_DEBUG: Source entity ownership - IsOwner: {sourceEntity.IsOwner}, HasOwner: {sourceEntity.Owner != null}, OwnerClientId: {(sourceEntity.Owner != null ? sourceEntity.Owner.ClientId : -1)}");
-            }
-        }
-        else
-        {
-            Debug.LogError($"CARDPLAY_DEBUG: No source entity ID provided");
         }
         
         // Validate on server side using passed parameters
@@ -423,8 +511,90 @@ public class HandleCardPlay : NetworkBehaviour
 
         Debug.Log($"CARDPLAY_DEBUG: Server validation passed for card {gameObject.name}");
 
-        // SINGLE SERVER-AUTHORITATIVE PROCESSING PATH
-        // All effects are processed here to prevent duplicate processing on host/client
+        // QUEUE THE CARD PLAY instead of executing immediately
+        if (CombatCardQueue.Instance != null)
+        {
+            Debug.Log($"CARDPLAY_DEBUG: About to queue card play for {card.CardData.CardName} with sourceId: {sourceId}");
+            CombatCardQueue.Instance.QueueCardPlay(sourceId, targetIds, gameObject, card.CardData);
+            Debug.Log($"CARDPLAY_DEBUG: Queued card play for {card.CardData.CardName}");
+            
+            // Add visual indicator for queued card on all clients
+            RpcSetCardQueuedVisualState(true);
+            
+            // Update validation for all cards since energy requirements have changed
+            RpcUpdateAllCardValidation();
+            
+            // Verify the card was actually queued
+            int queuedCount = CombatCardQueue.Instance.GetQueuedCardCount(sourceId);
+            Debug.Log($"CARDPLAY_DEBUG: Queue now has {queuedCount} cards for entity {sourceId}");
+        }
+        else
+        {
+            Debug.LogError($"CARDPLAY_DEBUG: CombatCardQueue.Instance is null! Cannot queue card play.");
+            return;
+        }
+        
+        Debug.Log($"CARDPLAY_DEBUG: ServerPlayCard completed for card {card?.CardData?.CardName}");
+    }
+
+    /// <summary>
+    /// Server method to unqueue a card that was previously queued
+    /// </summary>
+    [ServerRpc(RequireOwnership = false)]
+    public void ServerUnqueueCard(int sourceId, NetworkConnection conn = null)
+    {
+        Debug.Log($"CARDPLAY_DEBUG: ServerUnqueueCard called for card {gameObject.name} - CardData: {card?.CardData?.CardName}");
+        
+        if (card?.CardData == null)
+        {
+            Debug.LogWarning($"CARDPLAY_DEBUG: Card or CardData is null for GameObject: {gameObject.name}");
+            return;
+        }
+        
+        // Remove the card from the queue
+        if (CombatCardQueue.Instance != null)
+        {
+            bool removed = CombatCardQueue.Instance.RemoveQueuedCard(sourceId, gameObject);
+            if (removed)
+            {
+                Debug.Log($"CARDPLAY_DEBUG: Successfully unqueued card {card.CardData.CardName}");
+                
+                // Remove visual indicator for queued card on all clients
+                RpcSetCardQueuedVisualState(false);
+                
+                // Update validation for all cards since energy requirements have changed
+                RpcUpdateAllCardValidation();
+                
+                // Verify the card was actually removed
+                int queuedCount = CombatCardQueue.Instance.GetQueuedCardCount(sourceId);
+                Debug.Log($"CARDPLAY_DEBUG: Queue now has {queuedCount} cards for entity {sourceId}");
+            }
+            else
+            {
+                Debug.LogWarning($"CARDPLAY_DEBUG: Failed to unqueue card {card.CardData.CardName} - not found in queue");
+            }
+        }
+        else
+        {
+            Debug.LogError($"CARDPLAY_DEBUG: CombatCardQueue.Instance is null! Cannot unqueue card.");
+        }
+        
+        Debug.Log($"CARDPLAY_DEBUG: ServerUnqueueCard completed for card {card?.CardData?.CardName}");
+    }
+
+    /// <summary>
+    /// Executes a card play directly without queuing (used by the queue system)
+    /// </summary>
+    [Server]
+    public void ExecuteCardPlayDirectly(int sourceId, int[] targetIds)
+    {
+        Debug.Log($"CARDPLAY_DEBUG: ExecuteCardPlayDirectly called for card {gameObject.name} - CardData: {card?.CardData?.CardName}");
+        
+        if (card?.CardData == null)
+        {
+            Debug.LogWarning($"CARDPLAY_DEBUG: Card or CardData is null for GameObject: {gameObject.name}");
+            return;
+        }
         
         // Prevent double processing if already processing
         if (isProcessingCardPlay)
@@ -435,6 +605,9 @@ public class HandleCardPlay : NetworkBehaviour
         
         isProcessingCardPlay = true;
         Debug.Log($"CARDPLAY_DEBUG: Set processing flag for card {card.CardData?.CardName}");
+
+        // Clear the queued visual state when executing on all clients
+        RpcSetCardQueuedVisualState(false);
 
         // TRIGGER CARD PLAY ANIMATION - Do this BEFORE processing effects so the card animates out immediately
         TriggerCardPlayAnimationWithCleanup();
@@ -515,7 +688,7 @@ public class HandleCardPlay : NetworkBehaviour
         StartCoroutine(DelayedServerCardDiscard());
         #endif
         
-        Debug.Log($"CARDPLAY_DEBUG: ServerPlayCard completed for card {card?.CardData?.CardName}");
+        Debug.Log($"CARDPLAY_DEBUG: ExecuteCardPlayDirectly completed for card {card?.CardData?.CardName}");
     }
 
     /// <summary>
@@ -749,11 +922,25 @@ public class HandleCardPlay : NetworkBehaviour
     }
 
     /// <summary>
-    /// Forces an update of the play validation
+    /// Updates play validation (used after queuing/unqueueing cards to refresh energy validation)
     /// </summary>
     public void UpdatePlayValidation()
     {
+        // Simply call CanPlayCard to update the validation state and reason
         CanPlayCard();
+    }
+    
+    /// <summary>
+    /// Triggers a validation update for all cards in hand when energy state changes
+    /// </summary>
+    public static void UpdateAllCardValidation()
+    {
+        // Find all HandleCardPlay components in the scene and update their validation
+        var allCardPlayers = FindObjectsOfType<HandleCardPlay>();
+        foreach (var cardPlayer in allCardPlayers)
+        {
+            cardPlayer.UpdatePlayValidation();
+        }
     }
 
     /// <summary>
@@ -781,6 +968,66 @@ public class HandleCardPlay : NetworkBehaviour
         if (sourceAndTargetIdentifier?.SourceEntity != null && card?.CardData != null)
         {
             CmdProcessCardPlayCleanup(sourceAndTargetIdentifier.SourceEntity.ObjectId, card.CardData.EnergyCost);
+        }
+    }
+    
+    /// <summary>
+    /// Sets the visual state for a queued card (golden tint)
+    /// </summary>
+    [ObserversRpc]
+    private void RpcSetCardQueuedVisualState(bool isQueued)
+    {
+        isCurrentlyQueued = isQueued;
+        SetCardQueuedVisualState(isQueued);
+    }
+    
+    /// <summary>
+    /// Triggers validation update for all cards on all clients
+    /// </summary>
+    [ObserversRpc]
+    private void RpcUpdateAllCardValidation()
+    {
+        Debug.Log("CARDPLAY_DEBUG: RpcUpdateAllCardValidation - updating validation for all cards");
+        UpdateAllCardValidation();
+    }
+    
+    /// <summary>
+    /// Sets the visual state for a queued card
+    /// </summary>
+    private void SetCardQueuedVisualState(bool isQueued)
+    {
+        if (card == null) return;
+        
+        // Update the queued state tracking
+        isCurrentlyQueued = isQueued;
+        
+        // Get the card's Image component
+        UnityEngine.UI.Image cardImage = card.GetComponent<UnityEngine.UI.Image>();
+        if (cardImage == null)
+        {
+            // Try to find it in Card component
+            cardImage = card.GetCardImage();
+        }
+        
+        if (cardImage != null)
+        {
+            if (isQueued)
+            {
+                // Apply a golden/orange tint to indicate the card is queued
+                Color queuedColor = new Color(1f, 0.8f, 0.3f, 1f); // Golden tint
+                cardImage.color = queuedColor;
+                Debug.Log($"CARDPLAY_DEBUG: Applied queued visual state to {card.CardData.CardName}");
+            }
+            else
+            {
+                // Restore original color
+                cardImage.color = Color.white;
+                Debug.Log($"CARDPLAY_DEBUG: Removed queued visual state from {card.CardData.CardName}");
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"CARDPLAY_DEBUG: Could not find Image component on card {gameObject.name} for visual state");
         }
     }
     

@@ -86,21 +86,9 @@ public class CardParenter : NetworkBehaviour
         // The CardSpawner.SpawnCardInternal method already spawns with the correct owner
         /* Debug.Log($"CardParenter: Card {cardObject.name} already has ownership - Owner ClientId: {cardNetObj.Owner?.ClientId ?? -1}"); */
 
-        // Parent to deck transform
-        cardObject.transform.SetParent(parentTransform);
-        cardObject.transform.localPosition = Vector3.zero;
-        cardObject.transform.localRotation = Quaternion.identity;
-        
-        // Only reset scale if no HandLayoutManager is present to avoid interfering with custom layouts
-        HandLayoutManager handLayoutManager = parentTransform.GetComponent<HandLayoutManager>();
-        if (handLayoutManager == null)
-        {
-            cardObject.transform.localScale = Vector3.one;
-        }
-        else
-        {
-            /* Debug.Log($"CardParenter: Skipped scale reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
-        }
+        // Parent to transform using centralized positioning system
+        // Note: SetupCard is typically used for deck setup, so we use the non-hand positioning method
+        HandLayoutManager.OnCardMovedToNonHandLocation(cardObject, parentTransform);
 
         // NOTE: Removed ServerManager.Spawn call - the card should already be spawned by CardSpawner
         // The CardSpawner.SpawnCardInternal method already handles network spawning
@@ -183,20 +171,9 @@ public class CardParenter : NetworkBehaviour
         }
 
         /* Debug.Log($"CardParenter on {gameObject.name} (Client): VALIDATION PASSED - Parenting card {cardName} (NOB ID: {cardNetObjId}) to deckTransform: {deckTransform.name} (Path: {GetTransformPath(deckTransform)})"); */
-        cardObject.transform.SetParent(deckTransform, false); // worldPositionStays = false to correctly apply local transforms
-        cardObject.transform.localPosition = Vector3.zero;
-        cardObject.transform.localRotation = Quaternion.identity;
         
-        // Only reset scale if no HandLayoutManager is present to avoid interfering with custom layouts
-        HandLayoutManager handLayoutManager = deckTransform.GetComponent<HandLayoutManager>();
-        if (handLayoutManager == null)
-        {
-            cardObject.transform.localScale = Vector3.one;
-        }
-        else
-        {
-            /* Debug.Log($"CardParenter: Skipped scale reset for {cardName} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
-        }
+        // Use centralized positioning system for deck placement
+        HandLayoutManager.OnCardMovedToNonHandLocation(cardObject, deckTransform);
         
         // Use EntityVisibilityManager for proper visibility filtering
         EntityVisibilityManager entityVisManager = FindEntityVisibilityManager();
@@ -307,19 +284,24 @@ public class CardParenter : NetworkBehaviour
     {
         if (card == null || targetTransform == null) return;
 
-        // Set the card's parent to the target transform
-        card.transform.SetParent(targetTransform);
-        
-        // Only reset position and scale if no HandLayoutManager is present to avoid interfering with custom layouts
-        HandLayoutManager handLayoutManager = targetTransform.GetComponent<HandLayoutManager>();
-        if (handLayoutManager == null || targetTransform != handTransform)
+        // Use centralized positioning system
+        if (targetTransform == handTransform)
         {
-            card.transform.localPosition = Vector3.zero;
-            card.transform.localScale = Vector3.one;
+            // Moving to hand - use HandLayoutManager (required)
+            HandLayoutManager handLayoutManager = HandLayoutManager.GetHandLayoutManager(targetTransform);
+            if (handLayoutManager != null)
+            {
+                handLayoutManager.OnCardAddedToHand(card);
+            }
+            else
+            {
+                Debug.LogError($"CardParenter: No HandLayoutManager found on hand transform {targetTransform.name}. Card {card.name} will not be positioned correctly.");
+            }
         }
         else
         {
-            Debug.Log($"CardParenter: Skipped position and scale reset for {card.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}");
+            // Moving to non-hand location (deck/discard) - use centralized method
+            HandLayoutManager.OnCardMovedToNonHandLocation(card, targetTransform);
         }
 
         // Determine if this location should show cards (only hand shows cards)

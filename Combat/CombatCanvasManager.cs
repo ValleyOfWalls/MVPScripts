@@ -75,6 +75,7 @@ public class CombatCanvasManager : NetworkBehaviour
             {
                 CombatTurn.PlayerTurn => "Player's Turn",
                 CombatTurn.PetTurn => "Pet's Turn",
+                CombatTurn.SharedTurn => "Your Turn",
                 _ => "Waiting..."
             };
             turnIndicatorText.text = turnText;
@@ -83,8 +84,33 @@ public class CombatCanvasManager : NetworkBehaviour
         // Enable/disable end turn button based on whose turn it is
         if (endTurnButton != null)
         {
-            bool isLocalPlayerTurn = turn == CombatTurn.PlayerTurn && localPlayer != null && localPlayer.IsOwner;
+            bool isLocalPlayerTurn = (turn == CombatTurn.PlayerTurn || turn == CombatTurn.SharedTurn) && localPlayer != null && localPlayer.IsOwner;
             endTurnButton.interactable = isLocalPlayerTurn;
+        }
+    }
+
+    /// <summary>
+    /// Updates the UI to show waiting for other players state
+    /// </summary>
+    public void UpdateWaitingForPlayersUI(bool isWaiting)
+    {
+        if (turnIndicatorText != null)
+        {
+            if (isWaiting)
+            {
+                turnIndicatorText.text = "Waiting for other players...";
+            }
+            else
+            {
+                // Reset to normal turn text - this will be updated by UpdateTurnUI
+                turnIndicatorText.text = "Your Turn";
+            }
+        }
+
+        // Disable end turn button while waiting
+        if (endTurnButton != null)
+        {
+            endTurnButton.interactable = !isWaiting;
         }
     }
 

@@ -138,6 +138,7 @@ public class CardAnimator : MonoBehaviour
     
     /// <summary>
     /// Animates card drawing into hand from below screen
+    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
     /// </summary>
     public void AnimateDrawToHand(Vector3 targetPosition, System.Action onComplete = null)
     {
@@ -147,9 +148,7 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        LogDebug($"Starting draw animation for {gameObject.name} to position {targetPosition}");
-        
-        StoreOriginalState();
+        LogDebug($"CENTRALIZED: Starting draw animation for {gameObject.name} - delegating to HandLayoutManager");
         
         // Clear any hover state before major animation
         if (isHovered)
@@ -165,42 +164,34 @@ public class CardAnimator : MonoBehaviour
         
         isAnimating = true;
         
-        // Set starting position (below screen)
-        Vector3 startPosition = targetPosition + drawStartOffset;
-        rectTransform.localPosition = startPosition;
-        rectTransform.localScale = Vector3.zero;
-        canvasGroup.alpha = 0f;
-        
-        // Create animation sequence
-        currentSequence = DOTween.Sequence();
-        
-        float duration = GetAdjustedDuration(drawAnimationDuration);
-        
-        // Animate position, scale, and alpha simultaneously
-        currentSequence.Append(rectTransform.DOLocalMove(targetPosition, duration).SetEase(drawEase));
-        currentSequence.Join(rectTransform.DOScale(drawScaleOvershoot, duration * 0.6f).SetEase(Ease.OutBack));
-        currentSequence.Join(canvasGroup.DOFade(GetAdjustedAlpha(1f), duration * 0.4f));
-        
-        // Scale back to normal size
-        currentSequence.Append(rectTransform.DOScale(originalScale, duration * 0.4f).SetEase(Ease.InOutQuad));
-        
-        // Complete callback
-        currentSequence.OnComplete(() => {
+        // CENTRALIZED: Delegate all positioning/scaling to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            Vector3 targetScale = GetCurrentLayoutScale();
+            handLayoutManager.SetCardDrawingState(gameObject, targetPosition, targetScale, () => {
+                isAnimating = false;
+                
+                // Notify HandAnimator that this card is done animating
+                if (handAnimator != null)
+                {
+                    handAnimator.RemoveAnimatingCard(this);
+                }
+                
+                onComplete?.Invoke();
+                LogDebug($"CENTRALIZED: Draw animation completed for {gameObject.name}");
+            });
+        }
+        else
+        {
+            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized draw animation");
             isAnimating = false;
-            
-            // Notify HandAnimator that this card is done animating
-            if (handAnimator != null)
-            {
-                handAnimator.RemoveAnimatingCard(this);
-            }
-            
             onComplete?.Invoke();
-            LogDebug($"Draw animation completed for {gameObject.name}");
-        });
+        }
     }
     
     /// <summary>
     /// Animates card playing successfully
+    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
     /// </summary>
     public void AnimatePlaySuccess(Vector3? targetPosition = null, System.Action onComplete = null)
     {
@@ -210,7 +201,7 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        LogDebug($"Starting play success animation for {gameObject.name}");
+        LogDebug($"CENTRALIZED: Starting play success animation for {gameObject.name} - delegating to HandLayoutManager");
         
         // Try to refresh missing component references before animating
         if (handAnimator == null)
@@ -244,32 +235,35 @@ public class CardAnimator : MonoBehaviour
         }
         
         isAnimating = true;
-        Vector3 target = targetPosition ?? (rectTransform.localPosition + playTargetOffset);
         
-        currentSequence = DOTween.Sequence();
-        float duration = GetAdjustedDuration(playAnimationDuration);
-        
-        // Animate up and fade out
-        currentSequence.Append(rectTransform.DOLocalMove(target, duration).SetEase(playEase));
-        currentSequence.Join(rectTransform.DOScale(originalScale * 1.2f, duration));
-        currentSequence.Join(canvasGroup.DOFade(playFadeOutAlpha, duration));
-        
-        currentSequence.OnComplete(() => {
+        // CENTRALIZED: Delegate all positioning/scaling to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            Vector3 target = targetPosition ?? (rectTransform.localPosition + playTargetOffset);
+            handLayoutManager.SetCardPlayingState(gameObject, target, () => {
+                isAnimating = false;
+                
+                // Notify HandAnimator that this card is done animating
+                if (handAnimator != null)
+                {
+                    handAnimator.RemoveAnimatingCard(this);
+                }
+                
+                onComplete?.Invoke();
+                LogDebug($"CENTRALIZED: Play success animation completed for {gameObject.name}");
+            });
+        }
+        else
+        {
+            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized play success animation");
             isAnimating = false;
-            
-            // Notify HandAnimator that this card is done animating
-            if (handAnimator != null)
-            {
-                handAnimator.RemoveAnimatingCard(this);
-            }
-            
             onComplete?.Invoke();
-            LogDebug($"Play success animation completed for {gameObject.name}");
-        });
+        }
     }
     
     /// <summary>
     /// Animates failed play: dissolve out at drop position, dissolve back in at hand
+    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
     /// </summary>
     public void AnimatePlayFailed(Vector3 failPosition, Vector3 handPosition, System.Action onComplete = null)
     {
@@ -279,10 +273,7 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        LogDebug($"Starting play failed animation for {gameObject.name} from {failPosition} to {handPosition}");
-        
-        // Ensure we have current state stored
-        StoreOriginalState();
+        LogDebug($"CENTRALIZED: Starting play failed animation for {gameObject.name} - delegating to HandLayoutManager");
         
         // Clear any hover state before major animation
         if (isHovered)
@@ -300,68 +291,36 @@ public class CardAnimator : MonoBehaviour
         dropPosition = failPosition;
         shouldReturnToHand = true;
         
-        // Store current alpha and ensure canvas group is available
-        float currentAlpha = canvasGroup != null ? canvasGroup.alpha : 1f;
-        
-        LogDebug($"Stored state - originalAlpha: {originalAlpha}, currentAlpha: {currentAlpha}, originalScale: {originalScale}");
-        
-        currentSequence = DOTween.Sequence();
-        
-        // Phase 1: Dissolve out at drop position
-        float dissolveOutDur = GetAdjustedDuration(dissolveOutDuration);
-        currentSequence.Append(canvasGroup.DOFade(0f, dissolveOutDur).SetEase(dissolveEase));
-        currentSequence.Join(rectTransform.DOScale(originalScale * 0.8f, dissolveOutDur).SetEase(dissolveEase));
-        
-        // Phase 2: Instantly move to hand position (invisible)
-        currentSequence.AppendCallback(() => {
-            rectTransform.localPosition = handPosition;
-            rectTransform.localScale = originalScale * 0.8f;
-            LogDebug($"Moved to hand position: {handPosition}, scale: {originalScale * 0.8f}");
-        });
-        
-        // Phase 3: Dissolve in at hand position
-        currentSequence.AppendInterval(dissolveInDelay);
-        float dissolveInDur = GetAdjustedDuration(dissolveInDuration);
-        float targetAlpha = GetAdjustedAlpha(Mathf.Max(originalAlpha, 1f)); // Ensure we fade to at least 1.0
-        
-        LogDebug($"Starting dissolve in - duration: {dissolveInDur}, targetAlpha: {targetAlpha}, targetScale: {originalScale}");
-        
-        currentSequence.Append(canvasGroup.DOFade(targetAlpha, dissolveInDur).SetEase(dissolveEase));
-        currentSequence.Join(rectTransform.DOScale(originalScale, dissolveInDur).SetEase(dissolveEase));
-        
-        currentSequence.OnComplete(() => {
+        // CENTRALIZED: Delegate all positioning/scaling to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            Vector3 handScale = GetCurrentLayoutScale();
+            handLayoutManager.SetCardPlayFailedState(gameObject, handPosition, handScale, Quaternion.identity, () => {
+                isAnimating = false;
+                shouldReturnToHand = false;
+                
+                // Notify HandAnimator that this card is done animating
+                if (handAnimator != null)
+                {
+                    handAnimator.RemoveAnimatingCard(this);
+                }
+                
+                onComplete?.Invoke();
+                LogDebug($"CENTRALIZED: Play failed animation completed for {gameObject.name}");
+            });
+        }
+        else
+        {
+            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized play failed animation");
             isAnimating = false;
             shouldReturnToHand = false;
-            
-            // Ensure final state is correct
-            if (canvasGroup != null)
-            {
-                canvasGroup.alpha = targetAlpha;
-                canvasGroup.interactable = true;
-                canvasGroup.blocksRaycasts = true;
-            }
-            
-            if (rectTransform != null)
-            {
-                rectTransform.localPosition = handPosition;
-                rectTransform.localScale = originalScale;
-            }
-            
-            LogDebug($"Final state set - alpha: {canvasGroup?.alpha}, position: {rectTransform?.localPosition}, scale: {rectTransform?.localScale}");
-            
-            // Notify HandAnimator that this card is done animating
-            if (handAnimator != null)
-            {
-                handAnimator.RemoveAnimatingCard(this);
-            }
-            
             onComplete?.Invoke();
-            LogDebug($"Play failed animation completed for {gameObject.name}");
-        });
+        }
     }
     
     /// <summary>
     /// Animates failed play with complete layout data: dissolve out at drop position, dissolve back in with proper layout
+    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
     /// </summary>
     public void AnimatePlayFailedComplete(Vector3 failPosition, Vector3 handPosition, Vector3 handScale, Quaternion handRotation, System.Action onComplete = null)
     {
@@ -371,88 +330,36 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        LogDebug($"Starting complete play failed animation for {gameObject.name} from {failPosition} to pos: {handPosition}, scale: {handScale}, rot: {handRotation.eulerAngles}");
-        
-        // Ensure we have current state stored
-        StoreOriginalState();
+        LogDebug($"CENTRALIZED: Starting complete play failed animation for {gameObject.name} - delegating to HandLayoutManager");
         
         isAnimating = true;
         dropPosition = failPosition;
         shouldReturnToHand = true;
         
-        // Store current alpha and ensure canvas group is available
-        float currentAlpha = canvasGroup != null ? canvasGroup.alpha : 1f;
-        
-        LogDebug($"Stored state - originalAlpha: {originalAlpha}, currentAlpha: {currentAlpha}, originalScale: {originalScale}");
-        
-        currentSequence = DOTween.Sequence();
-        
-        // Phase 1: Dissolve out at drop position
-        float dissolveOutDur = GetAdjustedDuration(dissolveOutDuration);
-        currentSequence.Append(canvasGroup.DOFade(0f, dissolveOutDur).SetEase(dissolveEase));
-        currentSequence.Join(rectTransform.DOScale(originalScale * 0.8f, dissolveOutDur).SetEase(dissolveEase));
-        
-        // Phase 2: Instantly set complete layout (invisible) and trigger other cards to reposition
-        currentSequence.AppendCallback(() => {
-            rectTransform.localPosition = handPosition;
-            rectTransform.localScale = handScale * 0.8f; // Start slightly smaller
-            rectTransform.localRotation = handRotation;
-            LogDebug($"Set complete layout - pos: {handPosition}, scale: {handScale * 0.8f}, rot: {handRotation.eulerAngles}");
-            
-            // Trigger layout update immediately when card is back in hand position
-            // This allows other cards to start repositioning while this card dissolves in
-            Transform handTransform = transform.parent;
-            if (handTransform != null)
-            {
-                var handLayoutManager = handTransform.GetComponent<HandLayoutManager>();
-                if (handLayoutManager != null)
+        // CENTRALIZED: Delegate all positioning/scaling to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            handLayoutManager.SetCardPlayFailedState(gameObject, handPosition, handScale, handRotation, () => {
+                isAnimating = false;
+                shouldReturnToHand = false;
+                
+                // Notify HandAnimator that this card is done animating
+                if (handAnimator != null)
                 {
-                    LogDebug($"Triggering early layout update for other cards while {gameObject.name} dissolves in");
-                    handLayoutManager.UpdateLayoutWithDebounce();
+                    handAnimator.RemoveAnimatingCard(this);
                 }
-            }
-        });
-        
-        // Phase 3: Dissolve in with complete layout
-        currentSequence.AppendInterval(dissolveInDelay);
-        float dissolveInDur = GetAdjustedDuration(dissolveInDuration);
-        float targetAlpha = GetAdjustedAlpha(Mathf.Max(originalAlpha, 1f)); // Ensure we fade to at least 1.0
-        
-        LogDebug($"Starting dissolve in - duration: {dissolveInDur}, targetAlpha: {targetAlpha}, targetScale: {handScale}");
-        
-        currentSequence.Append(canvasGroup.DOFade(targetAlpha, dissolveInDur).SetEase(dissolveEase));
-        currentSequence.Join(rectTransform.DOScale(handScale, dissolveInDur).SetEase(dissolveEase));
-        
-        currentSequence.OnComplete(() => {
+                
+                onComplete?.Invoke();
+                LogDebug($"CENTRALIZED: Complete play failed animation finished for {gameObject.name}");
+            });
+        }
+        else
+        {
+            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized complete play failed animation");
             isAnimating = false;
             shouldReturnToHand = false;
-            
-            // Ensure final state is correct with complete layout
-            if (canvasGroup != null)
-            {
-                canvasGroup.alpha = targetAlpha;
-                canvasGroup.interactable = true;
-                canvasGroup.blocksRaycasts = true;
-            }
-            
-            if (rectTransform != null)
-            {
-                rectTransform.localPosition = handPosition;
-                rectTransform.localScale = handScale;
-                rectTransform.localRotation = handRotation;
-            }
-            
-            LogDebug($"Final complete state set - alpha: {canvasGroup?.alpha}, position: {rectTransform?.localPosition}, scale: {rectTransform?.localScale}, rotation: {rectTransform?.localRotation.eulerAngles}");
-            
-            // Notify HandAnimator that this card is done animating
-            if (handAnimator != null)
-            {
-                handAnimator.RemoveAnimatingCard(this);
-            }
-            
             onComplete?.Invoke();
-            LogDebug($"Complete play failed animation finished for {gameObject.name}");
-        });
+        }
     }
     
     /// <summary>
@@ -486,6 +393,10 @@ public class CardAnimator : MonoBehaviour
     /// <summary>
     /// Simple dissolve in animation
     /// </summary>
+    /// <summary>
+    /// Animates card appearing via dissolve in effect
+    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
+    /// </summary>
     public void AnimateDissolveIn(System.Action onComplete = null)
     {
         if (isAnimating)
@@ -494,25 +405,24 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        LogDebug($"Starting dissolve in animation for {gameObject.name}");
+        LogDebug($"CENTRALIZED: Starting dissolve in animation for {gameObject.name} - delegating to HandLayoutManager");
         
         isAnimating = true;
         
-        // Set starting state
-        canvasGroup.alpha = 0f;
-        rectTransform.localScale = originalScale * 0.8f;
-        
-        currentSequence = DOTween.Sequence();
-        float duration = GetAdjustedDuration(dissolveAnimationDuration);
-        
-        currentSequence.Append(canvasGroup.DOFade(GetAdjustedAlpha(originalAlpha), duration).SetEase(dissolveEase));
-        currentSequence.Join(rectTransform.DOScale(originalScale, duration).SetEase(dissolveEase));
-        
-        currentSequence.OnComplete(() => {
+        // CENTRALIZED: Delegate dissolve in effect to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            handLayoutManager.SetCardTransformState(gameObject, originalPosition, originalScale, Quaternion.identity, GetAdjustedAlpha(originalAlpha));
             isAnimating = false;
             onComplete?.Invoke();
-            LogDebug($"Dissolve in animation completed for {gameObject.name}");
-        });
+            LogDebug($"CENTRALIZED: Dissolve in animation completed for {gameObject.name}");
+        }
+        else
+        {
+            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized dissolve in animation");
+            isAnimating = false;
+            onComplete?.Invoke();
+        }
     }
     
     #endregion
@@ -581,21 +491,22 @@ public class CardAnimator : MonoBehaviour
     
     /// <summary>
     /// Restores the card to its original state
+    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
     /// </summary>
     public void RestoreOriginalState()
     {
-        if (rectTransform != null)
-        {
-            rectTransform.localPosition = originalPosition;
-            rectTransform.localScale = originalScale;
-        }
+        LogDebug($"CENTRALIZED: Restoring original state for {gameObject.name} - delegating to HandLayoutManager");
         
-        if (canvasGroup != null)
+        // CENTRALIZED: Delegate state restoration to HandLayoutManager
+        if (handLayoutManager != null && rectTransform != null)
         {
-            canvasGroup.alpha = originalAlpha;
+            handLayoutManager.SetCardTransformState(gameObject, originalPosition, originalScale, Quaternion.identity, originalAlpha);
+            LogDebug($"CENTRALIZED: Restored state via HandLayoutManager for {gameObject.name}");
         }
-        
-        LogDebug($"Restored original state for {gameObject.name}");
+        else
+        {
+            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized state restoration");
+        }
     }
     
     /// <summary>
@@ -787,10 +698,11 @@ public class CardAnimator : MonoBehaviour
     
     /// <summary>
     /// Animates card scaling up on hover (called by UIHoverDetector for self-owned cards)
+    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
     /// </summary>
     public void AnimateHoverEnter()
     {
-        LogDebug($"AnimateHoverEnter called for {gameObject.name} - enableHoverEffects: {enableHoverEffects}, isAnimating: {isAnimating}");
+        LogDebug($"CENTRALIZED: AnimateHoverEnter called for {gameObject.name} - delegating to HandLayoutManager");
         
         if (!enableHoverEffects)
         {
@@ -804,18 +716,6 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        // Get current layout scale instead of stored original scale
-        Vector3 currentLayoutScale = GetCurrentLayoutScale();
-        
-        // Ensure we have valid current scale
-        if (currentLayoutScale == Vector3.zero)
-        {
-            LogDebug($"Current layout scale is zero for {gameObject.name} - using current transform scale");
-            currentLayoutScale = rectTransform.localScale;
-        }
-        
-        LogDebug($"Starting hover enter animation for {gameObject.name} - current scale: {rectTransform.localScale}, layout scale: {currentLayoutScale}, target scale: {currentLayoutScale * hoverScaleMultiplier}");
-        
         isHovered = true;
         
         // Kill any existing hover tween
@@ -824,21 +724,25 @@ public class CardAnimator : MonoBehaviour
             hoverTween.Kill();
         }
         
-        // Scale up from current layout scale
-        Vector3 targetScale = currentLayoutScale * hoverScaleMultiplier;
-        hoverTween = rectTransform.DOScale(targetScale, hoverAnimationDuration)
-            .SetEase(hoverEase)
-            .OnComplete(() => {
-                LogDebug($"Hover enter animation completed for {gameObject.name} - final scale: {rectTransform.localScale}");
-            });
+        // CENTRALIZED: Delegate hover scaling to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            handLayoutManager.SetCardHoverState(gameObject, true, hoverScaleMultiplier);
+            LogDebug($"CENTRALIZED: Hover enter completed for {gameObject.name}");
+        }
+        else
+        {
+            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized hover enter animation");
+        }
     }
     
     /// <summary>
     /// Animates card scaling back to normal on hover exit (called by UIHoverDetector for self-owned cards)
+    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
     /// </summary>
     public void AnimateHoverExit()
     {
-        LogDebug($"AnimateHoverExit called for {gameObject.name} - enableHoverEffects: {enableHoverEffects}, isAnimating: {isAnimating}");
+        LogDebug($"CENTRALIZED: AnimateHoverExit called for {gameObject.name} - delegating to HandLayoutManager");
         
         if (!enableHoverEffects)
         {
@@ -852,18 +756,6 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        // Get current layout scale instead of stored original scale
-        Vector3 currentLayoutScale = GetCurrentLayoutScale();
-        
-        // Ensure we have valid current scale
-        if (currentLayoutScale == Vector3.zero)
-        {
-            LogDebug($"Current layout scale is zero for {gameObject.name} - using current transform scale");
-            currentLayoutScale = rectTransform.localScale;
-        }
-        
-        LogDebug($"Starting hover exit animation for {gameObject.name} - current scale: {rectTransform.localScale}, target layout scale: {currentLayoutScale}");
-        
         isHovered = false;
         
         // Kill any existing hover tween
@@ -872,12 +764,16 @@ public class CardAnimator : MonoBehaviour
             hoverTween.Kill();
         }
         
-        // Scale back to current layout scale
-        hoverTween = rectTransform.DOScale(currentLayoutScale, hoverAnimationDuration)
-            .SetEase(hoverEase)
-            .OnComplete(() => {
-                LogDebug($"Hover exit animation completed for {gameObject.name} - final scale: {rectTransform.localScale}");
-            });
+        // CENTRALIZED: Delegate hover scaling to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            handLayoutManager.SetCardHoverState(gameObject, false);
+            LogDebug($"CENTRALIZED: Hover exit completed for {gameObject.name}");
+        }
+        else
+        {
+            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized hover exit animation");
+        }
     }
     
     #endregion

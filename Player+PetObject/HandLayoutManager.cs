@@ -9,6 +9,23 @@ using System.Collections;
 /// Replaces the horizontal layout group with more sophisticated card arrangement.
 /// Attach to: Hand transform GameObject (the parent of card objects).
 /// 
+/// CENTRALIZED POSITIONING SYSTEM:
+/// This class now serves as the central hub for ALL card positioning during combat.
+/// Other systems (HandManager, CardParenter, etc.) delegate positioning to this class.
+/// 
+/// NETWORK ARCHITECTURE WITH NETWORKTRANSFORM:
+/// - Only the OWNING CLIENT positions their cards (checked via NetworkEntity.IsOwner)
+/// - NetworkTransform automatically syncs positions to other clients
+/// - No RPCs needed for card positioning - NetworkTransform handles all sync
+/// - Prevents conflicts: each client only touches cards they own
+/// 
+/// Key Methods for External Systems:
+/// - OnCardAddedToHand(): Call when cards are moved TO hand (unified handling)
+/// - OnCardRemovedFromHand(): Call when cards are removed FROM hand
+/// - OnCardMovedToNonHandLocation(): Static method for deck/discard positioning
+/// - HandleCombatCardPositioning(): For combat-specific card positioning
+/// - HandleDragPositioning(): For drag/drop operations
+/// 
 /// OPTIMIZATION NOTES:
 /// - Implements debouncing to prevent duplicate layout updates during initialization
 /// - Skips layout updates when hand is empty to avoid unnecessary calculations
@@ -30,7 +47,7 @@ public class HandLayoutManager : MonoBehaviour
     [SerializeField] private float minCardSpacing = 80f; // Minimum spacing between cards
     
     [Header("Card Scaling")]
-    [SerializeField] private Vector3 baseCardScale = Vector3.one; // Base scale for cards
+    [SerializeField] private Vector3 baseCardScale = new Vector3(1f, 1f, 1f); // Base scale for cards
     [SerializeField] private float scaleVariation = 0.1f; // How much cards scale down when hand is full
     [SerializeField] private int maxCardsForFullScale = 5; // Number of cards before scaling starts
     
@@ -52,13 +69,10 @@ public class HandLayoutManager : MonoBehaviour
     private List<RectTransform> cardTransforms = new List<RectTransform>();
     private Dictionary<RectTransform, CardLayoutData> cardLayoutData = new Dictionary<RectTransform, CardLayoutData>();
     private RectTransform rectTransform;
-    private bool layoutUpdatePending = false;
     private Coroutine layoutCoroutine;
     
-    // Debouncing variables
+    // State tracking
     private bool isInitialized = false;
-    private float lastLayoutUpdateTime = 0f;
-    private const float LAYOUT_UPDATE_DEBOUNCE_TIME = 0.1f;
     
     // Drag state tracking
     private RectTransform draggedCard;
@@ -99,8 +113,10 @@ public class HandLayoutManager : MonoBehaviour
         
         // Defer initial layout update - only update if hand has cards
         RefreshCardList();
+        
         if (cardTransforms.Count > 0)
         {
+            Debug.Log($"[LAYOUT_DEBUG] Start: {cardTransforms.Count} cards found, initializing layout on {gameObject.name}");
             UpdateLayout();
         }
         else
@@ -119,7 +135,7 @@ public class HandLayoutManager : MonoBehaviour
             RefreshCardList();
             if (cardTransforms.Count > 0)
             {
-                UpdateLayoutWithDebounce();
+                UpdateLayout();
             }
         }
     }
@@ -227,107 +243,53 @@ public class HandLayoutManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Updates the layout of all cards in the hand with debouncing
-    /// </summary>
-    public void UpdateLayoutWithDebounce()
-    {
-        // Check ownership to prevent duplicate updates on host/client machines
-        if (!ShouldProcessLayoutUpdate())
-        {
-            LogDebug("Skipping UpdateLayoutWithDebounce - not owned by local client");
-            return;
-        }
-        
-        // Check if enough time has passed since last update to prevent spam
-        float currentTime = Time.time;
-        if (currentTime - lastLayoutUpdateTime < LAYOUT_UPDATE_DEBOUNCE_TIME)
-        {
-            LogDebug($"Debouncing layout update - too soon since last update ({currentTime - lastLayoutUpdateTime:F3}s ago)");
-            return;
-        }
-        
-        UpdateLayout();
-    }
-    
-    /// <summary>
-    /// Safely requests a layout update (public API for external systems)
-    /// This method should be used by external systems instead of calling UpdateLayout directly
-    /// </summary>
-    public void RequestLayoutUpdate()
-    {
-        // Check ownership to prevent duplicate updates on host/client machines
-        if (!ShouldProcessLayoutUpdate())
-        {
-            LogDebug("Skipping RequestLayoutUpdate - not owned by local client");
-            return;
-        }
-        
-        // Only update if initialized and we have cards
-        if (!isInitialized)
-        {
-            LogDebug("Layout update requested but HandLayoutManager not yet initialized - skipping");
-            return;
-        }
-        
-        RefreshCardList();
-        if (cardTransforms.Count > 0)
-        {
-            UpdateLayoutWithDebounce();
-        }
-        else
-        {
-            LogDebug("Layout update requested but hand is empty - skipping");
-        }
-    }
-    
-    /// <summary>
-    /// Updates the layout of all cards in the hand
+    /// Updates the layout of all cards in the hand - THE ONLY LAYOUT UPDATE METHOD
+    /// Works with NetworkTransform: Only the owning client positions cards, NetworkTransform syncs to others
     /// </summary>
     public void UpdateLayout()
     {
-        //Debug.Log($"[HandLayoutManager] UpdateLayout called on {gameObject.name}");
-        
-        // Check ownership to prevent duplicate updates on host/client machines
+        // Check ownership to prevent conflicts with NetworkTransform
+        // Only the card owner should position cards, NetworkTransform handles sync
         if (!ShouldProcessLayoutUpdate())
         {
-            LogDebug("Skipping UpdateLayout - not owned by local client");
+            LogDebug("Skipping UpdateLayout - not owned by local client (NetworkTransform will sync positions from owner)");
             return;
         }
-        
-        // Update debounce timestamp
-        lastLayoutUpdateTime = Time.time;
-        
+
+        if (!isInitialized)
+        {
+            LogDebug("Skipping UpdateLayout - not yet initialized");
+            return;
+        }
+
+        // Stop any existing animation
         if (layoutCoroutine != null)
         {
-            //Debug.Log($"[HandLayoutManager] Stopping existing layout coroutine on {gameObject.name}");
             StopCoroutine(layoutCoroutine);
+            layoutCoroutine = null;
         }
-        
+
         // Refresh card list
-        //Debug.Log($"[HandLayoutManager] Refreshing card list on {gameObject.name}");
         RefreshCardList();
-        //Debug.Log($"[HandLayoutManager] Found {cardTransforms.Count} cards to layout on {gameObject.name}");
-        
+
         // Skip layout if hand is empty
         if (cardTransforms.Count == 0)
         {
-            //Debug.Log($"[HandLayoutManager] Skipping layout update - hand is empty on {gameObject.name}");
             LogDebug("Skipping layout update - hand is empty");
             return;
         }
-        
+
+        Debug.Log($"[LAYOUT_DEBUG] UpdateLayout: {cardTransforms.Count} cards, {(enableLayoutAnimation ? "animated" : "immediate")} on {gameObject.name}");
+
+        // Use animation if enabled and in play mode
         if (enableLayoutAnimation && Application.isPlaying)
         {
-            //Debug.Log($"[HandLayoutManager] Starting animated layout update on {gameObject.name}");
             layoutCoroutine = StartCoroutine(AnimateLayoutUpdate());
         }
         else
         {
-            //Debug.Log($"[HandLayoutManager] Applying immediate layout update on {gameObject.name}");
             ApplyLayoutImmediate();
         }
-        
-        //Debug.Log($"[HandLayoutManager] UpdateLayout completed on {gameObject.name}");
     }
     
     /// <summary>
@@ -364,7 +326,7 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private void RefreshCardList()
     {
-        //Debug.Log($"[HandLayoutManager] RefreshCardList called on {gameObject.name} - {transform.childCount} children");
+        Debug.Log($"[LAYOUT_DEBUG] RefreshCardList called on {gameObject.name} - {transform.childCount} children");
         cardTransforms.Clear();
         
         // Get all child RectTransforms that have Card components
@@ -380,16 +342,24 @@ public class HandLayoutManager : MonoBehaviour
                 if (cardComponent != null)
                 {
                     cardTransforms.Add(childRect);
-                  //  Debug.Log($"[HandLayoutManager] Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
-                  //  LogDebug($"Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
+                    Debug.Log($"[LAYOUT_DEBUG] Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy}) on {gameObject.name}");
+                    LogDebug($"Added card to layout: {child.name} (active: {child.gameObject.activeInHierarchy})");
                 }
+                else
+                {
+                    Debug.Log($"[LAYOUT_DEBUG] Child {child.name} has RectTransform but no Card component - skipping on {gameObject.name}");
+                }
+            }
+            else
+            {
+                Debug.Log($"[LAYOUT_DEBUG] Child {child.name} is not a RectTransform - skipping on {gameObject.name}");
             }
         }
         
         // Sort by sibling index to maintain consistent order
         cardTransforms = cardTransforms.OrderBy(c => c.GetSiblingIndex()).ToList();
         
-        //Debug.Log($"[HandLayoutManager] Refreshed card list: {cardTransforms.Count} cards found on {gameObject.name}");
+        Debug.Log($"[LAYOUT_DEBUG] Refreshed card list: {cardTransforms.Count} cards found on {gameObject.name}");
         LogDebug($"Refreshed card list: {cardTransforms.Count} cards found");
     }
     
@@ -398,16 +368,8 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private void RemoveCardFromLayout(RectTransform cardTransform)
     {
-        if (cardTransforms.Contains(cardTransform))
-        {
-            cardTransforms.Remove(cardTransform);
-            LogDebug($"Removed card from layout: {cardTransform.name}");
-        }
-        
-        if (cardLayoutData.ContainsKey(cardTransform))
-        {
-            cardLayoutData.Remove(cardTransform);
-        }
+        // Use enhanced removal method that handles visual state cleanup
+        RemoveCardFromLayoutWithVisualState(cardTransform);
         
         // Update layout for remaining cards
         UpdateLayout();
@@ -421,7 +383,18 @@ public class HandLayoutManager : MonoBehaviour
         cardLayoutData.Clear();
         
         int cardCount = cardsToLayout.Count;
-        if (cardCount == 0) return;
+        if (cardCount == 0) 
+        {
+            LogDebug("No cards to calculate layout for");
+            return;
+        }
+        
+        // Validate rectTransform exists
+        if (rectTransform == null)
+        {
+            Debug.LogError($"[LAYOUT_DEBUG] rectTransform is null - cannot calculate layout on {gameObject.name}");
+            return;
+        }
         
         // Calculate dynamic spacing
         float dynamicSpacing = CalculateDynamicSpacing(cardCount);
@@ -435,76 +408,147 @@ public class HandLayoutManager : MonoBehaviour
         
         Vector2 handCenter = (Vector2)rectTransform.localPosition + handPivotOffset;
         
+        Debug.Log($"[LAYOUT_DEBUG] Layout calc: {cardCount} cards, spacing={dynamicSpacing:F0}, scale={cardScale:F2}, arc={arcAngle:F1}° on {gameObject.name}");
+        
+        // Validate that we have reasonable values
+        if (arcRadius <= 0)
+        {
+            Debug.LogError($"[LAYOUT_DEBUG] Invalid arcRadius: {arcRadius} on {gameObject.name}");
+            arcRadius = 800f; // Reset to default
+        }
+        
         for (int i = 0; i < cardCount; i++)
         {
             RectTransform cardRect = cardsToLayout[i];
+            if (cardRect == null)
+            {
+                Debug.LogWarning($"[LAYOUT_DEBUG] Null card at index {i} - skipping on {gameObject.name}");
+                continue;
+            }
             
             // Calculate position along arc
             float normalizedPosition = cardCount > 1 ? (float)i / (cardCount - 1) : 0.5f;
-            float angle = Mathf.Lerp(-arcAngle * 0.5f, arcAngle * 0.5f, normalizedPosition);
+            float angleFromCenter = (normalizedPosition - 0.5f) * arcAngle * Mathf.Deg2Rad;
             
-            // Convert angle to radians
-            float angleRad = angle * Mathf.Deg2Rad;
-            
-            // Calculate position on arc (inverted Y to create frown instead of smile)
+            // Calculate arc position (upward fan)
             Vector2 arcPosition = new Vector2(
-                Mathf.Sin(angleRad) * arcRadius,
-                Mathf.Cos(angleRad) * arcRadius - arcRadius
+                Mathf.Sin(angleFromCenter) * arcRadius,
+                Mathf.Cos(angleFromCenter) * arcRadius - arcRadius
             );
-            
-            // Calculate z position for proper card stacking (earlier cards go behind)
-            float zPosition = i * cardZSpacing;
             
             Vector3 finalPosition = new Vector3(
                 handCenter.x + arcPosition.x,
                 handCenter.y + arcPosition.y,
-                zPosition
+                i * cardZSpacing
             );
             
-            // Calculate rotation (cards follow the arc, negative angle to point outward)
-            Quaternion cardRotation = Quaternion.Euler(0, 0, -angle * cardRotationFactor);
+            // SAFEGUARD: Clamp positions to reasonable screen bounds  
+            finalPosition.x = Mathf.Clamp(finalPosition.x, -1000f, 1000f);
+            finalPosition.y = Mathf.Clamp(finalPosition.y, -500f, 500f);
+            
+            // Calculate rotation to follow arc (negative to point outward)
+            float cardRotation = -angleFromCenter * cardRotationFactor * Mathf.Rad2Deg;
+            Quaternion finalRotation = Quaternion.Euler(0, 0, cardRotation);
+            
+            Debug.Log($"[LAYOUT_DEBUG] Card {i} ({cardRect.name}): pos={finalPosition}, scale={cardScale}, rotation={cardRotation:F1}° on {gameObject.name}");
             
             // Store layout data
-            cardLayoutData[cardRect] = new CardLayoutData(
-                finalPosition,
-                cardScale,
-                cardRotation,
-                cardRect.GetSiblingIndex()
-            );
+            cardLayoutData[cardRect] = new CardLayoutData(finalPosition, cardScale, finalRotation, cardRect.GetSiblingIndex());
         }
-        
-        LogDebug($"Calculated layout for {cardCount} cards - spacing: {dynamicSpacing:F1}, scale: {cardScale}, arc angle: {arcAngle:F1}°");
     }
     
     /// <summary>
-    /// Calculates dynamic spacing based on card count
+    /// Calculates the appropriate spacing between cards based on count
     /// </summary>
     private float CalculateDynamicSpacing(int cardCount)
     {
-        if (cardCount <= 1) return cardSpacing;
+        // VALIDATE AND FIX SPACING VALUES
+        ValidateLayoutSettings();
         
-        // Use cardSpacing as the baseline, but clamp it between min and max
-        float baseSpacing = Mathf.Clamp(cardSpacing, minCardSpacing, maxCardSpacing);
+        if (cardCount <= 1) 
+        {
+            Debug.Log($"[LAYOUT_DEBUG] CalculateDynamicSpacing: {cardCount} card(s), returning base spacing {cardSpacing} on {gameObject.name}");
+            return cardSpacing;
+        }
         
-        // Reduce spacing as more cards are added, starting from the base spacing
-        float spacingReduction = Mathf.Clamp01((float)(cardCount - 1) / 10f);
-        return Mathf.Lerp(baseSpacing, minCardSpacing, spacingReduction);
+        // Linear interpolation between min and max spacing based on card count
+        // More cards = less spacing
+        float normalizedCardCount = Mathf.Clamp01((float)(cardCount - 2) / 8f); // Normalize 2-10 cards to 0-1
+        float dynamicSpacing = Mathf.Lerp(maxCardSpacing, minCardSpacing, normalizedCardCount);
+        
+        Debug.Log($"[LAYOUT_DEBUG] CalculateDynamicSpacing: {cardCount} cards, normalized={normalizedCardCount:F2}, spacing={dynamicSpacing:F1} (range: {minCardSpacing}-{maxCardSpacing}) on {gameObject.name}");
+        return dynamicSpacing;
     }
     
     /// <summary>
-    /// Calculates card scale based on card count
+    /// Validates and fixes unreasonable layout settings that cause off-screen positioning
+    /// </summary>
+    private void ValidateLayoutSettings()
+    {
+        bool changed = false;
+        
+        // Fix extreme spacing values
+        if (cardSpacing > 200f || cardSpacing < 50f)
+        {
+            Debug.LogWarning($"[LAYOUT_DEBUG] Fixing extreme cardSpacing: {cardSpacing} -> 120 on {gameObject.name}");
+            cardSpacing = 120f;
+            changed = true;
+        }
+        
+        if (maxCardSpacing > 200f || maxCardSpacing < 80f)
+        {
+            Debug.LogWarning($"[LAYOUT_DEBUG] Fixing extreme maxCardSpacing: {maxCardSpacing} -> 150 on {gameObject.name}");
+            maxCardSpacing = 150f;
+            changed = true;
+        }
+        
+        if (minCardSpacing > 120f || minCardSpacing < 50f)
+        {
+            Debug.LogWarning($"[LAYOUT_DEBUG] Fixing extreme minCardSpacing: {minCardSpacing} -> 80 on {gameObject.name}");
+            minCardSpacing = 80f;
+            changed = true;
+        }
+        
+        // Fix extreme arc radius
+        if (arcRadius > 1000f || arcRadius < 400f)
+        {
+            Debug.LogWarning($"[LAYOUT_DEBUG] Fixing extreme arcRadius: {arcRadius} -> 800 on {gameObject.name}");
+            arcRadius = 800f;
+            changed = true;
+        }
+        
+        // Fix extreme arc angle
+        if (maxArcAngle > 60f || maxArcAngle < 20f)
+        {
+            Debug.LogWarning($"[LAYOUT_DEBUG] Fixing extreme maxArcAngle: {maxArcAngle} -> 45 on {gameObject.name}");
+            maxArcAngle = 45f;
+            changed = true;
+        }
+        
+        if (changed)
+        {
+            Debug.Log($"[LAYOUT_DEBUG] Layout settings validated and fixed on {gameObject.name}");
+        }
+    }
+    
+    /// <summary>
+    /// Calculates card scale based on the number of cards
     /// </summary>
     private Vector3 CalculateCardScale(int cardCount)
     {
         if (cardCount <= maxCardsForFullScale)
         {
+            Debug.Log($"[LAYOUT_DEBUG] CalculateCardScale: {cardCount} cards <= {maxCardsForFullScale}, using base scale {baseCardScale} on {gameObject.name}");
             return baseCardScale;
         }
         
+        // Calculate scale reduction for too many cards
         float scaleReduction = (cardCount - maxCardsForFullScale) * scaleVariation;
-        float finalScale = Mathf.Max(0.5f, baseCardScale.x - scaleReduction);
+        float finalScale = Mathf.Max(0.6f, 1f - scaleReduction); // Minimum scale of 0.6
+        Vector3 cardScale = baseCardScale * finalScale;
         
-        return Vector3.one * finalScale;
+        Debug.Log($"[LAYOUT_DEBUG] CalculateCardScale: {cardCount} cards > {maxCardsForFullScale}, scale reduction={scaleReduction:F2}, final scale={cardScale} on {gameObject.name}");
+        return cardScale;
     }
     
     /// <summary>
@@ -512,6 +556,7 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private void ApplyLayoutImmediate()
     {
+        Debug.Log($"[LAYOUT_DEBUG] ApplyLayoutImmediate called for {cardTransforms.Count} cards on {gameObject.name}");
         ApplyLayoutImmediateForCards(cardTransforms);
     }
     
@@ -522,16 +567,35 @@ public class HandLayoutManager : MonoBehaviour
     {
         CalculateCardLayoutData(cardsToLayout);
         
+        int appliedCount = 0;
         foreach (var cardRect in cardsToLayout)
         {
             if (cardLayoutData.ContainsKey(cardRect))
             {
                 var data = cardLayoutData[cardRect];
+                
+                // Apply calculated layout directly - no safety checks
+                
+                // Apply the calculated layout
+                Vector3 oldPos = cardRect.localPosition;
+                Vector3 oldScale = cardRect.localScale;
+                
                 cardRect.localPosition = data.targetPosition;
                 cardRect.localScale = data.targetScale;
                 cardRect.localRotation = data.targetRotation;
+                
+                Debug.Log($"[LAYOUT_DEBUG] ✓ APPLIED: {cardRect.name} pos({oldPos:F0} -> {data.targetPosition:F0}) scale({oldScale:F2} -> {data.targetScale:F2}) on {gameObject.name}");
+                appliedCount++;
+                
+                LogDebug($"Applied layout to {cardRect.name}: pos={data.targetPosition}, scale={data.targetScale}");
+            }
+            else
+            {
+                Debug.LogWarning($"[LAYOUT_DEBUG] No layout data found for card {cardRect.name} on {gameObject.name}");
             }
         }
+        
+        Debug.Log($"[LAYOUT_DEBUG] Layout application complete: {appliedCount}/{cardsToLayout.Count} cards positioned on {gameObject.name}");
     }
     
     /// <summary>
@@ -547,13 +611,12 @@ public class HandLayoutManager : MonoBehaviour
     /// </summary>
     private IEnumerator AnimateLayoutUpdateForCards(List<RectTransform> cardsToLayout)
     {
-       // Debug.Log($"[HandLayoutManager] AnimateLayoutUpdateForCards starting on {gameObject.name} with {cardsToLayout.Count} cards");
+        Debug.Log($"[LAYOUT_DEBUG] 🎬 Starting animated layout for {cardsToLayout.Count} cards on {gameObject.name}");
         
         CalculateCardLayoutData(cardsToLayout);
         
         if (cardsToLayout.Count == 0)
         {
-           // Debug.Log($"[HandLayoutManager] No cards to animate on {gameObject.name} - ending early");
             layoutCoroutine = null;
             yield break;
         }
@@ -570,20 +633,17 @@ public class HandLayoutManager : MonoBehaviour
                 startPositions[cardRect] = cardRect.localPosition;
                 startScales[cardRect] = cardRect.localScale;
                 startRotations[cardRect] = cardRect.localRotation;
-                Debug.Log($"[HandLayoutManager] Card {cardRect.name} start pos: {cardRect.localPosition}, target: {(cardLayoutData.ContainsKey(cardRect) ? cardLayoutData[cardRect].targetPosition.ToString() : "no data")}");
             }
         }
         
-        Debug.Log($"[HandLayoutManager] Starting animation loop on {gameObject.name} - duration: {layoutAnimationDuration}s");
+        Debug.Log($"[LAYOUT_DEBUG] Animation starting - duration: {layoutAnimationDuration}s on {gameObject.name}");
         float elapsed = 0f;
-        int frameCount = 0;
         
         while (elapsed < layoutAnimationDuration)
         {
             elapsed += Time.deltaTime;
             float t = elapsed / layoutAnimationDuration;
             float curveValue = layoutAnimationCurve.Evaluate(t);
-            frameCount++;
             
             foreach (var cardRect in cardsToLayout)
             {
@@ -600,27 +660,28 @@ public class HandLayoutManager : MonoBehaviour
             yield return null;
         }
         
-       // Debug.Log($"[HandLayoutManager] Animation loop completed on {gameObject.name} - {frameCount} frames processed");
-        
-        // Ensure final positions are exact
+        // Ensure final positions are exact and LOG the application
+        Debug.Log($"[LAYOUT_DEBUG] 🎯 Animation complete - applying final positions on {gameObject.name}");
         foreach (var cardRect in cardsToLayout)
         {
             if (cardRect != null && cardLayoutData.ContainsKey(cardRect))
             {
                 var data = cardLayoutData[cardRect];
+                Vector3 oldPos = cardRect.localPosition;
+                
                 cardRect.localPosition = data.targetPosition;
                 cardRect.localScale = data.targetScale;
                 cardRect.localRotation = data.targetRotation;
-              //  Debug.Log($"[HandLayoutManager] Card {cardRect.name} final pos: {cardRect.localPosition}");
+                
+                Debug.Log($"[LAYOUT_DEBUG] ✓ ANIMATED: {cardRect.name} pos({oldPos:F0} -> {data.targetPosition:F0}) on {gameObject.name}");
             }
         }
         
-      //  Debug.Log($"[HandLayoutManager] AnimateLayoutUpdateForCards completed on {gameObject.name}");
         layoutCoroutine = null;
         
-        // Force canvas update to ensure visual changes are applied (especially important on server/host)
+        // Force canvas update to ensure visual changes are applied
         Canvas.ForceUpdateCanvases();
-       // Debug.Log($"[HandLayoutManager] Forced canvas update on {gameObject.name}");
+        Debug.Log($"[LAYOUT_DEBUG] Animation layout complete - canvas updated on {gameObject.name}");
     }
     
     /// <summary>
@@ -654,9 +715,6 @@ public class HandLayoutManager : MonoBehaviour
         
         // Apply layout immediately regardless of animation settings
         ApplyLayoutImmediate();
-        
-        // Update timestamp
-        lastLayoutUpdateTime = Time.time;
         
         LogDebug("Forced immediate layout update completed");
     }
@@ -746,7 +804,7 @@ public class HandLayoutManager : MonoBehaviour
     public bool GetCardLayoutData(RectTransform cardTransform, out Vector3 targetPosition, out Vector3 targetScale, out Quaternion targetRotation)
     {
         targetPosition = Vector3.zero;
-        targetScale = Vector3.one;
+        targetScale = Vector3.zero;
         targetRotation = Quaternion.identity;
         
         if (cardTransform == null) return false;
@@ -773,13 +831,17 @@ public class HandLayoutManager : MonoBehaviour
         return false;
     }
     
+
+    
     #region External Event Handlers
     
     /// <summary>
-    /// Called when children change (cards added/removed)
+    /// Called when children change (cards added/removed) - SIMPLE EVENT HANDLING
     /// </summary>
     private void OnTransformChildrenChanged()
     {
+        Debug.Log($"[LAYOUT_DEBUG] OnTransformChildrenChanged called on {gameObject.name} - current child count: {transform.childCount}");
+        
         // Only trigger layout updates if we're initialized
         if (!isInitialized)
         {
@@ -787,65 +849,37 @@ public class HandLayoutManager : MonoBehaviour
             return;
         }
         
-        // Check ownership to prevent duplicate updates on host/client machines
-        if (!ShouldProcessLayoutUpdate())
-        {
-            LogDebug("Skipping OnTransformChildrenChanged - not owned by local client");
-            return;
-        }
-        
-        // Delay update slightly to ensure all changes are processed
-        if (!layoutUpdatePending)
-        {
-            layoutUpdatePending = true;
-            StartCoroutine(DelayedLayoutUpdate());
-        }
+        // Simple: just update the layout
+        UpdateLayout();
     }
     
     /// <summary>
-    /// Checks if this HandLayoutManager should process layout updates.
-    /// Prevents duplicate updates on host/client machines by checking ownership.
+    /// Checks if this HandLayoutManager should process layout updates
+    /// Prevents duplicate updates on host/client machines
     /// </summary>
     private bool ShouldProcessLayoutUpdate()
     {
-        // Find the NetworkEntity that contains this HandLayoutManager
-        // HandLayoutManager is attached to the hand transform, which is part of a Hand entity
-        NetworkEntity handEntity = GetComponentInParent<NetworkEntity>();
+        // Get NetworkEntity to check ownership - aligns with NetworkTransform ownership
+        NetworkEntity networkEntity = GetComponentInParent<NetworkEntity>();
         
-        if (handEntity == null)
+        if (networkEntity == null)
         {
-            // If no NetworkEntity found, allow the update (non-networked scenario)
-            LogDebug("No NetworkEntity found - allowing layout update (non-networked)");
+            // No network entity found - this is likely a local/test scenario
+            Debug.Log($"[LAYOUT_DEBUG] ShouldProcessLayoutUpdate: No NetworkEntity found - allowing layout update (local/test scenario) on {gameObject.name}");
+            LogDebug("No NetworkEntity found - allowing layout update (local/test scenario)");
             return true;
         }
         
-        // Only process layout updates for local player entities (prevent double updates on host/client)
-        if (!handEntity.IsOwner)
-        {
-            LogDebug($"Skipping layout update for non-local hand entity {handEntity.name} (IsOwner: {handEntity.IsOwner})");
-            return false;
-        }
+        // Check if this is owned by the local client - this aligns with NetworkTransform
+        // Only the owning client should position cards, NetworkTransform will sync to others
+        bool isOwner = networkEntity.IsOwner;
         
-        LogDebug($"Processing layout update for local hand entity {handEntity.name}");
-        return true;
+        Debug.Log($"[LAYOUT_DEBUG] ShouldProcessLayoutUpdate: NetworkEntity found, IsOwner={isOwner} for entity {networkEntity.EntityName.Value} on {gameObject.name}");
+        LogDebug($"NetworkEntity ownership check: IsOwner={isOwner} for entity {networkEntity.EntityName.Value}");
+        return isOwner;
     }
     
-    private IEnumerator DelayedLayoutUpdate()
-    {
-        yield return null; // Wait one frame
-        layoutUpdatePending = false;
-        
-        // Use debounced update and only if we have cards
-        RefreshCardList();
-        if (cardTransforms.Count > 0)
-        {
-            UpdateLayoutWithDebounce();
-        }
-        else
-        {
-            LogDebug("Skipping delayed layout update - hand is empty");
-        }
-    }
+
     
     #endregion
     
@@ -878,6 +912,8 @@ public class HandLayoutManager : MonoBehaviour
         debugLogEnabled = false;
        // Debug.Log("[HandLayoutManager] Debug logging disabled");
     }
+    
+
     
     private void OnDrawGizmos()
     {
@@ -912,7 +948,7 @@ public class HandLayoutManager : MonoBehaviour
             foreach (var data in cardLayoutData.Values)
             {
                 Vector3 worldPos = transform.TransformPoint(data.targetPosition);
-                Gizmos.DrawWireCube(worldPos, Vector3.one * 20f);
+                Gizmos.DrawWireCube(worldPos, new Vector3(20f, 20f, 20f));
             }
         }
     }
@@ -1001,6 +1037,528 @@ public class HandLayoutManager : MonoBehaviour
         }
     }
 #endif
+    
+    #endregion
+    
+    #region True Centralization - Complete Positioning/Scaling API
+    
+    /// <summary>
+    /// Animation states that affect positioning and scaling
+    /// </summary>
+    public enum CardAnimationState
+    {
+        Normal,          // Default hand layout
+        Drawing,         // Card being drawn to hand
+        Playing,         // Card being played/removed
+        PlayFailed,      // Card failed to play, returning to hand
+        Dragging,        // Card being dragged
+        Hovering,        // Card being hovered
+        Dissolving       // Card dissolving in/out
+    }
+    
+    /// <summary>
+    /// Comprehensive data for card positioning and visual state
+    /// </summary>
+    private class CardVisualState
+    {
+        public Vector3 position;
+        public Vector3 scale;
+        public Quaternion rotation;
+        public float alpha;
+        public CardAnimationState animationState;
+        public bool isAnimating;
+        public System.DateTime lastStateChange;
+        
+        public CardVisualState()
+        {
+            position = Vector3.zero;
+            scale = Vector3.zero; // Will be set to proper scale when needed
+            rotation = Quaternion.identity;
+            alpha = 1.0f;
+            animationState = CardAnimationState.Normal;
+            isAnimating = false;
+            lastStateChange = System.DateTime.Now;
+        }
+        
+        public void UpdateState(CardAnimationState newState)
+        {
+            animationState = newState;
+            lastStateChange = System.DateTime.Now;
+        }
+    }
+    
+    // Tracking for all card visual states
+    private Dictionary<RectTransform, CardVisualState> cardVisualStates = new Dictionary<RectTransform, CardVisualState>();
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Sets card to drawing animation state
+    /// Replaces CardAnimator.AnimateDrawToHand positioning logic
+    /// </summary>
+    public void SetCardDrawingState(GameObject cardObject, Vector3 targetPosition, Vector3 targetScale, System.Action onComplete = null)
+    {
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+        
+        var visualState = GetOrCreateVisualState(cardTransform);
+        visualState.UpdateState(CardAnimationState.Drawing);
+        visualState.isAnimating = true;
+        
+        LogDebug($"CENTRALIZED: Setting card {cardObject.name} to drawing state - pos: {targetPosition}, scale: {targetScale}");
+        
+        // Apply drawing state immediately
+        cardTransform.localPosition = targetPosition;
+        cardTransform.localScale = targetScale;
+        
+        // Trigger completion callback if provided
+        onComplete?.Invoke();
+        
+        // Return to normal state after drawing completes
+        StartCoroutine(ReturnToNormalStateAfterDelay(cardTransform, 0.1f));
+    }
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Sets card to playing animation state
+    /// Replaces CardAnimator.AnimatePlaySuccess positioning logic
+    /// </summary>
+    public void SetCardPlayingState(GameObject cardObject, Vector3? targetPosition = null, System.Action onComplete = null)
+    {
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+        
+        var visualState = GetOrCreateVisualState(cardTransform);
+        visualState.UpdateState(CardAnimationState.Playing);
+        visualState.isAnimating = true;
+        
+        LogDebug($"CENTRALIZED: Setting card {cardObject.name} to playing state");
+        
+        // Apply play state (typically involves removal from hand layout)
+        OnCardRemovedFromHand(cardObject);
+        
+        if (targetPosition.HasValue)
+        {
+            cardTransform.localPosition = targetPosition.Value;
+        }
+        
+        onComplete?.Invoke();
+    }
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Sets card to failed play animation state
+    /// Replaces CardAnimator.AnimatePlayFailed positioning logic
+    /// </summary>
+    public void SetCardPlayFailedState(GameObject cardObject, Vector3 handPosition, Vector3 handScale, Quaternion handRotation, System.Action onComplete = null)
+    {
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+        
+        var visualState = GetOrCreateVisualState(cardTransform);
+        visualState.UpdateState(CardAnimationState.PlayFailed);
+        visualState.isAnimating = true;
+        
+        LogDebug($"CENTRALIZED: Setting card {cardObject.name} to play failed state - returning to hand");
+        
+        // Return card to hand with provided layout data
+        cardTransform.localPosition = handPosition;
+        cardTransform.localScale = handScale;
+        cardTransform.localRotation = handRotation;
+        
+        // Add back to hand layout
+        OnCardAddedToHand(cardObject);
+        
+        onComplete?.Invoke();
+        
+        // Return to normal state after animation completes
+        StartCoroutine(ReturnToNormalStateAfterDelay(cardTransform, 0.5f));
+    }
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Sets card to dragging state
+    /// Replaces CardDragDrop scaling logic
+    /// </summary>
+    public void SetCardDraggingState(GameObject cardObject, float dragScale = 1.2f, float dragAlpha = 0.8f)
+    {
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+        
+        var visualState = GetOrCreateVisualState(cardTransform);
+        visualState.UpdateState(CardAnimationState.Dragging);
+        visualState.isAnimating = false; // Dragging is a static state, not animating
+        
+        LogDebug($"CENTRALIZED: Setting card {cardObject.name} to dragging state - scale: {dragScale}, alpha: {dragAlpha}");
+        
+        // Store original scale before applying drag scale
+        if (cardLayoutData.TryGetValue(cardTransform, out var layoutData))
+        {
+            cardTransform.localScale = layoutData.targetScale * dragScale;
+        }
+        else
+        {
+                            cardTransform.localScale = baseCardScale * dragScale;
+        }
+        
+        // Apply drag alpha
+        CanvasGroup canvasGroup = cardObject.GetComponent<CanvasGroup>();
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = dragAlpha;
+        }
+        
+        visualState.scale = cardTransform.localScale;
+        visualState.alpha = dragAlpha;
+    }
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Sets card to hover state
+    /// Replaces CardAnimator hover effects
+    /// </summary>
+    public void SetCardHoverState(GameObject cardObject, bool isHovering, float hoverScaleMultiplier = 1.1f)
+    {
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+        
+        var visualState = GetOrCreateVisualState(cardTransform);
+        visualState.UpdateState(isHovering ? CardAnimationState.Hovering : CardAnimationState.Normal);
+        
+        LogDebug($"CENTRALIZED: Setting card {cardObject.name} hover state: {isHovering}");
+        
+        if (isHovering)
+        {
+            // Apply hover scale
+            if (cardLayoutData.TryGetValue(cardTransform, out var layoutData))
+            {
+                cardTransform.localScale = layoutData.targetScale * hoverScaleMultiplier;
+            }
+            else
+            {
+                cardTransform.localScale = baseCardScale * hoverScaleMultiplier;
+            }
+        }
+        else
+        {
+            // Return to normal layout scale
+            ReturnCardToNormalState(cardTransform);
+        }
+        
+        visualState.scale = cardTransform.localScale;
+    }
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Restores card to normal hand layout state
+    /// Replaces scattered state restoration logic
+    /// </summary>
+    public void ReturnCardToNormalState(RectTransform cardTransform)
+    {
+        if (cardTransform == null) return;
+        
+        var visualState = GetOrCreateVisualState(cardTransform);
+        visualState.UpdateState(CardAnimationState.Normal);
+        visualState.isAnimating = false;
+        
+        LogDebug($"CENTRALIZED: Returning card {cardTransform.name} to normal state");
+        
+        // Apply normal layout data if available
+        if (cardLayoutData.TryGetValue(cardTransform, out var layoutData))
+        {
+            cardTransform.localPosition = layoutData.targetPosition;
+            cardTransform.localScale = layoutData.targetScale;
+            cardTransform.localRotation = layoutData.targetRotation;
+        }
+        else
+        {
+            // Force layout update to calculate correct position
+            UpdateLayout();
+        }
+        
+        // Reset alpha to normal
+        CanvasGroup canvasGroup = cardTransform.GetComponent<CanvasGroup>();
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = 1.0f;
+        }
+        
+        visualState.position = cardTransform.localPosition;
+        visualState.scale = cardTransform.localScale;
+        visualState.rotation = cardTransform.localRotation;
+        visualState.alpha = 1.0f;
+    }
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Sets card transform directly (for external state restoration)
+    /// Replaces Card.cs state restoration logic
+    /// </summary>
+    public void SetCardTransformState(GameObject cardObject, Vector3 position, Vector3 scale, Quaternion rotation, float alpha = 1.0f)
+    {
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+        
+        var visualState = GetOrCreateVisualState(cardTransform);
+        
+        LogDebug($"CENTRALIZED: Setting card {cardObject.name} transform state - pos: {position}, scale: {scale}, rot: {rotation.eulerAngles}, alpha: {alpha}");
+        
+        // Apply transform state
+        cardTransform.localPosition = position;
+        cardTransform.localScale = scale;
+        cardTransform.localRotation = rotation;
+        
+        // Apply alpha
+        CanvasGroup canvasGroup = cardObject.GetComponent<CanvasGroup>();
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = alpha;
+        }
+        
+        // Update visual state tracking
+        visualState.position = position;
+        visualState.scale = scale;
+        visualState.rotation = rotation;
+        visualState.alpha = alpha;
+        visualState.UpdateState(CardAnimationState.Normal); // Assume external state setting is for normal state
+    }
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Gets current card animation state
+    /// </summary>
+    public CardAnimationState GetCardAnimationState(RectTransform cardTransform)
+    {
+        if (cardVisualStates.TryGetValue(cardTransform, out var visualState))
+        {
+            return visualState.animationState;
+        }
+        return CardAnimationState.Normal;
+    }
+    
+    /// <summary>
+    /// CENTRALIZED METHOD: Checks if card is currently animating
+    /// </summary>
+    public bool IsCardAnimating(RectTransform cardTransform)
+    {
+        if (cardVisualStates.TryGetValue(cardTransform, out var visualState))
+        {
+            return visualState.isAnimating;
+        }
+        return false;
+    }
+    
+    /// <summary>
+    /// Helper to get or create visual state for a card
+    /// </summary>
+    private CardVisualState GetOrCreateVisualState(RectTransform cardTransform)
+    {
+        if (!cardVisualStates.TryGetValue(cardTransform, out var visualState))
+        {
+            visualState = new CardVisualState();
+            cardVisualStates[cardTransform] = visualState;
+        }
+        return visualState;
+    }
+    
+    /// <summary>
+    /// Coroutine to return card to normal state after a delay
+    /// </summary>
+    private System.Collections.IEnumerator ReturnToNormalStateAfterDelay(RectTransform cardTransform, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        
+        if (cardTransform != null)
+        {
+            ReturnCardToNormalState(cardTransform);
+        }
+    }
+    
+    /// <summary>
+    /// Enhanced RemoveCardFromLayout to also clean up visual state
+    /// </summary>
+    private void RemoveCardFromLayoutWithVisualState(RectTransform cardTransform)
+    {
+        // Remove from layout data
+        if (cardLayoutData.ContainsKey(cardTransform))
+        {
+            cardLayoutData.Remove(cardTransform);
+        }
+        
+        // Remove from visual state tracking
+        if (cardVisualStates.ContainsKey(cardTransform))
+        {
+            cardVisualStates.Remove(cardTransform);
+        }
+        
+        // Remove from card list
+        if (cardTransforms.Contains(cardTransform))
+        {
+            cardTransforms.Remove(cardTransform);
+        }
+        
+        LogDebug($"CENTRALIZED: Removed card {cardTransform.name} from all tracking");
+    }
+    
+    #endregion
+    
+    #region Centralized Card Management
+    
+    /// <summary>
+    /// Handles when a card is added to hand - SIMPLE AND DIRECT
+    /// </summary>
+    public void OnCardAddedToHand(GameObject cardObject)
+    {
+        if (cardObject == null) return;
+
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+
+        LogDebug($"OnCardAddedToHand called for {cardObject.name}");
+
+        // Ensure the card is properly parented to this hand
+        if (cardTransform.parent != transform)
+        {
+            cardTransform.SetParent(transform, false);
+            LogDebug($"Reparented {cardObject.name} to hand");
+        }
+
+        // Reset card visual state for new hand position
+        ResetCardVisualState(cardObject);
+
+        // Simple: just update the layout when ready
+        if (isInitialized)
+        {
+            Debug.Log($"[LAYOUT_DEBUG] OnCardAddedToHand: {cardObject.name} -> updating layout on {gameObject.name}");
+            UpdateLayout();
+        }
+        else
+        {
+            LogDebug($"HandLayoutManager not yet initialized - layout will be handled when Start() completes");
+        }
+    }
+    
+    /// <summary>
+    /// Handles when a card is removed from hand - centralizes removal logic
+    /// </summary>
+    public void OnCardRemovedFromHand(GameObject cardObject)
+    {
+        if (cardObject == null) return;
+        
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+        
+        Debug.Log($"[LAYOUT_DEBUG] OnCardRemovedFromHand called for {cardObject.name} on {gameObject.name}");
+        LogDebug($"OnCardRemovedFromHand called for {cardObject.name}");
+        
+        // Remove from our tracking
+        RemoveCardFromLayout(cardTransform);
+        Debug.Log($"[LAYOUT_DEBUG] Removed {cardObject.name} from layout tracking on {gameObject.name}");
+    }
+    
+    /// <summary>
+    /// Handles when a card is moved to a non-hand location (deck/discard) - provides consistent positioning
+    /// NOTE: This method only handles parenting and basic transform reset for NON-HAND locations
+    /// For hand locations, use OnCardAddedToHand() instead
+    /// </summary>
+    public static void OnCardMovedToNonHandLocation(GameObject cardObject, Transform targetTransform)
+    {
+        if (cardObject == null || targetTransform == null) return;
+        
+        Debug.Log($"HandLayoutManager CENTRALIZED: Moving card {cardObject.name} to non-hand location {targetTransform.name}");
+        
+        // Set parent and reset position for non-hand locations (deck/discard/etc)
+        cardObject.transform.SetParent(targetTransform, false);
+        cardObject.transform.localPosition = Vector3.zero;
+        cardObject.transform.localRotation = Quaternion.identity;
+        // Note: Scale should be set by the target location's requirements, not assumed
+    }
+    
+    /// <summary>
+    /// Centralized method for handling card position during combat card play/return
+    /// Replaces the scattered logic in HandManager's EnsureHandLayoutAfterDelay methods
+    /// </summary>
+    public void HandleCombatCardPositioning(GameObject cardObject, bool wasReturned = false)
+    {
+        if (cardObject == null) return;
+        
+        RectTransform cardTransform = cardObject.transform as RectTransform;
+        if (cardTransform == null) return;
+        
+        LogDebug($"HandleCombatCardPositioning called for {cardObject.name} (returned: {wasReturned})");
+        
+        if (wasReturned)
+        {
+            // Card was returned to hand (e.g., from TestCombat mode)
+            OnCardAddedToHand(cardObject);
+        }
+        else
+        {
+            // Card was played from hand
+            OnCardRemovedFromHand(cardObject);
+        }
+    }
+    
+    /// <summary>
+    /// Handles positioning for cards during drag operations in combat
+    /// Centralizes the drag positioning logic
+    /// </summary>
+    public void HandleDragPositioning(RectTransform cardTransform, bool isDragStart, bool cardWasPlayed = false)
+    {
+        if (cardTransform == null) return;
+        
+        if (isDragStart)
+        {
+            OnCardDragStart(cardTransform);
+        }
+        else
+        {
+            OnCardDragEnd(cardTransform, cardWasPlayed);
+        }
+    }
+    
+    /// <summary>
+    /// Resets card visual state when it's moved to hand
+    /// Centralizes the visual reset logic from HandManager
+    /// </summary>
+    private void ResetCardVisualState(GameObject cardObject)
+    {
+        if (cardObject == null) return;
+        
+        // Reset card visual state for hand position
+        CanvasGroup cardCanvasGroup = cardObject.GetComponent<CanvasGroup>();
+        if (cardCanvasGroup != null)
+        {
+            cardCanvasGroup.alpha = 1.0f; // Reset alpha from previous animations
+        }
+        
+        // Reset CardAnimator state if present
+        CardAnimator cardAnimator = cardObject.GetComponent<CardAnimator>();
+        if (cardAnimator != null)
+        {
+            cardAnimator.StoreOriginalState(); // Store fresh state with alpha = 1.0
+            // Refresh layout manager reference in case card was moved between hands
+            cardAnimator.RefreshLayoutManager();
+        }
+        
+        LogDebug($"Reset visual state for {cardObject.name}");
+    }
+    
+    // Note: EnsureLayoutAfterCardAdded coroutine removed - unified layout handling now uses RequestLayoutUpdate()
+    
+    /// <summary>
+    /// Gets the HandLayoutManager instance from a transform, if it exists
+    /// Utility method for other systems to check if they should delegate positioning
+    /// </summary>
+    public static HandLayoutManager GetHandLayoutManager(Transform handTransform)
+    {
+        if (handTransform == null) return null;
+        return handTransform.GetComponent<HandLayoutManager>();
+    }
+    
+    /// <summary>
+    /// Checks if a transform has a HandLayoutManager and returns positioning delegate info
+    /// Helps other systems determine how to handle positioning
+    /// </summary>
+    public static bool ShouldDelegatePositioning(Transform targetTransform, out HandLayoutManager layoutManager)
+    {
+        layoutManager = null;
+        if (targetTransform == null) return false;
+        
+        layoutManager = targetTransform.GetComponent<HandLayoutManager>();
+        return layoutManager != null;
+    }
     
     #endregion
 } 

@@ -19,6 +19,14 @@ public class HandManager : NetworkBehaviour
     private Transform handTransform;
     private Transform deckTransform;
     private Transform discardTransform;
+    
+    // Track if discard operation is in progress
+    private bool discardInProgress = false;
+    
+    /// <summary>
+    /// Returns true if a discard operation is currently in progress
+    /// </summary>
+    public bool IsDiscardInProgress => discardInProgress;
 
     private void Awake()
     {
@@ -174,6 +182,10 @@ public class HandManager : NetworkBehaviour
     {
         if (!IsServerInitialized) return;
         
+        // Set discard in progress flag
+        discardInProgress = true;
+        RpcSetDiscardInProgress(true);
+        
         // Get the entity for better logging
         NetworkEntity entity = GetComponent<NetworkEntity>();
         string entityName = entity != null ? entity.EntityName.Value : gameObject.name;
@@ -185,6 +197,8 @@ public class HandManager : NetworkBehaviour
         if (handTransform == null || discardTransform == null)
         {
             Debug.LogError($"HandManager: Missing hand or discard transform for {entityName}");
+            discardInProgress = false;
+            RpcSetDiscardInProgress(false);
             return;
         }
 
@@ -198,40 +212,12 @@ public class HandManager : NetworkBehaviour
         if (handCards.Count == 0)
         {
             Debug.Log($"HandManager: No cards to discard for {entityName} (ID: {entityId}), returning early");
+            discardInProgress = false;
+            RpcSetDiscardInProgress(false);
             return;
         }
-        
-        Debug.Log($"HandManager: Starting animated discard of {handCards.Count} cards for {entityName} (ID: {entityId})");
-        
-        // Trigger animations on all clients (including server)
-        List<int> cardNetObjIds = new List<int>();
-        foreach (GameObject card in handCards)
-        {
-            if (card != null)
-            {
-                NetworkObject cardNetObj = card.GetComponent<NetworkObject>();
-                if (cardNetObj != null)
-                {
-                    cardNetObjIds.Add(cardNetObj.ObjectId);
-                    Debug.Log($"HandManager: Added card {card.name} (ID: {cardNetObj.ObjectId}) to discard list for {entityName}");
-                }
-                else
-                {
-                    Debug.LogError($"HandManager: Card {card.name} missing NetworkObject for {entityName}");
-                }
-            }
-            else
-            {
-                Debug.LogError($"HandManager: Found null card in hand for {entityName}");
-            }
-        }
-        
-        Debug.Log($"HandManager: Prepared {cardNetObjIds.Count} cards for RPC discard animation for {entityName} (ID: {entityId})");
-        
-        // Start animations on all clients
-        RpcStartDiscardAnimations(cardNetObjIds.ToArray());
-        
-        // Start the server-side discard sequence (handles actual card movement without additional animations)
+
+        // Start the discard sequence
         StartCoroutine(ServerDiscardHandSequence(handCards));
     }
     
@@ -310,6 +296,8 @@ public class HandManager : NetworkBehaviour
     {
         if (cardsToDiscard == null || cardsToDiscard.Count == 0)
         {
+            discardInProgress = false;
+            RpcSetDiscardInProgress(false);
             yield break;
         }
         
@@ -319,6 +307,34 @@ public class HandManager : NetworkBehaviour
         int entityId = entity != null ? entity.ObjectId : -999;
         
         Debug.Log($"HandManager: ServerDiscardHandSequence starting for {entityName} (ID: {entityId}) with {cardsToDiscard.Count} cards");
+        
+        // Start animations on all clients (including server)
+        List<int> cardNetObjIds = new List<int>();
+        foreach (GameObject card in cardsToDiscard)
+        {
+            if (card != null)
+            {
+                NetworkObject cardNetObj = card.GetComponent<NetworkObject>();
+                if (cardNetObj != null)
+                {
+                    cardNetObjIds.Add(cardNetObj.ObjectId);
+                    Debug.Log($"HandManager: Added card {card.name} (ID: {cardNetObj.ObjectId}) to discard animation list for {entityName}");
+                }
+                else
+                {
+                    Debug.LogError($"HandManager: Card {card.name} missing NetworkObject for {entityName}");
+                }
+            }
+            else
+            {
+                Debug.LogError($"HandManager: Found null card in hand for {entityName}");
+            }
+        }
+        
+        Debug.Log($"HandManager: Starting discard animations for {cardNetObjIds.Count} cards for {entityName} (ID: {entityId})");
+        
+        // Start animations on all clients
+        RpcStartDiscardAnimations(cardNetObjIds.ToArray());
         
         // Wait for animations to start and progress
         // The dissolve animation duration is typically 0.3 seconds in CardAnimator
@@ -359,6 +375,12 @@ public class HandManager : NetworkBehaviour
                 }
             }
         }
+        
+        // Mark discard as complete
+        discardInProgress = false;
+        RpcSetDiscardInProgress(false);
+        
+        Debug.Log($"HandManager: Discard sequence fully completed for {entityName} (ID: {entityId})");
     }
     
     /// <summary>
@@ -391,10 +413,9 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
-        // Direct server-side manipulation
+        // Direct server-side manipulation using centralized positioning
         card.SetActive(false);
-        card.transform.SetParent(discardTransform);
-        card.transform.localPosition = Vector3.zero;
+        HandLayoutManager.OnCardMovedToNonHandLocation(card, discardTransform);
 
         // RPCs for clients only
         RpcSetCardEnabled(cardNetObj.ObjectId, false);
@@ -575,16 +596,15 @@ public class HandManager : NetworkBehaviour
             Debug.LogWarning($"[CARD_UPGRADE] HandManager: No CardTracker found on {card.name}");
         }
         
-        // Only reset position if no HandLayoutManager is present to avoid interfering with custom layouts
-        HandLayoutManager handLayoutManager = handTransform.GetComponent<HandLayoutManager>();
-        if (handLayoutManager == null)
+        // Use centralized positioning system - delegate all positioning to HandLayoutManager
+        HandLayoutManager handLayoutManager = HandLayoutManager.GetHandLayoutManager(handTransform);
+        if (handLayoutManager != null)
         {
-        card.transform.localPosition = Vector3.zero;
-            /* Debug.Log($"HandManager (ServerDirect): Reset {card.name} position to zero (no HandLayoutManager found)"); */
+            handLayoutManager.OnCardAddedToHand(card);
         }
         else
         {
-            /* Debug.Log($"HandManager (ServerDirect): Skipped position reset for {card.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
+            Debug.LogError($"HandManager: No HandLayoutManager found on hand transform {handTransform.name} for {gameObject.name}. Cards will not be positioned correctly.");
         }
         
         // RPCs for clients only
@@ -643,11 +663,10 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
-        // Direct server-side manipulation
+        // Direct server-side manipulation using centralized positioning
         /* Debug.Log($"HandManager (ServerDirect): Disabling card {card.name} and moving to discard for {gameObject.name}"); */
         card.SetActive(false);
-        card.transform.SetParent(discardTransform);
-        card.transform.localPosition = Vector3.zero;
+        HandLayoutManager.OnCardMovedToNonHandLocation(card, discardTransform);
         
         // RPCs for clients only
         RpcSetCardEnabled(cardNetObj.ObjectId, false); 
@@ -690,10 +709,9 @@ public class HandManager : NetworkBehaviour
             return;
         }
 
-        // Direct server-side manipulation
+        // Direct server-side manipulation using centralized positioning
         /* Debug.Log($"HandManager (ServerDirect): Moving card {card.name} to deck (disabled) for {gameObject.name}"); */
-        card.transform.SetParent(deckTransform);
-        card.transform.localPosition = Vector3.zero;
+        HandLayoutManager.OnCardMovedToNonHandLocation(card, deckTransform);
         card.SetActive(false); 
         
         // RPCs for clients only
@@ -916,24 +934,28 @@ public class HandManager : NetworkBehaviour
         /* Debug.Log($"HandManager (Client RPC): RpcSetCardParent - VALIDATION PASSED - Setting card {cardObject.name} parent to {targetTransform.name} on {gameObject.name}"); */
         cardObject.transform.SetParent(targetTransform);
         
-        // Only reset position if no HandLayoutManager is present to avoid interfering with custom layouts
-        HandLayoutManager handLayoutManager = targetTransform.GetComponent<HandLayoutManager>();
-        if (handLayoutManager == null && targetTransformName == "Hand")
+        // Handle positioning based on target transform type using centralized system
+        if (targetTransformName == "Hand")
         {
-            cardObject.transform.localPosition = Vector3.zero;
-            /* Debug.Log($"HandManager (Client RPC): Reset {cardObject.name} position to zero (no HandLayoutManager found)"); */
-        }
-        else if (targetTransformName != "Hand")
-        {
-            // Always reset position for Deck and Discard (they don't use custom layouts)
-        cardObject.transform.localPosition = Vector3.zero;
-            /* Debug.Log($"HandManager (Client RPC): Reset {cardObject.name} position to zero for {targetTransformName}"); */
+            // For hand cards, use centralized positioning system
+            HandLayoutManager handLayoutManager = HandLayoutManager.GetHandLayoutManager(targetTransform);
+            if (handLayoutManager != null)
+            {
+                handLayoutManager.OnCardAddedToHand(cardObject);
+            }
+            else
+            {
+                Debug.LogError($"HandManager (Client RPC): No HandLayoutManager found on hand transform {targetTransform.name}. Card {cardObject.name} will not be positioned correctly.");
+            }
         }
         else
         {
-            /* Debug.Log($"HandManager (Client RPC): Skipped position reset for {cardObject.name} - HandLayoutManager detected on {handLayoutManager.gameObject.name}"); */
+            // For Deck and Discard, use centralized non-hand positioning
+            HandLayoutManager.OnCardMovedToNonHandLocation(cardObject, targetTransform);
         }
     }
+    
+    // Note: EnsureHandLayoutAfterDelay methods removed - functionality moved to HandLayoutManager.OnCardAddedToHand()
 
     /// <summary>
     /// RPC to reset card visual state on clients (alpha, scale, etc.) when moving to hand
@@ -1137,6 +1159,12 @@ public class HandManager : NetworkBehaviour
         {
             Debug.Log($"[HandManager] {message}");
         }
+    }
+
+    [ObserversRpc]
+    private void RpcSetDiscardInProgress(bool isInProgress)
+    {
+        discardInProgress = isInProgress;
     }
 }
 

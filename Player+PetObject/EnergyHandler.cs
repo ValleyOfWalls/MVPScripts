@@ -163,6 +163,9 @@ public class EnergyHandler : NetworkBehaviour
         // UI updates are now handled automatically by EntityStatsUIController
         // through events and SyncVar changes - no manual UI update needed
         
+        // Update card validation since energy has changed
+        HandleCardPlay.UpdateAllCardValidation();
+        
         Debug.Log($"Client: {entity.EntityName.Value} spent {amount} energy");
     }
     
@@ -178,6 +181,9 @@ public class EnergyHandler : NetworkBehaviour
         // UI updates are now handled automatically by EntityStatsUIController
         // through events and SyncVar changes - no manual UI update needed
         
+        // Update card validation since energy has changed
+        HandleCardPlay.UpdateAllCardValidation();
+        
         Debug.Log($"Client: {entity.EntityName.Value} gained {amount} energy");
     }
     
@@ -189,6 +195,9 @@ public class EnergyHandler : NetworkBehaviour
         
         // UI updates are now handled automatically by EntityStatsUIController
         // through events and SyncVar changes - no manual UI update needed
+        
+        // Update card validation since max energy has changed
+        HandleCardPlay.UpdateAllCardValidation();
         
         Debug.Log($"Client: {entity.EntityName.Value} max energy changed to {newMaxEnergy}");
     }

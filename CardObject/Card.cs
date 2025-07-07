@@ -208,10 +208,19 @@ public class Card : NetworkBehaviour
     }
 
     /// <summary>
+    /// Gets the card's image component for visual effects
+    /// </summary>
+    /// <returns>The Image component used for the card's visual representation</returns>
+    public Image GetCardImage()
+    {
+        return cardImage;
+    }
+
+    /// <summary>
     /// Sets the logical owner of this card.
     /// Should be called by the spawning authority (e.g., CardSpawner) ON THE SERVER.
     /// </summary>
-    /// <param name="entity">The NetworkEntity that owns this card.</param>
+    /// <param name="entity">The NetworkEntity that owned this card.</param>
     [Server]
     public void SetOwnerEntity(NetworkEntity entity)
     {
@@ -1002,9 +1011,21 @@ public class Card : NetworkBehaviour
         SetDraftable(state.isDraftable);
 
         // Restore transform
-        transform.position = state.position;
-        transform.rotation = state.rotation;
-        transform.localScale = state.scale;
+        // CENTRALIZED: Delegate transform restoration to HandLayoutManager if available
+        HandLayoutManager handLayoutManager = GetComponentInParent<HandLayoutManager>();
+        if (handLayoutManager != null)
+        {
+            handLayoutManager.SetCardTransformState(gameObject, state.position, state.scale, state.rotation);
+            Debug.Log($"Card: CENTRALIZED state restoration via HandLayoutManager for {CardName}");
+        }
+        else
+        {
+            // Fallback for cards not in hand
+            transform.position = state.position;
+            transform.rotation = state.rotation;
+            transform.localScale = state.scale;
+            Debug.Log($"Card: FALLBACK state restoration directly for {CardName}");
+        }
     }
 }
 

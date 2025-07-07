@@ -35,45 +35,37 @@ public class PetCombatAI : NetworkBehaviour
     }
 
     /// <summary>
-    /// Executes the pet's turn in combat
+    /// Queues cards for the pet during the shared turn phase
     /// </summary>
     [Server]
-    public IEnumerator TakeTurn()
+    public void QueueCardsForSharedTurn()
     {
-        if (!IsServerInitialized) yield break;
-
-
-        hasFinishedTurn = false;
-
-        // Small delay before starting
-        yield return new WaitForSeconds(delayBeforeFirstAction);
+        if (!IsServerInitialized) return;
+        
+        Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} queuing cards for shared turn");
 
         // Get all cards in hand
         HandManager handManager = GetHandManager();
         if (handManager == null)
         {
             Debug.LogError($"PetCombatAI: Cannot find hand manager for {petEntity.EntityName.Value}");
-            hasFinishedTurn = true;
-            yield break;
+            return;
         }
 
         Transform handTransform = handManager.GetHandTransform();
         if (handTransform == null)
         {
             Debug.LogError($"PetCombatAI: Cannot find hand transform for {petEntity.EntityName.Value}");
-            hasFinishedTurn = true;
-            yield break;
+            return;
         }
 
         List<GameObject> cardsInHand = GetCardsInHand(handTransform);
 
-
         // If no cards in hand, end turn
         if (cardsInHand.Count == 0)
         {
-
-            hasFinishedTurn = true;
-            yield break;
+            Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} has no cards to queue");
+            return;
         }
 
         // Get opponent (target for most cards)
@@ -81,8 +73,7 @@ public class PetCombatAI : NetworkBehaviour
         if (opponentEntity == null)
         {
             Debug.LogError($"PetCombatAI: Cannot find opponent for {petEntity.EntityName.Value}");
-            hasFinishedTurn = true;
-            yield break;
+            return;
         }
 
         // Sort cards by priority for AI to play
@@ -90,7 +81,6 @@ public class PetCombatAI : NetworkBehaviour
 
         // Play cards until out of energy or cards
         int remainingEnergy = petEntity.CurrentEnergy.Value;
-
 
         foreach (GameObject cardObject in sortedCards)
         {
@@ -104,30 +94,22 @@ public class PetCombatAI : NetworkBehaviour
             // Check if we have enough energy to play this card
             if (card.CardData.EnergyCost > remainingEnergy)
             {
-
                 continue;
             }
 
-            // Play the card
-
-
+            // Queue the card play
             // Prepare card for play by setting up source and target
             SourceAndTargetIdentifier sourceTarget = cardObject.GetComponent<SourceAndTargetIdentifier>();
             if (sourceTarget != null)
             {
-                // FIXED: Determine the correct target based on the card's actual target type
-                // instead of always forcing opponent target
+                // Determine the correct target based on the card's actual target type
                 NetworkEntity correctTarget = DetermineTargetForCard(card.CardData, petEntity, opponentEntity);
                 if (correctTarget != null)
                 {
                     sourceTarget.ForceUpdateSourceAndTarget(petEntity, correctTarget);
-                    // FIXED: Use the actual effective target type instead of legacy TargetType property
-                    CardTargetType effectiveTargetType = card.CardData.GetEffectiveTargetType();
-
                 }
                 else
                 {
-                    // FIXED: Use the actual effective target type instead of legacy TargetType property
                     CardTargetType effectiveTargetType = card.CardData.GetEffectiveTargetType();
                     Debug.LogWarning($"PetCombatAI: Could not determine valid target for card {card.CardData.CardName} with target type {effectiveTargetType}");
                     continue;
@@ -139,14 +121,11 @@ public class PetCombatAI : NetworkBehaviour
                 continue;
             }
 
-            // Trigger the card play
+            // Queue the card play
             HandleCardPlay cardPlayHandler = cardObject.GetComponent<HandleCardPlay>();
             if (cardPlayHandler != null)
             {
-                Debug.Log($"CARDPLAY_DEBUG: PetCombatAI attempting to play card {card.CardData.CardName}");
-                Debug.Log($"CARDPLAY_DEBUG: Card object ownership - IsOwner: {cardObject.GetComponent<NetworkBehaviour>()?.IsOwner}, HasOwner: {cardObject.GetComponent<NetworkBehaviour>()?.Owner != null}");
-                Debug.Log($"CARDPLAY_DEBUG: Pet entity: {petEntity.EntityName.Value}, Type: {petEntity.EntityType}");
-                Debug.Log($"CARDPLAY_DEBUG: Pet entity ownership - IsOwner: {petEntity.IsOwner}, HasOwner: {petEntity.Owner != null}, OwnerClientId: {(petEntity.Owner != null ? petEntity.Owner.ClientId : -1)}");
+                Debug.Log($"CARDPLAY_DEBUG: PetCombatAI attempting to queue card {card.CardData.CardName}");
                 
                 // Get source and target information for the server call
                 SourceAndTargetIdentifier sourceTargetId = cardObject.GetComponent<SourceAndTargetIdentifier>();
@@ -161,17 +140,17 @@ public class PetCombatAI : NetworkBehaviour
                     int sourceId = sourceEntity != null ? sourceEntity.ObjectId : petEntity.ObjectId; // Fallback to pet entity
                     int[] targetIds = allTargets != null ? allTargets.Select(t => t != null ? t.ObjectId : 0).Where(id => id != 0).ToArray() : new int[0];
                     
-                    Debug.Log($"CARDPLAY_DEBUG: PetCombatAI calling ServerPlayCard with sourceId: {sourceId}, targetIds: [{string.Join(", ", targetIds)}]");
+                    Debug.Log($"CARDPLAY_DEBUG: PetCombatAI calling ServerPlayCard (queuing) with sourceId: {sourceId}, targetIds: [{string.Join(", ", targetIds)}]");
                     
-                    // Call the ServerPlayCard method with parameters
+                    // Call the ServerPlayCard method with parameters (this will queue the card)
                     try
                     {
                         cardPlayHandler.ServerPlayCard(sourceId, targetIds);
-                        Debug.Log($"CARDPLAY_DEBUG: Successfully called ServerPlayCard for {card.CardData.CardName}");
+                        Debug.Log($"CARDPLAY_DEBUG: Successfully queued card {card.CardData.CardName}");
                     }
                     catch (System.Exception ex)
                     {
-                        Debug.LogError($"CARDPLAY_DEBUG: Exception calling ServerPlayCard for {card.CardData.CardName}: {ex.Message}");
+                        Debug.LogError($"CARDPLAY_DEBUG: Exception queuing card {card.CardData.CardName}: {ex.Message}");
                         continue;
                     }
                 }
@@ -181,13 +160,8 @@ public class PetCombatAI : NetworkBehaviour
                     continue;
                 }
                 
-                // Update remaining energy
+                // Update remaining energy for AI decision making
                 remainingEnergy -= card.CardData.EnergyCost;
-
-                
-                // Add delay between card plays
-                float cardPlayDelay = GameManager.Instance != null ? GameManager.Instance.PetCardPlayDelay.Value : 1.0f;
-                yield return new WaitForSeconds(cardPlayDelay);
             }
             else
             {
@@ -196,12 +170,7 @@ public class PetCombatAI : NetworkBehaviour
             }
         }
 
-        // Final delay before ending turn
-        float finalDelay = GameManager.Instance != null ? GameManager.Instance.PetCardPlayDelay.Value : 1.0f;
-        yield return new WaitForSeconds(finalDelay);
-        
-
-        hasFinishedTurn = true;
+        Debug.Log($"PetCombatAI: {petEntity.EntityName.Value} finished queuing cards for shared turn");
     }
 
     /// <summary>

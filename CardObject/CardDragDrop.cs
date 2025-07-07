@@ -548,11 +548,21 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         LogDebug($"Added Canvas component with sorting order: {dragSortingOrder}, staying in parent: {originalParent.name}, hadOriginalCanvas: {hadOriginalCanvas}");
         
         // Apply drag visual effects
-        transform.localScale = originalScale * dragScale;
-        canvasGroup.alpha = dragAlpha;
-        canvasGroup.blocksRaycasts = false; // Allow raycasts to pass through to drop zones
+        // CENTRALIZED: Delegate drag scaling to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            handLayoutManager.SetCardDraggingState(gameObject, dragScale, dragAlpha);
+            LogDebug($"CENTRALIZED: Applied drag visuals via HandLayoutManager - dragScale: {dragScale}, alpha: {dragAlpha}");
+        }
+        else
+        {
+            // Fallback if no HandLayoutManager (shouldn't happen in normal gameplay)
+            transform.localScale = originalScale * dragScale;
+            canvasGroup.alpha = dragAlpha;
+            LogDebug($"FALLBACK: Applied drag visuals directly - scale: {transform.localScale}, alpha: {canvasGroup.alpha}");
+        }
         
-        LogDebug($"Applied drag visuals - scale: {transform.localScale}, alpha: {canvasGroup.alpha}");
+        canvasGroup.blocksRaycasts = false; // Allow raycasts to pass through to drop zones
         
         // Update source and target for targeting validation
         if (sourceAndTargetIdentifier != null)
@@ -980,7 +990,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
                 if (handLayoutManager != null)
                 {
                     /* Debug.Log($"[CardDragDrop] Final layout update triggered after animation complete"); */
-                    handLayoutManager.UpdateLayoutWithDebounce();
+                    handLayoutManager.UpdateLayout();
                 }
                 
                 // Clean up drag canvas state
@@ -1048,12 +1058,23 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     
     private void ResetCardState(bool cardWasPlayed)
     {
-        LogDebug("Resetting card state after drag");
+        LogDebug("CENTRALIZED: Resetting card state after drag");
         
         // Always clean up drag visual state first, regardless of whether card was played
-        // Reset scale and alpha
-        transform.localScale = originalScale;
-        canvasGroup.alpha = originalAlpha;
+        // CENTRALIZED: Delegate scale/alpha reset to HandLayoutManager
+        if (handLayoutManager != null)
+        {
+            handLayoutManager.ReturnCardToNormalState(rectTransform);
+            LogDebug("CENTRALIZED: Reset drag state via HandLayoutManager");
+        }
+        else
+        {
+            // Fallback if no HandLayoutManager
+            transform.localScale = originalScale;
+            canvasGroup.alpha = originalAlpha;
+            LogDebug("FALLBACK: Reset drag state directly");
+        }
+        
         canvasGroup.blocksRaycasts = true; // Make sure raycasts are enabled again
         
         // Reset canvas settings

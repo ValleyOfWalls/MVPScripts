@@ -215,7 +215,7 @@ public class HandAnimator : MonoBehaviour
         
         if (animateLayoutChanges)
         {
-            handLayoutManager.UpdateLayoutWithDebounce();
+            handLayoutManager.UpdateLayout();
             
             // Wait a bit for animation to complete
             StartCoroutine(WaitForLayoutAnimation(onComplete));
@@ -431,7 +431,7 @@ public class HandAnimator : MonoBehaviour
         if (handLayoutManager != null)
         {
             Debug.Log($"[HandAnimator] Performing immediate layout update for {entityName}");
-            handLayoutManager.UpdateLayoutWithDebounce();
+            handLayoutManager.UpdateLayout();
         }
         else
         {
@@ -468,7 +468,7 @@ public class HandAnimator : MonoBehaviour
         {
             Debug.Log($"[HandAnimator] Performing delayed layout update for {entityName} (ID: {entityId})");
             LogDebug($"Performing delayed layout update for {entityName} (ID: {entityId})");
-            handLayoutManager.UpdateLayoutWithDebounce();
+            handLayoutManager.UpdateLayout();
         }
         else
         {
@@ -540,7 +540,7 @@ public class HandAnimator : MonoBehaviour
         {
             Debug.Log($"[HandAnimator] Performing delayed layout update after card removal for {entityName} (ID: {entityId})");
             LogDebug($"Performing delayed layout update after card removal for {entityName} (ID: {entityId})");
-            handLayoutManager.UpdateLayoutWithDebounce();
+            handLayoutManager.UpdateLayout();
         }
         else
         {

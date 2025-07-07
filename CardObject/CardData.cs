@@ -37,6 +37,9 @@ public class CardData : ScriptableObject
     
     [Tooltip("Energy cost to play this card")]
     [SerializeField] private int _energyCost = 2;
+    
+    [Tooltip("Initiative determines execution order in queue (higher = executes first, 0 = use default order)")]
+    [SerializeField] private int _initiative = 0;
 
     [Header("═══ CARD EFFECTS ═══")]
     [Tooltip("All effects this card performs when played")]
@@ -110,6 +113,7 @@ public class CardData : ScriptableObject
     public CardCategory CardCategory => _cardCategory;
     public CardType CardType => _cardType;
     public int EnergyCost => _energyCost;
+    public int Initiative => _initiative;
     public CardData UpgradedVersion => _upgradedVersion;
     
     // Core mechanics
