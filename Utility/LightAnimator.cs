@@ -1,8 +1,5 @@
 using UnityEngine;
-
-#if DOTWEEN_ENABLED
 using DG.Tweening;
-#endif
 
 [RequireComponent(typeof(Light))]
 public class LightAnimator : MonoBehaviour
@@ -36,7 +33,6 @@ public class LightAnimator : MonoBehaviour
     [SerializeField] private bool useRandomSpotAngleOffset = true;
     
     [Header("Settings")]
-    [SerializeField] private bool useDOTween = true;
     [SerializeField] private bool playOnStart = true;
     
     private Light lightComponent;
@@ -45,12 +41,10 @@ public class LightAnimator : MonoBehaviour
     private float rangeRandomOffset;
     private float spotAngleRandomOffset;
     
-#if DOTWEEN_ENABLED
     private Tween intensityTween;
     private Tween colorTween;
     private Tween rangeTween;
     private Tween spotAngleTween;
-#endif
 
     void Awake()
     {
@@ -90,21 +84,9 @@ public class LightAnimator : MonoBehaviour
     
     public void StartAnimating()
     {
-#if DOTWEEN_ENABLED
-        if (useDOTween && DOTween.instance != null)
-        {
-            StartDOTweenAnimations();
-        }
-        else
-        {
-            StartBuiltInAnimations();
-        }
-#else
-        StartBuiltInAnimations();
-#endif
+        StartDOTweenAnimations();
     }
     
-#if DOTWEEN_ENABLED
     void StartDOTweenAnimations()
     {
         StopAllTweens();
@@ -148,85 +130,6 @@ public class LightAnimator : MonoBehaviour
                 .SetDelay(spotAngleRandomOffset * (spotAngleSpeed / 2f) / (2f * Mathf.PI));
         }
     }
-#endif
-    
-    void StartBuiltInAnimations()
-    {
-        // Built-in animations will be handled in Update()
-    }
-    
-    void Update()
-    {
-#if DOTWEEN_ENABLED
-        if (useDOTween && DOTween.instance != null && HasActiveTweens())
-        {
-            return; // DOTween is handling the animations
-        }
-#endif
-        
-        // Built-in animation fallback
-        HandleBuiltInAnimations();
-    }
-    
-#if DOTWEEN_ENABLED
-    bool HasActiveTweens()
-    {
-        return (intensityTween != null && intensityTween.IsActive()) ||
-               (colorTween != null && colorTween.IsActive()) ||
-               (rangeTween != null && rangeTween.IsActive()) ||
-               (spotAngleTween != null && spotAngleTween.IsActive());
-    }
-#endif
-    
-    void HandleBuiltInAnimations()
-    {
-        if (animateIntensity)
-        {
-            float intensityOffset = Mathf.Sin((Time.time * intensitySpeed) + intensityRandomOffset) * intensityAmplitude;
-            lightComponent.intensity = baseIntensity + intensityOffset;
-        }
-        
-        if (animateColor)
-        {
-            float colorLerp = (Mathf.Sin((Time.time * colorSpeed) + colorRandomOffset) + 1f) / 2f;
-            lightComponent.color = Color.Lerp(baseColor, targetColor, colorLerp);
-        }
-        
-        if (animateRange && (lightComponent.type == LightType.Point || lightComponent.type == LightType.Spot))
-        {
-            float rangeOffset = Mathf.Sin((Time.time * rangeSpeed) + rangeRandomOffset) * rangeAmplitude;
-            lightComponent.range = Mathf.Max(0.1f, baseRange + rangeOffset);
-        }
-        
-        if (animateSpotAngle && lightComponent.type == LightType.Spot)
-        {
-            float spotAngleOffset = Mathf.Sin((Time.time * spotAngleSpeed) + spotAngleRandomOffset) * spotAngleAmplitude;
-            lightComponent.spotAngle = Mathf.Clamp(baseSpotAngle + spotAngleOffset, 1f, 179f);
-        }
-    }
-    
-    void OnValidate()
-    {
-        // Clamp values to reasonable ranges
-        baseIntensity = Mathf.Max(0f, baseIntensity);
-        intensityAmplitude = Mathf.Max(0f, intensityAmplitude);
-        intensitySpeed = Mathf.Max(0.1f, intensitySpeed);
-        
-        baseRange = Mathf.Max(0.1f, baseRange);
-        rangeAmplitude = Mathf.Max(0f, rangeAmplitude);
-        rangeSpeed = Mathf.Max(0.1f, rangeSpeed);
-        
-        baseSpotAngle = Mathf.Clamp(baseSpotAngle, 1f, 179f);
-        spotAngleAmplitude = Mathf.Max(0f, spotAngleAmplitude);
-        spotAngleSpeed = Mathf.Max(0.1f, spotAngleSpeed);
-        
-        colorSpeed = Mathf.Max(0.1f, colorSpeed);
-    }
-    
-    void OnDestroy()
-    {
-        StopAllTweens();
-    }
     
     void OnDisable()
     {
@@ -235,12 +138,10 @@ public class LightAnimator : MonoBehaviour
     
     void StopAllTweens()
     {
-#if DOTWEEN_ENABLED
         intensityTween?.Kill();
         colorTween?.Kill();
         rangeTween?.Kill();
         spotAngleTween?.Kill();
-#endif
     }
     
     // Public methods for runtime control

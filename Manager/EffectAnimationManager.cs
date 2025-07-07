@@ -3,6 +3,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using System.Collections.Generic;
 using System.Collections;
+using DG.Tweening;
 
 /// <summary>
 /// Entry for custom effect database
@@ -347,19 +348,16 @@ public class EffectAnimationManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Coroutine that handles the effect animation
+    /// Plays effect animation using DOTween for smooth movement
     /// </summary>
     private IEnumerator PlayEffectCoroutine(Vector3 sourcePosition, Vector3 targetPosition, float duration)
     {
         GameObject effectObject = GetPooledEffect();
         if (effectObject == null)
         {
-            Debug.LogError($"EffectAnimationManager: Could not get pooled effect");
+            Debug.Log($"EffectAnimationManager: No effect prefab assigned, skipping effect animation");
             yield break;
         }
-        
-        // Ensure proper material is applied (fix for pink squares)
-        EnsureEffectHasProperMaterial(effectObject);
         
         // Setup the effect
         effectObject.transform.position = sourcePosition;
@@ -385,31 +383,20 @@ public class EffectAnimationManager : NetworkBehaviour
         
         activeEffects.Add(effectAnimation);
         
-        // Animate the effect
-        while (effectAnimation.elapsedTime < duration)
-        {
-            effectAnimation.elapsedTime += Time.deltaTime;
-            float progress = effectAnimation.elapsedTime / duration;
-            
-            // Apply speed curve
-            float curvedProgress = speedCurve.Evaluate(progress);
-            
-            // Interpolate position
-            Vector3 currentPosition = Vector3.Lerp(sourcePosition, targetPosition, curvedProgress);
-            effectObject.transform.position = currentPosition;
-            
-            // Keep looking at target
-            Vector3 direction = (targetPosition - currentPosition).normalized;
-            if (direction != Vector3.zero)
-            {
-                effectObject.transform.rotation = Quaternion.LookRotation(direction);
-            }
-            
-            yield return null;
-        }
+        // Animate using DOTween with custom curve
+        Tween moveTween = effectObject.transform.DOMove(targetPosition, duration)
+            .SetEase(speedCurve)
+            .OnUpdate(() => {
+                // Keep looking at target during movement
+                Vector3 direction = (targetPosition - effectObject.transform.position).normalized;
+                if (direction != Vector3.zero)
+                {
+                    effectObject.transform.rotation = Quaternion.LookRotation(direction);
+                }
+            });
         
-        // Effect reached target
-        effectObject.transform.position = targetPosition;
+        // Wait for animation to complete
+        yield return moveTween.WaitForCompletion();
         
         // Stop particles if they exist
         if (particles != null)
@@ -431,21 +418,16 @@ public class EffectAnimationManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Coroutine that handles custom effect animation
+    /// Plays custom effect animation using DOTween for smooth movement
     /// </summary>
     private IEnumerator PlayCustomEffectCoroutine(Vector3 sourcePosition, Vector3 targetPosition, string customEffectName, float duration)
     {
         GameObject effectObject = GetPooledCustomEffect(customEffectName);
         if (effectObject == null)
         {
-            Debug.LogWarning($"EffectAnimationManager: Could not get pooled custom effect for {customEffectName}, falling back to default effect");
-            // Fall back to default effect
-            yield return PlayEffectCoroutine(sourcePosition, targetPosition, duration);
+            Debug.Log($"EffectAnimationManager: Custom effect '{customEffectName}' not found, skipping effect animation");
             yield break;
         }
-        
-        // Ensure proper material is applied (fix for pink squares)
-        EnsureEffectHasProperMaterial(effectObject);
         
         // Setup the effect
         effectObject.transform.position = sourcePosition;
@@ -472,31 +454,20 @@ public class EffectAnimationManager : NetworkBehaviour
         
         activeEffects.Add(effectAnimation);
         
-        // Animate the effect
-        while (effectAnimation.elapsedTime < duration)
-        {
-            effectAnimation.elapsedTime += Time.deltaTime;
-            float progress = effectAnimation.elapsedTime / duration;
-            
-            // Apply speed curve
-            float curvedProgress = speedCurve.Evaluate(progress);
-            
-            // Interpolate position
-            Vector3 currentPosition = Vector3.Lerp(sourcePosition, targetPosition, curvedProgress);
-            effectObject.transform.position = currentPosition;
-            
-            // Keep looking at target
-            Vector3 direction = (targetPosition - currentPosition).normalized;
-            if (direction != Vector3.zero)
-            {
-                effectObject.transform.rotation = Quaternion.LookRotation(direction);
-            }
-            
-            yield return null;
-        }
+        // Animate using DOTween with custom curve
+        Tween moveTween = effectObject.transform.DOMove(targetPosition, duration)
+            .SetEase(speedCurve)
+            .OnUpdate(() => {
+                // Keep looking at target during movement
+                Vector3 direction = (targetPosition - effectObject.transform.position).normalized;
+                if (direction != Vector3.zero)
+                {
+                    effectObject.transform.rotation = Quaternion.LookRotation(direction);
+                }
+            });
         
-        // Effect reached target
-        effectObject.transform.position = targetPosition;
+        // Wait for animation to complete
+        yield return moveTween.WaitForCompletion();
         
         // Stop particles if they exist
         if (particles != null)
@@ -533,20 +504,9 @@ public class EffectAnimationManager : NetworkBehaviour
             Debug.LogWarning($"EffectAnimationManager: Pool was empty, created new effect object from assigned prefab");
             return newEffect;
         }
-        
-        // No prefab assigned, try to create a procedural effect
-        Debug.LogWarning($"EffectAnimationManager: No prefab assigned, creating procedural effect");
-        GameObject proceduralPrefab = CreateProceduralEffect();
-        if (proceduralPrefab != null)
-        {
-            // Store the procedural prefab for future use
-            defaultEffectPrefab = proceduralPrefab;
-            GameObject newEffect = Instantiate(proceduralPrefab, effectParent);
-            /* Debug.Log($"EffectAnimationManager: Created procedural effect instance"); */
-            return newEffect;
-        }
-        
-        Debug.LogError($"EffectAnimationManager: Cannot create new effect - failed to create procedural effect");
+
+        // No prefab assigned and no fallback creation - return null
+        Debug.Log($"EffectAnimationManager: No default effect prefab assigned, no effect will be created");
         return null;
     }
     
@@ -586,8 +546,8 @@ public class EffectAnimationManager : NetworkBehaviour
                 return customEffectPools[prefabName].Dequeue();
             }
         }
-        
-        Debug.LogWarning($"EffectAnimationManager: Cannot find or create custom effect prefab: {prefabName}");
+
+        Debug.LogWarning($"EffectAnimationManager: Cannot find custom effect prefab: {prefabName}, no effect will be created");
         return null;
     }
     
@@ -674,177 +634,7 @@ public class EffectAnimationManager : NetworkBehaviour
         Debug.Log($"EffectAnimationManager: Created custom pool of {customPoolSize} objects for {prefabName}");
     }
     
-    /// <summary>
-    /// Creates a procedural effect when no prefab is assigned
-    /// </summary>
-    private GameObject CreateProceduralEffect()
-    {
-        try
-        {
-            /* Debug.Log($"EffectAnimationManager: Creating procedural default effect"); */
-            
-            GameObject effect = new GameObject($"Procedural_Default_Effect");
-            ParticleSystem ps = effect.AddComponent<ParticleSystem>();
-            
-            var main = ps.main;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.startLifetime = 1f;
-            main.startSpeed = 5f;
-            main.startSize = 0.2f;
-            main.maxParticles = 50;
-            main.startColor = Color.yellow;
-            
-            var emission = ps.emission;
-            emission.rateOverTime = 30;
-            
-            var shape = ps.shape;
-            shape.enabled = true;
-            shape.shapeType = ParticleSystemShapeType.Circle;
-            shape.radius = 0.1f;
-            
-            // Apply proper material for particle effects
-            var renderer = ps.GetComponent<ParticleSystemRenderer>();
-            if (renderer != null)
-            {
-                Material effectMaterial = GetDefaultParticleMaterial();
-                if (effectMaterial != null)
-                {
-                    renderer.material = effectMaterial;
-                    /* Debug.Log($"EffectAnimationManager: Applied material {effectMaterial.name} to procedural effect"); */
-                }
-                else
-                {
-                    Debug.LogWarning($"EffectAnimationManager: Could not find or create suitable material for procedural effect");
-                }
-            }
-            
-            /* Debug.Log($"EffectAnimationManager: Successfully created procedural default effect"); */
-            return effect;
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"EffectAnimationManager: Failed to create procedural effect: {e.Message}");
-            Debug.LogError($"EffectAnimationManager: Stack trace: {e.StackTrace}");
-            return null;
-        }
-    }
-    
-    /// <summary>
-    /// Gets a default material suitable for particle effects
-    /// </summary>
-    private Material GetDefaultParticleMaterial()
-    {
-        // Try to find Unity's built-in particle material
-        Material[] builtInMaterials = {
-            Resources.GetBuiltinResource<Material>("Default-Particle.mat"),
-            Resources.GetBuiltinResource<Material>("Sprites-Default.mat"),
-            Resources.GetBuiltinResource<Material>("Default-Diffuse.mat")
-        };
-        
-        foreach (var mat in builtInMaterials)
-        {
-            if (mat != null) 
-            {
-                Debug.Log($"EffectAnimationManager: Found built-in material: {mat.name}");
-                return mat;
-            }
-        }
-        
-        // Try to create a simple unlit material as fallback
-        Debug.LogWarning("EffectAnimationManager: No built-in particle materials found, creating fallback material");
-        return CreateFallbackParticleMaterial();
-    }
-    
-    /// <summary>
-    /// Ensures an effect object has a proper material applied to its particle system renderer
-    /// </summary>
-    private void EnsureEffectHasProperMaterial(GameObject effectObject)
-    {
-        if (effectObject == null) return;
-        
-        // Check all particle system renderers in the effect object
-        ParticleSystemRenderer[] renderers = effectObject.GetComponentsInChildren<ParticleSystemRenderer>();
-        
-        foreach (var renderer in renderers)
-        {
-            if (renderer != null && (renderer.material == null || renderer.material.name.Contains("Default-Material")))
-            {
-                Material properMaterial = GetDefaultParticleMaterial();
-                if (properMaterial != null)
-                {
-                    renderer.material = properMaterial;
-                    Debug.Log($"EffectAnimationManager: Applied proper material {properMaterial.name} to effect {effectObject.name}");
-                }
-                else
-                {
-                    Debug.LogWarning($"EffectAnimationManager: Could not get proper material for effect {effectObject.name}");
-                }
-            }
-        }
-    }
 
-    /// <summary>
-    /// Creates a fallback material for particle effects when built-in materials aren't available
-    /// </summary>
-    private Material CreateFallbackParticleMaterial()
-    {
-        try
-        {
-            // Try different shaders in order of preference
-            string[] shaderNames = {
-                "Sprites/Default",
-                "Legacy Shaders/Particles/Alpha Blended Premultiply",
-                "Legacy Shaders/Particles/Alpha Blended",
-                "Unlit/Transparent",
-                "Standard",
-                "Unlit/Color"
-            };
-            
-            foreach (string shaderName in shaderNames)
-            {
-                Shader shader = Shader.Find(shaderName);
-                if (shader != null)
-                {
-                    Material material = new Material(shader);
-                    material.name = $"EffectAnimation_Fallback_{shaderName.Replace("/", "_")}";
-                    
-                    // Set common properties for particle materials
-                    if (material.HasProperty("_Color"))
-                    {
-                        material.SetColor("_Color", Color.white);
-                    }
-                    
-                    // Enable transparency if possible
-                    if (material.HasProperty("_Mode"))
-                    {
-                        material.SetFloat("_Mode", 3f); // Transparent mode
-                    }
-                    
-                    if (material.HasProperty("_SrcBlend"))
-                    {
-                        material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                        material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                        material.SetFloat("_ZWrite", 0f);
-                        material.DisableKeyword("_ALPHATEST_ON");
-                        material.DisableKeyword("_ALPHABLEND_ON");
-                        material.EnableKeyword("_ALPHAPREMULTIPLY_ON");
-                        material.renderQueue = 3000;
-                    }
-                    
-                    /* Debug.Log($"EffectAnimationManager: Created fallback material with shader: {shaderName}"); */
-                    return material;
-                }
-            }
-            
-            Debug.LogError("EffectAnimationManager: Could not find any suitable shader for fallback material");
-            return null;
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"EffectAnimationManager: Failed to create fallback material: {e.Message}");
-            return null;
-        }
-    }
     
     /// <summary>
     /// Public method for external scripts to trigger effect animations

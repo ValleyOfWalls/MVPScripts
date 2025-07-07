@@ -8,9 +8,7 @@ using FishNet.Object;
 using UnityEngine.EventSystems;
 using MVPScripts.Utility;
 
-#if DOTWEEN_ENABLED || !UNITY_EDITOR && !UNITY_STANDALONE
 using DG.Tweening;
-#endif
 
 /// <summary>
 /// Handles deck preview functionality for character selection screen.
@@ -49,11 +47,8 @@ public class DeckPreviewController : MonoBehaviour
     [SerializeField] private float offscreenRightOffset = 300f; // How far offscreen to start
     [SerializeField] private float animationGapDuration = 0.2f; // Gap between animate out and animate in
     [SerializeField] private float layoutWaitTime = 0.1f; // Time to wait for layout group
-
-#if DOTWEEN_ENABLED || !UNITY_EDITOR && !UNITY_STANDALONE
     [SerializeField] private Ease slideInEase = Ease.OutCubic;
     [SerializeField] private Ease slideOutEase = Ease.InCubic;
-#endif
     
     [Header("Hover Tooltip Settings")]
     [SerializeField] private Vector2 tooltipOffset = new Vector2(-20f, 20f); // Bottom-right positioning
@@ -333,38 +328,21 @@ public class DeckPreviewController : MonoBehaviour
         
         Debug.Log($"DeckPreviewController: Optimizing {requests.Count} deck animation requests");
         
-        // Keep only the last request for each entity type
-        var optimized = new List<DeckAnimationRequest>();
+        // Filter out fade-out requests (EntityType.None) first, but keep the last meaningful request
+        var meaningfulRequests = requests.Where(r => r.entityType != EntityType.None).ToList();
         
-        // Find the last character request
-        for (int i = requests.Count - 1; i >= 0; i--)
+        if (meaningfulRequests.Count == 0)
         {
-            if (requests[i].entityType == EntityType.Character)
-            {
-                optimized.Add(requests[i]);
-                break;
-            }
+            // If all requests are fade-out, keep only the last one
+            Debug.Log("DeckPreviewController: All requests are fade-out, keeping last fade-out only");
+            return new List<DeckAnimationRequest> { requests.Last() };
         }
         
-        // Find the last pet request
-        for (int i = requests.Count - 1; i >= 0; i--)
-        {
-            if (requests[i].entityType == EntityType.Pet)
-            {
-                optimized.Add(requests[i]);
-                break;
-            }
-        }
+        // Keep only the last meaningful request (character or pet)
+        var lastMeaningfulRequest = meaningfulRequests.Last();
+        var optimized = new List<DeckAnimationRequest> { lastMeaningfulRequest };
         
-        // If we have both types, keep only the very last one
-        if (optimized.Count > 1)
-        {
-            var lastOverallRequest = requests[requests.Count - 1];
-            optimized.Clear();
-            optimized.Add(lastOverallRequest);
-        }
-        
-        Debug.Log($"DeckPreviewController: Optimized to {optimized.Count} deck animation requests");
+        Debug.Log($"DeckPreviewController: Optimized to {optimized.Count} deck animation requests (kept last {lastMeaningfulRequest.entityType} request)");
         return optimized;
     }
     
@@ -485,14 +463,16 @@ public class DeckPreviewController : MonoBehaviour
         // Step 1: Animate out existing cards if any (handled by animation queue)
         if (currentDeckSummaries.Count > 0 && animateIn)
         {
-            Debug.Log("DeckPreviewController: Animating out existing cards");
+            Debug.Log($"DeckPreviewController: Animating out {currentDeckSummaries.Count} existing cards");
             yield return StartCoroutine(AnimateCardSummariesOut(currentDeckSummaries));
             
             // Wait for gap between out and in animations
+            Debug.Log($"DeckPreviewController: Waiting {animationGapDuration}s gap between out and in animations");
             yield return new WaitForSeconds(animationGapDuration);
         }
         else
         {
+            Debug.Log($"DeckPreviewController: Clearing {currentDeckSummaries.Count} existing cards without animation (animateIn: {animateIn})");
             ClearCardSummaries(currentDeckSummaries);
         }
         
@@ -548,10 +528,12 @@ public class DeckPreviewController : MonoBehaviour
         // Step 7: Animate them in if requested
         if (animateIn && currentDeckSummaries.Count > 0)
         {
+            Debug.Log($"DeckPreviewController: About to animate {currentDeckSummaries.Count} cards IN");
             yield return StartCoroutine(AnimateCardSummariesIn(currentDeckSummaries));
         }
         else
         {
+            Debug.Log($"DeckPreviewController: Making {currentDeckSummaries.Count} cards visible without animation (animateIn: {animateIn})");
             // If not animating, just make them visible
             foreach (CardSummaryItem item in currentDeckSummaries)
             {
@@ -562,6 +544,21 @@ public class DeckPreviewController : MonoBehaviour
                     {
                         canvasGroup.alpha = 1f;
                     }
+                }
+            }
+        }
+        
+        // Step 8: Safety check - ensure all cards are visible at the end
+        Debug.Log($"DeckPreviewController: Safety check - ensuring {currentDeckSummaries.Count} cards are visible");
+        foreach (CardSummaryItem item in currentDeckSummaries)
+        {
+            if (item?.summaryObject != null)
+            {
+                CanvasGroup canvasGroup = item.summaryObject.GetComponent<CanvasGroup>();
+                if (canvasGroup != null && canvasGroup.alpha < 0.1f)
+                {
+                    Debug.LogWarning($"DeckPreviewController: Card '{item.cardData.CardName}' was invisible (alpha: {canvasGroup.alpha}), making it visible");
+                    canvasGroup.alpha = 1f;
                 }
             }
         }
@@ -701,15 +698,11 @@ public class DeckPreviewController : MonoBehaviour
             if (item?.rectTransform == null) continue;
             
             // Start animation for this card
-#if DOTWEEN_ENABLED || !UNITY_EDITOR && !UNITY_STANDALONE
             item.rectTransform.DOLocalMove(item.targetPosition, cardAnimationDuration)
                 .SetEase(slideInEase)
                 .OnComplete(() => {
                     item.isAnimating = false;
                 });
-#else
-            StartCoroutine(AnimateCardMoveCoroutine(item, item.targetPosition, cardAnimationDuration, true));
-#endif
             
             // Random stagger delay before next card
             if (i < summaries.Count - 1)
@@ -746,7 +739,6 @@ public class DeckPreviewController : MonoBehaviour
             Vector3 offscreenPosition = item.rectTransform.localPosition + Vector3.right * GetOffscreenRightDistance(item.rectTransform);
             
             // Start animation for this card
-#if DOTWEEN_ENABLED || !UNITY_EDITOR && !UNITY_STANDALONE
             item.rectTransform.DOLocalMove(offscreenPosition, cardAnimationDuration)
                 .SetEase(slideOutEase)
                 .OnComplete(() => {
@@ -756,9 +748,6 @@ public class DeckPreviewController : MonoBehaviour
                         Destroy(item.summaryObject);
                     }
                 });
-#else
-            StartCoroutine(AnimateCardMoveCoroutine(item, offscreenPosition, cardAnimationDuration, false));
-#endif
             
             // Random stagger delay before next card
             if (i > 0)
@@ -776,63 +765,7 @@ public class DeckPreviewController : MonoBehaviour
         
         Debug.Log("DeckPreviewController: Card summaries OUT animation completed");
     }
-    
-#if !DOTWEEN_ENABLED && (UNITY_EDITOR || UNITY_STANDALONE)
-    /// <summary>
-    /// Fallback coroutine-based animation when DOTween is not available
-    /// </summary>
-    private IEnumerator AnimateCardMoveCoroutine(CardSummaryItem item, Vector3 targetPosition, float duration, bool isAnimatingIn)
-    {
-        if (item?.rectTransform == null) yield break;
-        
-        Vector3 startPosition = item.rectTransform.localPosition;
-        float elapsedTime = 0f;
-        
-        while (elapsedTime < duration)
-        {
-            if (item?.rectTransform == null) yield break;
-            
-            float progress = elapsedTime / duration;
-            
-            // Apply easing curve (simplified cubic ease)
-            float easedProgress = isAnimatingIn ? EaseOutCubic(progress) : EaseInCubic(progress);
-            
-            Vector3 currentPosition = Vector3.Lerp(startPosition, targetPosition, easedProgress);
-            item.rectTransform.localPosition = currentPosition;
-            
-            elapsedTime += Time.deltaTime;
-            yield return null;
-        }
-        
-        // Ensure final position
-        if (item?.rectTransform != null)
-        {
-            item.rectTransform.localPosition = targetPosition;
-        }
-        
-        // Mark as complete
-        item.isAnimating = false;
-        
-        // Destroy if this was an out animation
-        if (!isAnimatingIn && item?.summaryObject != null)
-        {
-            Destroy(item.summaryObject);
-        }
-    }
-    
-    /// <summary>
-    /// Simplified easing functions for fallback animations
-    /// </summary>
-    private float EaseOutCubic(float t)
-    {
-        return 1f - Mathf.Pow(1f - t, 3f);
-    }
-    
-    private float EaseInCubic(float t)
-    {
-        return t * t * t;
-    }
-#endif
+
     
     /// <summary>
     /// Calculates the distance needed to move a card offscreen to the right

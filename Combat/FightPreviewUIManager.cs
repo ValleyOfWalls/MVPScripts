@@ -268,13 +268,7 @@ public class FightPreviewUIManager : NetworkBehaviour
     {
         if (animator == null)
         {
-            Debug.LogError("FightPreviewUIManager: No FightPreviewAnimator found, cannot animate preview");
-            // Fallback to showing without animation
-            if (canvasGroup != null)
-            {
-                canvasGroup.alpha = 1f;
-                StartCoroutine(FallbackDisplayCoroutine());
-            }
+            Debug.Log("FightPreviewUIManager: No FightPreviewAnimator assigned, skipping preview animation");
             return;
         }
 
@@ -295,15 +289,6 @@ public class FightPreviewUIManager : NetworkBehaviour
     {
         // Return the background panel transform for scale animations
         return backgroundPanel != null ? backgroundPanel.transform : fightPreviewCanvas.transform;
-    }
-
-    /// <summary>
-    /// Fallback display coroutine when animator is not available
-    /// </summary>
-    private IEnumerator FallbackDisplayCoroutine()
-    {
-        yield return new WaitForSeconds(3f);
-        HideFightPreview();
     }
 
     #endregion

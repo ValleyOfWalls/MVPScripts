@@ -402,13 +402,7 @@ public class FightConclusionUIManager : NetworkBehaviour
     {
         if (animator == null)
         {
-            Debug.LogError("FightConclusionUIManager: No FightConclusionAnimator found, cannot animate conclusion");
-            // Fallback to showing without animation
-            if (canvasGroup != null)
-            {
-                canvasGroup.alpha = 1f;
-                StartCoroutine(FallbackDisplayCoroutine());
-            }
+            Debug.Log("FightConclusionUIManager: No FightConclusionAnimator assigned, skipping conclusion animation");
             return;
         }
 
@@ -429,15 +423,6 @@ public class FightConclusionUIManager : NetworkBehaviour
     {
         // Return the local result panel transform for scale animations
         return localResultPanel != null ? localResultPanel.transform : fightConclusionCanvas.transform;
-    }
-
-    /// <summary>
-    /// Fallback display coroutine when animator is not available
-    /// </summary>
-    private IEnumerator FallbackDisplayCoroutine()
-    {
-        yield return new WaitForSeconds(5f);
-        HideFightConclusion();
     }
 
     #endregion

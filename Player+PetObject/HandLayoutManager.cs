@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections;
+using DG.Tweening;
 
 /// <summary>
 /// Manages the layout of cards in a hand using custom arc/fan positioning.
@@ -636,29 +637,26 @@ public class HandLayoutManager : MonoBehaviour
             }
         }
         
-        Debug.Log($"[LAYOUT_DEBUG] Animation starting - duration: {layoutAnimationDuration}s on {gameObject.name}");
-        float elapsed = 0f;
+        Debug.Log($"[LAYOUT_DEBUG] DOTween animation starting - duration: {layoutAnimationDuration}s on {gameObject.name}");
         
-        while (elapsed < layoutAnimationDuration)
+        // Create DOTween sequence for all cards
+        Sequence layoutSequence = DOTween.Sequence();
+        
+        foreach (var cardRect in cardsToLayout)
         {
-            elapsed += Time.deltaTime;
-            float t = elapsed / layoutAnimationDuration;
-            float curveValue = layoutAnimationCurve.Evaluate(t);
-            
-            foreach (var cardRect in cardsToLayout)
+            if (cardRect != null && cardLayoutData.ContainsKey(cardRect))
             {
-                if (cardRect != null && cardLayoutData.ContainsKey(cardRect))
-                {
-                    var data = cardLayoutData[cardRect];
-                    
-                    cardRect.localPosition = Vector3.Lerp(startPositions[cardRect], data.targetPosition, curveValue);
-                    cardRect.localScale = Vector3.Lerp(startScales[cardRect], data.targetScale, curveValue);
-                    cardRect.localRotation = Quaternion.Lerp(startRotations[cardRect], data.targetRotation, curveValue);
-                }
+                var data = cardLayoutData[cardRect];
+                
+                // Add simultaneous animations for position, scale, and rotation
+                layoutSequence.Join(cardRect.DOLocalMove(data.targetPosition, layoutAnimationDuration).SetEase(layoutAnimationCurve));
+                layoutSequence.Join(cardRect.DOScale(data.targetScale, layoutAnimationDuration).SetEase(layoutAnimationCurve));
+                layoutSequence.Join(cardRect.DOLocalRotateQuaternion(data.targetRotation, layoutAnimationDuration).SetEase(layoutAnimationCurve));
             }
-            
-            yield return null;
         }
+        
+        // Wait for the sequence to complete
+        yield return layoutSequence.WaitForCompletion();
         
         // Ensure final positions are exact and LOG the application
         Debug.Log($"[LAYOUT_DEBUG] 🎯 Animation complete - applying final positions on {gameObject.name}");
