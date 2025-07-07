@@ -3,7 +3,6 @@ using FishNet.Object;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Handles AI behavior for pets during combat
@@ -209,7 +208,7 @@ public class PetCombatAI : NetworkBehaviour
     private NetworkEntity GetOpponentEntity()
     {
         // Find FightManager to get the opponent
-        FightManager fightManager = ComponentResolver.FindComponentGlobally<FightManager>();
+        FightManager fightManager = FindFirstObjectByType<FightManager>();
         if (fightManager != null)
         {
             return fightManager.GetOpponentForPet(petEntity);

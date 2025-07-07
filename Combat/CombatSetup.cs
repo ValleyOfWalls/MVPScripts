@@ -7,7 +7,6 @@ using FishNet.Managing;
 using FishNet.Observing;
 using System.Collections;
 using FishNet.Object.Synchronizing;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Initializes the combat phase including entity deck setup, fight assignments, and UI preparation.
@@ -52,7 +51,10 @@ public class CombatSetup : NetworkBehaviour
     
     private void RegisterCombatCanvasWithPhaseManager()
     {
-        ComponentResolver.FindComponent(ref gamePhaseManager, gameObject);
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        }
         
         if (gamePhaseManager != null && combatCanvas != null)
         {
@@ -203,14 +205,15 @@ public class CombatSetup : NetworkBehaviour
 
     private void ResolveReferences()
     {
-        ComponentResolver.FindComponentWithSingleton(ref steamNetworkIntegration, () => SteamNetworkIntegration.Instance, gameObject);
-        ComponentResolver.FindComponent(ref fightManager, gameObject);
-        ComponentResolver.FindComponent(ref combatManager, gameObject);
-        ComponentResolver.FindComponent(ref combatCanvasManager, gameObject);
-        ComponentResolver.FindComponent(ref gameManager, gameObject);
-        ComponentResolver.FindComponent(ref gamePhaseManager, gameObject);
-        ComponentResolver.FindComponent(ref fightPreviewManager, gameObject);
-        ComponentResolver.FindComponent(ref loadingScreenManager, gameObject);
+        steamNetworkIntegration = SteamNetworkIntegration.Instance;
+        
+        if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
+        if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
+        if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
+        if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
+        if (gamePhaseManager == null) gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        if (fightPreviewManager == null) fightPreviewManager = FindFirstObjectByType<FightPreviewManager>();
+        if (loadingScreenManager == null) loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
         
         RegisterCombatCanvasWithPhaseManager();
     }
@@ -442,7 +445,7 @@ public class CombatSetup : NetworkBehaviour
             /* Debug.Log("CombatSetup: Found CombatCanvasManager, proceeding with setup"); */
             
             // Ensure draft canvas is disabled before enabling combat canvas
-            DraftCanvasManager draftCanvasManager = ComponentResolver.FindComponentGlobally<DraftCanvasManager>();
+            DraftCanvasManager draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
             if (draftCanvasManager != null)
             {
                 Debug.Log("CombatSetup: Found DraftCanvasManager, ensuring draft canvas is disabled");
@@ -742,7 +745,7 @@ public class CombatSetup : NetworkBehaviour
         else
         {
             // Try to find LoadingScreenManager if reference is missing
-            ComponentResolver.FindComponent(ref loadingScreenManager, gameObject);
+            loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
             if (loadingScreenManager != null)
             {
                 Debug.Log("CombatSetup: Found LoadingScreenManager via FindFirstObjectByType, hiding loading screen");

@@ -6,7 +6,6 @@ using System.Collections;
 using FishNet.Managing; // Ensured this is active
 using FishNet.Transporting;
 using FishNet.Connection; // Added this line
-using MVPScripts.Utility;
 // using FishNet.Transporting; // Example for transport states
 
 /// <summary>
@@ -136,7 +135,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         m_personaStateChange = Callback<PersonaStateChange_t>.Create(OnPersonaStateChangeCallback);
         m_lobbyChatUpdate = Callback<LobbyChatUpdate_t>.Create(OnLobbyChatUpdateCallback);
 
-        ComponentResolver.FindComponent(ref fishNetManager, gameObject);
+        fishNetManager = UnityEngine.Object.FindFirstObjectByType<NetworkManager>();
         if (fishNetManager == null)
         {
             Debug.LogError("SteamNetworkIntegration: NetworkManager not found in scene! Player spawning will fail.");
@@ -830,7 +829,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         MarkLobbyAsClosed();
         
         // FIRST: Reset to start phase while still connected (since GamePhaseManager is a NetworkObject)
-        GamePhaseManager gamePhaseManager = ComponentResolver.FindComponentGlobally<GamePhaseManager>();
+        GamePhaseManager gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         if (gamePhaseManager != null)
         {
             Debug.Log("SteamNetworkIntegration: Resetting to start phase before disconnecting");
@@ -890,7 +889,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         Debug.Log("SteamNetworkIntegration: Cleaning up character selection entities");
         
         // Clean up selection models through UI manager
-        CharacterSelectionUIManager uiManager = ComponentResolver.FindComponentGlobally<CharacterSelectionUIManager>();
+        CharacterSelectionUIManager uiManager = FindFirstObjectByType<CharacterSelectionUIManager>();
         if (uiManager != null)
         {
             uiManager.CleanupSelectionModels();
@@ -912,7 +911,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         Debug.Log("SteamNetworkIntegration: Cleaning up selection NetworkObjects before disconnect");
         
         // Clean up deck preview cards first (before NetworkObjects are despawned)
-        CharacterSelectionUIManager uiManager = ComponentResolver.FindComponentGlobally<CharacterSelectionUIManager>();
+        CharacterSelectionUIManager uiManager = FindFirstObjectByType<CharacterSelectionUIManager>();
         if (uiManager != null)
         {
             // Get the deck preview controller and clean up cards

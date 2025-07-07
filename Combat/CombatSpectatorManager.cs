@@ -3,7 +3,6 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 using System.Linq;
 using FishNet.Connection;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Manages spectating functionality during combat, allowing players to view other ongoing fights.
@@ -69,16 +68,33 @@ public class CombatSpectatorManager : MonoBehaviour
     
     private void FindManagerReferences()
     {
-        ComponentResolver.FindComponent(ref fightManager, gameObject);
-        ComponentResolver.FindComponent(ref entityVisibilityManager, gameObject);
-        ComponentResolver.FindComponent(ref combatCanvasManager, gameObject);
-        
-        // Find DeckViewerManager with fallback logic
-        ComponentResolver.FindComponent(ref deckViewerManager, gameObject);
-        if (deckViewerManager == null && combatCanvasManager != null)
+        // Find FightManager
+        if (fightManager == null)
         {
-            // Try to get it from CombatCanvasManager
-            deckViewerManager = combatCanvasManager.GetDeckViewerManager();
+            fightManager = FindFirstObjectByType<FightManager>();
+        }
+        
+        // Find EntityVisibilityManager
+        if (entityVisibilityManager == null)
+        {
+            entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        }
+        
+        // Find CombatCanvasManager
+        if (combatCanvasManager == null)
+        {
+            combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
+        }
+        
+        // Find DeckViewerManager
+        if (deckViewerManager == null)
+        {
+            deckViewerManager = FindFirstObjectByType<DeckViewerManager>();
+            if (deckViewerManager == null && combatCanvasManager != null)
+            {
+                // Try to get it from CombatCanvasManager
+                deckViewerManager = combatCanvasManager.GetDeckViewerManager();
+            }
         }
         
         // Get button references from CombatCanvasManager

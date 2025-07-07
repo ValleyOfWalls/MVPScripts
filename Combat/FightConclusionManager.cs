@@ -5,7 +5,6 @@ using FishNet.Connection;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the fight conclusion interstitial flow after all fights complete and before draft transition.
@@ -92,20 +91,41 @@ public class FightConclusionManager : NetworkBehaviour
 
     private void FindRequiredComponents()
     {
-        ComponentResolver.FindComponent(ref fightConclusionUIManager, gameObject);
-
-        ComponentResolver.FindComponent(ref fightConclusionAnimator, gameObject);
-        
-        // If not found globally, try to get from UI manager
-        if (fightConclusionAnimator == null && fightConclusionUIManager != null)
+        if (fightConclusionUIManager == null)
         {
-            fightConclusionAnimator = fightConclusionUIManager.GetAnimator();
+            fightConclusionUIManager = FindFirstObjectByType<FightConclusionUIManager>();
         }
 
-        ComponentResolver.FindComponent(ref draftSetup, gameObject);
-        ComponentResolver.FindComponent(ref combatCanvasManager, gameObject);
-        ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
-        ComponentResolver.FindComponent(ref autoTestRunner, gameObject);
+        if (fightConclusionAnimator == null)
+        {
+            fightConclusionAnimator = FindFirstObjectByType<FightConclusionAnimator>();
+            
+            // If not found globally, try to get from UI manager
+            if (fightConclusionAnimator == null && fightConclusionUIManager != null)
+            {
+                fightConclusionAnimator = fightConclusionUIManager.GetAnimator();
+            }
+        }
+
+        if (draftSetup == null)
+        {
+            draftSetup = FindFirstObjectByType<DraftSetup>();
+        }
+
+        if (combatCanvasManager == null)
+        {
+            combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
+        }
+
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        }
+
+        if (autoTestRunner == null)
+        {
+            autoTestRunner = FindFirstObjectByType<AutoTestRunner>();
+        }
     }
 
     private void SetupUIManagerEvents()

@@ -1,7 +1,6 @@
 using UnityEngine;
 using FishNet.Object;
 using System.Collections;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Main controller for the OwnPetView functionality.
@@ -95,7 +94,7 @@ public class OwnPetViewController : MonoBehaviour
     {
         if (fightManager == null)
         {
-            ComponentResolver.FindComponent(ref fightManager, gameObject);
+            fightManager = FindFirstObjectByType<FightManager>();
             if (fightManager == null)
             {
                 LogDebug("FightManager not found in scene - will retry later");
@@ -108,7 +107,7 @@ public class OwnPetViewController : MonoBehaviour
         
         if (entityVisibilityManager == null)
         {
-            ComponentResolver.FindComponent(ref entityVisibilityManager, gameObject);
+            entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
             if (entityVisibilityManager == null)
             {
                 LogDebug("EntityVisibilityManager not found in scene");

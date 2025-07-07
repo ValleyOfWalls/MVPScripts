@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
 using FishNet.Object;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Handles card purchasing from the shop during the draft phase.
@@ -23,7 +22,7 @@ public class ShopCardSelection : MonoBehaviour
         if (card == null) card = GetComponent<Card>();
         
         // Find managers
-        ComponentResolver.FindComponent(ref draftManager, gameObject);
+        draftManager = FindFirstObjectByType<DraftManager>();
         gamePhaseManager = GamePhaseManager.Instance;
         
         ValidateComponents();

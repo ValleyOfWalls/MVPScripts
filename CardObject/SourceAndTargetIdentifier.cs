@@ -2,7 +2,6 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using FishNet.Object;
 using System.Collections.Generic;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Identifies the source and target of a card play with enhanced targeting support.
@@ -95,7 +94,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
         // If not available via singleton, try to find in scene
         if (fm == null)
         {
-            ComponentResolver.FindComponent(ref fm, gameObject);
+            fm = FindFirstObjectByType<FightManager>();
             Debug.Log($"SourceAndTargetIdentifier on {gameObject.name}: Found FightManager via FindFirstObjectByType");
         }
         
@@ -105,7 +104,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
     private DamageCalculator FindDamageCalculator()
     {
         // Try to find DamageCalculator in scene (usually on GameManager)
-        DamageCalculator dc = ComponentResolver.FindComponentGlobally<DamageCalculator>();
+        DamageCalculator dc = FindFirstObjectByType<DamageCalculator>();
         if (dc != null)
         {
             Debug.Log($"SourceAndTargetIdentifier on {gameObject.name}: Found DamageCalculator via FindFirstObjectByType");

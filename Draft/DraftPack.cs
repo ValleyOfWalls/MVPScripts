@@ -5,7 +5,6 @@ using FishNet.Connection;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Represents a networked draft pack containing cards for drafting.
@@ -278,7 +277,7 @@ public class DraftPack : NetworkBehaviour
             if (!asServer) // Only on clients
             {
                 Debug.Log($"DraftPack {gameObject.name}: Client-side ownership change detected, updating pack visibility");
-                EntityVisibilityManager entityVisibilityManager = ComponentResolver.FindComponentGlobally<EntityVisibilityManager>();
+                EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
                 if (entityVisibilityManager != null)
                 {
                     entityVisibilityManager.UpdateDraftPackVisibilityForPack(this);
@@ -317,7 +316,7 @@ public class DraftPack : NetworkBehaviour
                         // Don't override positions - let the layout system handle positioning
                         
                         // Use EntityVisibilityManager to determine proper visibility
-                        EntityVisibilityManager entityVisibilityManager = ComponentResolver.FindComponentGlobally<EntityVisibilityManager>();
+                        EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
                         if (entityVisibilityManager != null)
                         {
                             entityVisibilityManager.UpdateDraftPackVisibilityForPack(this);
@@ -431,7 +430,7 @@ public class DraftPack : NetworkBehaviour
         /* Debug.Log($"DraftPack: Card {cardName} parented successfully, now checking visibility (CurrentOwnerPlayerId: {CurrentOwnerPlayerId.Value})"); */
         
         // Use EntityVisibilityManager to determine proper visibility for draft pack cards
-        EntityVisibilityManager entityVisibilityManager = ComponentResolver.FindComponentGlobally<EntityVisibilityManager>();
+        EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
         if (entityVisibilityManager != null)
         {
             /* Debug.Log($"DraftPack: EntityVisibilityManager found, calling UpdateDraftPackVisibilityForPack for pack {gameObject.name}"); */

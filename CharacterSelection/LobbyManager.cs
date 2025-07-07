@@ -4,7 +4,6 @@ using FishNet.Connection;
 using FishNet.Object;
 using System.Collections.Generic;
 using System;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the core lobby functionality, player tracking, ready states, and game start logic.
@@ -52,11 +51,11 @@ public class LobbyManager : NetworkBehaviour
     
     private void FindRequiredComponents()
     {
-        ComponentResolver.FindComponent(ref fishNetManager, gameObject);
-        ComponentResolver.FindComponent(ref gamePhaseManager, gameObject);
+        fishNetManager = FindFirstObjectByType<NetworkManager>();
+        gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         
-        ComponentResolver.ValidateComponent(fishNetManager, "FishNet NetworkManager", gameObject);
-        ComponentResolver.ValidateComponent(gamePhaseManager, "GamePhaseManager", gameObject);
+        if (fishNetManager == null) Debug.LogError("LobbyManager: FishNet NetworkManager not found in scene.");
+        if (gamePhaseManager == null) Debug.LogError("LobbyManager: GamePhaseManager not found in scene.");
     }
 
     public override void OnStartClient()
@@ -133,7 +132,7 @@ public class LobbyManager : NetworkBehaviour
     [Server]
     private void NotifyCharacterSelectionManagerOfNewPlayer(NetworkConnection conn, string playerName)
     {
-        CharacterSelectionManager characterSelectionManager = ComponentResolver.FindComponentGlobally<CharacterSelectionManager>();
+        CharacterSelectionManager characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
         if (characterSelectionManager != null)
         {
             // Manually add the player to the character selection manager
@@ -269,7 +268,7 @@ public class LobbyManager : NetworkBehaviour
     {
         if (!IsServerStarted) return;
         
-        CharacterSelectionSetup characterSelectionSetup = ComponentResolver.FindComponentGlobally<CharacterSelectionSetup>();
+        CharacterSelectionSetup characterSelectionSetup = FindFirstObjectByType<CharacterSelectionSetup>();
         if (characterSelectionSetup != null)
         {
             characterSelectionSetup.InitializeCharacterSelection();

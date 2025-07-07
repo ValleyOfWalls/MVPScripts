@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using System.Collections;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the deck viewing functionality during combat, allowing players to view full deck contents.
@@ -117,17 +116,43 @@ public class DeckViewerManager : NetworkBehaviour
 
     private void FindManagerReferences()
     {
-        ComponentResolver.FindComponent(ref fightManager, gameObject);
-        ComponentResolver.FindComponent(ref combatCanvasManager, gameObject);
-        ComponentResolver.FindComponent(ref entityVisibilityManager, gameObject);
-        ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
+        if (fightManager == null)
+        {
+            fightManager = FindFirstObjectByType<FightManager>();
+        }
+        
+        if (combatCanvasManager == null)
+        {
+            combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
+        }
+            
+        if (entityVisibilityManager == null)
+        {
+            entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        }
+        
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        }
     }
 
     private void ValidateComponents()
     {
-        ComponentResolver.ValidateGameObject(deckViewPanel, "deckViewPanel", gameObject);
-        ComponentResolver.ValidateComponent(deckViewContainer, "deckViewContainer", gameObject);
-        ComponentResolver.ValidateComponent(fightManager, context: gameObject);
+        if (deckViewPanel == null)
+        {
+            Debug.LogError("DeckViewerManager: deckViewPanel is not assigned!");
+        }
+        
+        if (deckViewContainer == null)
+        {
+            Debug.LogError("DeckViewerManager: deckViewContainer is not assigned!");
+        }
+        
+        if (fightManager == null)
+        {
+            Debug.LogError("DeckViewerManager: Could not find FightManager!");
+        }
     }
 
     private void SetupUI()

@@ -5,7 +5,6 @@ using FishNet.Connection;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the draft flow including pack circulation, card selection, shop purchases, and draft completion.
@@ -44,10 +43,10 @@ public class DraftManager : NetworkBehaviour
     
     private void ResolveReferences()
     {
-        if (draftCanvasManager == null) ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
-        if (draftPackSetup == null) ComponentResolver.FindComponent(ref draftPackSetup, gameObject);
-        if (shopSetup == null) ComponentResolver.FindComponent(ref shopSetup, gameObject);
-        if (entityVisibilityManager == null) ComponentResolver.FindComponent(ref entityVisibilityManager, gameObject);
+        if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+        if (draftPackSetup == null) draftPackSetup = FindFirstObjectByType<DraftPackSetup>();
+        if (shopSetup == null) shopSetup = FindFirstObjectByType<ShopSetup>();
+        if (entityVisibilityManager == null) entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
         if (gameManager == null) gameManager = GameManager.Instance;
     }
     
@@ -717,7 +716,7 @@ public class DraftManager : NetworkBehaviour
         yield return new WaitForSeconds(0.5f);
         
         // Find and trigger CombatSetup to start a new combat round
-        CombatSetup combatSetup = ComponentResolver.FindComponentGlobally<CombatSetup>();
+        CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
         if (combatSetup != null)
         {
             // Reset combat setup state if needed
@@ -853,7 +852,7 @@ public class DraftManager : NetworkBehaviour
     private void RpcUpdateDraftPackVisibility()
     {
         // Update draft pack visibility on all clients
-        EntityVisibilityManager entityVisibilityManager = ComponentResolver.FindComponentGlobally<EntityVisibilityManager>();
+        EntityVisibilityManager entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
         if (entityVisibilityManager != null)
         {
             // Ensure the EntityVisibilityManager is in Draft state

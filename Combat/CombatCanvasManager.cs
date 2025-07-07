@@ -4,7 +4,6 @@ using FishNet.Object;
 using TMPro;
 using System.Linq;
 using System.Collections;
-using MVPScripts.Utility;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -145,9 +144,9 @@ public class CombatCanvasManager : NetworkBehaviour
     public void SetupCombatUI()
     {
         // Find managers if not already assigned
-        ComponentResolver.FindComponent(ref fightManager, gameObject);
-        ComponentResolver.FindComponent(ref combatManager, gameObject);
-        ComponentResolver.FindComponent(ref testManager, gameObject);
+        if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
+        if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
+        if (testManager == null) testManager = FindFirstObjectByType<CombatTestManager>();
 
         if (fightManager == null) Debug.LogError("FightManager not found by CombatCanvasManager.");
         if (combatManager == null) Debug.LogError("CombatManager not found by CombatCanvasManager.");
@@ -583,7 +582,7 @@ public class CombatCanvasManager : NetworkBehaviour
     {
         if (deckViewerManager == null)
         {
-            ComponentResolver.FindComponent(ref deckViewerManager, gameObject);
+            deckViewerManager = FindFirstObjectByType<DeckViewerManager>();
         }
         
         if (deckViewerManager != null)

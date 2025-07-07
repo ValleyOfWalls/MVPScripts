@@ -4,7 +4,6 @@ using FishNet.Object.Synchronizing;
 using FishNet.Connection;
 using System.Collections;
 using System.Collections.Generic;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the fight preview interstitial flow between combat setup and combat start.
@@ -78,42 +77,41 @@ public class FightPreviewManager : NetworkBehaviour
 
     private void FindRequiredComponents()
     {
-        ComponentResolver.ResolveMultipleComponents(gameObject,
-            new ComponentResolver.ComponentResolution("FightPreviewUIManager", 
-                () => ComponentResolver.FindComponent(ref fightPreviewUIManager, gameObject), 
-                () => ComponentResolver.ValidateComponent(fightPreviewUIManager, context: gameObject)),
-                
-            new ComponentResolver.ComponentResolution("FightPreviewAnimator", 
-                () => {
-                    ComponentResolver.FindComponent(ref fightPreviewAnimator, gameObject);
-                    // If not found globally, try to get from UI manager
-                    if (fightPreviewAnimator == null && fightPreviewUIManager != null)
-                    {
-                        fightPreviewAnimator = fightPreviewUIManager.GetAnimator();
-                    }
-                }, 
-                () => ComponentResolver.ValidateComponent(fightPreviewAnimator, context: gameObject, required: false),
-                required: false),
-                
-            new ComponentResolver.ComponentResolution("CombatManager", 
-                () => ComponentResolver.FindComponent(ref combatManager, gameObject), 
-                () => ComponentResolver.ValidateComponent(combatManager, context: gameObject)),
-                
-            new ComponentResolver.ComponentResolution("CombatCanvasManager", 
-                () => ComponentResolver.FindComponent(ref combatCanvasManager, gameObject), 
-                () => ComponentResolver.ValidateComponent(combatCanvasManager, context: gameObject, required: false),
-                required: false),
-                
-            new ComponentResolver.ComponentResolution("GamePhaseManager", 
-                () => ComponentResolver.FindComponent(ref gamePhaseManager, gameObject), 
-                () => ComponentResolver.ValidateComponent(gamePhaseManager, context: gameObject, required: false),
-                required: false),
-                
-            new ComponentResolver.ComponentResolution("AutoTestRunner", 
-                () => ComponentResolver.FindComponent(ref autoTestRunner, gameObject), 
-                () => ComponentResolver.ValidateComponent(autoTestRunner, context: gameObject, required: false),
-                required: false)
-        );
+        if (fightPreviewUIManager == null)
+        {
+            fightPreviewUIManager = FindFirstObjectByType<FightPreviewUIManager>();
+        }
+
+        if (fightPreviewAnimator == null)
+        {
+            fightPreviewAnimator = FindFirstObjectByType<FightPreviewAnimator>();
+            
+            // If not found globally, try to get from UI manager
+            if (fightPreviewAnimator == null && fightPreviewUIManager != null)
+            {
+                fightPreviewAnimator = fightPreviewUIManager.GetAnimator();
+            }
+        }
+
+        if (combatManager == null)
+        {
+            combatManager = FindFirstObjectByType<CombatManager>();
+        }
+
+        if (combatCanvasManager == null)
+        {
+            combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
+        }
+
+        if (gamePhaseManager == null)
+        {
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        }
+
+        if (autoTestRunner == null)
+        {
+            autoTestRunner = FindFirstObjectByType<AutoTestRunner>();
+        }
     }
 
     private void SetupUIManagerEvents()
@@ -444,9 +442,22 @@ public class FightPreviewManager : NetworkBehaviour
     {
         bool isValid = true;
         
-        isValid &= ComponentResolver.ValidateComponent(fightPreviewUIManager, "FightPreviewUIManager", gameObject);
-        ComponentResolver.ValidateComponent(fightPreviewAnimator, "FightPreviewAnimator", gameObject, required: false);
-        isValid &= ComponentResolver.ValidateComponent(combatManager, "CombatManager", gameObject);
+        if (fightPreviewUIManager == null)
+        {
+            Debug.LogError("FightPreviewManager: FightPreviewUIManager is not assigned");
+            isValid = false;
+        }
+        
+        if (fightPreviewAnimator == null)
+        {
+            Debug.LogWarning("FightPreviewManager: FightPreviewAnimator is not assigned - animations may not work");
+        }
+        
+        if (combatManager == null)
+        {
+            Debug.LogError("FightPreviewManager: CombatManager is not assigned");
+            isValid = false;
+        }
         
         return isValid;
     }

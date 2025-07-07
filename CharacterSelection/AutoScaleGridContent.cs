@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using MVPScripts.Utility;
 using System.Collections;
 using System.Reflection;
 
@@ -121,7 +120,7 @@ public class AutoScaleGridContent : MonoBehaviour
 
         
         // Find UI manager for intelligent settings detection
-        ComponentResolver.FindComponent(ref uiManager, gameObject);
+        uiManager = FindFirstObjectByType<CharacterSelectionUIManager>();
         
         // Derive intelligent settings
         DeriveIntelligentSettings();

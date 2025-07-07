@@ -2,7 +2,6 @@ using UnityEngine;
 using UnityEngine.UI;
 using FishNet.Object;
 using System.Collections;
-using MVPScripts.Utility;
 using System.Collections.Generic;
 using TMPro;
 
@@ -61,10 +60,10 @@ public class LoadingScreenManager : NetworkBehaviour
     private void ResolveReferences()
     {
         if (combatSetup == null)
-            ComponentResolver.FindComponent(ref combatSetup, gameObject);
+            combatSetup = FindFirstObjectByType<CombatSetup>();
             
         if (gamePhaseManager == null)
-            ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
             
         if (loadingCanvas == null)
             loadingCanvas = GetComponent<Canvas>();
@@ -249,7 +248,7 @@ public class LoadingScreenManager : NetworkBehaviour
             yield return new WaitForSeconds(checkInterval);
             
             if (combatSetup == null)
-                ComponentResolver.FindComponent(ref combatSetup, gameObject);
+                combatSetup = FindFirstObjectByType<CombatSetup>();
             
             // Gradually slow down checking if taking long
             checkInterval = Mathf.Min(checkInterval * intervalIncrease, maxCheckInterval);

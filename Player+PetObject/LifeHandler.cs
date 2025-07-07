@@ -1,6 +1,5 @@
 using UnityEngine;
 using FishNet.Object;
-using MVPScripts.Utility;
 using FishNet.Object.Synchronizing;
 using System;
 
@@ -136,7 +135,7 @@ public class LifeHandler : NetworkBehaviour
         RpcOnDeath(killer != null ? killer.ObjectId : 0);
         
         // Notify the combat manager about the entity death
-        CombatManager combatManager = ComponentResolver.FindComponentGlobally<CombatManager>();
+        CombatManager combatManager = FindFirstObjectByType<CombatManager>();
         if (combatManager != null)
         {
             combatManager.HandleEntityDeath(entity, killer);

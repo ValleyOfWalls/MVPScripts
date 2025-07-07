@@ -1,6 +1,5 @@
 using UnityEngine;
 using FishNet;
-using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the initial game setup and start screen functionality.
@@ -44,7 +43,7 @@ public class StartScreenManager : MonoBehaviour
         
         if (gamePhaseManager == null)
         {
-            ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
+            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
             RegisterStartScreenCanvas();
         }
     }
