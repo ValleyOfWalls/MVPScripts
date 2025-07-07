@@ -1,6 +1,7 @@
 using UnityEngine;
 using FishNet.Object;
 using System.Collections.Generic;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Handles the creation and setup of the shop during the drafting phase.
@@ -22,8 +23,8 @@ public class ShopSetup : NetworkBehaviour
     
     private void Awake()
     {
-        if (gameManager == null) gameManager = GameManager.Instance;
-        if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+        ComponentResolver.FindComponentWithSingleton(ref gameManager, () => GameManager.Instance, gameObject);
+        ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
         
         if (shopPackPrefab == null)
         {
@@ -96,10 +97,7 @@ public class ShopSetup : NetworkBehaviour
         /* Debug.Log($"ShopSetup.ObserversMirrorCardContainerTransform called on {(IsServerInitialized ? "Server" : "Client")} - Shop NOB ID: {shopNetObjId}"); */
         
         // Find the DraftCanvasManager if we don't have it
-        if (draftCanvasManager == null)
-        {
-            draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
-        }
+        ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
         
         if (draftCanvasManager == null || draftCanvasManager.ShopContainer == null)
         {
@@ -373,7 +371,7 @@ public class ShopSetup : NetworkBehaviour
         base.OnStartClient();
         
         // Re-resolve references when client starts to ensure we have all components
-        if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+        if (draftCanvasManager == null) ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
         Debug.Log("ShopSetup: Client started, references resolved");
     }
     
@@ -382,7 +380,7 @@ public class ShopSetup : NetworkBehaviour
     /// </summary>
     public void RefreshTransformMirroring()
     {
-        if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+        if (draftCanvasManager == null) ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
         
         if (draftCanvasManager == null || draftCanvasManager.ShopContainer == null)
         {

@@ -7,6 +7,7 @@ using FishNet.Managing;
 using FishNet.Observing;
 using System.Collections;
 using FishNet.Object.Synchronizing;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Initializes the combat phase including entity deck setup, fight assignments, and UI preparation.
@@ -51,10 +52,7 @@ public class CombatSetup : NetworkBehaviour
     
     private void RegisterCombatCanvasWithPhaseManager()
     {
-        if (gamePhaseManager == null)
-        {
-            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-        }
+        ComponentResolver.FindComponent(ref gamePhaseManager, gameObject);
         
         if (gamePhaseManager != null && combatCanvas != null)
         {
@@ -205,15 +203,14 @@ public class CombatSetup : NetworkBehaviour
 
     private void ResolveReferences()
     {
-        steamNetworkIntegration = SteamNetworkIntegration.Instance;
-        
-        if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
-        if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
-        if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
-        if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
-        if (gamePhaseManager == null) gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-        if (fightPreviewManager == null) fightPreviewManager = FindFirstObjectByType<FightPreviewManager>();
-        if (loadingScreenManager == null) loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
+        ComponentResolver.FindComponentWithSingleton(ref steamNetworkIntegration, () => SteamNetworkIntegration.Instance, gameObject);
+        ComponentResolver.FindComponent(ref fightManager, gameObject);
+        ComponentResolver.FindComponent(ref combatManager, gameObject);
+        ComponentResolver.FindComponent(ref combatCanvasManager, gameObject);
+        ComponentResolver.FindComponent(ref gameManager, gameObject);
+        ComponentResolver.FindComponent(ref gamePhaseManager, gameObject);
+        ComponentResolver.FindComponent(ref fightPreviewManager, gameObject);
+        ComponentResolver.FindComponent(ref loadingScreenManager, gameObject);
         
         RegisterCombatCanvasWithPhaseManager();
     }
@@ -445,7 +442,7 @@ public class CombatSetup : NetworkBehaviour
             /* Debug.Log("CombatSetup: Found CombatCanvasManager, proceeding with setup"); */
             
             // Ensure draft canvas is disabled before enabling combat canvas
-            DraftCanvasManager draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+            DraftCanvasManager draftCanvasManager = ComponentResolver.FindComponentGlobally<DraftCanvasManager>();
             if (draftCanvasManager != null)
             {
                 Debug.Log("CombatSetup: Found DraftCanvasManager, ensuring draft canvas is disabled");
@@ -595,15 +592,23 @@ public class CombatSetup : NetworkBehaviour
 
     private IEnumerator MonitorClientSetupComplete()
     {
-        // Wait a short time to ensure all entities are spawned
-        yield return new WaitForSeconds(0.2f);
-
+        // Monitor for NetworkEntities to be spawned using frame-based checking instead of time delays
         var entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        int frameCount = 0;
+        const int maxFramesToWaitForEntities = 150; // 2.5 seconds at 60fps
+
+        // Wait for entities to spawn - check every frame instead of time delay
+        while (entities.Length == 0 && frameCount < maxFramesToWaitForEntities)
+        {
+            yield return null; // Wait one frame
+            frameCount++;
+            entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+        }
+
         if (entities.Length == 0)
         {
-            Debug.LogWarning($"Client {LocalConnection.ClientId}: No NetworkEntities found yet, waiting longer...");
-            yield return new WaitForSeconds(0.5f);
-            entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
+            Debug.LogWarning($"Client {LocalConnection.ClientId}: No NetworkEntities found after {frameCount} frames");
+            yield break;
         }
 
         // Find all Player and Pet entities that need CombatDeckSetup
@@ -634,15 +639,30 @@ public class CombatSetup : NetworkBehaviour
 
         /* Debug.Log($"Client {LocalConnection.ClientId}: Monitoring {requiredSetups.Count} CombatDeckSetup components for completion..."); */
 
-        // Monitor until all setups are complete
-        bool allComplete = false;
-        int maxWaitTime = 30; // Maximum 30 seconds
-        float startTime = Time.time;
+        // Use event-driven monitoring instead of polling with delays
+        yield return StartCoroutine(WaitForAllSetupComplete(requiredSetups));
+    }
 
-        while (!allComplete && (Time.time - startTime) < maxWaitTime)
+    /// <summary>
+    /// Waits for all CombatDeckSetup components to complete using frame-based checking
+    /// More responsive than time-based polling
+    /// </summary>
+    private IEnumerator WaitForAllSetupComplete(List<CombatDeckSetup> requiredSetups)
+    {
+        const int maxFramesToWait = 1800; // 30 seconds at 60fps as safety fallback
+        int frameCount = 0;
+        bool allComplete = false;
+
+        while (!allComplete && frameCount < maxFramesToWait)
         {
+            yield return null; // Check every frame instead of every 100ms
+            frameCount++;
+
             allComplete = true;
-            string statusUpdate = $"Client {LocalConnection.ClientId} setup status:";
+            
+            // Log status every 120 frames (about 2 seconds at 60fps) while waiting
+            bool shouldLogStatus = frameCount % 120 == 0 && frameCount > 60;
+            string statusUpdate = shouldLogStatus ? $"Client {LocalConnection.ClientId} setup status:" : "";
 
             foreach (var setup in requiredSetups)
             {
@@ -650,7 +670,11 @@ public class CombatSetup : NetworkBehaviour
 
                 NetworkEntity entity = setup.GetComponent<NetworkEntity>();
                 bool isComplete = setup.IsSetupComplete;
-                statusUpdate += $"\n - Entity '{entity.name}' (ID: {entity.ObjectId}): IsSetupComplete = {isComplete}";
+                
+                if (shouldLogStatus)
+                {
+                    statusUpdate += $"\n - Entity '{entity.name}' (ID: {entity.ObjectId}): IsSetupComplete = {isComplete}";
+                }
 
                 if (!isComplete)
                 {
@@ -658,25 +682,20 @@ public class CombatSetup : NetworkBehaviour
                 }
             }
 
-            if (!allComplete)
+            if (shouldLogStatus && !allComplete)
             {
-                // Log status every 2 seconds while waiting
-                if (Mathf.FloorToInt(Time.time - startTime) % 2 == 0 && Time.time - startTime > 1f)
-                {
-                    /* Debug.Log(statusUpdate); */
-                }
-                yield return new WaitForSeconds(0.1f); // Check every 100ms
+                /* Debug.Log(statusUpdate); */
             }
         }
 
         if (allComplete)
         {
-            /* Debug.Log($"Client {LocalConnection.ClientId} combat setup check passed! All entities ready. Notifying server."); */
+            /* Debug.Log($"Client {LocalConnection.ClientId} combat setup check passed! All entities ready after {frameCount} frames. Notifying server."); */
             ServerSetClientReady(LocalConnection);
         }
         else
         {
-            Debug.LogError($"Client {LocalConnection.ClientId} combat setup check timed out after {maxWaitTime} seconds. Some entities never completed setup.");
+            Debug.LogError($"Client {LocalConnection.ClientId} combat setup check timed out after {frameCount} frames ({frameCount/60f:F1} seconds). Some entities never completed setup.");
         }
     }
 
@@ -723,7 +742,7 @@ public class CombatSetup : NetworkBehaviour
         else
         {
             // Try to find LoadingScreenManager if reference is missing
-            loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
+            ComponentResolver.FindComponent(ref loadingScreenManager, gameObject);
             if (loadingScreenManager != null)
             {
                 Debug.Log("CombatSetup: Found LoadingScreenManager via FindFirstObjectByType, hiding loading screen");

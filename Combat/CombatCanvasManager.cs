@@ -4,6 +4,7 @@ using FishNet.Object;
 using TMPro;
 using System.Linq;
 using System.Collections;
+using MVPScripts.Utility;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -144,9 +145,9 @@ public class CombatCanvasManager : NetworkBehaviour
     public void SetupCombatUI()
     {
         // Find managers if not already assigned
-        if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
-        if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
-        if (testManager == null) testManager = FindFirstObjectByType<CombatTestManager>();
+        ComponentResolver.FindComponent(ref fightManager, gameObject);
+        ComponentResolver.FindComponent(ref combatManager, gameObject);
+        ComponentResolver.FindComponent(ref testManager, gameObject);
 
         if (fightManager == null) Debug.LogError("FightManager not found by CombatCanvasManager.");
         if (combatManager == null) Debug.LogError("CombatManager not found by CombatCanvasManager.");
@@ -582,7 +583,7 @@ public class CombatCanvasManager : NetworkBehaviour
     {
         if (deckViewerManager == null)
         {
-            deckViewerManager = FindFirstObjectByType<DeckViewerManager>();
+            ComponentResolver.FindComponent(ref deckViewerManager, gameObject);
         }
         
         if (deckViewerManager != null)
@@ -726,42 +727,61 @@ public class CombatCanvasManager : NetworkBehaviour
         PositionStatsUIAlways(player, playerStatsUIPositionTransform, "Player Stats UI");
         PositionStatsUIAlways(opponentPet, opponentPetStatsUIPositionTransform, "Opponent Pet Stats UI");
 
-        // Make entities face each other after positioning (with delay to ensure positioning is complete)
-        StartCoroutine(SetupEntityFacingWithDelay(player, opponentPet));
+        // Make entities face each other after positioning (event-driven readiness check)
+        SetupEntityFacingWhenReady(player, opponentPet);
     }
 
     /// <summary>
-    /// Sets up entity facing with a delay to ensure all positioning is complete first
+    /// Sets up entity facing once entities are properly positioned
+    /// Uses event-driven approach instead of time delays
     /// </summary>
-    private IEnumerator SetupEntityFacingWithDelay(NetworkEntity player, NetworkEntity opponentPet)
+    private void SetupEntityFacingWhenReady(NetworkEntity player, NetworkEntity opponentPet)
     {
-        // Wait a short time to ensure all positioning and spawning is complete
-        yield return new WaitForSeconds(0.2f);
-        
-        // Double-check that entities are still valid and positioned
-        if (player == null || opponentPet == null)
+        // Check if entities are immediately ready
+        if (AreEntitiesReadyForFacing(player, opponentPet))
         {
-            Debug.LogWarning("SetupEntityFacingWithDelay: Entities became null during delay");
-            yield break;
+            /* Debug.Log($"SetupEntityFacingWhenReady: Entities immediately ready, setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}"); */
+            SetupEntityFacing(player, opponentPet);
+            return;
         }
-        
-        // Verify entities have been properly positioned before setting up facing
-        bool entitiesReady = AreEntitiesReadyForFacing(player, opponentPet);
-        if (!entitiesReady)
+
+        // If not immediately ready, start monitoring for readiness
+        StartCoroutine(MonitorEntitiesForFacingReadiness(player, opponentPet));
+    }
+
+    /// <summary>
+    /// Monitors entities until they're ready for facing setup, checking every frame
+    /// More responsive than time-based delays
+    /// </summary>
+    private IEnumerator MonitorEntitiesForFacingReadiness(NetworkEntity player, NetworkEntity opponentPet)
+    {
+        const int maxFramesToWait = 300; // 5 seconds at 60fps as safety fallback
+        int frameCount = 0;
+
+        while (frameCount < maxFramesToWait)
         {
-            Debug.LogWarning("SetupEntityFacingWithDelay: Entities not ready for facing, waiting longer");
-            yield return new WaitForSeconds(0.3f);
-            
-            // Try again
-            entitiesReady = AreEntitiesReadyForFacing(player, opponentPet);
-            if (!entitiesReady)
+            // Check every frame for readiness
+            yield return null;
+            frameCount++;
+
+            // Verify entities are still valid
+            if (player == null || opponentPet == null)
             {
-                Debug.LogError("SetupEntityFacingWithDelay: Entities still not ready for facing after extended wait");
+                Debug.LogWarning("MonitorEntitiesForFacingReadiness: Entities became null during monitoring");
+                yield break;
+            }
+
+            // Check if entities are now ready
+            if (AreEntitiesReadyForFacing(player, opponentPet))
+            {
+                /* Debug.Log($"MonitorEntitiesForFacingReadiness: Entities ready after {frameCount} frames, setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}"); */
+                SetupEntityFacing(player, opponentPet);
                 yield break;
             }
         }
-        
-        /* Debug.Log($"SetupEntityFacingWithDelay: Setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}"); */
+
+        // Safety fallback if entities never become ready
+        Debug.LogWarning($"MonitorEntitiesForFacingReadiness: Entities still not ready after {maxFramesToWait} frames - setting up facing anyway");
         SetupEntityFacing(player, opponentPet);
     }
 

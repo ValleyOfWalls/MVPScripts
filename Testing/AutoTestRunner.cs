@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections;
 using FishNet.Managing;
+using MVPScripts.Utility;
 
 public class AutoTestRunner : MonoBehaviour
 {
@@ -70,15 +71,8 @@ public class AutoTestRunner : MonoBehaviour
         }
         
         // Find missing components if not assigned
-        if (combatSetup == null)
-        {
-            combatSetup = FindFirstObjectByType<CombatSetup>();
-        }
-        
-        if (characterSelectionManager == null)
-        {
-            characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
-        }
+        ComponentResolver.FindComponent(ref combatSetup, gameObject);
+        ComponentResolver.FindComponent(ref characterSelectionManager, gameObject);
         
         if (gamePhaseManager == null)
         {

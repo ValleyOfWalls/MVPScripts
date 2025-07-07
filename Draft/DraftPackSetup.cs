@@ -2,6 +2,7 @@ using UnityEngine;
 using FishNet.Object;
 using System.Collections.Generic;
 using System.Linq;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Handles the creation and setup of draft packs for the drafting phase.
@@ -24,7 +25,7 @@ public class DraftPackSetup : NetworkBehaviour
     private void Awake()
     {
         if (gameManager == null) gameManager = GameManager.Instance;
-        if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+        if (draftCanvasManager == null) ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
         
         if (draftPackPrefab == null)
         {
@@ -99,7 +100,7 @@ public class DraftPackSetup : NetworkBehaviour
         // Find the DraftCanvasManager if we don't have it
         if (draftCanvasManager == null)
         {
-            draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+            ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
         }
         
         if (draftCanvasManager == null || draftCanvasManager.DraftPackContainer == null)
@@ -408,7 +409,7 @@ public class DraftPackSetup : NetworkBehaviour
         base.OnStartClient();
         
         // Re-resolve references when client starts to ensure we have all components
-        if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+        if (draftCanvasManager == null) ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
         Debug.Log("DraftPackSetup: Client started, references resolved");
     }
     
@@ -417,7 +418,7 @@ public class DraftPackSetup : NetworkBehaviour
     /// </summary>
     public void RefreshTransformMirroring()
     {
-        if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+        if (draftCanvasManager == null) ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
         
         if (draftCanvasManager == null || draftCanvasManager.DraftPackContainer == null)
         {

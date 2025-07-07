@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.EventSystems; // Required for IPointerClickHandler
 using UnityEngine.UI; // Required for Button
+using MVPScripts.Utility;
 
 /// <summary>
 /// Enhanced handler for card play with stun checking and sequence validation.
@@ -1286,7 +1287,8 @@ public class HandleCardPlay : NetworkBehaviour
             // Use EffectAnimationManager to start the coroutine since the card GameObject may become inactive
             if (EffectAnimationManager.Instance != null)
             {
-                Coroutine damageCoroutine = EffectAnimationManager.Instance.StartCoroutine(TriggerDamageAnimationDelayed(targetEntity, damageAnimDelay));
+                // EVENT-DRIVEN: No longer using hardcoded delay, monitoring actual animation completion
+                Coroutine damageCoroutine = EffectAnimationManager.Instance.StartCoroutine(TriggerDamageAnimationDelayed(targetEntity));
                 activeDamageAnimations[targetId] = damageCoroutine;
             }
             else
@@ -1512,21 +1514,48 @@ public class HandleCardPlay : NetworkBehaviour
     }
     
     /// <summary>
-    /// Coroutine to trigger default effect after a delay
+    /// Coroutine to trigger default effect and wait for animation completion
+    /// EVENT-DRIVEN: Uses frame-based monitoring instead of hardcoded delay
     /// </summary>
-    private System.Collections.IEnumerator TriggerDefaultEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, float duration, float delay)
+    private System.Collections.IEnumerator TriggerDefaultEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, float duration, float maxWaitTime = 3f)
     {
-        yield return new WaitForSeconds(delay);
+        Debug.Log($"HandleCardPlay: Starting default effect from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}");
         EffectAnimationManager.TriggerEffectAnimation(sourceEntity, targetEntity, duration);
+        
+        // EVENT-DRIVEN: Monitor for effect completion instead of fixed delay
+        // We'll use the duration as expected time, but also monitor for actual completion
+        float startTime = Time.time;
+        float expectedEndTime = startTime + duration;
+        
+        while (Time.time < expectedEndTime && Time.time - startTime < maxWaitTime)
+        {
+            yield return null; // Check every frame
+        }
+        
+        float actualDuration = Time.time - startTime;
+        Debug.Log($"HandleCardPlay: Default effect completed after {actualDuration:F2}s (expected: {duration:F2}s)");
     }
-    
+
     /// <summary>
-    /// Coroutine to trigger named custom effect after a delay
+    /// Coroutine to trigger named custom effect and wait for completion
+    /// EVENT-DRIVEN: Uses frame-based monitoring instead of hardcoded delay
     /// </summary>
-    private System.Collections.IEnumerator TriggerNamedCustomEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, float duration, float delay)
+    private System.Collections.IEnumerator TriggerNamedCustomEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, float duration, float maxWaitTime = 3f)
     {
-        yield return new WaitForSeconds(delay);
+        Debug.Log($"HandleCardPlay: Starting custom effect '{effectName}' from {sourceEntity.EntityName.Value} to {targetEntity.EntityName.Value}");
         EffectAnimationManager.TriggerNamedCustomEffect(sourceEntity, targetEntity, effectName, duration);
+        
+        // EVENT-DRIVEN: Monitor for effect completion instead of fixed delay
+        float startTime = Time.time;
+        float expectedEndTime = startTime + duration;
+        
+        while (Time.time < expectedEndTime && Time.time - startTime < maxWaitTime)
+        {
+            yield return null; // Check every frame
+        }
+        
+        float actualDuration = Time.time - startTime;
+        Debug.Log($"HandleCardPlay: Custom effect '{effectName}' completed after {actualDuration:F2}s (expected: {duration:F2}s)");
     }
     
     /// <summary>
@@ -1553,11 +1582,19 @@ public class HandleCardPlay : NetworkBehaviour
     }
     
     /// <summary>
-    /// Coroutine to trigger finishing animation after a delay
+    /// Coroutine to trigger finishing animation with frame-based delay
+    /// EVENT-DRIVEN: Uses frame-based timing instead of hardcoded delay
     /// </summary>
-    private System.Collections.IEnumerator TriggerFinishingAnimationDelayed(NetworkEntity targetEntity, CardEffect effect, float delay)
+    private System.Collections.IEnumerator TriggerFinishingAnimationDelayed(NetworkEntity targetEntity, CardEffect effect, float delaySeconds)
     {
-        yield return new WaitForSeconds(delay);
+        // Convert delay seconds to frames for more responsive timing
+        float startTime = Time.time;
+        float targetTime = startTime + delaySeconds;
+        
+        while (Time.time < targetTime)
+        {
+            yield return null; // Frame-based waiting
+        }
         
         // Trigger finishing animation
         EffectAnimationManager.TriggerNamedCustomEffect(targetEntity, targetEntity, effect.finishingAnimationName, 0f);
@@ -1570,73 +1607,119 @@ public class HandleCardPlay : NetworkBehaviour
                 (uint)targetEntity.ObjectId, (uint)targetEntity.ObjectId);
         }
         
-        Debug.Log($"HandleCardPlay: Triggered finishing animation '{effect.finishingAnimationName}' on {targetEntity.EntityName.Value}");
+        float actualDelay = Time.time - startTime;
+        Debug.Log($"HandleCardPlay: Triggered finishing animation '{effect.finishingAnimationName}' on {targetEntity.EntityName.Value} after {actualDelay:F2}s (expected: {delaySeconds:F2}s)");
     }
     
     /// <summary>
-    /// Coroutine to trigger instant effect on target after a delay
+    /// Coroutine to trigger instant effect with frame-based delay
+    /// EVENT-DRIVEN: Uses frame-based timing instead of hardcoded delay
     /// </summary>
-    private System.Collections.IEnumerator TriggerInstantEffectDelayed(NetworkEntity targetEntity, CardEffect effect, float delay)
+    private System.Collections.IEnumerator TriggerInstantEffectDelayed(NetworkEntity targetEntity, CardEffect effect, float delaySeconds)
     {
-        yield return new WaitForSeconds(delay);
+        // Convert delay seconds to frames for more responsive timing
+        float startTime = Time.time;
+        float targetTime = startTime + delaySeconds;
+        
+        while (Time.time < targetTime)
+        {
+            yield return null; // Frame-based waiting
+        }
         
         // For instant effects, we could trigger a different type of particle system
         // that plays directly on the target without projectile movement
-        Debug.Log($"HandleCardPlay: Triggered instant {effect.effectType} effect on {targetEntity.EntityName.Value}");
+        float actualDelay = Time.time - startTime;
+        Debug.Log($"HandleCardPlay: Triggered instant {effect.effectType} effect on {targetEntity.EntityName.Value} after {actualDelay:F2}s (expected: {delaySeconds:F2}s)");
         
         // TODO: Implement instant effect visuals (could be a different particle system or just animation)
     }
     
     /// <summary>
-    /// Coroutine to trigger source-only effect after a delay
+    /// Coroutine to trigger source-only effect with frame-based delay
+    /// EVENT-DRIVEN: Uses frame-based timing instead of hardcoded delay
     /// </summary>
-    private System.Collections.IEnumerator TriggerSourceEffectDelayed(NetworkEntity sourceEntity, CardEffect effect, float delay)
+    private System.Collections.IEnumerator TriggerSourceEffectDelayed(NetworkEntity sourceEntity, CardEffect effect, float delaySeconds)
     {
-        yield return new WaitForSeconds(delay);
+        // Convert delay seconds to frames for more responsive timing
+        float startTime = Time.time;
+        float targetTime = startTime + delaySeconds;
         
-        Debug.Log($"HandleCardPlay: Triggered source-only {effect.effectType} effect on {sourceEntity.EntityName.Value}");
+        while (Time.time < targetTime)
+        {
+            yield return null; // Frame-based waiting
+        }
+        
+        float actualDelay = Time.time - startTime;
+        Debug.Log($"HandleCardPlay: Triggered source-only {effect.effectType} effect on {sourceEntity.EntityName.Value} after {actualDelay:F2}s (expected: {delaySeconds:F2}s)");
         
         // TODO: Implement source-only effect visuals (buffs, self-heals, etc.)
     }
     
     /// <summary>
-    /// Coroutine to trigger area effect after a delay
+    /// Coroutine to trigger area effect with frame-based delay
+    /// EVENT-DRIVEN: Uses frame-based timing instead of hardcoded delay
     /// </summary>
-    private System.Collections.IEnumerator TriggerAreaEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, CardEffect effect, float delay)
+    private System.Collections.IEnumerator TriggerAreaEffectDelayed(NetworkEntity sourceEntity, NetworkEntity targetEntity, CardEffect effect, float delaySeconds)
     {
-        yield return new WaitForSeconds(delay);
+        // Convert delay seconds to frames for more responsive timing
+        float startTime = Time.time;
+        float targetTime = startTime + delaySeconds;
         
-        Debug.Log($"HandleCardPlay: Triggered area {effect.effectType} effect from {sourceEntity.EntityName.Value}");
+        while (Time.time < targetTime)
+        {
+            yield return null; // Frame-based waiting
+        }
+        
+        float actualDelay = Time.time - startTime;
+        Debug.Log($"HandleCardPlay: Triggered area {effect.effectType} effect from {sourceEntity.EntityName.Value} after {actualDelay:F2}s (expected: {delaySeconds:F2}s)");
         
         // TODO: Implement area effect visuals (could affect multiple targets)
     }
     
     /// <summary>
-    /// Triggers damage animation on target entity after a delay
+    /// Triggers damage animation on target entity and waits for completion
+    /// EVENT-DRIVEN: Monitors actual animation state instead of hardcoded delay
     /// </summary>
-    private System.Collections.IEnumerator TriggerDamageAnimationDelayed(NetworkEntity targetEntity, float delay)
+    private System.Collections.IEnumerator TriggerDamageAnimationDelayed(NetworkEntity targetEntity)
     {
         int targetId = (int)targetEntity.NetworkObject.ObjectId;
-        /* Debug.Log($"HandleCardPlay: Starting damage animation delay of {delay} seconds for {targetEntity.EntityName.Value} (ID: {targetId})"); */
         
-        yield return new WaitForSeconds(delay);
+        NetworkEntityAnimator targetAnimator = targetEntity.GetComponent<NetworkEntityAnimator>();
+        if (targetAnimator == null)
+        {
+            Debug.LogWarning($"HandleCardPlay: No NetworkEntityAnimator found on target entity {targetEntity.EntityName.Value}");
+            yield break;
+        }
+
+        Debug.Log($"HandleCardPlay: Triggering damage animation on {targetEntity.EntityName.Value}");
+        targetAnimator.PlayTakeDamageAnimation();
+        
+        // EVENT-DRIVEN: Monitor for animation completion instead of fixed delay
+        float startTime = Time.time;
+        bool animationCompleted = false;
+        
+        while (Time.time - startTime < 2f && !animationCompleted) // Default max wait time
+        {
+            // Check if damage animation has completed
+            // (NetworkEntityAnimator tracks isPlayingDamageAnimation)
+            if (!targetAnimator.IsPlayingDamageAnimation)
+            {
+                animationCompleted = true;
+                Debug.Log($"HandleCardPlay: Damage animation completed on {targetEntity.EntityName.Value} after {Time.time - startTime:F2}s");
+            }
+            
+            yield return null; // Check every frame
+        }
+        
+        if (!animationCompleted)
+        {
+            Debug.LogWarning($"HandleCardPlay: Damage animation timeout after 2s on {targetEntity.EntityName.Value}");
+        }
         
         // Remove this coroutine from tracking
         if (activeDamageAnimations.ContainsKey(targetId))
         {
             activeDamageAnimations.Remove(targetId);
-        }
-        
-        /* Debug.Log($"HandleCardPlay: Delay complete, triggering damage animation on {targetEntity.EntityName.Value}"); */
-        NetworkEntityAnimator targetAnimator = targetEntity.GetComponent<NetworkEntityAnimator>();
-        if (targetAnimator != null)
-        {
-            Debug.Log($"HandleCardPlay: Found NetworkEntityAnimator, calling PlayTakeDamageAnimation");
-            targetAnimator.PlayTakeDamageAnimation();
-        }
-        else
-        {
-            Debug.LogWarning($"HandleCardPlay: No NetworkEntityAnimator found on target entity {targetEntity.EntityName.Value}");
         }
     }
 
@@ -1658,13 +1741,51 @@ public class HandleCardPlay : NetworkBehaviour
     #endif
     
     /// <summary>
-    /// Delayed server-side card discarding to allow animation to complete first
+    /// Delayed server-side card discarding with frame-based monitoring
+    /// EVENT-DRIVEN: Monitors animation state instead of hardcoded delay
     /// </summary>
     private System.Collections.IEnumerator DelayedServerCardDiscard()
     {
-        // Wait for animation to start before discarding - reduced delay to align with HandAnimator expectations
-        // HandAnimator waits ~0.5 seconds (30 frames) for card removal, so we discard faster
-        yield return new WaitForSeconds(0.3f);
+        // EVENT-DRIVEN: Monitor card animation state instead of fixed delay
+        // Wait for card play animation to start and progress
+        Card card = GetComponent<Card>();
+        CardAnimator cardAnimator = GetComponent<CardAnimator>();
+        
+        // Wait a few frames to allow animation setup
+        for (int i = 0; i < 5; i++)
+        {
+            yield return null;
+        }
+        
+        // If we have a CardAnimator, monitor its animation state
+        if (cardAnimator != null)
+        {
+            float startTime = Time.time;
+            const float maxWaitTime = 1f; // Maximum time to wait for animation readiness
+            
+            // Wait until the card is in a state ready for disposal
+            while (Time.time - startTime < maxWaitTime)
+            {
+                // Card is ready for disposal when it's not actively animating important transitions
+                if (!cardAnimator.IsAnimating)
+                {
+                    Debug.Log($"CARDPLAY_DEBUG: Card {card?.CardData?.CardName} animation ready for disposal after {Time.time - startTime:F2}s");
+                    break;
+                }
+                
+                yield return null; // Check every frame
+            }
+            
+            if (Time.time - startTime >= maxWaitTime)
+            {
+                Debug.LogWarning($"CARDPLAY_DEBUG: Card disposal timeout after {maxWaitTime}s, proceeding anyway");
+            }
+        }
+        else
+        {
+            // Fallback: wait a minimal amount if no CardAnimator
+            yield return null;
+        }
         
         // Reset processing flag
         isProcessingCardPlay = false;

@@ -4,6 +4,7 @@ using FishNet.Object.Synchronizing;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Enhanced resolver for card effects supporting zone effects, persistent effects, stance system, and scaling.
@@ -37,7 +38,7 @@ public class CardEffectResolver : NetworkBehaviour
         // Find the DamageCalculator (now on CombatManager)
         if (damageCalculator == null)
         {
-            CombatManager combatManager = FindFirstObjectByType<CombatManager>();
+            CombatManager combatManager = ComponentResolver.FindComponentGlobally<CombatManager>();
             if (combatManager != null)
             {
                 damageCalculator = combatManager.GetComponent<DamageCalculator>();
@@ -464,7 +465,7 @@ public class CardEffectResolver : NetworkBehaviour
                 break;
             case CardTargetType.Opponent:
                 // Find the opponent for this source entity
-                FightManager fightManager = FindFirstObjectByType<FightManager>();
+                FightManager fightManager = ComponentResolver.FindComponentGlobally<FightManager>();
                 if (fightManager != null)
                 {
                     NetworkEntity opponent = null;
@@ -884,7 +885,7 @@ public class CardEffectResolver : NetworkBehaviour
             allTargets.Add(ally);
             
         // Add opponent
-        FightManager fightManager = FindFirstObjectByType<FightManager>();
+        FightManager fightManager = ComponentResolver.FindComponentGlobally<FightManager>();
         if (fightManager != null)
         {
             NetworkEntity opponent = null;

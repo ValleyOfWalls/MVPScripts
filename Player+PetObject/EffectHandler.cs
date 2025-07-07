@@ -3,6 +3,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using System.Collections.Generic;
 using System;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Handles status effects applied to an entity, tracking their duration and potency.
@@ -61,7 +62,7 @@ public class EffectHandler : NetworkBehaviour
     private void Start()
     {
         // Find combat manager
-        combatManager = FindFirstObjectByType<CombatManager>();
+        ComponentResolver.FindComponent(ref combatManager, gameObject);
         if (combatManager == null)
         {
             Debug.LogWarning($"EffectHandler on {gameObject.name}: Could not find CombatManager");

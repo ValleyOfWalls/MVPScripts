@@ -4,6 +4,7 @@ using FishNet.Connection;
 using FishNet.Managing.Server;
 using FishNet.Managing;
 using System.Collections.Generic;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Handles the spawning of NetworkEntity prefabs (players and pets) for connected clients.
@@ -495,7 +496,7 @@ public class PlayerSpawner : MonoBehaviour
         if (playerEntity == null || characterData == null) return;
         
         // Find the character index in the selection manager
-        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        CharacterSelectionManager selectionManager = ComponentResolver.FindComponentGlobally<CharacterSelectionManager>();
         if (selectionManager == null)
         {
             Debug.LogError("PlayerSpawner: CharacterSelectionManager not found, cannot set character selection data");
@@ -537,7 +538,7 @@ public class PlayerSpawner : MonoBehaviour
         if (petEntity == null || petData == null) return;
         
         // Find the pet index in the selection manager
-        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        CharacterSelectionManager selectionManager = ComponentResolver.FindComponentGlobally<CharacterSelectionManager>();
         if (selectionManager == null)
         {
             Debug.LogError("PlayerSpawner: CharacterSelectionManager not found, cannot set pet selection data");

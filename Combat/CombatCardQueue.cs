@@ -145,8 +145,8 @@ public class CombatCardQueue : NetworkBehaviour
                     // Execute the card play directly (bypass queuing)
                     cardPlayHandler.ExecuteCardPlayDirectly(queuedPlay.sourceEntityId, queuedPlay.targetEntityIds);
                     
-                    // Add a small delay between card executions for visual clarity
-                    yield return new WaitForSeconds(0.5f);
+                    // EVENT-DRIVEN: Wait for card animation completion instead of fixed delay
+                    yield return StartCoroutine(WaitForCardExecutionComplete(queuedPlay.cardObject));
                 }
                 else
                 {
@@ -316,8 +316,8 @@ public class CombatCardQueue : NetworkBehaviour
                     // Execute the card play directly (bypass queuing)
                     cardPlayHandler.ExecuteCardPlayDirectly(queuedPlay.sourceEntityId, queuedPlay.targetEntityIds);
                     
-                    // Add a small delay between card executions for visual clarity
-                    yield return new WaitForSeconds(0.5f);
+                    // EVENT-DRIVEN: Wait for card animation completion instead of fixed delay
+                    yield return StartCoroutine(WaitForCardExecutionComplete(queuedPlay.cardObject));
                 }
                 else
                 {
@@ -337,6 +337,50 @@ public class CombatCardQueue : NetworkBehaviour
         // Notify that card execution is completed
         OnCardExecutionCompleted?.Invoke();
         RpcNotifyCardExecutionCompleted();
+    }
+    
+    /// <summary>
+    /// Waits for a card's execution animations to complete
+    /// EVENT-DRIVEN: Monitors actual card animation state instead of hardcoded delay
+    /// </summary>
+    private IEnumerator WaitForCardExecutionComplete(GameObject cardObject)
+    {
+        if (cardObject == null)
+        {
+            yield break;
+        }
+        
+        CardAnimator cardAnimator = cardObject.GetComponent<CardAnimator>();
+        float startTime = Time.time;
+        const float maxWaitTime = 2f; // Safety fallback
+        const float minWaitTime = 0.1f; // Minimum visual pause between cards
+        
+        // Ensure minimum visual pause
+        yield return new WaitForSeconds(minWaitTime);
+        
+        // If card has animator, wait for animation completion
+        if (cardAnimator != null)
+        {
+            while (cardAnimator.IsAnimating && Time.time - startTime < maxWaitTime)
+            {
+                yield return null; // Check every frame
+            }
+            
+            float actualWaitTime = Time.time - startTime;
+            if (cardAnimator.IsAnimating)
+            {
+                Debug.LogWarning($"CombatCardQueue: Card execution timeout after {actualWaitTime:F2}s for {cardObject.name}");
+            }
+            else
+            {
+                Debug.Log($"CombatCardQueue: Card execution completed after {actualWaitTime:F2}s for {cardObject.name}");
+            }
+        }
+        else
+        {
+            // No animator, just use minimum wait
+            Debug.Log($"CombatCardQueue: No CardAnimator found for {cardObject.name}, using minimum wait");
+        }
     }
     
     /// <summary>

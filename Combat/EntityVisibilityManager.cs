@@ -2,6 +2,7 @@ using UnityEngine;
 using FishNet.Connection;
 using System.Collections.Generic;
 using System.Linq;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the visibility of NetworkEntity objects based on game state.
@@ -55,7 +56,7 @@ public class EntityVisibilityManager : MonoBehaviour
     {
         if (fightManager == null)
         {
-            fightManager = FindFirstObjectByType<FightManager>();
+            ComponentResolver.FindComponent(ref fightManager, gameObject);
         }
     }
     
@@ -895,7 +896,7 @@ public class EntityVisibilityManager : MonoBehaviour
         LogDebug($"Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
         
         // Find the DraftManager to get the currently visible pack for the local player
-        DraftManager draftManager = FindFirstObjectByType<DraftManager>();
+        DraftManager draftManager = ComponentResolver.FindComponentGlobally<DraftManager>();
         if (draftManager == null)
         {
             Debug.LogWarning("[EntityVisibilityManager] DraftManager not found, cannot determine currently visible pack");
@@ -993,7 +994,7 @@ public class EntityVisibilityManager : MonoBehaviour
         LogDebug($"Local player: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
         
         // Find the DraftManager to check if cards are selectable
-        DraftManager draftManager = FindFirstObjectByType<DraftManager>();
+        DraftManager draftManager = ComponentResolver.FindComponentGlobally<DraftManager>();
         if (draftManager == null)
         {
             LogDebug("DraftManager not found for pack-specific visibility update");

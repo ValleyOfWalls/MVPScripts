@@ -5,6 +5,7 @@ using FishNet.Connection;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections;
+using MVPScripts.Utility;
 using FishNet.Managing;
 
 public enum CombatTurn
@@ -55,11 +56,11 @@ public class CombatManager : NetworkBehaviour
     
     private void Awake()
     {
-        if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
-        if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
-        if (draftSetup == null) draftSetup = FindFirstObjectByType<DraftSetup>();
-        if (fightConclusionManager == null) fightConclusionManager = FindFirstObjectByType<FightConclusionManager>();
-        if (combatCardQueue == null) combatCardQueue = FindFirstObjectByType<CombatCardQueue>();
+        ComponentResolver.FindComponent(ref combatCanvasManager, gameObject);
+        ComponentResolver.FindComponent(ref fightManager, gameObject);
+        ComponentResolver.FindComponent(ref draftSetup, gameObject);
+        ComponentResolver.FindComponent(ref fightConclusionManager, gameObject);
+        ComponentResolver.FindComponent(ref combatCardQueue, gameObject);
         
         // Subscribe to card execution events
         CombatCardQueue.OnCardExecutionStarted += OnClientCardExecutionStarted;

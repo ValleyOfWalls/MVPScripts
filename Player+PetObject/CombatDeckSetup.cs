@@ -38,9 +38,49 @@ public class CombatDeckSetup : NetworkBehaviour
     {
         base.OnStartNetwork();
         
-        // Don't try to get deck transform immediately - Hand entities may not be spawned yet
-        // We'll resolve this when SetupCombatDeck is actually called
         ValidateComponents();
+        
+        // Subscribe to hand entity changes to know when we can proceed with setup
+        if (ownerEntity != null)
+        {
+            var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
+            if (relationshipManager != null)
+            {
+                relationshipManager.handEntity.OnChange += OnHandEntityChanged;
+            }
+        }
+    }
+
+    public override void OnStopNetwork()
+    {
+        base.OnStopNetwork();
+        
+        // Unsubscribe from events
+        if (ownerEntity != null)
+        {
+            var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
+            if (relationshipManager != null)
+            {
+                relationshipManager.handEntity.OnChange -= OnHandEntityChanged;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Called when the hand entity changes - triggers setup retry if needed
+    /// </summary>
+    private void OnHandEntityChanged(NetworkBehaviour prev, NetworkBehaviour next, bool asServer)
+    {
+        if (!asServer || !IsServerInitialized) return;
+        
+        // If we were waiting for a hand entity and now have one, retry setup
+        if (prev == null && next != null && deckTransform == null)
+        {
+            Debug.Log($"CombatDeckSetup on {gameObject.name}: Hand entity became available, retrying setup");
+            // Clear the attempt counter since we have a valid trigger
+            deckTransformResolutionAttempts = 0;
+            SetupCombatDeck();
+        }
     }
 
     /// <summary>
@@ -130,16 +170,16 @@ public class CombatDeckSetup : NetworkBehaviour
             GetDeckTransform();
         }
 
-        // If we still don't have what we need, retry with delay
+        // If we still don't have what we need, start monitoring instead of using delays
         if (deckTransform == null || handEntity == null)
         {
             if (deckTransformResolutionAttempts < MAX_TRANSFORM_RESOLUTION_ATTEMPTS)
             {
                 deckTransformResolutionAttempts++;
-                Debug.LogWarning($"CombatDeckSetup on {gameObject.name}: Hand entity or deck transform not ready, retrying in 0.5s (attempt {deckTransformResolutionAttempts}/{MAX_TRANSFORM_RESOLUTION_ATTEMPTS})");
+                Debug.LogWarning($"CombatDeckSetup on {gameObject.name}: Hand entity or deck transform not ready, monitoring for availability (attempt {deckTransformResolutionAttempts}/{MAX_TRANSFORM_RESOLUTION_ATTEMPTS})");
                 
-                // Retry after a delay
-                StartCoroutine(RetrySetupAfterDelay(0.5f));
+                // Monitor for hand entity availability instead of time-based retry
+                StartCoroutine(MonitorForHandEntityAvailability());
                 return;
             }
             else
@@ -152,10 +192,78 @@ public class CombatDeckSetup : NetworkBehaviour
         StartCoroutine(SpawnDeckCards());
     }
     
-    private IEnumerator RetrySetupAfterDelay(float delay)
+    /// <summary>
+    /// Monitors for hand entity availability using network-aware checking
+    /// EVENT-DRIVEN: Responds to network spawn events instead of fixed polling
+    /// </summary>
+    private IEnumerator MonitorForHandEntityAvailability()
     {
-        yield return new WaitForSeconds(delay);
-        SetupCombatDeck();
+        float startTime = Time.time;
+        const float maxWaitTime = 3f; // Maximum wait time as safety fallback
+        int checkCount = 0;
+        
+        // Start with more frequent checks, then back off
+        float checkInterval = 0.016f; // Start checking every frame (60fps)
+        const float maxCheckInterval = 0.1f; // Max 10 checks per second
+        const float intervalIncrease = 1.02f; // Gradually slow down checking
+
+        while (Time.time - startTime < maxWaitTime)
+        {
+            yield return new WaitForSeconds(checkInterval);
+            checkCount++;
+
+            // Try to get the hand entity and deck transform
+            GetDeckTransform();
+
+            // If we now have what we need, proceed with setup
+            if (deckTransform != null && handEntity != null)
+            {
+                float actualWaitTime = Time.time - startTime;
+                Debug.Log($"CombatDeckSetup on {gameObject.name}: Hand entity became available after {actualWaitTime:F2}s ({checkCount} checks), proceeding with setup");
+                StartCoroutine(SpawnDeckCards());
+                yield break;
+            }
+            
+            // If no luck after several attempts, check if network is still spawning objects
+            if (checkCount > 5 && NetworkManager != null)
+            {
+                // Check if there are any objects still spawning
+                int activeSpawning = CountActiveSpawningObjects();
+                if (activeSpawning == 0)
+                {
+                    // No objects spawning, likely won't find what we need
+                    Debug.LogWarning($"CombatDeckSetup on {gameObject.name}: No network objects spawning, hand entity may not be available");
+                }
+            }
+
+            // Gradually slow down checking to avoid excessive polling
+            checkInterval = Mathf.Min(checkInterval * intervalIncrease, maxCheckInterval);
+        }
+
+        // Fallback if hand entity never becomes available
+        float totalWaitTime = Time.time - startTime;
+        Debug.LogError($"CombatDeckSetup on {gameObject.name}: Hand entity not available after {totalWaitTime:F1}s ({checkCount} checks)");
+    }
+    
+    /// <summary>
+    /// Counts network objects that are currently in the process of spawning
+    /// Used to determine if we should keep waiting for entities
+    /// </summary>
+    private int CountActiveSpawningObjects()
+    {
+        if (NetworkManager?.ClientManager?.Objects == null) return 0;
+        
+        int spawningCount = 0;
+        foreach (var kvp in NetworkManager.ClientManager.Objects.Spawned)
+        {
+            var netObj = kvp.Value;
+            if (netObj != null && !netObj.IsSpawned)
+            {
+                spawningCount++;
+            }
+        }
+        
+        return spawningCount;
     }
 
     private IEnumerator SpawnDeckCards()
@@ -274,8 +382,8 @@ public class CombatDeckSetup : NetworkBehaviour
                 card.SetCurrentContainer(CardLocation.Deck);
             }
 
-            // Small delay between spawning cards to prevent network congestion
-            yield return new WaitForSeconds(0.05f);
+            // Yield frame to prevent blocking - more responsive than time delay
+            yield return null;
         }
 
         /* Debug.Log($"Finished setting up combat deck for {gameObject.name} with {cardIds.Count} cards"); */

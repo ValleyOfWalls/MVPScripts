@@ -5,6 +5,7 @@ using FishNet.Object;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the UI elements for the fight conclusion screen that shows results after all fights complete.
@@ -60,15 +61,8 @@ public class FightConclusionUIManager : NetworkBehaviour
 
     private void FindRequiredComponents()
     {
-        if (fightManager == null)
-        {
-            fightManager = FindFirstObjectByType<FightManager>();
-        }
-
-        if (fightConclusionManager == null)
-        {
-            fightConclusionManager = FindFirstObjectByType<FightConclusionManager>();
-        }
+        ComponentResolver.FindComponent(ref fightManager, gameObject);
+        ComponentResolver.FindComponent(ref fightConclusionManager, gameObject);
 
         // Get or add CanvasGroup for animations
         if (fightConclusionCanvas != null)
@@ -86,7 +80,7 @@ public class FightConclusionUIManager : NetworkBehaviour
             animator = GetComponent<FightConclusionAnimator>();
             if (animator == null)
             {
-                animator = FindFirstObjectByType<FightConclusionAnimator>();
+                ComponentResolver.FindComponent(ref animator, gameObject);
             }
         }
     }

@@ -4,6 +4,7 @@ using FishNet.Managing;
 using FishNet.Connection;
 using System.Collections.Generic;
 using System.Linq;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Handles parenting of card GameObjects to appropriate transforms during gameplay.
@@ -359,6 +360,6 @@ public class CardParenter : NetworkBehaviour
         }
         
         // Fallback to direct search
-        return FindFirstObjectByType<EntityVisibilityManager>();
+        return ComponentResolver.FindComponentGlobally<EntityVisibilityManager>();
     }
 } 

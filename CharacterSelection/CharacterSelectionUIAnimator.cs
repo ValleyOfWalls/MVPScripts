@@ -340,7 +340,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         Camera mainCamera = Camera.main;
         if (mainCamera == null)
         {
-            mainCamera = FindFirstObjectByType<Camera>();
+            ComponentResolver.FindComponent(ref mainCamera, gameObject);
         }
         
         if (mainCamera == null)

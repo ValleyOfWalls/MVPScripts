@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using FishNet.Object;
 using System.Collections;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the UI elements for the fight preview interstitial screen that shows before combat.
@@ -51,10 +52,7 @@ public class FightPreviewUIManager : NetworkBehaviour
 
     private void FindRequiredComponents()
     {
-        if (fightManager == null)
-        {
-            fightManager = FindFirstObjectByType<FightManager>();
-        }
+        ComponentResolver.FindComponent(ref fightManager, gameObject);
 
         // Get or add CanvasGroup for animations
         if (fightPreviewCanvas != null)
@@ -72,7 +70,7 @@ public class FightPreviewUIManager : NetworkBehaviour
             animator = GetComponent<FightPreviewAnimator>();
             if (animator == null)
             {
-                animator = FindFirstObjectByType<FightPreviewAnimator>();
+                ComponentResolver.FindComponent(ref animator, gameObject);
             }
         }
     }

@@ -1,6 +1,7 @@
 using UnityEngine;
 using FishNet.Object;
 using System.Collections;
+using MVPScripts.Utility;
 using CharacterSelection;
 
 /// <summary>
@@ -220,10 +221,7 @@ public class EntityModelManager : NetworkBehaviour
             Debug.Log($"EntityModelManager: Setting character model from path: {prefabPath}");
         
         // Find the character selection manager to get character data
-        if (characterSelectionManager == null)
-        {
-            characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
-        }
+        ComponentResolver.FindComponent(ref characterSelectionManager, gameObject);
         
         if (characterSelectionManager == null)
         {
@@ -259,10 +257,7 @@ public class EntityModelManager : NetworkBehaviour
             Debug.Log($"EntityModelManager: Setting pet model from path: {prefabPath}");
         
         // Find the character selection manager to get pet data
-        if (characterSelectionManager == null)
-        {
-            characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
-        }
+        ComponentResolver.FindComponent(ref characterSelectionManager, gameObject);
         
         if (characterSelectionManager == null)
         {

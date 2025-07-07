@@ -3,6 +3,7 @@ using FishNet.Object;
 using System.Collections.Generic;
 using System.Linq;
 using System;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Manages all card movement between deck, hand, and discard pile during gameplay.
@@ -842,7 +843,7 @@ public class HandManager : NetworkBehaviour
         }
         
         // Fallback to direct search
-        return FindFirstObjectByType<EntityVisibilityManager>();
+        return ComponentResolver.FindComponentGlobally<EntityVisibilityManager>();
     }
 
     [ObserversRpc]

@@ -4,6 +4,7 @@ using FishNet.Object.Synchronizing;
 using System.Collections.Generic;
 using FishNet.Connection;
 using System.Linq;
+using MVPScripts.Utility;
 
 // Struct to hold fight assignment data, to be used in a SyncList
 [System.Serializable]
@@ -151,7 +152,7 @@ public class FightManager : NetworkBehaviour
         
         if (entityVisManager == null)
         {
-            entityVisManager = FindFirstObjectByType<EntityVisibilityManager>();
+            ComponentResolver.FindComponent(ref entityVisManager, gameObject);
         }
         
         return entityVisManager;

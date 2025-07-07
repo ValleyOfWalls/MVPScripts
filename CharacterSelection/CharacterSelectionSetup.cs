@@ -1,6 +1,7 @@
 using UnityEngine;
 using FishNet.Object;
 using System.Collections;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Coordinates the transition to character selection phase and initializes the character selection system.
@@ -29,10 +30,10 @@ public class CharacterSelectionSetup : NetworkBehaviour
     
     private void ResolveReferences()
     {
-        if (characterSelectionManager == null) characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
-        if (characterSelectionUIManager == null) characterSelectionUIManager = FindFirstObjectByType<CharacterSelectionUIManager>();
-        if (gamePhaseManager == null) gamePhaseManager = GamePhaseManager.Instance;
-        if (entityVisibilityManager == null) entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        ComponentResolver.FindComponent(ref characterSelectionManager, gameObject);
+        ComponentResolver.FindComponent(ref characterSelectionUIManager, gameObject);
+        ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
+        ComponentResolver.FindComponent(ref entityVisibilityManager, gameObject);
         
         // Log what we found for debugging
         Debug.Log($"CharacterSelectionSetup.ResolveReferences: CharacterSelectionManager = {(characterSelectionManager != null ? "Found" : "NULL")}");

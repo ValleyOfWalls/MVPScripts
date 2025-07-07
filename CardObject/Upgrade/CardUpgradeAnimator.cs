@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.Audio;
 using System;
 using FishNet.Object;
+using MVPScripts.Utility;
 
 namespace CardUpgrade
 {
@@ -82,7 +83,7 @@ namespace CardUpgrade
             mainCamera = Camera.main;
             if (mainCamera == null)
             {
-                mainCamera = FindFirstObjectByType<Camera>();
+                ComponentResolver.FindComponent(ref mainCamera, gameObject);
             }
             
             // Set up audio source if not assigned

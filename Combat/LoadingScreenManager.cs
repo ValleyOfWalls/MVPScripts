@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using FishNet.Object;
 using System.Collections;
+using MVPScripts.Utility;
 using System.Collections.Generic;
 using TMPro;
 
@@ -60,10 +61,10 @@ public class LoadingScreenManager : NetworkBehaviour
     private void ResolveReferences()
     {
         if (combatSetup == null)
-            combatSetup = FindFirstObjectByType<CombatSetup>();
+            ComponentResolver.FindComponent(ref combatSetup, gameObject);
             
         if (gamePhaseManager == null)
-            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
             
         if (loadingCanvas == null)
             loadingCanvas = GetComponent<Canvas>();
@@ -236,30 +237,48 @@ public class LoadingScreenManager : NetworkBehaviour
     
     private IEnumerator MonitorCombatSetupCompletion()
     {
+        // EVENT-DRIVEN: Use frame-based checking with adaptive intervals
+        float startTime = Time.time;
+        float checkInterval = 0.016f; // Start with frame-based checking (60fps)
+        const float maxCheckInterval = 0.2f; // Max 5 checks per second
+        const float intervalIncrease = 1.05f; // Gradually slow down checking
+        
         // Wait until combat setup exists and we're in loading state
         while (combatSetup == null || !isLoadingScreenActive)
         {
-            yield return new WaitForSeconds(0.1f);
+            yield return new WaitForSeconds(checkInterval);
             
             if (combatSetup == null)
-                combatSetup = FindFirstObjectByType<CombatSetup>();
+                ComponentResolver.FindComponent(ref combatSetup, gameObject);
+            
+            // Gradually slow down checking if taking long
+            checkInterval = Mathf.Min(checkInterval * intervalIncrease, maxCheckInterval);
         }
+        
+        Debug.Log($"LoadingScreenManager: Found CombatSetup, monitoring for completion (found after {Time.time - startTime:F2}s)");
+        
+        // Reset check interval for setup monitoring
+        checkInterval = 0.016f; // Back to frame-based for responsive completion detection
         
         // Monitor combat setup completion
         while (isLoadingScreenActive)
         {
             if (combatSetup != null && combatSetup.IsSetupComplete)
             {
-                /* Debug.Log("LoadingScreenManager: Combat setup completed, hiding loading screen"); */
+                float setupTime = Time.time - startTime;
+                Debug.Log($"LoadingScreenManager: Combat setup completed after {setupTime:F2}s, hiding loading screen");
                 
-                // Add a small delay to ensure smooth transition
-                yield return new WaitForSeconds(0.5f);
+                // EVENT-DRIVEN: Minimal delay for smooth visual transition only
+                yield return new WaitForSeconds(0.1f);
                 
                 HideLoadingScreen();
                 break;
             }
             
-            yield return new WaitForSeconds(0.1f);
+            yield return new WaitForSeconds(checkInterval);
+            
+            // Gradually slow down checking to avoid excessive polling
+            checkInterval = Mathf.Min(checkInterval * intervalIncrease, maxCheckInterval);
         }
     }
     

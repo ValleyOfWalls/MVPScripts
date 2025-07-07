@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 using FishNet.Object;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Integration class for combat math testing via Editor Window
@@ -16,7 +17,7 @@ public static class CombatMathIntegration
         int baseDamage, List<StatusEffectData> sourceEffects, List<StatusEffectData> targetEffects, 
         int expectedDamage, string scenarioName = "Custom Scenario")
     {
-        var damageCalculator = UnityEngine.Object.FindFirstObjectByType<DamageCalculator>();
+        var damageCalculator = ComponentResolver.FindComponentGlobally<DamageCalculator>();
         if (damageCalculator == null)
         {
             return new CombatMathTestResult

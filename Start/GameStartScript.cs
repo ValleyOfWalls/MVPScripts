@@ -1,4 +1,5 @@
 using UnityEngine;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Initial entry point for the game. This script should be attached to a GameObject present at game start.
@@ -19,7 +20,7 @@ public class GameStartScript : MonoBehaviour
     {
         if (gamePhaseManager != null) return;
         
-        gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+        ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
         if (gamePhaseManager == null)
         {
             Debug.LogError("GamePhaseManager not found in the scene. Phase transitions won't work correctly.");

@@ -3,6 +3,7 @@ using FishNet.Object;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using MVPScripts.Utility;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -42,8 +43,8 @@ public class CombatTestManager : NetworkBehaviour
     
     private void Start()
     {
-        combatManager = FindFirstObjectByType<CombatManager>();
-        fightManager = FindFirstObjectByType<FightManager>();
+        ComponentResolver.FindComponent(ref combatManager, gameObject);
+        ComponentResolver.FindComponent(ref fightManager, gameObject);
         
         if (enableTestMode)
         {
@@ -1733,7 +1734,7 @@ public class CombatTestManager : NetworkBehaviour
         }
         
         // Disable effect animation manager
-        var effectAnimationManager = Object.FindFirstObjectByType<EffectAnimationManager>();
+        var effectAnimationManager = ComponentResolver.FindComponentGlobally<EffectAnimationManager>();
         if (effectAnimationManager != null && effectAnimationManager.enabled)
         {
             effectAnimationManager.enabled = false;
@@ -1773,7 +1774,7 @@ public class CombatTestManager : NetworkBehaviour
         }
         
         // Re-enable effect animation manager
-        var effectAnimationManager = Object.FindFirstObjectByType<EffectAnimationManager>();
+        var effectAnimationManager = ComponentResolver.FindComponentGlobally<EffectAnimationManager>();
         if (effectAnimationManager != null && !effectAnimationManager.enabled)
         {
             effectAnimationManager.enabled = true;
@@ -1827,14 +1828,14 @@ public class CombatTestManager : NetworkBehaviour
     private void DisableAudioSystems()
     {
         // Disable sound effect manager
-        var soundEffectManager = Object.FindFirstObjectByType<SoundEffectManager>();
+        var soundEffectManager = ComponentResolver.FindComponentGlobally<SoundEffectManager>();
         if (soundEffectManager != null && soundEffectManager.enabled)
         {
             soundEffectManager.enabled = false;
         }
         
         // Disable music manager
-        var musicManager = Object.FindFirstObjectByType<MusicManager>();
+        var musicManager = ComponentResolver.FindComponentGlobally<MusicManager>();
         if (musicManager != null && musicManager.enabled)
         {
             musicManager.enabled = false;
@@ -1861,7 +1862,7 @@ public class CombatTestManager : NetworkBehaviour
         }
         
         // Disable phase change sound handler
-        var phaseChangeSoundHandler = Object.FindFirstObjectByType<PhaseChangeSoundHandler>();
+        var phaseChangeSoundHandler = ComponentResolver.FindComponentGlobally<PhaseChangeSoundHandler>();
         if (phaseChangeSoundHandler != null && phaseChangeSoundHandler.enabled)
         {
             phaseChangeSoundHandler.enabled = false;
@@ -1871,14 +1872,14 @@ public class CombatTestManager : NetworkBehaviour
     private void EnableAudioSystems()
     {
         // Re-enable sound effect manager
-        var soundEffectManager = Object.FindFirstObjectByType<SoundEffectManager>();
+        var soundEffectManager = ComponentResolver.FindComponentGlobally<SoundEffectManager>();
         if (soundEffectManager != null && !soundEffectManager.enabled)
         {
             soundEffectManager.enabled = true;
         }
         
         // Re-enable music manager
-        var musicManager = Object.FindFirstObjectByType<MusicManager>();
+        var musicManager = ComponentResolver.FindComponentGlobally<MusicManager>();
         if (musicManager != null && !musicManager.enabled)
         {
             musicManager.enabled = true;
@@ -1905,7 +1906,7 @@ public class CombatTestManager : NetworkBehaviour
         }
         
         // Re-enable phase change sound handler
-        var phaseChangeSoundHandler = Object.FindFirstObjectByType<PhaseChangeSoundHandler>();
+        var phaseChangeSoundHandler = ComponentResolver.FindComponentGlobally<PhaseChangeSoundHandler>();
         if (phaseChangeSoundHandler != null && !phaseChangeSoundHandler.enabled)
         {
             phaseChangeSoundHandler.enabled = true;

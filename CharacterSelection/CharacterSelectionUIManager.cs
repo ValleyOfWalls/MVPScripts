@@ -8,6 +8,7 @@ using System.Reflection;
 using FishNet.Object;
 using FishNet.Connection;
 using CharacterSelection;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the character selection UI interactions with Mario Kart-style shared selection grids.
@@ -1114,7 +1115,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             FishNet.InstanceFinder.ServerManager?.StopConnection(true);
             
             // Try to transition through GamePhaseManager as fallback
-            GamePhaseManager gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            GamePhaseManager gamePhaseManager = ComponentResolver.FindComponentGlobally<GamePhaseManager>();
             if (gamePhaseManager != null)
             {
                 gamePhaseManager.SetStartPhase();
@@ -1938,7 +1939,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         UpdateSelectionState();
         
         // Check if auto-test runner wants us to auto-ready
-        AutoTestRunner autoTestRunner = FindFirstObjectByType<AutoTestRunner>();
+        AutoTestRunner autoTestRunner = ComponentResolver.FindComponentGlobally<AutoTestRunner>();
         if (autoTestRunner != null && autoTestRunner.enableAutoTesting)
         {
             Debug.Log("[CHAR_SELECT_REVAMP] Auto-test runner detected, will auto-ready after delay");
@@ -2494,7 +2495,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         
         // EntityVisibilityManager is for NetworkEntity objects in combat/multiplayer scenarios
         // Our selection preview models are local GameObjects that should bypass that system
-        EntityVisibilityManager visibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        EntityVisibilityManager visibilityManager = ComponentResolver.FindComponentGlobally<EntityVisibilityManager>();
         if (visibilityManager != null)
         {
             Debug.Log($"[CHAR_SELECT_REVAMP] EntityVisibilityManager present but bypassed for local selection preview model");

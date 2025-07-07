@@ -6,6 +6,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using System.Collections.Generic;
 using System;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Manages the character selection phase functionality, player selections, ready states, and transition logic.
@@ -48,16 +49,9 @@ public class CharacterSelectionManager : NetworkBehaviour
     
     private void FindRequiredComponents()
     {
-        if (gamePhaseManager == null)
-            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
-        if (playerSpawner == null)
-            playerSpawner = FindFirstObjectByType<PlayerSpawner>();
-        if (uiManager == null)
-            uiManager = GetComponent<CharacterSelectionUIManager>();
-            
-        if (gamePhaseManager == null) Debug.LogError("CharacterSelectionManager: GamePhaseManager not found in scene.");
-        if (playerSpawner == null) Debug.LogError("CharacterSelectionManager: PlayerSpawner not found in scene.");
-        if (uiManager == null) Debug.LogError("CharacterSelectionManager: CharacterSelectionUIManager not found on GameObject.");
+        ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
+        ComponentResolver.FindComponent(ref playerSpawner, gameObject);
+        ComponentResolver.FindComponentOnSameObject(ref uiManager, gameObject);
     }
     
     /// <summary>
@@ -148,7 +142,7 @@ public class CharacterSelectionManager : NetworkBehaviour
         // Ensure we have the game phase manager reference
         if (gamePhaseManager == null)
         {
-            gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            ComponentResolver.FindComponent(ref gamePhaseManager, gameObject);
         }
         
         // Check if we're joining during character selection phase
@@ -505,7 +499,7 @@ public class CharacterSelectionManager : NetworkBehaviour
         }
         
         // Show loading screen immediately before any cleanup or phase changes
-        LoadingScreenManager loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
+        LoadingScreenManager loadingScreenManager = ComponentResolver.FindComponentGlobally<LoadingScreenManager>();
         if (loadingScreenManager != null)
         {
             loadingScreenManager.RpcShowLoadingScreenForCombatTransition();
@@ -536,7 +530,7 @@ public class CharacterSelectionManager : NetworkBehaviour
         }
         
         // Clean up character selection phase
-        CharacterSelectionSetup characterSelectionSetup = FindFirstObjectByType<CharacterSelectionSetup>();
+        CharacterSelectionSetup characterSelectionSetup = ComponentResolver.FindComponentGlobally<CharacterSelectionSetup>();
         if (characterSelectionSetup != null)
         {
             characterSelectionSetup.CleanupCharacterSelection();
@@ -550,7 +544,7 @@ public class CharacterSelectionManager : NetworkBehaviour
         // Initialize combat
         yield return new WaitForSeconds(0.5f); // Allow time for phase transition
         
-        CombatSetup combatSetup = FindFirstObjectByType<CombatSetup>();
+        CombatSetup combatSetup = ComponentResolver.FindComponentGlobally<CombatSetup>();
         if (combatSetup != null)
         {
             combatSetup.InitializeCombat();

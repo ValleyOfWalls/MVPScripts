@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using FishNet.Object;
+using MVPScripts.Utility;
 using System.Collections.Generic;
 using System.Collections;
 
@@ -256,7 +257,7 @@ public class DraftCanvasManager : MonoBehaviour
         if (cardComponent == null || !cardComponent.IsPurchasable) return false;
         
         // Find the shop and verify the card is still in it
-        ShopPack shop = FindFirstObjectByType<ShopPack>();
+        ShopPack shop = ComponentResolver.FindComponentGlobally<ShopPack>();
         if (shop == null || !shop.ContainsCard(cardObject))
         {
             return false;
@@ -390,7 +391,7 @@ public class DraftCanvasManager : MonoBehaviour
     /// </summary>
     public void RefreshDraftPackTransforms()
     {
-        DraftPackSetup draftPackSetup = FindFirstObjectByType<DraftPackSetup>();
+        DraftPackSetup draftPackSetup = ComponentResolver.FindComponentGlobally<DraftPackSetup>();
         if (draftPackSetup != null)
         {
             draftPackSetup.RefreshTransformMirroring();
@@ -408,7 +409,7 @@ public class DraftCanvasManager : MonoBehaviour
     /// </summary>
     public void RefreshShopTransforms()
     {
-        ShopSetup shopSetup = FindFirstObjectByType<ShopSetup>();
+        ShopSetup shopSetup = ComponentResolver.FindComponentGlobally<ShopSetup>();
         if (shopSetup != null)
         {
             shopSetup.RefreshTransformMirroring();

@@ -29,6 +29,10 @@ public class NetworkEntityAnimator : NetworkBehaviour
     private Coroutine attackReturnToIdleCoroutine;
     private Coroutine damageReturnToIdleCoroutine;
     
+    // Public properties to expose animation state for event-driven monitoring
+    public bool IsPlayingAttackAnimation => isPlayingAttackAnimation;
+    public bool IsPlayingDamageAnimation => isPlayingDamageAnimation;
+    
     // Cooldown system for rapid animation triggers
     private float lastAttackTime = 0f;
     private float lastDamageTime = 0f;

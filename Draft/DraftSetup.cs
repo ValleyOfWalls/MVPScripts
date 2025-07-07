@@ -1,6 +1,7 @@
 using UnityEngine;
 using FishNet.Object;
 using System.Collections;
+using MVPScripts.Utility;
 
 /// <summary>
 /// Coordinates the transition from combat to draft phase and initializes the draft system including shop.
@@ -33,14 +34,14 @@ public class DraftSetup : NetworkBehaviour
     
     private void ResolveReferences()
     {
-        if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
-        if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
-        if (draftPackSetup == null) draftPackSetup = FindFirstObjectByType<DraftPackSetup>();
-        if (shopSetup == null) shopSetup = FindFirstObjectByType<ShopSetup>();
-        if (draftManager == null) draftManager = FindFirstObjectByType<DraftManager>();
-        if (gamePhaseManager == null) gamePhaseManager = GamePhaseManager.Instance;
-        if (gameManager == null) gameManager = GameManager.Instance;
-        if (entityVisibilityManager == null) entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
+        ComponentResolver.FindComponent(ref combatCanvasManager, gameObject);
+        ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
+        ComponentResolver.FindComponent(ref draftPackSetup, gameObject);
+        ComponentResolver.FindComponent(ref shopSetup, gameObject);
+        ComponentResolver.FindComponent(ref draftManager, gameObject);
+        ComponentResolver.FindComponentWithSingleton(ref gamePhaseManager, () => GamePhaseManager.Instance, gameObject);
+        ComponentResolver.FindComponentWithSingleton(ref gameManager, () => GameManager.Instance, gameObject);
+        ComponentResolver.FindComponent(ref entityVisibilityManager, gameObject);
         
         // Log what we found for debugging
         Debug.Log($"DraftSetup.ResolveReferences: DraftCanvasManager = {(draftCanvasManager != null ? "Found" : "NULL")}");
@@ -371,7 +372,7 @@ public class DraftSetup : NetworkBehaviour
         // Try to use DraftCanvasManager for additional setup
         if (draftCanvasManager == null)
         {
-            draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
+            ComponentResolver.FindComponent(ref draftCanvasManager, gameObject);
             Debug.Log($"DraftSetup: Attempting to find DraftCanvasManager on client - Found: {draftCanvasManager != null}");
         }
         

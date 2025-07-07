@@ -5,6 +5,7 @@ using FishNet.Connection;
 using System.Collections;
 using System.Collections.Generic;
 using Steamworks;
+using MVPScripts.Utility;
 
 public enum EntityType
 {
@@ -77,7 +78,7 @@ public class NetworkEntity : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        gameManager = FindFirstObjectByType<GameManager>();
+        ComponentResolver.FindComponentWithSingleton(ref gameManager, () => GameManager.Instance, gameObject);
 
         // Update inspector owner ID
         inspectorOwnerClientId = Owner?.ClientId ?? -1;
@@ -248,7 +249,7 @@ public class NetworkEntity : NetworkBehaviour
         }
         else
         {
-            entityVisManager = FindFirstObjectByType<EntityVisibilityManager>();
+            ComponentResolver.FindComponent(ref entityVisManager, gameObject);
         }
 
         if (entityVisManager != null)
@@ -263,7 +264,7 @@ public class NetworkEntity : NetworkBehaviour
 
     private void UnregisterFromVisibilityManager()
     {
-        EntityVisibilityManager entityVisManager = FindFirstObjectByType<EntityVisibilityManager>();
+        EntityVisibilityManager entityVisManager = ComponentResolver.FindComponentGlobally<EntityVisibilityManager>();
         if (entityVisManager != null)
         {
             entityVisManager.UnregisterEntity(this);
