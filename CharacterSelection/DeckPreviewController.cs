@@ -139,6 +139,8 @@ public class DeckPreviewController : MonoBehaviour
         animationQueue.OptimizeQueue = OptimizeDeckAnimationQueue;
         animationQueue.RequiresFadeOut = (request) => request.isRefresh;
         animationQueue.CreateFadeOutRequest = () => new DeckAnimationRequest(EntityType.None, -1, null, "", false);
+        animationQueue.CreateModifiedRequestWithoutFadeOut = (request) => 
+            new DeckAnimationRequest(request.entityType, request.entityIndex, request.deckData, request.deckTitle, false);
         
         // Set up events
         animationQueue.OnAnimationStateChanged += (state) => {
@@ -176,6 +178,13 @@ public class DeckPreviewController : MonoBehaviour
             return;
         }
         
+        // SAFETY CHECK: Don't queue new requests if already processing to prevent infinite loops
+        if (animationQueue != null && animationQueue.QueueCount > 0)
+        {
+            Debug.Log($"DeckPreviewController: Animation queue already has {animationQueue.QueueCount} requests, skipping duplicate character deck request for index {characterIndex}");
+            return;
+        }
+        
         CharacterData character = availableCharacters[characterIndex];
         DeckData deckToShow = character.StarterDeck;
         string deckTitle = $"Character Deck: {character.CharacterName}";
@@ -208,6 +217,13 @@ public class DeckPreviewController : MonoBehaviour
         if (petIndex < 0 || petIndex >= availablePets.Count)
         {
             Debug.Log($"DeckPreviewController: Invalid pet index {petIndex}, cannot show deck");
+            return;
+        }
+        
+        // SAFETY CHECK: Don't queue new requests if already processing to prevent infinite loops
+        if (animationQueue != null && animationQueue.QueueCount > 0)
+        {
+            Debug.Log($"DeckPreviewController: Animation queue already has {animationQueue.QueueCount} requests, skipping duplicate pet deck request for index {petIndex}");
             return;
         }
         
@@ -310,12 +326,16 @@ public class DeckPreviewController : MonoBehaviour
         if (request.entityType == EntityType.None)
         {
             // This is a fade out request
+            animationQueue.SetAnimationState(AnimationQueueManager<DeckAnimationRequest>.AnimationState.FadingOut);
             yield return StartCoroutine(AnimateCardsOut());
+            animationQueue.SetAnimationState(AnimationQueueManager<DeckAnimationRequest>.AnimationState.Idle);
         }
         else
         {
             // This is a normal deck display request
+            animationQueue.SetAnimationState(AnimationQueueManager<DeckAnimationRequest>.AnimationState.FadingIn);
             yield return StartCoroutine(ProcessDeckDisplayRequest(request));
+            animationQueue.SetAnimationState(AnimationQueueManager<DeckAnimationRequest>.AnimationState.Idle);
         }
     }
     
@@ -328,7 +348,8 @@ public class DeckPreviewController : MonoBehaviour
         
         Debug.Log($"DeckPreviewController: Optimizing {requests.Count} deck animation requests");
         
-        // Filter out fade-out requests (EntityType.None) first, but keep the last meaningful request
+        // Separate fade-out requests from meaningful requests
+        var fadeOutRequests = requests.Where(r => r.entityType == EntityType.None).ToList();
         var meaningfulRequests = requests.Where(r => r.entityType != EntityType.None).ToList();
         
         if (meaningfulRequests.Count == 0)
@@ -340,9 +361,31 @@ public class DeckPreviewController : MonoBehaviour
         
         // Keep only the last meaningful request (character or pet)
         var lastMeaningfulRequest = meaningfulRequests.Last();
+        
+        // If the last meaningful request requires a refresh (fade out first), 
+        // and we don't have any fade-out requests, we might need to preserve the refresh flag
+        if (lastMeaningfulRequest.isRefresh && fadeOutRequests.Count == 0)
+        {
+            // The fade out will be handled by the HandleAnimationFlowOptimization, so keep the refresh flag
+            Debug.Log($"DeckPreviewController: Preserving refresh flag for {lastMeaningfulRequest.entityType} request");
+        }
+        else if (fadeOutRequests.Count > 0)
+        {
+            // If we have fade-out requests, we don't need the refresh flag anymore
+            // Create a new request without the refresh flag to avoid duplicate fade outs
+            lastMeaningfulRequest = new DeckAnimationRequest(
+                lastMeaningfulRequest.entityType, 
+                lastMeaningfulRequest.entityIndex, 
+                lastMeaningfulRequest.deckData, 
+                lastMeaningfulRequest.deckTitle, 
+                false // No refresh needed since we'll have fade out
+            );
+            Debug.Log($"DeckPreviewController: Removing refresh flag from {lastMeaningfulRequest.entityType} request since fade-out exists");
+        }
+        
         var optimized = new List<DeckAnimationRequest> { lastMeaningfulRequest };
         
-        Debug.Log($"DeckPreviewController: Optimized to {optimized.Count} deck animation requests (kept last {lastMeaningfulRequest.entityType} request)");
+        Debug.Log($"DeckPreviewController: Optimized to {optimized.Count} deck animation requests (kept last {lastMeaningfulRequest.entityType} request, refresh: {lastMeaningfulRequest.isRefresh})");
         return optimized;
     }
     
@@ -370,6 +413,13 @@ public class DeckPreviewController : MonoBehaviour
         {
             yield return StartCoroutine(AnimateCardSummariesOut(currentDeckSummaries));
             yield return new WaitForSeconds(animationGapDuration);
+        }
+        else
+        {
+            // Even if there are no cards to animate out, add a small delay to prevent instant completion
+            // which can cause infinite loops in the animation queue
+            Debug.Log("DeckPreviewController: No cards to animate out, but adding minimum delay to prevent instant completion");
+            yield return new WaitForSeconds(0.1f); // Minimum delay
         }
     }
     
