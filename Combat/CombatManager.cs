@@ -201,7 +201,7 @@ public class CombatManager : NetworkBehaviour
                     PetCombatAI petAI = pet.GetComponent<PetCombatAI>();
                     if (petAI != null)
                     {
-                        Debug.Log($"CombatManager: Queuing cards for pet {pet.EntityName.Value} after initial hand draw");
+                        Debug.Log($"PET_AI_DEBUG: Queuing cards for pet {pet.EntityName.Value} after initial hand draw (Round 1)");
                         petAI.QueueCardsForSharedTurn();
                     }
                 }
@@ -266,6 +266,14 @@ public class CombatManager : NetworkBehaviour
             petTracker.ResetTurnData();
         }
         
+        // Reset pet AI turn state for new round
+        PetCombatAI petAI = pet.GetComponent<PetCombatAI>();
+        if (petAI != null)
+        {
+            Debug.Log($"PET_AI_DEBUG: Resetting turn state for pet {pet.EntityName.Value} at start of round {fightRounds[player]}");
+            petAI.ResetTurnState();
+        }
+        
         // Process start of round effects (Shield clearing, etc.) for both entities
         EffectHandler playerEffectHandler = player.GetComponent<EffectHandler>();
         if (playerEffectHandler != null)
@@ -281,6 +289,21 @@ public class CombatManager : NetworkBehaviour
             Debug.Log($"CombatManager: Processed start of round effects for pet {pet.EntityName.Value}");
         }
         
+        // Refresh energy on server first (needed for pet AI)
+        Debug.Log($"PET_AI_DEBUG: Server refreshing energy for {player.EntityName.Value}");
+        EnergyHandler playerEnergyHandler = player.GetComponent<EnergyHandler>();
+        if (playerEnergyHandler != null)
+        {
+            playerEnergyHandler.ReplenishEnergy();
+        }
+        
+        Debug.Log($"PET_AI_DEBUG: Server refreshing energy for {pet.EntityName.Value}");
+        EnergyHandler petEnergyHandler = pet.GetComponent<EnergyHandler>();
+        if (petEnergyHandler != null)
+        {
+            petEnergyHandler.ReplenishEnergy();
+        }
+
         // Notify clients to refresh energy for their local fight
         RpcStartNewRound(player.ObjectId, pet.ObjectId, fightRounds[player]);
 
@@ -533,12 +556,13 @@ public class CombatManager : NetworkBehaviour
                         PetCombatAI petAI = pet.GetComponent<PetCombatAI>();
                         if (petAI != null)
                         {
+                            Debug.Log($"PET_AI_DEBUG: Queuing cards for pet {pet.EntityName.Value} in SetTurn (Round {currentRound})");
                             petAI.QueueCardsForSharedTurn();
                         }
                     }
                 }
                 
-                Debug.Log($"CombatManager: Started shared turn for {player.EntityName.Value} and {pet?.EntityName.Value}");
+                Debug.Log($"PET_AI_DEBUG: Started shared turn for {player.EntityName.Value} and {pet?.EntityName.Value}");
             }
         }
     }

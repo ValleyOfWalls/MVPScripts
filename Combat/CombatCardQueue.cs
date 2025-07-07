@@ -32,6 +32,9 @@ public struct QueuedCardPlay
 /// </summary>
 public class CombatCardQueue : NetworkBehaviour
 {
+    [Header("Execution Timing")]
+    [SerializeField] private float delayBetweenCardExecutions = 0.5f;
+    
     // Queue of card plays for each entity
     private readonly Dictionary<int, List<QueuedCardPlay>> entityCardQueues = new Dictionary<int, List<QueuedCardPlay>>();
     
@@ -42,6 +45,10 @@ public class CombatCardQueue : NetworkBehaviour
     // Events for tracking execution completion
     public static event Action OnCardExecutionStarted;
     public static event Action OnCardExecutionCompleted;
+    
+    // Events for queue visualization
+    public static event Action<List<QueuedCardPlay>> OnQueueVisualizationReady;
+    public static event Action<string, int> OnCardExecuted; // Pass card name and execution index
     
     private void Awake()
     {
@@ -303,21 +310,43 @@ public class CombatCardQueue : NetworkBehaviour
             Debug.Log($"  {i + 1}. Entity {play.sourceEntityId}: {play.cardData?.CardName} (Initiative: {initiative})");
         }
         
+        // Notify visualization system about the queue order
+        OnQueueVisualizationReady?.Invoke(allQueuedPlays);
+        RpcNotifyQueueVisualizationReady(allQueuedPlays);
+        
+        // Wait for visualization setup to complete
+        float visualizationSetupDelay = 1f + (allQueuedPlays.Count * 0.15f); // Base delay + stagger time
+        Debug.Log($"CombatCardQueue: Waiting {visualizationSetupDelay:F1}s for visualization setup to complete");
+        yield return new WaitForSeconds(visualizationSetupDelay);
+        
         // Execute each queued card play in global initiative order
-        foreach (QueuedCardPlay queuedPlay in allQueuedPlays)
+        for (int i = 0; i < allQueuedPlays.Count; i++)
         {
+            QueuedCardPlay queuedPlay = allQueuedPlays[i];
+            
             if (queuedPlay.cardObject != null)
             {
                 HandleCardPlay cardPlayHandler = queuedPlay.cardObject.GetComponent<HandleCardPlay>();
                 if (cardPlayHandler != null)
                 {
-                    Debug.Log($"CombatCardQueue: Executing card: {queuedPlay.cardData.CardName} from entity {queuedPlay.sourceEntityId}");
+                    Debug.Log($"CombatCardQueue: Executing card {i + 1}/{allQueuedPlays.Count}: {queuedPlay.cardData.CardName} from entity {queuedPlay.sourceEntityId}");
                     
                     // Execute the card play directly (bypass queuing)
                     cardPlayHandler.ExecuteCardPlayDirectly(queuedPlay.sourceEntityId, queuedPlay.targetEntityIds);
                     
                     // EVENT-DRIVEN: Wait for card animation completion instead of fixed delay
                     yield return StartCoroutine(WaitForCardExecutionComplete(queuedPlay.cardObject));
+                    
+                    // Notify visualization system that this card finished executing
+                    OnCardExecuted?.Invoke(queuedPlay.cardData.CardName, i);
+                    RpcNotifyCardExecuted(queuedPlay.cardData.CardName, i);
+                    
+                    // Add delay between card executions (except after the last card)
+                    if (i < allQueuedPlays.Count - 1 && delayBetweenCardExecutions > 0f)
+                    {
+                        Debug.Log($"CombatCardQueue: Waiting {delayBetweenCardExecutions}s before next card execution");
+                        yield return new WaitForSeconds(delayBetweenCardExecutions);
+                    }
                 }
                 else
                 {
@@ -404,6 +433,26 @@ public class CombatCardQueue : NetworkBehaviour
     }
 
     /// <summary>
+    /// Notifies all clients about the queue visualization order
+    /// </summary>
+    [ObserversRpc]
+    private void RpcNotifyQueueVisualizationReady(List<QueuedCardPlay> sortedPlays)
+    {
+        Debug.Log($"CombatCardQueue (Client): Queue visualization ready with {sortedPlays.Count} cards");
+        OnQueueVisualizationReady?.Invoke(sortedPlays);
+    }
+
+    /// <summary>
+    /// Notifies all clients that a specific card finished executing
+    /// </summary>
+    [ObserversRpc]
+    private void RpcNotifyCardExecuted(string cardName, int executionIndex)
+    {
+        Debug.Log($"CombatCardQueue (Client): Card executed - {cardName} (index: {executionIndex})");
+        OnCardExecuted?.Invoke(cardName, executionIndex);
+    }
+
+    /// <summary>
     /// Clears all queued card plays for all entities
     /// </summary>
     [Server]
@@ -414,4 +463,14 @@ public class CombatCardQueue : NetworkBehaviour
         entityCardQueues.Clear();
         Debug.Log("CombatCardQueue: Cleared all queued card plays");
     }
+
+    #region Unity Lifecycle
+    
+    private void OnValidate()
+    {
+        // Ensure delay is non-negative
+        delayBetweenCardExecutions = Mathf.Max(0f, delayBetweenCardExecutions);
+    }
+    
+    #endregion
 } 

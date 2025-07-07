@@ -40,6 +40,9 @@ public class CombatCanvasManager : NetworkBehaviour
     [Header("Deck Viewer")]
     [SerializeField] private DeckViewerManager deckViewerManager;
 
+    [Header("Queue Visualization")]
+    [SerializeField] private CardQueueVisualizationManager queueVisualizationManager;
+
     [Header("Combat Entity Positioning")]
     [SerializeField] private Transform playerPositionTransform;
     [SerializeField] private Transform opponentPetPositionTransform;
@@ -228,6 +231,9 @@ public class CombatCanvasManager : NetworkBehaviour
             
             // Setup deck viewer
             SetupDeckViewer();
+            
+            // Setup queue visualization
+            SetupQueueVisualization();
             
             // Position combat entities for all fights
             PositionCombatEntitiesForAllFights();
@@ -593,11 +599,39 @@ public class CombatCanvasManager : NetworkBehaviour
     }
 
     /// <summary>
+    /// Sets up the queue visualization manager
+    /// </summary>
+    private void SetupQueueVisualization()
+    {
+        if (queueVisualizationManager == null)
+        {
+            queueVisualizationManager = FindFirstObjectByType<CardQueueVisualizationManager>();
+        }
+        
+        if (queueVisualizationManager != null)
+        {
+            Debug.Log("CombatCanvasManager: Queue visualization manager found and assigned");
+        }
+        else
+        {
+            Debug.LogWarning("CombatCanvasManager: Queue visualization manager not found");
+        }
+    }
+
+    /// <summary>
     /// Gets the DeckViewerManager for external access
     /// </summary>
     public DeckViewerManager GetDeckViewerManager()
     {
         return deckViewerManager;
+    }
+
+    /// <summary>
+    /// Gets the queue visualization manager for external access
+    /// </summary>
+    public CardQueueVisualizationManager GetQueueVisualizationManager()
+    {
+        return queueVisualizationManager;
     }
     
     /// <summary>
