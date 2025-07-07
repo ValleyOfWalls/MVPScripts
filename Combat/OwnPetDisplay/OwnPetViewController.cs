@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 using FishNet.Object;
 using System.Collections;
 
@@ -399,6 +400,33 @@ public class OwnPetViewController : MonoBehaviour
     public void RefreshDisplayedPet()
     {
         UpdateDisplayedPet();
+        
+        // Force refresh of pet portraits in case pet data has changed
+        RefreshPetPortraits();
+    }
+    
+    /// <summary>
+    /// Forces a refresh of pet portraits in all display components
+    /// </summary>
+    public void RefreshPetPortraits()
+    {
+        if (currentDisplayedPet == null) return;
+        
+        // Refresh portrait in stats display
+        if (statsDisplay != null)
+        {
+            statsDisplay.UpdatePortraitDisplay();
+        }
+        
+        // Refresh portrait in visual display by updating pet image
+        if (visualDisplay != null)
+        {
+            // The visual display doesn't have a direct UpdatePortrait method,
+            // so we trigger a full visual update which includes the portrait
+            visualDisplay.SetPet(currentDisplayedPet);
+        }
+        
+        LogDebug("Pet portraits refreshed");
     }
     
     /// <summary>
@@ -407,6 +435,82 @@ public class OwnPetViewController : MonoBehaviour
     public NetworkEntity GetCurrentDisplayedPet()
     {
         return currentDisplayedPet;
+    }
+    
+    /// <summary>
+    /// Gets the portrait sprite for the given pet entity
+    /// Uses the same approach as EntitySelectionController and existing UI managers
+    /// </summary>
+    private Sprite GetEntityPortrait(NetworkEntity petEntity)
+    {
+        if (petEntity == null || petEntity.EntityType != EntityType.Pet) 
+            return null;
+        
+        // Method 1: Try to get from PetData through selection system
+        Sprite portraitFromData = GetPortraitFromPetData(petEntity);
+        if (portraitFromData != null)
+        {
+            LogDebug($"Found portrait from PetData for {petEntity.EntityName.Value}");
+            return portraitFromData;
+        }
+        
+        // Method 2: Try to get from SpriteRenderer (legacy approach)
+        SpriteRenderer spriteRenderer = petEntity.GetComponentInChildren<SpriteRenderer>();
+        if (spriteRenderer != null && spriteRenderer.sprite != null)
+        {
+            LogDebug($"Found portrait from SpriteRenderer for {petEntity.EntityName.Value}");
+            return spriteRenderer.sprite;
+        }
+        
+        // Method 3: Try to get from Image component (UI approach)
+        Image imageComponent = petEntity.GetComponentInChildren<Image>();
+        if (imageComponent != null && imageComponent.sprite != null)
+        {
+            LogDebug($"Found portrait from Image component for {petEntity.EntityName.Value}");
+            return imageComponent.sprite;
+        }
+        
+        LogDebug($"No portrait found for pet {petEntity.EntityName.Value}");
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the portrait sprite from PetData through the selection system
+    /// </summary>
+    private Sprite GetPortraitFromPetData(NetworkEntity petEntity)
+    {
+        if (petEntity == null) return null;
+        
+        // Try to get PetData through CharacterSelectionManager (similar to EntityModelManager)
+        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        if (selectionManager == null)
+        {
+            LogDebug("CharacterSelectionManager not found, cannot get PetData");
+            return null;
+        }
+        
+        // Check if the pet has selection data
+        int petIndex = petEntity.SelectedPetIndex.Value;
+        if (petIndex < 0)
+        {
+            LogDebug($"Pet {petEntity.EntityName.Value} has no selection index");
+            return null;
+        }
+        
+        // Get available pets and find the one at the selected index
+        var availablePets = selectionManager.GetAvailablePets();
+        if (petIndex >= 0 && petIndex < availablePets.Count)
+        {
+            PetData petData = availablePets[petIndex];
+            if (petData != null && petData.PetPortrait != null)
+            {
+                LogDebug($"Found PetData portrait for {petEntity.EntityName.Value} at index {petIndex}");
+                return petData.PetPortrait;
+            }
+        }
+        
+        LogDebug($"No PetData found for pet {petEntity.EntityName.Value} at index {petIndex}");
+        return null;
     }
     
     private void LogDebug(string message)

@@ -21,6 +21,9 @@ public class OwnPetStatsDisplay : MonoBehaviour, IUpdatablePetDisplay
     [Header("Enhanced Bar Controller")]
     [SerializeField] private HealthEnergyBarController barController;
     
+    [Header("Portrait Display")]
+    [SerializeField] private Image petPortraitImage;
+    
     [Header("Visual Settings")]
     [SerializeField] private Color healthBarColor = Color.red;
     [SerializeField] private Color energyBarColor = Color.blue;
@@ -75,11 +78,18 @@ public class OwnPetStatsDisplay : MonoBehaviour, IUpdatablePetDisplay
             energyBarBackground = transform.Find("EnergyBarBackground")?.GetComponent<Image>();
         }
         
+        // Try to find portrait image if not assigned
+        if (petPortraitImage == null)
+        {
+            petPortraitImage = transform.Find("PetPortraitImage")?.GetComponent<Image>();
+        }
+        
         // Log warnings for missing components
         if (healthText == null) LogError("Health Text component not found!");
         if (energyText == null) LogError("Energy Text component not found!");
         if (healthBar == null) LogError("Health Bar component not found!");
         if (energyBar == null) LogError("Energy Bar component not found!");
+        if (petPortraitImage == null) LogError("Pet Portrait Image component not found!");
     }
     
     private void SetupBarColors()
@@ -189,6 +199,105 @@ public class OwnPetStatsDisplay : MonoBehaviour, IUpdatablePetDisplay
     {
         UpdateHealthDisplay();
         UpdateEnergyDisplay();
+        UpdatePortraitDisplay();
+    }
+    
+    /// <summary>
+    /// Updates the pet portrait display
+    /// </summary>
+    public void UpdatePortraitDisplay()
+    {
+        if (currentPet == null || petPortraitImage == null) return;
+        
+        Sprite petPortrait = GetEntityPortrait(currentPet);
+        if (petPortrait != null)
+        {
+            petPortraitImage.sprite = petPortrait;
+            petPortraitImage.gameObject.SetActive(true);
+            LogDebug($"Portrait updated for: {currentPet.EntityName.Value}");
+        }
+        else
+        {
+            // Hide portrait if none available
+            petPortraitImage.gameObject.SetActive(false);
+            LogDebug($"No portrait available for: {currentPet.EntityName.Value}");
+        }
+    }
+    
+    /// <summary>
+    /// Gets the portrait sprite for the given pet entity
+    /// Uses the same approach as EntitySelectionController and existing UI managers
+    /// </summary>
+    private Sprite GetEntityPortrait(NetworkEntity petEntity)
+    {
+        if (petEntity == null || petEntity.EntityType != EntityType.Pet) 
+            return null;
+        
+        // Method 1: Try to get from PetData through selection system
+        Sprite portraitFromData = GetPortraitFromPetData(petEntity);
+        if (portraitFromData != null)
+        {
+            LogDebug($"Found portrait from PetData for {petEntity.EntityName.Value}");
+            return portraitFromData;
+        }
+        
+        // Method 2: Try to get from SpriteRenderer (legacy approach)
+        SpriteRenderer spriteRenderer = petEntity.GetComponentInChildren<SpriteRenderer>();
+        if (spriteRenderer != null && spriteRenderer.sprite != null)
+        {
+            LogDebug($"Found portrait from SpriteRenderer for {petEntity.EntityName.Value}");
+            return spriteRenderer.sprite;
+        }
+        
+        // Method 3: Try to get from Image component (UI approach)
+        Image imageComponent = petEntity.GetComponentInChildren<Image>();
+        if (imageComponent != null && imageComponent.sprite != null)
+        {
+            LogDebug($"Found portrait from Image component for {petEntity.EntityName.Value}");
+            return imageComponent.sprite;
+        }
+        
+        LogDebug($"No portrait found for pet {petEntity.EntityName.Value}");
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the portrait sprite from PetData through the selection system
+    /// </summary>
+    private Sprite GetPortraitFromPetData(NetworkEntity petEntity)
+    {
+        if (petEntity == null) return null;
+        
+        // Try to get PetData through CharacterSelectionManager (similar to EntityModelManager)
+        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        if (selectionManager == null)
+        {
+            LogDebug("CharacterSelectionManager not found, cannot get PetData");
+            return null;
+        }
+        
+        // Check if the pet has selection data
+        int petIndex = petEntity.SelectedPetIndex.Value;
+        if (petIndex < 0)
+        {
+            LogDebug($"Pet {petEntity.EntityName.Value} has no selection index");
+            return null;
+        }
+        
+        // Get available pets and find the one at the selected index
+        var availablePets = selectionManager.GetAvailablePets();
+        if (petIndex >= 0 && petIndex < availablePets.Count)
+        {
+            PetData petData = availablePets[petIndex];
+            if (petData != null && petData.PetPortrait != null)
+            {
+                LogDebug($"Found PetData portrait for {petEntity.EntityName.Value} at index {petIndex}");
+                return petData.PetPortrait;
+            }
+        }
+        
+        LogDebug($"No PetData found for pet {petEntity.EntityName.Value} at index {petIndex}");
+        return null;
     }
     
     /// <summary>
@@ -215,6 +324,10 @@ public class OwnPetStatsDisplay : MonoBehaviour, IUpdatablePetDisplay
             energyText.text = "0/0";
         if (energyBar != null)
             energyBar.fillAmount = 0f;
+        
+        // Clear portrait display
+        if (petPortraitImage != null)
+            petPortraitImage.gameObject.SetActive(false);
     }
     
     /// <summary>

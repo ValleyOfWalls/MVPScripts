@@ -56,29 +56,6 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
         }
     }
     
-    private void SetupPlaceholderImage()
-    {
-        if (petImage != null)
-        {
-            // Create a simple white texture for placeholder
-            Texture2D placeholderTexture = new Texture2D(1, 1);
-            placeholderTexture.SetPixel(0, 0, placeholderColor);
-            placeholderTexture.Apply();
-            
-            // Create sprite from texture
-            Sprite placeholderSprite = Sprite.Create(
-                placeholderTexture,
-                new Rect(0, 0, 1, 1),
-                new Vector2(0.5f, 0.5f)
-            );
-            
-            petImage.sprite = placeholderSprite;
-            petImage.color = placeholderColor;
-            
-            LogDebug("Placeholder pet image setup complete");
-        }
-    }
-    
     /// <summary>
     /// Sets the pet to be displayed
     /// </summary>
@@ -135,17 +112,124 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
     {
         if (petImage == null) return;
         
-        // For now, just ensure the placeholder is visible
-        // In the future, this could load specific pet sprites based on pet type/ID
+        // Try to get actual pet portrait first
+        Sprite petPortrait = GetEntityPortrait(currentPet);
+        if (petPortrait != null)
+        {
+            // Use actual pet portrait
+            petImage.sprite = petPortrait;
+            petImage.color = Color.white; // Reset color to show sprite normally
+            petImage.gameObject.SetActive(true);
+            LogDebug($"Pet portrait loaded for: {currentPet?.EntityName.Value ?? "null"}");
+        }
+        else
+        {
+            // Fall back to placeholder
+            SetupPlaceholderImage();
+            LogDebug($"Using placeholder image for: {currentPet?.EntityName.Value ?? "null"}");
+        }
+    }
+    
+    /// <summary>
+    /// Gets the portrait sprite for the given pet entity
+    /// Uses the same approach as EntitySelectionController and existing UI managers
+    /// </summary>
+    private Sprite GetEntityPortrait(NetworkEntity petEntity)
+    {
+        if (petEntity == null || petEntity.EntityType != EntityType.Pet) 
+            return null;
+        
+        // Method 1: Try to get from PetData through selection system
+        Sprite portraitFromData = GetPortraitFromPetData(petEntity);
+        if (portraitFromData != null)
+        {
+            LogDebug($"Found portrait from PetData for {petEntity.EntityName.Value}");
+            return portraitFromData;
+        }
+        
+        // Method 2: Try to get from SpriteRenderer (legacy approach)
+        SpriteRenderer spriteRenderer = petEntity.GetComponentInChildren<SpriteRenderer>();
+        if (spriteRenderer != null && spriteRenderer.sprite != null)
+        {
+            LogDebug($"Found portrait from SpriteRenderer for {petEntity.EntityName.Value}");
+            return spriteRenderer.sprite;
+        }
+        
+        // Method 3: Try to get from Image component (UI approach)
+        Image imageComponent = petEntity.GetComponentInChildren<Image>();
+        if (imageComponent != null && imageComponent.sprite != null)
+        {
+            LogDebug($"Found portrait from Image component for {petEntity.EntityName.Value}");
+            return imageComponent.sprite;
+        }
+        
+        LogDebug($"No portrait found for pet {petEntity.EntityName.Value}");
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the portrait sprite from PetData through the selection system
+    /// </summary>
+    private Sprite GetPortraitFromPetData(NetworkEntity petEntity)
+    {
+        if (petEntity == null) return null;
+        
+        // Try to get PetData through CharacterSelectionManager (similar to EntityModelManager)
+        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        if (selectionManager == null)
+        {
+            LogDebug("CharacterSelectionManager not found, cannot get PetData");
+            return null;
+        }
+        
+        // Check if the pet has selection data
+        int petIndex = petEntity.SelectedPetIndex.Value;
+        if (petIndex < 0)
+        {
+            LogDebug($"Pet {petEntity.EntityName.Value} has no selection index");
+            return null;
+        }
+        
+        // Get available pets and find the one at the selected index
+        var availablePets = selectionManager.GetAvailablePets();
+        if (petIndex >= 0 && petIndex < availablePets.Count)
+        {
+            PetData petData = availablePets[petIndex];
+            if (petData != null && petData.PetPortrait != null)
+            {
+                LogDebug($"Found PetData portrait for {petEntity.EntityName.Value} at index {petIndex}");
+                return petData.PetPortrait;
+            }
+        }
+        
+        LogDebug($"No PetData found for pet {petEntity.EntityName.Value} at index {petIndex}");
+        return null;
+    }
+    
+    /// <summary>
+    /// Sets up the placeholder image (moved from UpdatePetImage for reusability)
+    /// </summary>
+    private void SetupPlaceholderImage()
+    {
+        if (petImage == null) return;
+        
+        // Create a simple white texture for placeholder
+        Texture2D placeholderTexture = new Texture2D(1, 1);
+        placeholderTexture.SetPixel(0, 0, placeholderColor);
+        placeholderTexture.Apply();
+        
+        // Create sprite from texture
+        Sprite placeholderSprite = Sprite.Create(
+            placeholderTexture,
+            new Rect(0, 0, 1, 1),
+            new Vector2(0.5f, 0.5f)
+        );
+        
+        petImage.sprite = placeholderSprite;
+        petImage.color = placeholderColor;
         petImage.gameObject.SetActive(true);
         
-        // TODO: Implement actual pet image loading based on pet data
-        // This could involve:
-        // - Pet type/species identification
-        // - Loading sprites from Resources or Addressables
-        // - Handling different pet variations/skins
-        
-        LogDebug($"Pet image updated for: {currentPet?.EntityName.Value ?? "null"}");
+        LogDebug("Placeholder pet image setup complete");
     }
     
     /// <summary>

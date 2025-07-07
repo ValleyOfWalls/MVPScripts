@@ -25,6 +25,7 @@ public class EntityStatsUIController : NetworkBehaviour
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private Image healthBar; // Legacy fallback - use barController instead
     [SerializeField] private Image energyBar; // Legacy fallback - use barController instead
+    [SerializeField] private Image entityPortraitImage; // Profile picture of the entity
     
     [Header("Enhanced Bar Controller")]
     [SerializeField] private HealthEnergyBarController barController;
@@ -69,10 +70,31 @@ public class EntityStatsUIController : NetworkBehaviour
         if (relationshipManager == null) relationshipManager = GetComponent<RelationshipManager>();
         if (barController == null) barController = GetComponent<HealthEnergyBarController>();
         
+        // Try to find portrait image if not assigned
+        if (entityPortraitImage == null)
+        {
+            entityPortraitImage = transform.Find("EntityPortraitImage")?.GetComponent<Image>();
+            if (entityPortraitImage == null)
+            {
+                // Try alternative naming conventions
+                entityPortraitImage = transform.Find("PortraitImage")?.GetComponent<Image>();
+                if (entityPortraitImage == null)
+                {
+                    entityPortraitImage = transform.Find("Portrait")?.GetComponent<Image>();
+                }
+            }
+        }
+        
         // Validate stats entity type
         if (statsEntity != null && statsEntity.EntityType != EntityType.PlayerStatsUI && statsEntity.EntityType != EntityType.PetStatsUI)
         {
             Debug.LogError($"EntityStatsUIController: Stats entity {statsEntity.name} has wrong EntityType: {statsEntity.EntityType}. Expected PlayerStatsUI or PetStatsUI.");
+        }
+        
+        // Log warning for missing portrait (optional component)
+        if (entityPortraitImage == null)
+        {
+            Debug.LogWarning($"EntityStatsUIController: Entity Portrait Image component not found on {gameObject.name}. Portrait display will be disabled.");
         }
     }
     
@@ -295,6 +317,7 @@ public class EntityStatsUIController : NetworkBehaviour
         UpdateCurrencyDisplay(linkedEntity.Currency.Value);
         UpdateEffectsDisplay();
         UpdateDeckDisplay();
+        UpdatePortraitDisplay(); // Added this line
     }
     
     #region Stat Change Handlers
@@ -600,6 +623,107 @@ public class EntityStatsUIController : NetworkBehaviour
         }
     }
     
+    /// <summary>
+    /// Updates the entity portrait display
+    /// </summary>
+    private void UpdatePortraitDisplay()
+    {
+        if (linkedEntity == null || entityPortraitImage == null) return;
+        
+        Sprite entityPortrait = GetEntityPortrait(linkedEntity);
+        if (entityPortrait != null)
+        {
+            entityPortraitImage.sprite = entityPortrait;
+            entityPortraitImage.gameObject.SetActive(true);
+            Debug.Log($"EntityStatsUIController: Portrait updated for: {linkedEntity.EntityName.Value}");
+        }
+        else
+        {
+            // Hide portrait if none available
+            entityPortraitImage.gameObject.SetActive(false);
+            Debug.Log($"EntityStatsUIController: No portrait available for: {linkedEntity.EntityName.Value}");
+        }
+    }
+    
+    /// <summary>
+    /// Gets the portrait sprite for the given entity
+    /// Uses the same approach as EntitySelectionController and existing UI managers
+    /// </summary>
+    private Sprite GetEntityPortrait(NetworkEntity entity)
+    {
+        if (entity == null) return null;
+        
+        // Method 1: Try to get from CharacterData/PetData through selection system
+        Sprite portraitFromData = GetPortraitFromSelectionData(entity);
+        if (portraitFromData != null)
+        {
+            return portraitFromData;
+        }
+        
+        // Method 2: Try to get from SpriteRenderer (legacy approach)
+        SpriteRenderer spriteRenderer = entity.GetComponentInChildren<SpriteRenderer>();
+        if (spriteRenderer != null && spriteRenderer.sprite != null)
+        {
+            return spriteRenderer.sprite;
+        }
+        
+        // Method 3: Try to get from Image component (UI approach)
+        Image imageComponent = entity.GetComponentInChildren<Image>();
+        if (imageComponent != null && imageComponent.sprite != null)
+        {
+            return imageComponent.sprite;
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the portrait sprite from CharacterData/PetData through the selection system
+    /// </summary>
+    private Sprite GetPortraitFromSelectionData(NetworkEntity entity)
+    {
+        if (entity == null) return null;
+        
+        // Try to get data through CharacterSelectionManager (similar to EntityModelManager)
+        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        if (selectionManager == null) return null;
+        
+        if (entity.EntityType == EntityType.Player)
+        {
+            // Get character portrait
+            int characterIndex = entity.SelectedCharacterIndex.Value;
+            if (characterIndex < 0) return null;
+            
+            var availableCharacters = selectionManager.GetAvailableCharacters();
+            if (characterIndex >= 0 && characterIndex < availableCharacters.Count)
+            {
+                CharacterData characterData = availableCharacters[characterIndex];
+                if (characterData != null && characterData.CharacterPortrait != null)
+                {
+                    return characterData.CharacterPortrait;
+                }
+            }
+        }
+        else if (entity.EntityType == EntityType.Pet)
+        {
+            // Get pet portrait
+            int petIndex = entity.SelectedPetIndex.Value;
+            if (petIndex < 0) return null;
+            
+            var availablePets = selectionManager.GetAvailablePets();
+            if (petIndex >= 0 && petIndex < availablePets.Count)
+            {
+                PetData petData = availablePets[petIndex];
+                if (petData != null && petData.PetPortrait != null)
+                {
+                    return petData.PetPortrait;
+                }
+            }
+        }
+        
+        return null;
+    }
+    
     #endregion
     
     #region Damage Preview
@@ -681,6 +805,23 @@ public class EntityStatsUIController : NetworkBehaviour
     {
         Debug.Log($"EntityStatsUIController: ForceUpdateEffectsDisplay called for {(linkedEntity != null ? linkedEntity.EntityName.Value : "no linked entity")}");
         UpdateEffectsDisplay();
+    }
+    
+    /// <summary>
+    /// Manually triggers a portrait display update for debugging
+    /// </summary>
+    public void ForceUpdatePortraitDisplay()
+    {
+        Debug.Log($"EntityStatsUIController: ForceUpdatePortraitDisplay called for {(linkedEntity != null ? linkedEntity.EntityName.Value : "no linked entity")}");
+        UpdatePortraitDisplay();
+    }
+    
+    /// <summary>
+    /// Public method to refresh the portrait display
+    /// </summary>
+    public void RefreshPortrait()
+    {
+        UpdatePortraitDisplay();
     }
     
     #endregion
