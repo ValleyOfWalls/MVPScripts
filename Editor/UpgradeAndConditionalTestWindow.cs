@@ -262,7 +262,7 @@ public class UpgradeAndConditionalTestWindow : EditorWindow
     
     private void TestUpgradeConditionManager()
     {
-        var upgradeManager = FindObjectOfType<UpgradeConditionTestManager>();
+                    var upgradeManager = FindFirstObjectByType<UpgradeConditionTestManager>();
         if (upgradeManager != null)
         {
             upgradeManager.RunTests();
@@ -277,7 +277,7 @@ public class UpgradeAndConditionalTestWindow : EditorWindow
     
     private void TestConditionalEffectManager()
     {
-        var conditionalManager = FindObjectOfType<ConditionalEffectTestManager>();
+                    var conditionalManager = FindFirstObjectByType<ConditionalEffectTestManager>();
         if (conditionalManager != null)
         {
             conditionalManager.RunTests();

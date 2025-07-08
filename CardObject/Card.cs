@@ -43,6 +43,7 @@ public class Card : NetworkBehaviour
     [SerializeField] private Image artworkImage;
     [SerializeField] private TextMeshProUGUI energyCostText;
     [SerializeField] private TextMeshProUGUI costText;
+    [SerializeField] private TextMeshProUGUI initiativeText;
     [SerializeField] private Image cardImage; // Will handle both card artwork and background color
 
     // Local reference to card data (not synced over network)
@@ -183,9 +184,11 @@ public class Card : NetworkBehaviour
     {
         if (data == null)
         {
-            Debug.LogError($"Card {gameObject.name}: Attempted to initialize with null CardData!");
+            Debug.LogError($"[CARD-FLOW] Card {gameObject.name}: CRITICAL - Attempted to initialize with null CardData!");
             return;
         }
+
+        Debug.Log($"[CARD-FLOW] Card {gameObject.name}: Initialized with {data.CardName} (ID: {data.CardId}, Cost: {data.EnergyCost})");
 
         cardData = data;
         _cardId.Value = data.CardId;
@@ -195,6 +198,16 @@ public class Card : NetworkBehaviour
         if (descriptionText != null) descriptionText.text = data.Description;
         if (energyCostText != null) energyCostText.text = data.EnergyCost.ToString();
         if (artworkImage != null && data.CardArtwork != null) artworkImage.sprite = data.CardArtwork;
+
+        // Update initiative text (only show if initiative > 0)
+        if (initiativeText != null)
+        {
+            initiativeText.gameObject.SetActive(data.Initiative > 0);
+            if (data.Initiative > 0)
+            {
+                initiativeText.text = $"⚡{data.Initiative}";
+            }
+        }
 
         // Hide cost text by default (only shown in shop)
         if (costText != null) costText.gameObject.SetActive(false);
@@ -425,12 +438,35 @@ public class Card : NetworkBehaviour
 
 
         // If we have a card ID but no card data, try to load it from the database
-        if (_cardId.Value != 0 && cardData == null && CardDatabase.Instance != null)
+        if (_cardId.Value != 0 && cardData == null)
         {
-            cardData = CardDatabase.Instance.GetCardById(_cardId.Value);
-            if (cardData != null)
+            // Try NetworkCardDatabase first (for randomized cards), then fallback to CardDatabase
+            CardData foundCard = null;
+            
+            // Check if NetworkCardDatabase is available and has the card
+            if (NetworkCardDatabase.Instance != null && NetworkCardDatabase.Instance.AreCardsSynced)
             {
-                Initialize(cardData);
+                foundCard = NetworkCardDatabase.Instance.GetSyncedCard(_cardId.Value);
+                Debug.Log($"[CARD-FLOW] Card {gameObject.name} (Client): NetworkDB lookup for ID {_cardId.Value} - " + 
+                         (foundCard != null ? $"SUCCESS - Found {foundCard.CardName}" : "NOT FOUND"));
+            }
+            
+            // If not found in NetworkCardDatabase, try original CardDatabase
+            if (foundCard == null && CardDatabase.Instance != null)
+            {
+                foundCard = CardDatabase.Instance.GetCardById(_cardId.Value);
+                Debug.Log($"[CARD-FLOW] Card {gameObject.name} (Client): CardDB fallback for ID {_cardId.Value} - " + 
+                         (foundCard != null ? $"SUCCESS - Found {foundCard.CardName}" : "NOT FOUND"));
+            }
+            
+            if (foundCard != null)
+            {
+                cardData = foundCard;
+                Initialize(foundCard);
+            }
+            else
+            {
+                Debug.LogError($"[CARD-FLOW] Card {gameObject.name} (Client): CRITICAL - Card ID {_cardId.Value} not found in any database!");
             }
         }
 
@@ -897,10 +933,30 @@ public class Card : NetworkBehaviour
         if (descriptionText != null) descriptionText.text = cardData.Description;
         if (energyCostText != null) energyCostText.text = cardData.EnergyCost.ToString();
 
+        // Update initiative text (only show if initiative > 0)
+        if (initiativeText != null)
+        {
+            initiativeText.gameObject.SetActive(cardData.Initiative > 0);
+            if (cardData.Initiative > 0)
+            {
+                initiativeText.text = $"⚡{cardData.Initiative}";
+            }
+        }
+
         // Update artwork
         if (artworkImage != null && cardData.CardArtwork != null)
         {
             artworkImage.sprite = cardData.CardArtwork;
+        }
+
+        // Update initiative text if it's greater than 0
+        if (initiativeText != null)
+        {
+            initiativeText.gameObject.SetActive(cardData.Initiative > 0);
+            if (cardData.Initiative > 0)
+            {
+                initiativeText.text = cardData.Initiative.ToString();
+            }
         }
 
         // Update card background/frame based on card type or other properties
@@ -958,6 +1014,12 @@ public class Card : NetworkBehaviour
             if (energyCostText != null)
             {
                 energyCostText.gameObject.SetActive(cardData.EnergyCost > 0);
+            }
+            
+            // Update initiative visibility
+            if (initiativeText != null)
+            {
+                initiativeText.gameObject.SetActive(cardData.Initiative > 0);
             }
         }
     }

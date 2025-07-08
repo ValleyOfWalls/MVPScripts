@@ -912,7 +912,7 @@ public class CombatManager : NetworkBehaviour
             bool anyDiscardInProgress = false;
             
             // Find all HandManager components and check if they're still discarding
-            HandManager[] handManagers = FindObjectsOfType<HandManager>();
+            HandManager[] handManagers = FindObjectsByType<HandManager>(FindObjectsSortMode.None);
             foreach (HandManager handManager in handManagers)
             {
                 if (handManager.IsDiscardInProgress)

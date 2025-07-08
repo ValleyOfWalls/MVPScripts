@@ -568,8 +568,10 @@ public class CardQueueVisualizationManager : NetworkBehaviour
         DOTween.Kill(this);
     }
     
-    private void OnValidate()
+    protected override void OnValidate()
     {
+        base.OnValidate();
+        
         // Ensure positive values
         tileSpacing = Mathf.Max(0f, tileSpacing);
         staggerDelay = Mathf.Max(0f, staggerDelay);

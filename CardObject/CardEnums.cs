@@ -20,6 +20,16 @@ public enum CardType
 }
 
 /// <summary>
+/// Card rarity levels that determine point budgets and drop chances
+/// </summary>
+public enum CardRarity
+{
+    Common,
+    Uncommon,
+    Rare
+}
+
+/// <summary>
 /// Simplified card effect types - only core mechanical effects that can't be represented elsewhere
 /// </summary>
 public enum CardEffectType

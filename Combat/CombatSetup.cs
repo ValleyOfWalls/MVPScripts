@@ -20,7 +20,7 @@ public class CombatSetup : NetworkBehaviour
     [SerializeField] private FightManager fightManager;
     [SerializeField] private CombatManager combatManager;
     [SerializeField] private CombatCanvasManager combatCanvasManager;
-    [SerializeField] private GameManager gameManager;
+    [SerializeField] private OnlineGameManager gameManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
     [SerializeField] private FightPreviewManager fightPreviewManager;
     [SerializeField] private LoadingScreenManager loadingScreenManager;
@@ -210,7 +210,7 @@ public class CombatSetup : NetworkBehaviour
         if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
         if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
         if (combatCanvasManager == null) combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
-        if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
+        if (gameManager == null) gameManager = OnlineGameManager.Instance;
         if (gamePhaseManager == null) gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
         if (fightPreviewManager == null) fightPreviewManager = FindFirstObjectByType<FightPreviewManager>();
         if (loadingScreenManager == null) loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();

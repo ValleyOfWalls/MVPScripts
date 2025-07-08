@@ -15,7 +15,7 @@ public class DraftSetup : NetworkBehaviour
     [SerializeField] private ShopSetup shopSetup;
     [SerializeField] private DraftManager draftManager;
     [SerializeField] private GamePhaseManager gamePhaseManager;
-    [SerializeField] private GameManager gameManager;
+    [SerializeField] private OnlineGameManager gameManager;
     [SerializeField] private EntityVisibilityManager entityVisibilityManager;
     
     [Header("Draft Canvas")]
@@ -39,7 +39,7 @@ public class DraftSetup : NetworkBehaviour
         if (shopSetup == null) shopSetup = FindFirstObjectByType<ShopSetup>();
         if (draftManager == null) draftManager = FindFirstObjectByType<DraftManager>();
         if (gamePhaseManager == null) gamePhaseManager = GamePhaseManager.Instance;
-        if (gameManager == null) gameManager = GameManager.Instance;
+        if (gameManager == null) gameManager = OnlineGameManager.Instance;
         if (entityVisibilityManager == null) entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
         
         // Log what we found for debugging

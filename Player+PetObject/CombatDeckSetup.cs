@@ -2,6 +2,7 @@ using UnityEngine;
 using FishNet.Object;
 using System.Collections.Generic;
 using System.Collections;
+using System.Linq;
 using FishNet.Object.Synchronizing;
 
 /// <summary>
@@ -306,19 +307,19 @@ public class CombatDeckSetup : NetworkBehaviour
         }
 
         // Log detailed information about this entity
-        /* Debug.Log($"=== CombatDeckSetup.SpawnDeckCards for {gameObject.name} ==="); */
-        /* Debug.Log($"Entity Type: {ownerEntity?.EntityType}"); */
-        /* Debug.Log($"Entity Name: {ownerEntity?.EntityName.Value}"); */
-        /* Debug.Log($"Entity IsOwner: {ownerEntity?.IsOwner}"); */
-        /* Debug.Log($"Entity Owner ClientId: {ownerEntity?.Owner?.ClientId ?? -1}"); */
-        /* Debug.Log($"Hand Entity: {handEntity?.EntityName.Value}"); */
-        /* Debug.Log($"=== Starting card spawn process ==="); */
+        // Check if randomization was enabled at game start
+        bool randomizationEnabled = false;
+        if (OfflineGameManager.Instance != null)
+        {
+            randomizationEnabled = OfflineGameManager.Instance.EnableRandomizedCards;
+        }
+        Debug.Log($"[CARD-FLOW] CombatDeckSetup for {gameObject.name} - Randomization setting: {randomizationEnabled}");
 
         // Get all card IDs from the entity's deck
         List<int> cardIds = entityDeck.GetAllCardIds();
         if (cardIds == null || cardIds.Count == 0)
         {
-            Debug.LogWarning($"Entity {gameObject.name} has no cards in NetworkEntityDeck");
+            Debug.LogWarning($"[CARD-FLOW] Entity {gameObject.name} has no cards in NetworkEntityDeck");
             // Mark setup as complete even if there are no cards, so the process doesn't hang
             if (IsServerInitialized)
             {
@@ -326,6 +327,14 @@ public class CombatDeckSetup : NetworkBehaviour
             }
             yield break;
         }
+
+        // CRITICAL DIAGNOSTIC: Show first few card IDs to understand the deck content
+        Debug.Log($"[CARD-FLOW] {gameObject.name} deck contains {cardIds.Count} cards. First 5 IDs: [{string.Join(", ", cardIds.Take(5))}]");
+        
+        // Check if these are original card IDs (1-100) or randomized IDs (large numbers)
+        bool hasOriginalIds = cardIds.Any(id => id >= 1 && id <= 100);
+        bool hasRandomizedIds = cardIds.Any(id => id > 1000000);
+        Debug.Log($"[CARD-FLOW] Deck analysis - Original IDs (1-100): {hasOriginalIds}, Randomized IDs (>1M): {hasRandomizedIds}");
 
         // SHUFFLE THE DECK: Randomize card order for combat
         System.Random rng = new System.Random();
@@ -346,14 +355,35 @@ public class CombatDeckSetup : NetworkBehaviour
         // Spawn each card
         foreach (int cardId in cardIds)
         {
-            CardData cardData = CardDatabase.Instance.GetCardById(cardId);
+            // Check randomization status first
+            bool hasRandomization = NetworkCardDatabase.Instance != null && NetworkCardDatabase.Instance.AreCardsSynced;
+            Debug.Log($"[CARD-FLOW] CombatDeckSetup: Processing card ID {cardId} - NetworkDB Available: {NetworkCardDatabase.Instance != null}, Cards Synced: {hasRandomization}");
+            
+            // Try NetworkCardDatabase first, fallback to CardDatabase
+            CardData cardData = null;
+            if (hasRandomization)
+            {
+                cardData = NetworkCardDatabase.Instance.GetSyncedCard(cardId);
+                if (cardData != null)
+                {
+                    Debug.Log($"[CARD-FLOW] CombatDeckSetup: Using RANDOMIZED card {cardData.CardName} (ID: {cardId})");
+                }
+            }
+            
+            if (cardData == null && CardDatabase.Instance != null)
+            {
+                cardData = CardDatabase.Instance.GetCardById(cardId);
+                if (cardData != null)
+                {
+                    Debug.Log($"[CARD-FLOW] CombatDeckSetup: Using ORIGINAL card {cardData.CardName} (ID: {cardId})");
+                }
+            }
+            
             if (cardData == null)
             {
-                Debug.LogWarning($"Card data not found for ID {cardId}");
+                Debug.LogWarning($"[CARD-FLOW] CombatDeckSetup: CRITICAL - No card data found for ID {cardId} in any database!");
                 continue;
             }
-
-            /* Debug.Log($"About to spawn card {cardData.CardName} for entity {ownerEntity?.EntityName.Value} (ClientId: {ownerEntity?.Owner?.ClientId ?? -1})"); */
 
             // Spawn the card using the Hand entity's CardSpawner
             GameObject cardObject = handCardSpawner.SpawnCard(cardData);

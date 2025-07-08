@@ -26,6 +26,7 @@ public class CardData : ScriptableObject
     [TextArea(2, 4)]
     [SerializeField] private string _description = "Card Description";
     [SerializeField] private Sprite _cardArtwork;
+    [SerializeField] private CardRarity _rarity = CardRarity.Common;
 
     [Header("═══ CARD CATEGORY ═══")]
     [Tooltip("Determines where this card can appear (starter decks, draft packs, shops, etc.)")]
@@ -63,15 +64,7 @@ public class CardData : ScriptableObject
     [ConditionalField("_changesStance", true, true)]
     [SerializeField] private StanceType _newStance = StanceType.Aggressive;
 
-    [Header("═══ ADVANCED TARGETING ═══")]
-    [Tooltip("Can target self even if main target is different")]
-    [SerializeField] private bool _canAlsoTargetSelf = false;
-    
-    [Tooltip("Can target allies even if main target is different")]
-    [SerializeField] private bool _canAlsoTargetAllies = false;
-    
-    [Tooltip("Can target opponent even if main target is different")]
-    [SerializeField] private bool _canAlsoTargetOpponent = false;
+
 
     [Header("═══ TRACKING & UPGRADES ═══")]
     [SerializeField] private CardData _upgradedVersion;
@@ -110,6 +103,7 @@ public class CardData : ScriptableObject
     public string CardName => _cardName;
     public string Description => _description;
     public Sprite CardArtwork => _cardArtwork;
+    public CardRarity Rarity => _rarity;
     public CardCategory CardCategory => _cardCategory;
     public CardType CardType => _cardType;
     public int EnergyCost => _energyCost;
@@ -123,9 +117,7 @@ public class CardData : ScriptableObject
     public bool ChangesStance => _changesStance;
     public StanceType NewStance => _newStance;
     
-    public bool CanAlsoTargetSelf => _canAlsoTargetSelf;
-    public bool CanAlsoTargetAllies => _canAlsoTargetAllies;
-    public bool CanAlsoTargetOpponent => _canAlsoTargetOpponent;
+
     
     public bool TrackPlayCount => _trackPlayCount;
     public bool TrackDamageHealing => _trackDamageHealing;
@@ -331,6 +323,85 @@ public class CardData : ScriptableObject
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // PROCEDURAL GENERATION SETTERS
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Set card ID (for procedural generation)
+    /// </summary>
+    public void SetCardId(int cardId)
+    {
+        _cardId = cardId;
+    }
+
+    /// <summary>
+    /// Set card name (for procedural generation)
+    /// </summary>
+    public void SetCardName(string cardName)
+    {
+        _cardName = cardName;
+    }
+
+    /// <summary>
+    /// Set card description (for procedural generation)
+    /// </summary>
+    public void SetDescription(string description)
+    {
+        _description = description;
+    }
+
+    /// <summary>
+    /// Set card rarity (for procedural generation)
+    /// </summary>
+    public void SetRarity(CardRarity rarity)
+    {
+        _rarity = rarity;
+    }
+
+    /// <summary>
+    /// Set energy cost (for procedural generation)
+    /// </summary>
+    public void SetEnergyCost(int energyCost)
+    {
+        _energyCost = energyCost;
+    }
+
+    /// <summary>
+    /// Set card type (for procedural generation)
+    /// </summary>
+    public void SetCardType(CardType cardType)
+    {
+        _cardType = cardType;
+    }
+
+    /// <summary>
+    /// Set initiative (for procedural generation)
+    /// </summary>
+    public void SetInitiative(int initiative)
+    {
+        _initiative = initiative;
+    }
+
+    /// <summary>
+    /// Set effects list (for procedural generation)
+    /// </summary>
+    public void SetEffects(List<CardEffect> effects)
+    {
+        _effects = effects ?? new List<CardEffect>();
+    }
+
+    /// <summary>
+    /// Set upgrade properties (for procedural generation)
+    /// </summary>
+    public void SetUpgradeProperties(bool canUpgrade, UpgradeConditionType conditionType, int requiredValue, UpgradeComparisonType comparisonType)
+    {
+        _canUpgrade = canUpgrade;
+        _upgradeConditionType = conditionType;
+        _upgradeRequiredValue = requiredValue;
+        _upgradeComparisonType = comparisonType;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // UTILITY METHODS
     // ═══════════════════════════════════════════════════════════════
 
@@ -340,18 +411,19 @@ public class CardData : ScriptableObject
     public List<CardTargetType> GetValidTargetTypes()
     {
         List<CardTargetType> validTargets = new List<CardTargetType>();
-        if (HasEffects)
-            validTargets.Add(_effects[0].targetType);
         
-        if (_canAlsoTargetSelf && !validTargets.Contains(CardTargetType.Self))
-            validTargets.Add(CardTargetType.Self);
-            
-        if (_canAlsoTargetAllies && !validTargets.Contains(CardTargetType.Ally))
-            validTargets.Add(CardTargetType.Ally);
-            
-        if (_canAlsoTargetOpponent && !validTargets.Contains(CardTargetType.Opponent))
-            validTargets.Add(CardTargetType.Opponent);
-            
+        // Collect all unique target types from all effects
+        if (HasEffects)
+        {
+            foreach (var effect in _effects)
+            {
+                if (!validTargets.Contains(effect.targetType))
+                {
+                    validTargets.Add(effect.targetType);
+                }
+            }
+        }
+        
         return validTargets;
     }
 

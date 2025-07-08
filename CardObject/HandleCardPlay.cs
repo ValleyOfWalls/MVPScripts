@@ -936,7 +936,7 @@ public class HandleCardPlay : NetworkBehaviour
     public static void UpdateAllCardValidation()
     {
         // Find all HandleCardPlay components in the scene and update their validation
-        var allCardPlayers = FindObjectsOfType<HandleCardPlay>();
+        var allCardPlayers = FindObjectsByType<HandleCardPlay>(FindObjectsSortMode.None);
         foreach (var cardPlayer in allCardPlayers)
         {
             cardPlayer.UpdatePlayValidation();

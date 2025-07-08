@@ -29,7 +29,7 @@ public class UpgradeConditionTestManager : NetworkBehaviour
     
     private void Start()
     {
-        if (runTestsOnStart && IsServer)
+        if (runTestsOnStart && IsServerInitialized)
         {
             StartCoroutine(RunAllTests());
         }
@@ -40,7 +40,7 @@ public class UpgradeConditionTestManager : NetworkBehaviour
     /// </summary>
     public void RunTests()
     {
-        if (IsServer)
+        if (IsServerInitialized)
         {
             StartCoroutine(RunAllTests());
         }
@@ -82,7 +82,7 @@ public class UpgradeConditionTestManager : NetworkBehaviour
     private IEnumerator InitializeTestEnvironment()
     {
         // Find or create upgrade manager
-        upgradeManager = FindObjectOfType<CardUpgradeManager>();
+        upgradeManager = FindFirstObjectByType<CardUpgradeManager>();
         if (upgradeManager == null)
         {
             Debug.LogError("UpgradeConditionTestManager: CardUpgradeManager not found!");
@@ -90,7 +90,7 @@ public class UpgradeConditionTestManager : NetworkBehaviour
         }
         
         // Find test entity (use first available NetworkEntity)
-        testEntity = FindObjectOfType<NetworkEntity>();
+        testEntity = FindFirstObjectByType<NetworkEntity>();
         if (testEntity == null)
         {
             Debug.LogError("UpgradeConditionTestManager: No NetworkEntity found for testing!");

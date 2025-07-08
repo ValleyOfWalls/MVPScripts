@@ -159,7 +159,7 @@ public class ButtonSoundHandler : MonoBehaviour
         }
         
         // Find all buttons in the scene
-        Button[] allButtons = FindObjectsOfType<Button>(includeButtonsOnDisabledObjects);
+        Button[] allButtons = FindObjectsByType<Button>(includeButtonsOnDisabledObjects ? FindObjectsInactive.Include : FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         
         List<Button> validButtons = new List<Button>();
         

@@ -108,7 +108,7 @@ public class CardUpgradeManager : NetworkBehaviour
         yield return new WaitForSeconds(1.0f); // Wait for entities to spawn
         
         // Find any new entities and subscribe to their events
-        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>();
+        NetworkEntity[] allEntities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
         foreach (var entity in allEntities)
         {
             SubscribeToEntityEvents(entity);
@@ -187,7 +187,7 @@ public class CardUpgradeManager : NetworkBehaviour
        // Debug.Log("[CARD_UPGRADE] Subscribing to game events for comprehensive upgrade checking");
         
         // Find all entities in the scene and subscribe to their events
-        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>();
+        NetworkEntity[] allEntities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
         foreach (var entity in allEntities)
         {
             SubscribeToEntityEvents(entity);
@@ -234,7 +234,7 @@ public class CardUpgradeManager : NetworkBehaviour
     private void UnsubscribeFromGameEvents()
     {
         // Find all entities and unsubscribe from their events
-        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>();
+        NetworkEntity[] allEntities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
         foreach (var entity in allEntities)
         {
             UnsubscribeFromEntityEvents(entity);

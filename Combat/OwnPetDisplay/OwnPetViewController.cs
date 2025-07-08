@@ -28,33 +28,39 @@ public class OwnPetViewController : MonoBehaviour
     
     private void Awake()
     {
+        Debug.Log("[PET_VISIBILITY] OwnPetViewController.Awake() called");
         ValidateComponents();
         
         // Check if this GameObject has a NetworkEntity component
         NetworkEntity networkEntity = GetComponent<NetworkEntity>();
         if (networkEntity != null)
         {
+            Debug.Log($"[PET_VISIBILITY] OwnPetViewController has NetworkEntity component - this may cause visibility conflicts with EntityVisibilityManager!");
             LogDebug($"OwnPetViewController has NetworkEntity component - this may cause visibility conflicts with EntityVisibilityManager!");
             LogDebug($"NetworkEntity Type: {networkEntity.EntityType}, Name: {networkEntity.EntityName.Value}");
         }
         else
         {
+            Debug.Log("[PET_VISIBILITY] OwnPetViewController does not have NetworkEntity component - good for UI elements");
             LogDebug("OwnPetViewController does not have NetworkEntity component - good for UI elements");
         }
     }
     
     private void Start()
     {
+        Debug.Log("[PET_VISIBILITY] OwnPetViewController.Start() called");
         FindManagers();
         
         // Check if this view has already been set up (e.g., by RPC)
         // If we already have a displayed pet, don't interfere with the setup
         if (currentDisplayedPet != null)
         {
+            Debug.Log("[PET_VISIBILITY] OwnPetViewController - Start() called but pet already displayed - skipping initial setup to avoid interference");
             LogDebug("Start() called but pet already displayed - skipping initial setup to avoid interference");
             return;
         }
         
+        Debug.Log("[PET_VISIBILITY] OwnPetViewController - Setting up initial state");
         SetupInitialState();
     }
     
@@ -166,6 +172,8 @@ public class OwnPetViewController : MonoBehaviour
     /// </summary>
     public void UpdateDisplayedPet()
     {
+        Debug.Log("[PET_VISIBILITY] OwnPetViewController.UpdateDisplayedPet() called");
+        
         // Try to find managers if not available
         if (fightManager == null)
         {
@@ -174,6 +182,7 @@ public class OwnPetViewController : MonoBehaviour
         
         if (fightManager == null)
         {
+            Debug.Log("[PET_VISIBILITY] OwnPetViewController - FightManager not available, will retry in a moment");
             LogDebug("FightManager not available, will retry in a moment");
             // Instead of immediately hiding, start a retry coroutine
             StartCoroutine(RetryFindingFightManager());
@@ -184,25 +193,36 @@ public class OwnPetViewController : MonoBehaviour
         NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
         if (viewedPlayer == null)
         {
+            Debug.Log("[PET_VISIBILITY] OwnPetViewController - No viewed combat player found - this is normal during combat setup");
             LogDebug("No viewed combat player found - this is normal during combat setup");
             // Don't hide immediately, the fight might not be set up yet
             StartCoroutine(RetryFindingViewedPlayer());
             return;
         }
         
+        Debug.Log($"[PET_VISIBILITY] OwnPetViewController - Found viewed combat player: {viewedPlayer.EntityName.Value} (ID: {viewedPlayer.ObjectId})");
+        
         // Find the viewed player's own pet through RelationshipManager
         NetworkEntity viewedPlayersPet = GetPlayerOwnPet(viewedPlayer);
         if (viewedPlayersPet == null)
         {
+            Debug.Log($"[PET_VISIBILITY] OwnPetViewController - No pet found for viewed player {viewedPlayer.EntityName.Value}");
             LogDebug($"No pet found for viewed player {viewedPlayer.EntityName.Value}");
             SetViewVisible(false);
             return;
         }
         
+        Debug.Log($"[PET_VISIBILITY] OwnPetViewController - Found viewed player's pet: {viewedPlayersPet.EntityName.Value} (ID: {viewedPlayersPet.ObjectId})");
+        
         // Update the displayed pet if it changed
         if (currentDisplayedPet != viewedPlayersPet)
         {
+            Debug.Log($"[PET_VISIBILITY] OwnPetViewController - Setting displayed pet to: {viewedPlayersPet.EntityName.Value} (ID: {viewedPlayersPet.ObjectId})");
             SetDisplayedPet(viewedPlayersPet);
+        }
+        else
+        {
+            Debug.Log($"[PET_VISIBILITY] OwnPetViewController - Pet already displayed: {viewedPlayersPet.EntityName.Value} (ID: {viewedPlayersPet.ObjectId})");
         }
     }
     
@@ -298,6 +318,7 @@ public class OwnPetViewController : MonoBehaviour
     /// </summary>
     private void SetDisplayedPet(NetworkEntity pet)
     {
+        Debug.Log($"[PET_VISIBILITY] OwnPetViewController.SetDisplayedPet() called with: {(pet != null ? pet.EntityName.Value + " (ID: " + pet.ObjectId + ")" : "null")}");
         LogDebug($"Setting displayed pet to: {(pet != null ? pet.EntityName.Value : "null")}");
         
         // Unsubscribe from previous pet events
@@ -308,24 +329,59 @@ public class OwnPetViewController : MonoBehaviour
         
         if (pet != null)
         {
+            Debug.Log($"[PET_VISIBILITY] OwnPetViewController - Updating display components for {pet.EntityName.Value}");
+            
             // Update all display components
             if (visualDisplay != null)
+            {
                 visualDisplay.SetPet(pet);
+                Debug.Log($"[PET_VISIBILITY] OwnPetViewController - visualDisplay.SetPet() called for {pet.EntityName.Value}");
+            }
+            else
+            {
+                Debug.Log("[PET_VISIBILITY] OwnPetViewController - WARNING: visualDisplay is null!");
+            }
+            
             if (statsDisplay != null)
+            {
                 statsDisplay.SetPet(pet);
+                Debug.Log($"[PET_VISIBILITY] OwnPetViewController - statsDisplay.SetPet() called for {pet.EntityName.Value}");
+            }
+            else
+            {
+                Debug.Log("[PET_VISIBILITY] OwnPetViewController - WARNING: statsDisplay is null!");
+            }
+            
             if (statusEffectsDisplay != null)
+            {
                 statusEffectsDisplay.SetPet(pet);
+                Debug.Log($"[PET_VISIBILITY] OwnPetViewController - statusEffectsDisplay.SetPet() called for {pet.EntityName.Value}");
+            }
+            else
+            {
+                Debug.Log("[PET_VISIBILITY] OwnPetViewController - WARNING: statusEffectsDisplay is null!");
+            }
+            
             if (cardDropZone != null)
+            {
                 cardDropZone.SetTargetPet(pet);
+                Debug.Log($"[PET_VISIBILITY] OwnPetViewController - cardDropZone.SetTargetPet() called for {pet.EntityName.Value}");
+            }
+            else
+            {
+                Debug.Log("[PET_VISIBILITY] OwnPetViewController - WARNING: cardDropZone is null!");
+            }
             
             // Subscribe to new pet events
             SubscribeToPetEvents();
             
             // Show the view
+            Debug.Log($"[PET_VISIBILITY] OwnPetViewController - About to call SetViewVisible(true) for {pet.EntityName.Value}");
             SetViewVisible(true);
         }
         else
         {
+            Debug.Log("[PET_VISIBILITY] OwnPetViewController - Pet is null, hiding view");
             // Hide the view
             SetViewVisible(false);
         }
@@ -390,7 +446,9 @@ public class OwnPetViewController : MonoBehaviour
     /// </summary>
     private void SetViewVisible(bool visible)
     {
+        Debug.Log($"[PET_VISIBILITY] OwnPetViewController.SetViewVisible({visible}) called - GameObject: {gameObject.name}");
         gameObject.SetActive(visible);
+        Debug.Log($"[PET_VISIBILITY] OwnPetViewController - GameObject.SetActive({visible}) completed - Current active state: {gameObject.activeInHierarchy}");
         LogDebug($"Pet view visibility set to: {visible}");
     }
     
@@ -399,6 +457,7 @@ public class OwnPetViewController : MonoBehaviour
     /// </summary>
     public void RefreshDisplayedPet()
     {
+        Debug.Log("[PET_VISIBILITY] OwnPetViewController.RefreshDisplayedPet() called by external system");
         UpdateDisplayedPet();
         
         // Force refresh of pet portraits in case pet data has changed

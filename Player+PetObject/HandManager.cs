@@ -89,13 +89,13 @@ public class HandManager : NetworkBehaviour
         }
 
         // DEBUG: Check GameManager instance and values
-        if (GameManager.Instance == null)
+        if (OnlineGameManager.Instance == null)
         {
-            Debug.LogError($"HandManager: GameManager.Instance is NULL for {entityName}");
+            Debug.LogError($"HandManager: OnlineGameManager.Instance is NULL for {entityName}");
             return;
         }
         
-        Debug.Log($"HandManager: GameManager validated for {entityName} (ID: {entityId})");
+        Debug.Log($"HandManager: OnlineGameManager validated for {entityName} (ID: {entityId})");
         
         // Get current hand size to determine if this is initial draw
         List<GameObject> currentHand = GetCardsInTransform(handTransform);
@@ -111,22 +111,22 @@ public class HandManager : NetworkBehaviour
         {
             if (isInitialDraw)
             {
-                targetHandSize = GameManager.Instance.PlayerDrawAmount.Value; // Use initial draw amount
+                targetHandSize = OnlineGameManager.Instance.PlayerDrawAmount.Value; // Use initial draw amount
             }
             else
             {
-                targetHandSize = GameManager.Instance.PlayerTargetHandSize.Value; // Use target hand size
+                targetHandSize = OnlineGameManager.Instance.PlayerTargetHandSize.Value; // Use target hand size
             }
         }
         else if (entity.EntityType == EntityType.Pet || entity.EntityType == EntityType.PetHand)
         {
             if (isInitialDraw)
             {
-                targetHandSize = GameManager.Instance.PetDrawAmount.Value; // Use initial draw amount
+                targetHandSize = OnlineGameManager.Instance.PetDrawAmount.Value; // Use initial draw amount
             }
             else
             {
-                targetHandSize = GameManager.Instance.PetTargetHandSize.Value; // Use target hand size
+                targetHandSize = OnlineGameManager.Instance.PetTargetHandSize.Value; // Use target hand size
             }
         }
         else

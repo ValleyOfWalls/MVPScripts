@@ -34,7 +34,7 @@ public class ShopPack : NetworkBehaviour
     public event Action<ShopPack, GameObject, NetworkEntity> OnCardPurchased;
     public event Action<ShopPack> OnShopRefreshed;
     
-    private GameManager gameManager;
+    private OnlineGameManager gameManager;
     
     public Transform CardContainer => cardContainer;
     public bool IsEmpty => cardNetworkIds.Count == 0;
@@ -56,7 +56,7 @@ public class ShopPack : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        gameManager = GameManager.Instance;
+        gameManager = OnlineGameManager.Instance;
         cardNetworkIds.OnChange += OnCardListChanged;
     }
     

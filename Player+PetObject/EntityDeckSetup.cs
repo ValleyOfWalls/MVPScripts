@@ -94,17 +94,14 @@ public class EntityDeckSetup : NetworkBehaviour
         
         // Determine which deck data to use
         DeckData deckToUse = null;
-        string deckSource = "";
         
         if (allowRuntimeDeckOverride && runtimeDeckData != null)
         {
             deckToUse = runtimeDeckData;
-            deckSource = "runtime selection";
         }
         else if (starterDeckDefinition != null)
         {
             deckToUse = starterDeckDefinition;
-            deckSource = "serialized field";
         }
         
         // Initialize deck if we have data

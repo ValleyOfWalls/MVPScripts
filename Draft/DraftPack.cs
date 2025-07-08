@@ -36,7 +36,7 @@ public class DraftPack : NetworkBehaviour
     public event System.Action<DraftPack, NetworkEntity> OnOwnerChanged;
     
     private CardSpawner cardSpawner;
-    private GameManager gameManager;
+    private OnlineGameManager gameManager;
     
     public int CardCount => cardObjectIds.Count;
     public bool IsEmpty => cardObjectIds.Count == 0;
@@ -63,7 +63,7 @@ public class DraftPack : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        gameManager = GameManager.Instance;
+        gameManager = OnlineGameManager.Instance;
         cardObjectIds.OnChange += OnCardListChanged;
         CurrentOwnerPlayerId.OnChange += OnCurrentOwnerChanged;
     }
@@ -110,8 +110,18 @@ public class DraftPack : NetworkBehaviour
         
         /* Debug.Log($"DraftPack: Initializing pack with {size} cards for player {originalOwner.EntityName.Value}"); */
         
-        // Get random cards from the database (allowing duplicates for draft)
-        List<CardData> randomCards = CardDatabase.Instance.GetRandomCardsWithDuplicates(size);
+        // Get cards for the draft pack (uses rarity distribution if randomization is enabled)
+        List<CardData> randomCards;
+        
+        if (RandomizedDraftPackManager.Instance != null)
+        {
+            randomCards = RandomizedDraftPackManager.Instance.GenerateDraftPackCards(size);
+        }
+        else
+        {
+            // Fallback to default behavior
+            randomCards = CardDatabase.Instance.GetRandomCardsWithDuplicates(size);
+        }
         
         if (randomCards.Count < size)
         {

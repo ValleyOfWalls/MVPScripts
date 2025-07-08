@@ -105,7 +105,7 @@ public class TextMeshProFontChanger : EditorWindow
         if (includeScene)
         {
             // Find all TextMeshProUGUI components in the scene
-            sceneTexts = FindObjectsOfType<TextMeshProUGUI>().ToList();
+            sceneTexts = FindObjectsByType<TextMeshProUGUI>(FindObjectsSortMode.None).ToList();
         }
 
         if (includePrefabs)

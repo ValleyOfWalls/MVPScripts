@@ -42,7 +42,7 @@ public class LifeHandler : NetworkBehaviour
         if (amount <= 0) return; // Ignore non-positive damage
         
         // Prevent double processing on host/client
-        if (!IsHost && IsClientInitialized)
+        if (!IsHostInitialized && IsClientInitialized)
         {
             Debug.LogWarning($"CARDPLAY_DEBUG: LifeHandler: TakeDamage called on client-only context for {entity.EntityName.Value}, ignoring");
             return;
@@ -100,7 +100,7 @@ public class LifeHandler : NetworkBehaviour
         if (amount <= 0) return; // Ignore non-positive healing
         
         // Prevent double processing on host/client
-        if (!IsHost && IsClientInitialized)
+        if (!IsHostInitialized && IsClientInitialized)
         {
             Debug.LogWarning($"LifeHandler: Heal called on client-only context for {entity.EntityName.Value}, ignoring");
             return;

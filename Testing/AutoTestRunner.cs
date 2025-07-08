@@ -192,9 +192,9 @@ public class AutoTestRunner : MonoBehaviour
     private void LogFrameRateSettings()
     {
         // Simplified frame rate logging - only when needed
-        if (GameManager.Instance != null)
+        if (OfflineGameManager.Instance != null)
         {
-            GameManager.Instance.LogCurrentDisplaySettings();
+            OfflineGameManager.Instance.LogCurrentSettings();
         }
     }
 
@@ -267,7 +267,7 @@ public class AutoTestRunner : MonoBehaviour
             characterSelectionManager.OnPlayersReadyStateChanged += CheckCharacterSelectionConditions;
             
         }
-        catch (System.Exception e)
+        catch (System.Exception)
         {
             // Using polling method instead
             StartCoroutine(PollCharacterSelectionConditions());
@@ -368,7 +368,7 @@ public class AutoTestRunner : MonoBehaviour
             {
                 characterSelectionManager.OnPlayersReadyStateChanged -= CheckCharacterSelectionConditions;
             }
-            catch (System.Exception e)
+            catch (System.Exception)
             {
                 /* Debug.Log($"AutoTestRunner: Could not unsubscribe from character selection events: {e.Message}"); */
             }

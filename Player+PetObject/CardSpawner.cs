@@ -149,7 +149,7 @@ public class CardSpawner : NetworkBehaviour
         /* Debug.Log($"Owner Entity ClientId: {(ownerEntity?.Owner?.ClientId ?? -1)}"); */
         /* Debug.Log($"Spawn Position: {spawnPosition}"); */
         
-        Debug.Log($"[CARD_OWNERSHIP] CardSpawner on {gameObject.name}: Spawning card {cardData.CardName} for owner {(ownerEntity != null ? ownerEntity.EntityName.Value : "null")} (Type: {ownerEntity?.EntityType})");
+        Debug.Log($"[CARD-FLOW] CardSpawner: Spawning card {cardData.CardName} (ID: {cardData.CardId}) for {(ownerEntity != null ? ownerEntity.EntityName.Value : "unowned")}");
         
         // Instantiate the card prefab
         GameObject cardObject = Instantiate(cardPrefab);
@@ -163,7 +163,6 @@ public class CardSpawner : NetworkBehaviour
         {
             // Initialize the card with its data first
             card.Initialize(cardData);
-            /* Debug.Log($"Card {cardData.CardName}: Initialized with data"); */
         }
         else
         {

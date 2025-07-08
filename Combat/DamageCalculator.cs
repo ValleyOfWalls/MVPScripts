@@ -4,19 +4,15 @@ using FishNet.Object;
 
 /// <summary>
 /// Calculates damage for card effects, taking into account statuses and modifiers.
-/// Attach to: GameManager GameObject.
+/// Attach to: Any GameObject that needs damage calculation functionality.
 /// </summary>
 public class DamageCalculator : MonoBehaviour
 {
-    [Header("References")]
-    [SerializeField] private GameManager gameManager;
+    // No references needed - accesses OnlineGameManager directly
     
     private void Awake()
     {
-        if (gameManager == null)
-        {
-            gameManager = GameManager.Instance;
-        }
+        // No initialization needed
     }
     
     /// <summary>
@@ -180,8 +176,8 @@ public class DamageCalculator : MonoBehaviour
     
     private float ApplyCriticalHitChance(NetworkEntity source, NetworkEntity target, float damage)
     {
-        // Skip critical hit calculation if crits are disabled in GameManager
-        if (!gameManager.CriticalHitsEnabled.Value)
+        // Skip critical hit calculation if crits are disabled or OnlineGameManager not available
+        if (OnlineGameManager.Instance == null || !OnlineGameManager.Instance.CriticalHitsEnabled.Value)
         {
             return damage;
         }
@@ -189,8 +185,8 @@ public class DamageCalculator : MonoBehaviour
         // Get source effect handler to check for increased crit chance
         EffectHandler sourceEffects = source.GetComponent<EffectHandler>();
         
-        // Start with base crit chance from GameManager
-        float critChance = gameManager.BaseCriticalChance.Value;
+        // Start with base crit chance from OnlineGameManager
+        float critChance = OnlineGameManager.Instance.BaseCriticalChance.Value;
         
         // Increase crit chance based on effects if applicable
         if (sourceEffects != null && sourceEffects.HasEffect("CriticalUp"))
@@ -202,7 +198,7 @@ public class DamageCalculator : MonoBehaviour
         // Check for critical hit
         if (Random.value < critChance)
         {
-            float critDamage = damage * gameManager.CriticalHitModifier.Value;
+            float critDamage = damage * OnlineGameManager.Instance.CriticalHitModifier.Value;
             /* Debug.Log($"DamageCalculator: Critical hit! Damage increased from {damage} to {critDamage}"); */
             
             // TODO: Consider notifying UI for critical hit display effect

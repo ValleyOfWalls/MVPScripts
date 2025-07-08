@@ -98,15 +98,8 @@ public class LobbyManager : NetworkBehaviour
         if (!connectedPlayers.Contains(conn))
         {
             connectedPlayers.Add(conn);
-            if (GameManager.Instance != null)
-            {
-                playerReadyStates[conn] = GameManager.Instance.AutoReadyPlayersOnJoin;
-            }
-            else
-            {
-                playerReadyStates[conn] = false;
-                Debug.LogWarning("LobbyManager: GameManager.Instance not found. Defaulting player ready state to false.");
-            }
+            // Default to not ready - AutoReadyPlayersOnJoin can be added to OfflineGameManager if needed
+            playerReadyStates[conn] = false;
             playerDisplayNames[conn] = playerName;
             
             // Transition to character selection when first player joins

@@ -47,7 +47,7 @@ public class SelectionNetworkObject : MonoBehaviour
     /// </summary>
     private void TryImmediateParenting()
     {
-        CharacterSelectionUIManager uiManager = FindObjectOfType<CharacterSelectionUIManager>();
+        CharacterSelectionUIManager uiManager = FindFirstObjectByType<CharacterSelectionUIManager>();
         if (uiManager != null)
         {
             // Find the appropriate parent transform using reflection to access private fields
@@ -110,7 +110,7 @@ public class SelectionNetworkObject : MonoBehaviour
             waitTime += 0.2f;
             
             // Try to find the UI manager
-            CharacterSelectionUIManager uiManager = FindObjectOfType<CharacterSelectionUIManager>();
+            CharacterSelectionUIManager uiManager = FindFirstObjectByType<CharacterSelectionUIManager>();
             if (uiManager != null)
             {
                 // Find the appropriate parent transform

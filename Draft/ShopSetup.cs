@@ -13,7 +13,7 @@ public class ShopSetup : NetworkBehaviour
     [SerializeField] private Transform shopContainer;
     
     [Header("References")]
-    [SerializeField] private GameManager gameManager;
+    [SerializeField] private OnlineGameManager gameManager;
     [SerializeField] private DraftCanvasManager draftCanvasManager;
     
     private ShopPack spawnedShop = null;
@@ -22,7 +22,7 @@ public class ShopSetup : NetworkBehaviour
     
     private void Awake()
     {
-        if (gameManager == null) gameManager = GameManager.Instance;
+        if (gameManager == null) gameManager = OnlineGameManager.Instance;
         if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
         
         if (shopPackPrefab == null)
@@ -152,7 +152,7 @@ public class ShopSetup : NetworkBehaviour
         
         if (gameManager == null)
         {
-            Debug.LogError("ShopSetup: Cannot create shop - GameManager not found");
+            Debug.LogError("ShopSetup: Cannot create shop - OnlineGameManager not found");
             return;
         }
         
@@ -227,7 +227,7 @@ public class ShopSetup : NetworkBehaviour
             return;
         }
         
-        // Initialize the shop with cards using GameManager values
+        // Initialize the shop with cards using OnlineGameManager values
         shopPack.InitializeShop(shopSize, minCost, maxCost);
         
         // Mirror the transform properties from DraftCanvasManager's ShopContainer to this shop's CardContainer

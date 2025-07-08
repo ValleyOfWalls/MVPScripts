@@ -58,7 +58,7 @@ public class NetworkEntity : NetworkBehaviour
     public readonly SyncVar<int> Currency = new SyncVar<int>();
     public event System.Action<int> OnCurrencyChanged;
 
-    private GameManager gameManager;
+    private OnlineGameManager gameManager;
     private RelationshipManager relationshipManager;
     private NetworkEntityAnimator entityAnimator;
 
@@ -77,7 +77,7 @@ public class NetworkEntity : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        gameManager = FindFirstObjectByType<GameManager>();
+        gameManager = OnlineGameManager.Instance;
 
         // Update inspector owner ID
         inspectorOwnerClientId = Owner?.ClientId ?? -1;
@@ -604,7 +604,7 @@ public class NetworkEntity : NetworkBehaviour
     /// </summary>
     private void CheckUIControllerLinks()
     {
-        EntityStatsUIController[] allControllers = FindObjectsOfType<EntityStatsUIController>(true);
+        EntityStatsUIController[] allControllers = FindObjectsByType<EntityStatsUIController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         /* Debug.Log($"SYNC_DEBUG: UI_CHECK - Found {allControllers.Length} EntityStatsUIController instances"); */
         
         int linkedCount = 0;

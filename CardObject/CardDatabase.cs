@@ -109,9 +109,14 @@ public class CardDatabase : MonoBehaviour
     {
         if (cardDataById.TryGetValue(cardId, out CardData data))
         {
+            Debug.Log($"[CARD-FLOW] CardDatabase: SUCCESS - Found card ID {cardId} - {data.CardName}");
             return data;
         }
-        Debug.LogWarning($"CardDatabase: Card with ID {cardId} not found.");
+        // Reduced logging - only log first few failures
+        if (cardId <= 10)
+        {
+            Debug.LogWarning($"[CARD-FLOW] CardDatabase: FAILED - Card with ID {cardId} not found");
+        }
         return null;
     }
 

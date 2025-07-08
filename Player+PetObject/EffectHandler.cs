@@ -881,16 +881,15 @@ public class EffectHandler : NetworkBehaviour
         
         if (HasEffect("Weak"))
         {
-            // Use GameManager's WeakStatusModifier for consistency
-            GameManager gameManager = GameManager.Instance;
-            if (gameManager != null && gameManager.IsServerInitialized)
+            // Use OnlineGameManager's WeakStatusModifier for consistency
+            if (OnlineGameManager.Instance != null)
             {
-                multiplier *= gameManager.WeakStatusModifier.Value;
-                /* Debug.Log($"EffectHandler: {entity.EntityName.Value} has Weak effect, using GameManager modifier: {gameManager.WeakStatusModifier.Value}"); */
+                multiplier *= OnlineGameManager.Instance.WeakStatusModifier.Value;
+                /* Debug.Log($"EffectHandler: {entity.EntityName.Value} has Weak effect, using OnlineGameManager modifier: {OnlineGameManager.Instance.WeakStatusModifier.Value}"); */
             }
             else
             {
-                // Fallback to hardcoded value if GameManager not available
+                // Fallback to hardcoded value if OnlineGameManager not available
                 multiplier *= 0.75f;
                 /* Debug.Log($"EffectHandler: {entity.EntityName.Value} has Weak effect, using fallback modifier: 0.75"); */
             }
@@ -928,7 +927,7 @@ public class EffectHandler : NetworkBehaviour
         /* Debug.Log($"=== DEBUGGING STATS UI CONTROLLERS FOR {entity.EntityName.Value} (ID: {entity.ObjectId}) ==="); */
         
         // Find all EntityStatsUIController instances in the scene
-        EntityStatsUIController[] allControllers = FindObjectsOfType<EntityStatsUIController>(true);
+        EntityStatsUIController[] allControllers = FindObjectsByType<EntityStatsUIController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         /* Debug.Log($"Found {allControllers.Length} EntityStatsUIController instances in scene (including inactive)"); */
         
         bool foundUnlinkedControllers = false;

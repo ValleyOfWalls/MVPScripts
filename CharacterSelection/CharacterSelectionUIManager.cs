@@ -20,6 +20,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     [SerializeField] private Transform characterGridParent; // Fallback if no sharedGridParent
 
     [SerializeField] private TextMeshProUGUI statusText;
+    [SerializeField] private TextMeshProUGUI selectedEntityNameText; // Display for mystical character/pet names
     
     [Header("Ready State Circles")]
     [SerializeField] private Transform readyCirclesContainer;
@@ -177,6 +178,12 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         Debug.Log("[CHAR_SELECT_REVAMP] Updating ready button state...");
         UpdateReadyButtonState();
         
+        // Subscribe to randomization completion events
+        RandomizedCardDatabaseManager.OnClientRandomizationComplete += OnRandomizationComplete;
+        
+        // Initialize mystical name display
+        this.UpdateMysticalNameDisplay();
+        
         isInitialized = true;
         Debug.Log($"[CHAR_SELECT_REVAMP] Initialized - Player ID: {myPlayerID}, Color: {myPlayerColor}");
     }
@@ -226,7 +233,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         }
         
         // Check if objects exist in the scene but aren't in our lists
-        SelectionNetworkObject[] existingObjects = FindObjectsOfType<SelectionNetworkObject>();
+        SelectionNetworkObject[] existingObjects = FindObjectsByType<SelectionNetworkObject>(FindObjectsSortMode.None);
         if (existingObjects.Length > 0)
         {
             Debug.Log($"CharacterSelectionUIManager: Found {existingObjects.Length} existing selection objects, registering them");
@@ -651,6 +658,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
              Debug.Log($"[CHAR_SELECT_REVAMP] About to call UpdateSelectionState()");
              UpdateSelectionState();
              Debug.Log($"[CHAR_SELECT_REVAMP] Completed UpdateSelectionState()");
+             
+             // Update mystical name display
+             this.UpdateMysticalNameDisplay();
          }
          catch (System.Exception e)
          {
@@ -689,6 +699,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
          
          // Update selection state
          UpdateSelectionState();
+         
+         // Update mystical name display
+         this.UpdateMysticalNameDisplay();
      }
 
     private void UpdateMySelectionVisuals()
@@ -1146,6 +1159,9 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             uiAnimator.OnModelTransitionStarted -= OnModelTransitionStarted;
             uiAnimator.OnModelTransitionCompleted -= OnModelTransitionCompleted;
         }
+        
+        // Unsubscribe from randomization events
+        RandomizedCardDatabaseManager.OnClientRandomizationComplete -= OnRandomizationComplete;
     }
 
     public void ShowTransitionMessage(string message)
@@ -1341,7 +1357,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         while (elapsed < timeout)
         {
             // First look for existing SelectionNetworkObject components
-            SelectionNetworkObject[] existingSelectionObjects = FindObjectsOfType<SelectionNetworkObject>();
+            SelectionNetworkObject[] existingSelectionObjects = FindObjectsByType<SelectionNetworkObject>(FindObjectsSortMode.None);
             
             if (existingSelectionObjects.Length > 0)
             {
@@ -1351,7 +1367,7 @@ public class CharacterSelectionUIManager : NetworkBehaviour
             }
             
             // If no SelectionNetworkObject components found, look for NetworkObjects that match our prefabs
-            FishNet.Object.NetworkObject[] allNetworkObjects = FindObjectsOfType<FishNet.Object.NetworkObject>();
+            FishNet.Object.NetworkObject[] allNetworkObjects = FindObjectsByType<FishNet.Object.NetworkObject>(FindObjectsSortMode.None);
             List<SelectionNetworkObject> discoveredObjects = new List<SelectionNetworkObject>();
             
             foreach (var networkObj in allNetworkObjects)
@@ -3169,6 +3185,32 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     }
     
     #endregion
+
+    /// <summary>
+    /// Called when randomization completes on the client - refreshes selection to show updated decks
+    /// </summary>
+    private void OnRandomizationComplete()
+    {
+        Debug.Log("[CHAR_SELECT_REVAMP] Randomization completed! Refreshing selection to show updated character names and decks.");
+        
+        // Refresh the selection to show updated character names and decks
+        if (selectedCharacterIndex >= 0)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Refreshing character selection {selectedCharacterIndex} to show updated deck");
+            OnCharacterSelectionChanged(selectedCharacterIndex);
+        }
+        
+        if (selectedPetIndex >= 0)
+        {
+            Debug.Log($"[CHAR_SELECT_REVAMP] Refreshing pet selection {selectedPetIndex} to show updated deck");
+            OnPetSelectionChanged(selectedPetIndex);
+        }
+        
+        // Update the mystical name display
+        this.UpdateMysticalNameDisplay();
+        
+        Debug.Log("[CHAR_SELECT_REVAMP] Selection refresh completed - players should now see updated decks without manual refresh");
+    }
 }
 
 /// <summary>
@@ -3250,5 +3292,66 @@ public class CircleTooltip : MonoBehaviour, UnityEngine.EventSystems.IPointerEnt
     private void OnDestroy()
     {
         HideTooltip();
+    }
+}
+
+/// <summary>
+/// Extension methods for CharacterSelectionUIManager to handle mystical name display
+/// </summary>
+public static class CharacterSelectionUIManagerExtensions
+{
+    /// <summary>
+    /// Update the displayed mystical name based on current selections
+    /// </summary>
+    public static void UpdateMysticalNameDisplay(this CharacterSelectionUIManager manager)
+    {
+        var selectedEntityNameText = manager.GetComponent<CharacterSelectionUIManager>()
+            ?.GetType()
+            .GetField("selectedEntityNameText", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            ?.GetValue(manager) as TextMeshProUGUI;
+            
+        if (selectedEntityNameText == null) return;
+        
+        var availableCharacters = manager.GetType()
+            .GetField("availableCharacters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            ?.GetValue(manager) as List<CharacterData>;
+            
+        var availablePets = manager.GetType()
+            .GetField("availablePets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            ?.GetValue(manager) as List<PetData>;
+            
+        var selectedCharacterIndex = (int)(manager.GetType()
+            .GetField("selectedCharacterIndex", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            ?.GetValue(manager) ?? -1);
+            
+        var selectedPetIndex = (int)(manager.GetType()
+            .GetField("selectedPetIndex", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            ?.GetValue(manager) ?? -1);
+        
+        string displayText = "";
+        
+        if (selectedCharacterIndex >= 0 && selectedCharacterIndex < availableCharacters?.Count)
+        {
+            string characterName = availableCharacters[selectedCharacterIndex].CharacterName;
+            displayText = $"📜 {characterName}";
+            
+            if (selectedPetIndex >= 0 && selectedPetIndex < availablePets?.Count)
+            {
+                string petName = availablePets[selectedPetIndex].PetName;
+                displayText += $"\n🔮 {petName}";
+            }
+        }
+        else if (selectedPetIndex >= 0 && selectedPetIndex < availablePets?.Count)
+        {
+            string petName = availablePets[selectedPetIndex].PetName;
+            displayText = $"🔮 {petName}";
+        }
+        
+        if (string.IsNullOrEmpty(displayText))
+        {
+            displayText = "Select your mystical entities...";
+        }
+        
+        selectedEntityNameText.text = displayText;
     }
 }

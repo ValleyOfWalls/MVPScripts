@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 79a68ae20c9344c479bf6475741ecbab, type: 3}
+  m_Name: EffectPointCostConfig
+  m_EditorClassIdentifier: 
+  damagePointCost: 0.4
+  healPointCost: 0.35
+  drawCardPointCost: 3
+  restoreEnergyPointCost: 0.15
+  applyBreakPointCost: 4
+  applyWeakPointCost: 3
+  applyBurnPointCost: 0.6
+  applySalvePointCost: 0.5
+  raiseCriticalChancePointCost: 2.5
+  applyThornsPointCost: 0.4
+  applyShieldPointCost: 0.3
+  applyElementalStatusPointCost: 3
+  applyStunPointCost: 5
+  applyLimitBreakPointCost: 4.5
+  applyStrengthPointCost: 2.5
+  applyCursePointCost: 3.5
+  discardRandomCardsPointCost: 2
+  enterStancePointCost: 4
+  exitStancePointCost: 2
+  easyConditionMultiplier: 0.9
+  mediumConditionMultiplier: 0.7
+  hardConditionMultiplier: 0.5

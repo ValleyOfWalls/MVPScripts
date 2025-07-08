@@ -18,6 +18,7 @@ public class CombatSpectatorManager : MonoBehaviour
     private EntityVisibilityManager entityVisibilityManager;
     private CombatCanvasManager combatCanvasManager;
     private DeckViewerManager deckViewerManager;
+    private CameraManager cameraManager;
     
     // UI References (obtained from CombatCanvasManager)
     private Button spectateButton;
@@ -95,6 +96,12 @@ public class CombatSpectatorManager : MonoBehaviour
                 // Try to get it from CombatCanvasManager
                 deckViewerManager = combatCanvasManager.GetDeckViewerManager();
             }
+        }
+        
+        // Find CameraManager
+        if (cameraManager == null)
+        {
+            cameraManager = FindFirstObjectByType<CameraManager>();
         }
         
         // Get button references from CombatCanvasManager

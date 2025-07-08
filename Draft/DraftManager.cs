@@ -17,7 +17,7 @@ public class DraftManager : NetworkBehaviour
     [SerializeField] private DraftPackSetup draftPackSetup;
     [SerializeField] private ShopSetup shopSetup;
     [SerializeField] private EntityVisibilityManager entityVisibilityManager;
-    [SerializeField] private GameManager gameManager;
+    [SerializeField] private OnlineGameManager gameManager;
     
     // Track which players have completed the draft
     private readonly SyncDictionary<NetworkConnection, bool> playersReady = new SyncDictionary<NetworkConnection, bool>();
@@ -47,7 +47,7 @@ public class DraftManager : NetworkBehaviour
         if (draftPackSetup == null) draftPackSetup = FindFirstObjectByType<DraftPackSetup>();
         if (shopSetup == null) shopSetup = FindFirstObjectByType<ShopSetup>();
         if (entityVisibilityManager == null) entityVisibilityManager = FindFirstObjectByType<EntityVisibilityManager>();
-        if (gameManager == null) gameManager = GameManager.Instance;
+        if (gameManager == null) gameManager = OnlineGameManager.Instance;
     }
     
     public override void OnStartServer()

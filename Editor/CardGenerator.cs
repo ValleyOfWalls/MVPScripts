@@ -1066,9 +1066,7 @@ public static class CardGenerator
 
         // Additional targeting
         List<string> additionalTargets = new List<string>();
-        if (card.CanAlsoTargetSelf) additionalTargets.Add("self");
-        if (card.CanAlsoTargetAllies) additionalTargets.Add("allies");
-        if (card.CanAlsoTargetOpponent) additionalTargets.Add("opponent");
+
         
         if (additionalTargets.Count > 0)
         {

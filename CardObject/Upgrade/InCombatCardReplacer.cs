@@ -207,11 +207,32 @@ namespace CardUpgrade
                 return false;
             }
             
-            // Get the upgraded card data
-            CardData upgradedCardData = CardDatabase.Instance?.GetCardById(upgradedCardId);
+            // Get the upgraded card data - use NetworkCardDatabase if available, fallback to CardDatabase
+            CardData upgradedCardData = null;
+            bool hasRandomization = NetworkCardDatabase.Instance != null && NetworkCardDatabase.Instance.AreCardsSynced;
+            
+            if (hasRandomization)
+            {
+                upgradedCardData = NetworkCardDatabase.Instance.GetSyncedCard(upgradedCardId);
+                if (upgradedCardData != null)
+                {
+                    Debug.Log($"[CARD-FLOW] InCombatCardReplacer: Using RANDOMIZED upgraded card {upgradedCardData.CardName} (ID: {upgradedCardId})");
+                }
+            }
+            
+            // Fallback to original CardDatabase if NetworkCardDatabase doesn't have the card
+            if (upgradedCardData == null && CardDatabase.Instance != null)
+            {
+                upgradedCardData = CardDatabase.Instance.GetCardById(upgradedCardId);
+                if (upgradedCardData != null)
+                {
+                    Debug.Log($"[CARD-FLOW] InCombatCardReplacer: Using ORIGINAL upgraded card {upgradedCardData.CardName} (ID: {upgradedCardId})");
+                }
+            }
+            
             if (upgradedCardData == null)
             {
-                Debug.LogError($"InCombatCardReplacer: Could not find card data for upgraded card ID {upgradedCardId}");
+                Debug.LogError($"[CARD-FLOW] InCombatCardReplacer: CRITICAL - Could not find upgraded card ID {upgradedCardId} in any database");
                 return false;
             }
             
@@ -241,12 +262,12 @@ namespace CardUpgrade
                 // Refresh visuals
                 cardInstance.RefreshVisuals();
                 
-                Debug.Log($"InCombatCardReplacer: Successfully updated card {cardInstance.name} to {upgradedCardData.CardName}");
+                Debug.Log($"[CARD-FLOW] InCombatCardReplacer: Successfully upgraded {cardInstance.name} to {upgradedCardData.CardName}");
                 return true;
             }
             else
             {
-                Debug.LogError($"InCombatCardReplacer: Failed to update card data for {cardInstance.name}");
+                Debug.LogError($"[CARD-FLOW] InCombatCardReplacer: FAILED to upgrade card {cardInstance.name}");
                 return false;
             }
         }

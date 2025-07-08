@@ -30,7 +30,7 @@ public class ConditionalEffectTestManager : NetworkBehaviour
     
     private void Start()
     {
-        if (runTestsOnStart && IsServer)
+        if (runTestsOnStart && IsServerInitialized)
         {
             StartCoroutine(RunAllTests());
         }
@@ -41,7 +41,7 @@ public class ConditionalEffectTestManager : NetworkBehaviour
     /// </summary>
     public void RunTests()
     {
-        if (IsServer)
+        if (IsServerInitialized)
         {
             StartCoroutine(RunAllTests());
         }
@@ -83,7 +83,7 @@ public class ConditionalEffectTestManager : NetworkBehaviour
     private IEnumerator InitializeTestEnvironment()
     {
         // Find effect resolver
-        effectResolver = FindObjectOfType<CardEffectResolver>();
+        effectResolver = FindFirstObjectByType<CardEffectResolver>();
         if (effectResolver == null)
         {
             Debug.LogError("ConditionalEffectTestManager: CardEffectResolver not found!");
@@ -91,7 +91,7 @@ public class ConditionalEffectTestManager : NetworkBehaviour
         }
         
         // Find test entities
-        var entities = FindObjectsOfType<NetworkEntity>();
+        var entities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
         if (entities.Length < 2)
         {
             Debug.LogError("ConditionalEffectTestManager: Need at least 2 NetworkEntities for testing!");

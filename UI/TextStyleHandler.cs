@@ -305,7 +305,7 @@ public class TextStyleHandler : MonoBehaviour
         }
         
         // Find all TextMeshProUGUI components in the scene
-        TextMeshProUGUI[] allText = FindObjectsOfType<TextMeshProUGUI>(includeTextOnDisabledObjects);
+        TextMeshProUGUI[] allText = FindObjectsByType<TextMeshProUGUI>(includeTextOnDisabledObjects ? FindObjectsInactive.Include : FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         
         List<TextMeshProUGUI> validText = new List<TextMeshProUGUI>();
         

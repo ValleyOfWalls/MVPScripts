@@ -14,7 +14,7 @@ public class DraftPackSetup : NetworkBehaviour
     [SerializeField] private Transform draftPackContainer;
     
     [Header("References")]
-    [SerializeField] private GameManager gameManager;
+    [SerializeField] private OnlineGameManager gameManager;
     [SerializeField] private DraftCanvasManager draftCanvasManager;
     
     private List<DraftPack> spawnedPacks = new List<DraftPack>();
@@ -23,7 +23,7 @@ public class DraftPackSetup : NetworkBehaviour
     
     private void Awake()
     {
-        if (gameManager == null) gameManager = GameManager.Instance;
+        if (gameManager == null) gameManager = OnlineGameManager.Instance;
         if (draftCanvasManager == null) draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
         
         if (draftPackPrefab == null)
@@ -153,7 +153,7 @@ public class DraftPackSetup : NetworkBehaviour
         
         if (gameManager == null)
         {
-            Debug.LogError("DraftPackSetup: Cannot create draft packs - GameManager not found");
+            Debug.LogError("DraftPackSetup: Cannot create draft packs - OnlineGameManager not found");
             return;
         }
         

@@ -723,7 +723,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         if (camera == null)
         {
             // Try to find any camera if main camera is not available
-            camera = FindObjectOfType<Camera>();
+            camera = FindFirstObjectByType<Camera>();
         }
         
         if (camera == null)

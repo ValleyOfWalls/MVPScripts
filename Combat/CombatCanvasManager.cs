@@ -4,6 +4,7 @@ using FishNet.Object;
 using TMPro;
 using System.Linq;
 using System.Collections;
+using System.Collections.Generic;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -59,6 +60,10 @@ public class CombatCanvasManager : NetworkBehaviour
     private FightManager fightManager;
     private CombatManager combatManager;
     private CombatTestManager testManager;
+    
+    // Arena integration
+    private ArenaManager arenaManager;
+    private CameraManager cameraManager;
     
     // Model positioning tracking
     private bool isModelPositioningComplete = false;
@@ -157,6 +162,8 @@ public class CombatCanvasManager : NetworkBehaviour
         if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
         if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
         if (testManager == null) testManager = FindFirstObjectByType<CombatTestManager>();
+        if (arenaManager == null) arenaManager = FindFirstObjectByType<ArenaManager>();
+        if (cameraManager == null) cameraManager = FindFirstObjectByType<CameraManager>();
 
         if (fightManager == null) Debug.LogError("FightManager not found by CombatCanvasManager.");
         if (combatManager == null) Debug.LogError("CombatManager not found by CombatCanvasManager.");
@@ -245,11 +252,13 @@ public class CombatCanvasManager : NetworkBehaviour
             // Position combat entities for all fights
             PositionCombatEntitiesForAllFights();
             
-            // Mark positioning as complete and notify loading screen
-            isModelPositioningComplete = true;
-            NotifyLoadingScreenPositioningComplete();
+            // Position camera for the local player's arena
+            Debug.Log("[ARENA_CAMERA] CombatCanvasManager: About to call SetupInitialCameraPosition()");
+            SetupInitialCameraPosition();
             
-            Debug.Log("CombatCanvasManager: Model positioning completed, loading screen can be hidden");
+            // NOTE: We don't mark positioning as complete here anymore
+            // That will happen when all facing operations are finished
+            Debug.Log("CombatCanvasManager: Entity positioning completed, waiting for facing operations to complete");
         }
         else
         {
@@ -413,32 +422,59 @@ public class CombatCanvasManager : NetworkBehaviour
     /// </summary>
     private void SetupOwnPetView()
     {
+        Debug.Log("[PET_VISIBILITY] CombatCanvasManager.SetupOwnPetView() called");
+        
         // Validate container
         if (ownPetViewContainer == null)
         {
+            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ERROR: OwnPetViewContainer not assigned");
             Debug.LogWarning("CombatCanvasManager: OwnPetViewContainer not assigned. Own pet view will not be available.");
             return;
         }
         
+        Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - OwnPetViewContainer found: {ownPetViewContainer.name}");
+        
         // Find existing OwnPetViewController if not assigned
         if (ownPetViewController == null)
         {
+            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ownPetViewController is null, searching for existing one");
             ownPetViewController = ownPetViewContainer.GetComponentInChildren<OwnPetViewController>();
+            
+            if (ownPetViewController != null)
+            {
+                Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - Found existing OwnPetViewController: {ownPetViewController.gameObject.name}");
+            }
+            else
+            {
+                Debug.Log("[PET_VISIBILITY] CombatCanvasManager - No existing OwnPetViewController found");
+            }
+        }
+        else
+        {
+            Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - ownPetViewController already assigned: {ownPetViewController.gameObject.name}");
         }
         
         // If still not found, try to spawn the prefab (server only)
         if (ownPetViewController == null)
         {
+            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Attempting to spawn OwnPetView prefab");
+            
             if (ownPetViewPrefab != null)
             {
+                Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - OwnPetViewPrefab found: {ownPetViewPrefab.name}");
+                
                 // Check if the prefab has a NetworkObject component
                 NetworkObject prefabNetworkObject = ownPetViewPrefab.GetComponent<NetworkObject>();
                 if (prefabNetworkObject != null)
                 {
+                    Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Prefab has NetworkObject, checking if server");
+                    
                     // Only spawn on server, clients will receive it automatically
                     var networkManager = FishNet.InstanceFinder.NetworkManager;
                     if (networkManager != null && networkManager.IsServerStarted)
                     {
+                        Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Server started, spawning NetworkObject");
+                        
                         // Spawn at root first to avoid NetworkObject parenting issues
                         GameObject spawnedObject = Instantiate(ownPetViewPrefab);
                         
@@ -446,29 +482,58 @@ public class CombatCanvasManager : NetworkBehaviour
                         
                         if (spawnedNetworkObject != null)
                         {
-                                                    // Spawn the NetworkObject first
-                        networkManager.ServerManager.Spawn(spawnedNetworkObject);
+                            Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - Spawning NetworkObject: {spawnedObject.name}");
+                            
+                            // Spawn the NetworkObject first
+                            networkManager.ServerManager.Spawn(spawnedNetworkObject);
                         
-                        // Then move to correct parent after spawning
-                        spawnedObject.transform.SetParent(ownPetViewContainer, false);
+                            // Then move to correct parent after spawning
+                            spawnedObject.transform.SetParent(ownPetViewContainer, false);
                         
-                        // Ensure it's active
-                        spawnedObject.SetActive(true);
+                            // Ensure it's active
+                            spawnedObject.SetActive(true);
                         
-                        ownPetViewController = spawnedObject.GetComponent<OwnPetViewController>();
+                            ownPetViewController = spawnedObject.GetComponent<OwnPetViewController>();
+                            
+                            Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - NetworkObject spawned and ownPetViewController assigned: {ownPetViewController.gameObject.name}");
                         
-                        // Notify clients to move the spawned object to correct parent
-                        RpcSetOwnPetViewParent(spawnedNetworkObject.ObjectId);
+                            // Notify clients to move the spawned object to correct parent
+                            RpcSetOwnPetViewParent(spawnedNetworkObject.ObjectId);
+                        }
+                        else
+                        {
+                            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ERROR: Spawned object has no NetworkObject component");
                         }
                     }
+                    else
+                    {
+                        Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Not server or NetworkManager not available, skipping spawn");
+                    }
                 }
+                else
+                {
+                    Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Prefab has no NetworkObject, instantiating directly");
+                    // No NetworkObject, instantiate directly
+                    GameObject spawnedObject = Instantiate(ownPetViewPrefab, ownPetViewContainer);
+                    ownPetViewController = spawnedObject.GetComponent<OwnPetViewController>();
+                    Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - Direct instantiation completed, ownPetViewController: {(ownPetViewController != null ? ownPetViewController.gameObject.name : "null")}");
+                }
+            }
+            else
+            {
+                Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ERROR: OwnPetViewPrefab is null");
             }
         }
         
         if (ownPetViewController != null)
         {
+            Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - OwnPetViewController setup complete, calling RefreshDisplayedPet(): {ownPetViewController.gameObject.name}");
             // Refresh the displayed pet to show the currently viewed player's pet
             ownPetViewController.RefreshDisplayedPet();
+        }
+        else
+        {
+            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ERROR: Failed to setup OwnPetViewController");
         }
     }
 
@@ -478,9 +543,18 @@ public class CombatCanvasManager : NetworkBehaviour
     /// </summary>
     public void OnViewedCombatChanged()
     {
+        Debug.Log("[PET_VISIBILITY] CombatCanvasManager.OnViewedCombatChanged() called");
+        
+        // NOTE: In the arena system, OwnPetView is no longer needed since all pets are visible in different arenas
+        // The code below is kept for compatibility but may not be necessary
         if (ownPetViewController != null)
         {
+            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Found ownPetViewController, calling RefreshDisplayedPet()");
             ownPetViewController.RefreshDisplayedPet();
+        }
+        else
+        {
+            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ownPetViewController is null (this is expected in arena system)");
         }
         
         // Update deck viewer button states for the new viewed combat
@@ -499,6 +573,19 @@ public class CombatCanvasManager : NetworkBehaviour
             {
                 /* Debug.Log($"CombatCanvasManager: Updating entity positioning and facing for viewed combat - Player: {viewedPlayer.EntityName.Value}, Opponent Pet: {viewedOpponentPet.EntityName.Value}"); */
                 PositionCombatEntitiesForSpecificFight(viewedPlayer, viewedOpponentPet);
+                
+                // Move camera to view the new arena
+                if (cameraManager != null)
+                {
+                    Debug.Log($"[ARENA_CAMERA] CombatCanvasManager requesting camera move to view {viewedPlayer.EntityName.Value}'s arena");
+                    cameraManager.MoveCameraToCurrentViewedFight(true);
+                    Debug.Log($"CombatCanvasManager: Moving camera to view {viewedPlayer.EntityName.Value}'s arena");
+                }
+                else
+                {
+                    Debug.LogWarning("CombatCanvasManager: CameraManager not found, cannot move camera for arena viewing");
+                    Debug.Log("[ARENA_CAMERA] ERROR: CameraManager not found in CombatCanvasManager");
+                }
             }
             else
             {
@@ -707,8 +794,17 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
         
+        // Reset facing operation counters
+        totalFacingOperations = 0;
+        completedFacingOperations = 0;
+        
         // Get all fight assignments from the FightManager
         var allFights = fightManager.GetAllFightAssignments();
+        
+        // Count total facing operations needed
+        totalFacingOperations = allFights.Count;
+        
+        Debug.Log($"[ENTITY_FACING] Starting entity positioning for {allFights.Count} fights");
         
         foreach (var fightAssignment in allFights)
         {
@@ -719,11 +815,19 @@ public class CombatCanvasManager : NetworkBehaviour
             if (player == null || opponentPet == null)
             {
                 Debug.LogWarning($"Cannot find entities for fight: Player ID {fightAssignment.PlayerObjectId}, Pet ID {fightAssignment.PetObjectId}");
+                // Reduce total count if fight can't be processed
+                totalFacingOperations--;
                 continue;
             }
             
             // Position entities for this specific fight (includes facing setup)
             PositionCombatEntitiesForSpecificFight(player, opponentPet);
+        }
+        
+        // If no facing operations needed, mark as complete immediately
+        if (totalFacingOperations == 0)
+        {
+            OnAllFacingOperationsComplete();
         }
     }
 
@@ -757,6 +861,86 @@ public class CombatCanvasManager : NetworkBehaviour
             return;
         }
 
+        // Use arena-based positioning if ArenaManager is available
+        if (arenaManager != null && arenaManager.IsInitialized)
+        {
+            PositionEntitiesInArena(player, opponentPet);
+        }
+        else
+        {
+            // Fallback to original positioning system
+            PositionEntitiesLegacy(player, opponentPet);
+        }
+    }
+    
+    /// <summary>
+    /// Positions entities in their designated arena using ArenaManager
+    /// </summary>
+    private void PositionEntitiesInArena(NetworkEntity player, NetworkEntity opponentPet)
+    {
+        // Get the arena for this player
+        uint playerObjectId = (uint)player.ObjectId;
+        int arenaIndex = arenaManager.GetArenaForPlayer(playerObjectId);
+        
+        if (arenaIndex < 0)
+        {
+            Debug.LogWarning($"No arena found for player {playerObjectId}, using fallback positioning");
+            PositionEntitiesLegacy(player, opponentPet);
+            return;
+        }
+        
+        // Get exact positions for entities in this arena (based on captured reference positions)
+        Vector3 playerArenaPos = arenaManager.GetPlayerPositionInArena(arenaIndex);
+        Vector3 opponentArenaPos = arenaManager.GetOpponentPetPositionInArena(arenaIndex);
+        
+        // Position main entities (player and opponent pet) only if owned by local client
+        if (player.IsOwner)
+        {
+            player.transform.position = playerArenaPos;
+            Debug.Log($"[ARENA_POSITIONING] Player {player.EntityName.Value} positioned at arena {arenaIndex}: {playerArenaPos}");
+        }
+        
+        if (opponentPet.IsOwner)
+        {
+            opponentPet.transform.position = opponentArenaPos;
+            Debug.Log($"[ARENA_POSITIONING] Opponent Pet {opponentPet.EntityName.Value} positioned at arena {arenaIndex}: {opponentArenaPos}");
+        }
+        
+        // Position hands and stats UI for ALL entities (these don't have NetworkTransforms)
+        // Calculate relative positions from the captured reference positions
+        if (arenaManager.ReferencePositionsCaptured)
+        {
+            Vector3 referenceCenter = (arenaManager.ReferencePlayerPosition + arenaManager.ReferenceOpponentPetPosition) * 0.5f;
+            Vector3 playerHandRelative = playerHandPositionTransform.position - referenceCenter;
+            Vector3 opponentHandRelative = opponentPetHandPositionTransform.position - referenceCenter;
+            Vector3 playerStatsRelative = playerStatsUIPositionTransform.position - referenceCenter;
+            Vector3 opponentStatsRelative = opponentPetStatsUIPositionTransform.position - referenceCenter;
+            
+            PositionHandEntityInArena(player, arenaIndex, playerHandRelative, "Player Hand");
+            PositionHandEntityInArena(opponentPet, arenaIndex, opponentHandRelative, "Opponent Pet Hand");
+            PositionStatsUIInArena(player, arenaIndex, playerStatsRelative, "Player Stats UI");
+            PositionStatsUIInArena(opponentPet, arenaIndex, opponentStatsRelative, "Opponent Pet Stats UI");
+        }
+        else
+        {
+            // Fallback to local positions if reference positions weren't captured
+            PositionHandEntityInArena(player, arenaIndex, playerHandPositionTransform.localPosition, "Player Hand");
+            PositionHandEntityInArena(opponentPet, arenaIndex, opponentPetHandPositionTransform.localPosition, "Opponent Pet Hand");
+            PositionStatsUIInArena(player, arenaIndex, playerStatsUIPositionTransform.localPosition, "Player Stats UI");
+            PositionStatsUIInArena(opponentPet, arenaIndex, opponentPetStatsUIPositionTransform.localPosition, "Opponent Pet Stats UI");
+        }
+        
+        // Make entities face each other after positioning
+        SetupEntityFacingWhenReady(player, opponentPet);
+        
+        Debug.Log($"[ARENA_POSITIONING] Completed positioning for fight in arena {arenaIndex}");
+    }
+    
+    /// <summary>
+    /// Legacy positioning method (original system)
+    /// </summary>
+    private void PositionEntitiesLegacy(NetworkEntity player, NetworkEntity opponentPet)
+    {
         // Position player only if owned by local client (has NetworkTransform)
         PositionEntityIfOwned(player, playerPositionTransform, "Player");
 
@@ -775,58 +959,208 @@ public class CombatCanvasManager : NetworkBehaviour
         SetupEntityFacingWhenReady(player, opponentPet);
     }
 
+    // Position tracking for event-driven facing setup
+    private Dictionary<NetworkEntity, Vector3> lastTrackedPositions = new Dictionary<NetworkEntity, Vector3>();
+    private Dictionary<string, System.Action> pendingFacingCallbacks = new Dictionary<string, System.Action>();
+    private int totalFacingOperations = 0;
+    private int completedFacingOperations = 0;
+    
+    /// <summary>
+    /// Called when all facing operations have completed
+    /// </summary>
+    private void OnAllFacingOperationsComplete()
+    {
+        Debug.Log("[ENTITY_FACING] All facing operations completed, marking positioning as complete");
+        
+        // Mark positioning as complete and notify loading screen
+        isModelPositioningComplete = true;
+        NotifyLoadingScreenPositioningComplete();
+        
+        Debug.Log("CombatCanvasManager: All positioning and facing completed, loading screen can be hidden");
+    }
+    
+    /// <summary>
+    /// Called when a single facing operation completes
+    /// </summary>
+    private void OnFacingOperationComplete()
+    {
+        completedFacingOperations++;
+        Debug.Log($"[ENTITY_FACING] Facing operation completed ({completedFacingOperations}/{totalFacingOperations})");
+        
+        if (completedFacingOperations >= totalFacingOperations)
+        {
+            OnAllFacingOperationsComplete();
+        }
+    }
+    
     /// <summary>
     /// Sets up entity facing once entities are properly positioned
     /// Uses event-driven approach instead of time delays
     /// </summary>
     private void SetupEntityFacingWhenReady(NetworkEntity player, NetworkEntity opponentPet)
     {
+        Debug.Log($"[ENTITY_FACING] SetupEntityFacingWhenReady called for {player?.EntityName.Value ?? "null"} vs {opponentPet?.EntityName.Value ?? "null"}");
+        
         // Check if entities are immediately ready
         if (AreEntitiesReadyForFacing(player, opponentPet))
         {
-            /* Debug.Log($"SetupEntityFacingWhenReady: Entities immediately ready, setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}"); */
+            Debug.Log($"[ENTITY_FACING] Entities immediately ready, setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}");
             SetupEntityFacing(player, opponentPet);
+            OnFacingOperationComplete(); // Mark this operation as complete
             return;
         }
 
-        // If not immediately ready, start monitoring for readiness
-        StartCoroutine(MonitorEntitiesForFacingReadiness(player, opponentPet));
+        // Set up position tracking for these entities
+        string fightKey = $"{player.ObjectId}_{opponentPet.ObjectId}";
+        pendingFacingCallbacks[fightKey] = () => {
+            SetupEntityFacing(player, opponentPet);
+            OnFacingOperationComplete(); // Mark this operation as complete
+        };
+        
+        Debug.Log($"[ENTITY_FACING] Entities not immediately ready, setting up position tracking for {player.EntityName.Value} vs {opponentPet.EntityName.Value}");
+        
+        // Start tracking both entities
+        StartTrackingEntityPosition(player);
+        StartTrackingEntityPosition(opponentPet);
     }
-
+    
     /// <summary>
-    /// Monitors entities until they're ready for facing setup, checking every frame
-    /// More responsive than time-based delays
+    /// Starts tracking position changes for an entity
     /// </summary>
-    private IEnumerator MonitorEntitiesForFacingReadiness(NetworkEntity player, NetworkEntity opponentPet)
+    private void StartTrackingEntityPosition(NetworkEntity entity)
     {
-        const int maxFramesToWait = 300; // 5 seconds at 60fps as safety fallback
-        int frameCount = 0;
-
-        while (frameCount < maxFramesToWait)
+        if (entity == null) return;
+        
+        // Initialize or update the tracked position
+        lastTrackedPositions[entity] = entity.transform.position;
+        
+        Debug.Log($"[ENTITY_FACING] Started tracking position for {entity.EntityName.Value}: {entity.transform.position}");
+    }
+    
+    /// <summary>
+    /// Monitors tracked entity positions and triggers facing setup when ready
+    /// Called from Update() for event-driven position monitoring
+    /// </summary>
+    private void CheckTrackedEntityPositions()
+    {
+        if (pendingFacingCallbacks.Count == 0) return;
+        
+        List<string> readyFights = new List<string>();
+        
+        foreach (var kvp in pendingFacingCallbacks)
         {
-            // Check every frame for readiness
-            yield return null;
-            frameCount++;
-
-            // Verify entities are still valid
+            string fightKey = kvp.Key;
+            var parts = fightKey.Split('_');
+            if (parts.Length != 2) continue;
+            
+            if (!uint.TryParse(parts[0], out uint playerObjectId) || !uint.TryParse(parts[1], out uint petObjectId))
+                continue;
+                
+            NetworkEntity player = GetNetworkEntityByObjectId(playerObjectId);
+            NetworkEntity opponentPet = GetNetworkEntityByObjectId(petObjectId);
+            
             if (player == null || opponentPet == null)
             {
-                Debug.LogWarning("MonitorEntitiesForFacingReadiness: Entities became null during monitoring");
-                yield break;
+                Debug.LogWarning($"[ENTITY_FACING] Lost entity references for fight {fightKey}, removing from tracking");
+                readyFights.Add(fightKey);
+                continue;
             }
-
-            // Check if entities are now ready
+            
+            // Check if positions have changed (indicating NetworkTransform sync)
+            bool playerPositionChanged = HasEntityPositionChanged(player);
+            bool petPositionChanged = HasEntityPositionChanged(opponentPet);
+            
+            if (playerPositionChanged || petPositionChanged)
+            {
+                Debug.Log($"[ENTITY_FACING] Position change detected - Player: {playerPositionChanged}, Pet: {petPositionChanged}");
+            }
+            
+            // Check if both entities are now ready for facing
             if (AreEntitiesReadyForFacing(player, opponentPet))
             {
-                /* Debug.Log($"MonitorEntitiesForFacingReadiness: Entities ready after {frameCount} frames, setting up facing between {player.EntityName.Value} and {opponentPet.EntityName.Value}"); */
-                SetupEntityFacing(player, opponentPet);
-                yield break;
+                Debug.Log($"[ENTITY_FACING] Entities now ready after position tracking: {player.EntityName.Value} vs {opponentPet.EntityName.Value}");
+                readyFights.Add(fightKey);
+                kvp.Value.Invoke(); // Call the facing setup callback
             }
         }
-
-        // Safety fallback if entities never become ready
-        Debug.LogWarning($"MonitorEntitiesForFacingReadiness: Entities still not ready after {maxFramesToWait} frames - setting up facing anyway");
-        SetupEntityFacing(player, opponentPet);
+        
+        // Remove completed fights from tracking
+        foreach (string fightKey in readyFights)
+        {
+            pendingFacingCallbacks.Remove(fightKey);
+            
+            // Also remove entities from position tracking if no longer needed
+            var parts = fightKey.Split('_');
+            if (parts.Length == 2 && uint.TryParse(parts[0], out uint playerObjectId) && uint.TryParse(parts[1], out uint petObjectId))
+            {
+                NetworkEntity player = GetNetworkEntityByObjectId(playerObjectId);
+                NetworkEntity opponentPet = GetNetworkEntityByObjectId(petObjectId);
+                
+                // Only remove if not used by other pending fights
+                if (player != null && !IsEntityNeededForOtherFights(player, fightKey))
+                {
+                    lastTrackedPositions.Remove(player);
+                    Debug.Log($"[ENTITY_FACING] Stopped tracking {player.EntityName.Value}");
+                }
+                    
+                if (opponentPet != null && !IsEntityNeededForOtherFights(opponentPet, fightKey))
+                {
+                    lastTrackedPositions.Remove(opponentPet);
+                    Debug.Log($"[ENTITY_FACING] Stopped tracking {opponentPet.EntityName.Value}");
+                }
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Checks if an entity's position has changed since last tracking update
+    /// </summary>
+    private bool HasEntityPositionChanged(NetworkEntity entity)
+    {
+        if (entity == null || !lastTrackedPositions.ContainsKey(entity)) return false;
+        
+        Vector3 currentPos = entity.transform.position;
+        Vector3 lastPos = lastTrackedPositions[entity];
+        
+        float distance = Vector3.Distance(currentPos, lastPos);
+        bool hasChanged = distance > 0.01f; // Small threshold for floating point precision
+        
+        if (hasChanged)
+        {
+            Debug.Log($"[ENTITY_FACING] Position change detected for {entity.EntityName.Value}: {lastPos} -> {currentPos} (distance: {distance:F3})");
+            lastTrackedPositions[entity] = currentPos; // Update tracked position
+        }
+        
+        return hasChanged;
+    }
+    
+    /// <summary>
+    /// Checks if an entity is needed for tracking other pending fights
+    /// </summary>
+    private bool IsEntityNeededForOtherFights(NetworkEntity entity, string excludeFightKey)
+    {
+        string entityIdStr = entity.ObjectId.ToString();
+        
+        foreach (string fightKey in pendingFacingCallbacks.Keys)
+        {
+            if (fightKey == excludeFightKey) continue;
+            
+            if (fightKey.Contains(entityIdStr)) return true;
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Update method to handle event-driven position tracking
+    /// </summary>
+    private void Update()
+    {
+        // Only run position tracking if we have pending facing setups
+        if (pendingFacingCallbacks.Count > 0)
+        {
+            CheckTrackedEntityPositions();
+        }
     }
 
     /// <summary>
@@ -842,11 +1176,55 @@ public class CombatCanvasManager : NetworkBehaviour
         // Check if entities are active and positioned
         if (!player.gameObject.activeInHierarchy || !opponentPet.gameObject.activeInHierarchy)
         {
-            Debug.Log($"AreEntitiesReadyForFacing: Entities not active - Player: {player.gameObject.activeInHierarchy}, OpponentPet: {opponentPet.gameObject.activeInHierarchy}");
+            Debug.Log($"[ENTITY_FACING] AreEntitiesReadyForFacing: Entities not active - Player: {player.gameObject.activeInHierarchy}, OpponentPet: {opponentPet.gameObject.activeInHierarchy}");
             return false;
         }
         
-        // Check if entities have moved from default positions (indicating they've been positioned)
+        // Find ArenaManager if not available
+        if (arenaManager == null)
+        {
+            arenaManager = FindFirstObjectByType<ArenaManager>();
+        }
+        
+        // NEW: Check if entities are positioned in their expected arena locations
+        if (arenaManager != null && arenaManager.ReferencePositionsCaptured)
+        {
+            uint playerObjectId = (uint)player.ObjectId;
+            int arenaIndex = arenaManager.GetArenaForPlayer(playerObjectId);
+            
+            if (arenaIndex >= 0)
+            {
+                Vector3 expectedPlayerPos = arenaManager.GetPlayerPositionInArena(arenaIndex);
+                Vector3 expectedOpponentPos = arenaManager.GetOpponentPetPositionInArena(arenaIndex);
+                
+                Vector3 actualPlayerPos = player.transform.position;
+                Vector3 actualOpponentPos = opponentPet.transform.position;
+                
+                // Check if entities are close to their expected positions (tolerance for floating point precision)
+                float playerDistanceFromExpected = Vector3.Distance(actualPlayerPos, expectedPlayerPos);
+                float opponentDistanceFromExpected = Vector3.Distance(actualOpponentPos, expectedOpponentPos);
+                
+                const float positionTolerance = 0.5f; // Allow small differences for network sync
+                
+                bool playerInPosition = playerDistanceFromExpected < positionTolerance;
+                bool opponentInPosition = opponentDistanceFromExpected < positionTolerance;
+                
+                if (!playerInPosition || !opponentInPosition)
+                {
+                    Debug.Log($"[ENTITY_FACING] AreEntitiesReadyForFacing: Entities not in expected arena positions");
+                    Debug.Log($"[ENTITY_FACING] - Player {player.EntityName.Value}: Expected {expectedPlayerPos}, Actual {actualPlayerPos}, Distance {playerDistanceFromExpected:F2}");
+                    Debug.Log($"[ENTITY_FACING] - Opponent {opponentPet.EntityName.Value}: Expected {expectedOpponentPos}, Actual {actualOpponentPos}, Distance {opponentDistanceFromExpected:F2}");
+                    return false;
+                }
+                
+                Debug.Log($"[ENTITY_FACING] AreEntitiesReadyForFacing: Entities properly positioned in arena {arenaIndex}");
+                Debug.Log($"[ENTITY_FACING] - Player {player.EntityName.Value}: {actualPlayerPos} (expected {expectedPlayerPos})");
+                Debug.Log($"[ENTITY_FACING] - Opponent {opponentPet.EntityName.Value}: {actualOpponentPos} (expected {expectedOpponentPos})");
+                return true;
+            }
+        }
+        
+        // FALLBACK: Use distance check if arena system not available
         Vector3 playerPos = player.transform.position;
         Vector3 opponentPos = opponentPet.transform.position;
         
@@ -854,48 +1232,113 @@ public class CombatCanvasManager : NetworkBehaviour
         float distance = Vector3.Distance(playerPos, opponentPos);
         if (distance < 0.1f)
         {
-            /* Debug.Log($"AreEntitiesReadyForFacing: Entities too close together (distance: {distance:F3}), might not be positioned yet"); */
+            Debug.Log($"[ENTITY_FACING] AreEntitiesReadyForFacing: Entities too close together (distance: {distance:F3}), might not be positioned yet");
             return false;
         }
         
-        /* Debug.Log($"AreEntitiesReadyForFacing: Entities ready - Player: {playerPos}, OpponentPet: {opponentPos}, Distance: {distance:F3}"); */
+        Debug.Log($"[ENTITY_FACING] AreEntitiesReadyForFacing: Entities ready (fallback) - Player: {playerPos}, OpponentPet: {opponentPos}, Distance: {distance:F3}");
         return true;
     }
 
     /// <summary>
     /// Sets up facing between combat entities so they look at each other
     /// Only rotates entities owned by the local client to respect NetworkTransform ownership
+    /// Only faces entities within the same arena
     /// </summary>
     private void SetupEntityFacing(NetworkEntity player, NetworkEntity opponentPet)
     {
+        Debug.Log($"[ENTITY_FACING] SetupEntityFacing called for player {player?.EntityName.Value ?? "null"} vs opponent pet {opponentPet?.EntityName.Value ?? "null"}");
+        
         if (player == null || opponentPet == null)
         {
-            Debug.LogWarning("Cannot setup entity facing - player or opponent pet is null");
+            Debug.LogWarning("[ENTITY_FACING] Cannot setup entity facing - player or opponent pet is null");
             return;
         }
 
         // Get the ally pet for the player
         NetworkEntity allyPet = GetAllyPetForPlayer(player);
+        
+        Debug.Log($"[ENTITY_FACING] Found ally pet: {allyPet?.EntityName.Value ?? "null"}");
 
-        // Make player face opponent pet (only if owned by local client)
+        // Make player face opponent pet (only if owned by local client and in same arena)
         if (player.IsOwner)
         {
+            Debug.Log($"[ENTITY_FACING] Player {player.EntityName.Value} is owned by local client, setting facing");
             SetEntityFacing(player, opponentPet, "Player");
         }
+        else
+        {
+            Debug.Log($"[ENTITY_FACING] Player {player.EntityName.Value} is NOT owned by local client, skipping facing");
+        }
 
-        // Make ally pet face opponent pet (only if owned by local client)
+        // Make ally pet face opponent pet (only if owned by local client and in same arena)
         if (allyPet != null && allyPet.IsOwner)
         {
-            SetEntityFacing(allyPet, opponentPet, "Ally Pet");
+            // Check if ally pet and opponent pet are in the same arena
+            if (AreEntitiesInSameArena(allyPet, opponentPet))
+            {
+                Debug.Log($"[ENTITY_FACING] Ally pet {allyPet.EntityName.Value} is owned by local client and in same arena as opponent, setting facing");
+                SetEntityFacing(allyPet, opponentPet, "Ally Pet");
+            }
+            else
+            {
+                Debug.Log($"[ENTITY_FACING] Ally pet {allyPet.EntityName.Value} is NOT in same arena as opponent pet {opponentPet.EntityName.Value}, skipping cross-arena facing");
+            }
+        }
+        else if (allyPet != null)
+        {
+            Debug.Log($"[ENTITY_FACING] Ally pet {allyPet.EntityName.Value} is NOT owned by local client, skipping facing");
         }
 
         // Make opponent pet face player (only if owned by local client)
         if (opponentPet.IsOwner)
         {
-            // Choose the primary target (prefer player over ally pet)
-            NetworkEntity targetEntity = player;
-            SetEntityFacing(opponentPet, targetEntity, "Opponent Pet");
+            Debug.Log($"[ENTITY_FACING] Opponent pet {opponentPet.EntityName.Value} is owned by local client, setting facing");
+            SetEntityFacing(opponentPet, player, "Opponent Pet");
         }
+        else
+        {
+            Debug.Log($"[ENTITY_FACING] Opponent pet {opponentPet.EntityName.Value} is NOT owned by local client, skipping facing");
+        }
+    }
+    
+    /// <summary>
+    /// Checks if two entities are in the same arena
+    /// </summary>
+    private bool AreEntitiesInSameArena(NetworkEntity entity1, NetworkEntity entity2)
+    {
+        if (entity1 == null || entity2 == null || arenaManager == null)
+            return false;
+            
+        // Find which arena each entity belongs to based on fight assignments
+        if (fightManager == null) return false;
+        
+        var allFights = fightManager.GetAllFightAssignments();
+        int entity1Arena = -1;
+        int entity2Arena = -1;
+        
+        foreach (var fight in allFights)
+        {
+            uint entity1Id = (uint)entity1.ObjectId;
+            uint entity2Id = (uint)entity2.ObjectId;
+            
+            // Check if entity1 is in this fight
+            if (fight.PlayerObjectId == entity1Id || fight.PetObjectId == entity1Id)
+            {
+                entity1Arena = arenaManager.GetArenaForPlayer(fight.PlayerObjectId);
+            }
+            
+            // Check if entity2 is in this fight
+            if (fight.PlayerObjectId == entity2Id || fight.PetObjectId == entity2Id)
+            {
+                entity2Arena = arenaManager.GetArenaForPlayer(fight.PlayerObjectId);
+            }
+        }
+        
+        bool sameArena = entity1Arena >= 0 && entity1Arena == entity2Arena;
+        Debug.Log($"[ENTITY_FACING] Arena check: {entity1.EntityName.Value} (arena {entity1Arena}) vs {entity2.EntityName.Value} (arena {entity2Arena}) = {(sameArena ? "SAME" : "DIFFERENT")}");
+        
+        return sameArena;
     }
 
     /// <summary>
@@ -922,14 +1365,21 @@ public class CombatCanvasManager : NetworkBehaviour
     /// <param name="entityDescription">Description for debugging</param>
     private void SetEntityFacing(NetworkEntity entity, NetworkEntity target, string entityDescription)
     {
+        Debug.Log($"[ENTITY_FACING] SetEntityFacing called: {entityDescription} {entity?.EntityName.Value ?? "null"} -> {target?.EntityName.Value ?? "null"}");
+        
         if (entity == null || target == null)
         {
-            Debug.LogWarning($"Cannot set facing for {entityDescription} - entity or target is null");
+            Debug.LogWarning($"[ENTITY_FACING] Cannot set facing for {entityDescription} - entity or target is null");
             return;
         }
 
         // Calculate direction from entity to target
-        Vector3 directionToTarget = target.transform.position - entity.transform.position;
+        Vector3 entityPos = entity.transform.position;
+        Vector3 targetPos = target.transform.position;
+        Vector3 directionToTarget = targetPos - entityPos;
+        
+        Debug.Log($"[ENTITY_FACING] {entityDescription} position: {entityPos}, target position: {targetPos}");
+        Debug.Log($"[ENTITY_FACING] Direction vector: {directionToTarget}");
         
         // Remove Y component to only rotate around Y axis
         directionToTarget.y = 0;
@@ -937,7 +1387,7 @@ public class CombatCanvasManager : NetworkBehaviour
         // Check if there's any horizontal distance
         if (directionToTarget.magnitude < 0.01f)
         {
-            Debug.LogWarning($"Entities {entity.EntityName.Value} and {target.EntityName.Value} are too close horizontally to determine facing direction");
+            Debug.LogWarning($"[ENTITY_FACING] Entities {entity.EntityName.Value} and {target.EntityName.Value} are too close horizontally to determine facing direction (distance: {directionToTarget.magnitude})");
             return;
         }
 
@@ -950,7 +1400,8 @@ public class CombatCanvasManager : NetworkBehaviour
         // Apply the rotation
         entity.transform.rotation = targetRotation;
 
-        /* Debug.Log($"[ENTITY_FACING] {entityDescription} {entity.EntityName.Value}: Rotated from Y={oldEulerAngles.y:F1}° to Y={targetRotation.eulerAngles.y:F1}° to face {target.EntityName.Value}"); */
+        Vector3 newEulerAngles = entity.transform.rotation.eulerAngles;
+        Debug.Log($"[ENTITY_FACING] {entityDescription} {entity.EntityName.Value}: Rotated from Y={oldEulerAngles.y:F1}° to Y={newEulerAngles.y:F1}° to face {target.EntityName.Value}");
     }
 
     /// <summary>
@@ -1234,6 +1685,126 @@ public class CombatCanvasManager : NetworkBehaviour
         
         /* Debug.Log($"[UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value}: Positioned from {oldAnchoredPosition} to {statsUIRectTransform.anchoredPosition}"); */
     }
+    
+    /// <summary>
+    /// Positions a hand entity in a specific arena
+    /// </summary>
+    private void PositionHandEntityInArena(NetworkEntity ownerEntity, int arenaIndex, Vector3 relativePosition, string handDescription)
+    {
+        if (ownerEntity == null || arenaManager == null)
+        {
+            Debug.LogError($"Cannot position {handDescription} in arena - missing requirements");
+            return;
+        }
+        
+        var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
+        if (relationshipManager == null || relationshipManager.HandEntity == null)
+        {
+            Debug.LogError($"Cannot position {handDescription} - no hand entity found for {ownerEntity.EntityName.Value}");
+            return;
+        }
+        
+        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
+        if (handEntity == null)
+        {
+            Debug.LogError($"Cannot position {handDescription} - hand entity missing NetworkEntity component");
+            return;
+        }
+        
+        // Calculate world position in arena
+        Vector3 arenaWorldPosition = arenaManager.CalculateEntityPositionInArena(arenaIndex, relativePosition);
+        
+        // Hand entity should be a RectTransform for UI positioning
+        RectTransform handRectTransform = handEntity.transform as RectTransform;
+        if (handRectTransform == null)
+        {
+            Debug.LogError($"Hand entity {handEntity.EntityName.Value} does not have RectTransform!");
+            return;
+        }
+        
+        // Ensure proper parenting to combat canvas
+        if (combatCanvas != null && handRectTransform.parent != combatCanvas.transform)
+        {
+            handRectTransform.SetParent(combatCanvas.transform, false);
+        }
+        
+        // Convert arena world position to UI anchored position
+        Canvas parentCanvas = combatCanvas.GetComponent<Canvas>();
+        if (parentCanvas != null)
+        {
+            Vector3 canvasLocalPos = combatCanvas.transform.InverseTransformPoint(arenaWorldPosition);
+            handRectTransform.anchoredPosition = new Vector2(canvasLocalPos.x, canvasLocalPos.y);
+            
+            // Set default anchoring
+            handRectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            handRectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            handRectTransform.pivot = new Vector2(0.5f, 0.5f);
+        }
+        
+        handRectTransform.SetAsLastSibling();
+        
+        Debug.Log($"[ARENA_UI_POSITIONING] {handDescription} {handEntity.EntityName.Value} positioned in arena {arenaIndex} at {handRectTransform.anchoredPosition}");
+    }
+    
+    /// <summary>
+    /// Positions a stats UI entity in a specific arena
+    /// </summary>
+    private void PositionStatsUIInArena(NetworkEntity ownerEntity, int arenaIndex, Vector3 relativePosition, string statsUIDescription)
+    {
+        if (ownerEntity == null || arenaManager == null)
+        {
+            Debug.LogError($"Cannot position {statsUIDescription} in arena - missing requirements");
+            return;
+        }
+        
+        var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
+        if (relationshipManager == null || relationshipManager.StatsUIEntity == null)
+        {
+            Debug.LogError($"Cannot position {statsUIDescription} - no stats UI entity found for {ownerEntity.EntityName.Value}");
+            return;
+        }
+        
+        var statsUIEntity = relationshipManager.StatsUIEntity.GetComponent<NetworkEntity>();
+        if (statsUIEntity == null)
+        {
+            Debug.LogError($"Cannot position {statsUIDescription} - stats UI entity missing NetworkEntity component");
+            return;
+        }
+        
+        // Calculate world position in arena
+        Vector3 arenaWorldPosition = arenaManager.CalculateEntityPositionInArena(arenaIndex, relativePosition);
+        
+        // Stats UI entity should be a RectTransform for UI positioning
+        RectTransform statsUIRectTransform = statsUIEntity.transform as RectTransform;
+        if (statsUIRectTransform == null)
+        {
+            Debug.LogError($"Stats UI entity {statsUIEntity.EntityName.Value} does not have RectTransform!");
+            return;
+        }
+        
+        // Ensure proper parenting to combat canvas
+        if (combatCanvas != null && statsUIRectTransform.parent != combatCanvas.transform)
+        {
+            statsUIRectTransform.SetParent(combatCanvas.transform, false);
+        }
+        
+        // Convert arena world position to UI anchored position
+        Canvas parentCanvas = combatCanvas.GetComponent<Canvas>();
+        if (parentCanvas != null)
+        {
+            Vector3 canvasLocalPos = combatCanvas.transform.InverseTransformPoint(arenaWorldPosition);
+            statsUIRectTransform.anchoredPosition = new Vector2(canvasLocalPos.x, canvasLocalPos.y);
+            
+            // Set default anchoring
+            statsUIRectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            statsUIRectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            statsUIRectTransform.pivot = new Vector2(0.5f, 0.5f);
+        }
+        
+        statsUIRectTransform.SetAsLastSibling();
+        
+        Debug.Log($"[ARENA_UI_POSITIONING] {statsUIDescription} {statsUIEntity.EntityName.Value} positioned in arena {arenaIndex} at {statsUIRectTransform.anchoredPosition}");
+    }
 
     /// <summary>
     /// Debug method to manually trigger positioning for testing
@@ -1386,5 +1957,47 @@ public class CombatCanvasManager : NetworkBehaviour
     {
         isModelPositioningComplete = false;
         Debug.Log("CombatCanvasManager: Reset positioning state for new combat round");
+    }
+
+    /// <summary>
+    /// Sets up the initial camera position for the local player's arena
+    /// </summary>
+    private void SetupInitialCameraPosition()
+    {
+        Debug.Log("[ARENA_CAMERA] CombatCanvasManager.SetupInitialCameraPosition() called");
+        
+        if (cameraManager == null)
+        {
+            cameraManager = FindFirstObjectByType<CameraManager>();
+            if (cameraManager == null)
+            {
+                Debug.LogWarning("[ARENA_CAMERA] CombatCanvasManager: CameraManager not found, cannot setup initial camera position");
+                return;
+            }
+        }
+        
+        if (arenaManager == null)
+        {
+            arenaManager = FindFirstObjectByType<ArenaManager>();
+            if (arenaManager == null)
+            {
+                Debug.LogWarning("[ARENA_CAMERA] CombatCanvasManager: ArenaManager not found, cannot setup initial camera position");
+                return;
+            }
+        }
+        
+        if (localPlayer == null)
+        {
+            Debug.LogWarning("[ARENA_CAMERA] CombatCanvasManager: Local player not found, cannot setup initial camera position");
+            return;
+        }
+        
+        Debug.Log($"[ARENA_CAMERA] CombatCanvasManager: Setting up initial camera for local player {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
+        
+        // Use CameraManager's existing logic to move camera to the currently viewed fight
+        // This will position the camera for the local player's arena
+        cameraManager.MoveCameraToCurrentViewedFight(false); // false = not from spectating, so no transition
+        
+        Debug.Log("[ARENA_CAMERA] CombatCanvasManager: Initial camera positioning completed");
     }
 } 

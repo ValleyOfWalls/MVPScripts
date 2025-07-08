@@ -533,8 +533,10 @@ public class CombatCardQueue : NetworkBehaviour
 
     #region Unity Lifecycle
     
-    private void OnValidate()
+    protected override void OnValidate()
     {
+        base.OnValidate();
+        
         // Ensure delay is non-negative
         delayBetweenCardExecutions = Mathf.Max(0f, delayBetweenCardExecutions);
     }

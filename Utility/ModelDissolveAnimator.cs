@@ -1662,7 +1662,7 @@ namespace MVPScripts.Utility
         [ContextMenu("Test Flash Effect")]
         public void TestFlashEffect()
         {
-            GameObject testModel = GameObject.FindObjectOfType<Renderer>()?.gameObject;
+            GameObject testModel = GameObject.FindFirstObjectByType<Renderer>()?.gameObject;
             if (testModel != null)
             {
                 Debug.Log("ModelDissolveAnimator: Testing flash effect");

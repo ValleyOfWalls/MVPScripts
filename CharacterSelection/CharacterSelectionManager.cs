@@ -265,7 +265,7 @@ public class CharacterSelectionManager : NetworkBehaviour
     private void EnsureSelectionObjectsSpawned()
     {
         // Check if selection objects already exist
-        SelectionNetworkObject[] existingObjects = FindObjectsOfType<SelectionNetworkObject>();
+        SelectionNetworkObject[] existingObjects = FindObjectsByType<SelectionNetworkObject>(FindObjectsSortMode.None);
         if (existingObjects.Length > 0)
         {
             Debug.Log($"CharacterSelectionManager: Selection objects already spawned ({existingObjects.Length} found)");

@@ -924,7 +924,7 @@ public class SteamNetworkIntegration : MonoBehaviour
         }
         
         // Find all SelectionNetworkObjects in the scene
-        SelectionNetworkObject[] selectionObjects = FindObjectsOfType<SelectionNetworkObject>();
+        SelectionNetworkObject[] selectionObjects = FindObjectsByType<SelectionNetworkObject>(FindObjectsSortMode.None);
         
         if (selectionObjects.Length == 0)
         {

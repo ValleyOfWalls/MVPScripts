@@ -192,7 +192,7 @@ namespace CharacterSelection
             // If still null, find any camera in the scene
             if (targetCamera == null)
             {
-                targetCamera = FindObjectOfType<Camera>();
+                targetCamera = FindFirstObjectByType<Camera>();
             }
             
             if (targetCamera == null && showDebugLogs)

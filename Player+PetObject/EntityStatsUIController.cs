@@ -839,11 +839,11 @@ public class EntityStatsUIController : NetworkBehaviour
         /* Debug.Log("=== FORCE RECONNECTING ALL STATS UI CONTROLLERS ==="); */
         
         // Find all EntityStatsUIController instances
-        EntityStatsUIController[] allControllers = FindObjectsOfType<EntityStatsUIController>(true);
+        EntityStatsUIController[] allControllers = FindObjectsByType<EntityStatsUIController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         /* Debug.Log($"Found {allControllers.Length} EntityStatsUIController instances (including inactive)"); */
         
         // Find all main entities (Player and Pet types)
-        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>(true);
+        NetworkEntity[] allEntities = FindObjectsByType<NetworkEntity>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         var mainEntities = new List<NetworkEntity>();
         
         foreach (var entity in allEntities)
@@ -971,7 +971,7 @@ public class EntityStatsUIController : NetworkBehaviour
         /* Debug.Log("=== RELATIONSHIP STATUS DEBUG ==="); */
         
         // Find all entities
-        NetworkEntity[] allEntities = FindObjectsOfType<NetworkEntity>(true);
+        NetworkEntity[] allEntities = FindObjectsByType<NetworkEntity>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         var playerEntities = new List<NetworkEntity>();
         var petEntities = new List<NetworkEntity>();
         var statsUIEntities = new List<NetworkEntity>();
