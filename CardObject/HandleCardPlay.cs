@@ -1740,8 +1740,8 @@ public class HandleCardPlay : NetworkBehaviour
     #endif
     
     /// <summary>
-    /// Delayed server-side card discarding with frame-based monitoring
-    /// EVENT-DRIVEN: Monitors animation state instead of hardcoded delay
+    /// Delayed server-side card discarding with proper animation timing
+    /// EVENT-DRIVEN: Monitors animation state and waits for dissolve to complete
     /// </summary>
     private System.Collections.IEnumerator DelayedServerCardDiscard()
     {
@@ -1756,33 +1756,37 @@ public class HandleCardPlay : NetworkBehaviour
             yield return null;
         }
         
-        // If we have a CardAnimator, monitor its animation state
+        // Start the dissolve animation on the card
         if (cardAnimator != null)
         {
-            float startTime = Time.time;
-            const float maxWaitTime = 1f; // Maximum time to wait for animation readiness
+            Debug.Log($"CARDPLAY_DEBUG: Starting dissolve animation for card {card?.CardData?.CardName}");
+            cardAnimator.AnimateDissolveOut(() => {
+                Debug.Log($"CARDPLAY_DEBUG: Dissolve animation completed for card {card?.CardData?.CardName}");
+            });
             
-            // Wait until the card is in a state ready for disposal
-            while (Time.time - startTime < maxWaitTime)
+            // Wait for the dissolve animation to complete
+            float startTime = Time.time;
+            const float maxWaitTime = 2f; // Maximum time to wait for animation completion
+            
+            while (cardAnimator.IsAnimating && Time.time - startTime < maxWaitTime)
             {
-                // Card is ready for disposal when it's not actively animating important transitions
-                if (!cardAnimator.IsAnimating)
-                {
-                    Debug.Log($"CARDPLAY_DEBUG: Card {card?.CardData?.CardName} animation ready for disposal after {Time.time - startTime:F2}s");
-                    break;
-                }
-                
                 yield return null; // Check every frame
             }
             
-            if (Time.time - startTime >= maxWaitTime)
+            float actualWaitTime = Time.time - startTime;
+            if (cardAnimator.IsAnimating)
             {
-                Debug.LogWarning($"CARDPLAY_DEBUG: Card disposal timeout after {maxWaitTime}s, proceeding anyway");
+                Debug.LogWarning($"CARDPLAY_DEBUG: Dissolve animation timeout after {actualWaitTime:F2}s for {card?.CardData?.CardName}, proceeding anyway");
+            }
+            else
+            {
+                Debug.Log($"CARDPLAY_DEBUG: Dissolve animation completed after {actualWaitTime:F2}s for {card?.CardData?.CardName}");
             }
         }
         else
         {
-            // Fallback: wait a minimal amount if no CardAnimator
+            // No animator, just wait a minimal amount
+            Debug.Log($"CARDPLAY_DEBUG: No CardAnimator found for {card?.CardData?.CardName}, skipping dissolve animation");
             yield return null;
         }
         

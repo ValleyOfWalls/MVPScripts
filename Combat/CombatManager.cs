@@ -1036,6 +1036,12 @@ public class CombatManager : NetworkBehaviour
         
         if (player != null && pet != null)
         {
+            // Notify the card queue to remove any remaining cards for this fight
+            if (CombatCardQueue.Instance != null)
+            {
+                CombatCardQueue.Instance.RemoveCardsForEndedFight(player.ObjectId, pet.ObjectId);
+            }
+            
             // Despawn all remaining cards for both entities in this fight
             DespawnAllCardsForFight(player, pet);
             
@@ -1122,12 +1128,39 @@ public class CombatManager : NetworkBehaviour
         if (activeFights.Count == 0)
         {
             Debug.Log("CombatManager: All fights complete, showing fight conclusion");
+            
+            // Clear any remaining queued cards since all fights are over
+            if (CombatCardQueue.Instance != null)
+            {
+                CombatCardQueue.Instance.ClearAllQueuedCardPlays();
+            }
+            
             ShowFightConclusion();
         }
         else
         {
             Debug.Log($"CombatManager: {activeFights.Count} fights still active");
         }
+    }
+
+    /// <summary>
+    /// Checks if a fight is still active for the given entity
+    /// </summary>
+    [Server]
+    public bool IsFightActive(int entityId)
+    {
+        if (!IsServerInitialized) return false;
+        
+        // Check if the entity is a player in an active fight
+        foreach (var fight in activeFights)
+        {
+            if (fight.Key.ObjectId == entityId || fight.Value.ObjectId == entityId)
+            {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     /// <summary>

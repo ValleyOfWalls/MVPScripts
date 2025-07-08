@@ -55,10 +55,17 @@ public class CombatCanvasManager : NetworkBehaviour
 
     private NetworkEntity localPlayer;
     private NetworkEntity opponentPetForLocalPlayer;
-
+    
     private FightManager fightManager;
     private CombatManager combatManager;
     private CombatTestManager testManager;
+    
+    // Model positioning tracking
+    private bool isModelPositioningComplete = false;
+    private LoadingScreenManager loadingScreenManager;
+    
+    // Public property to check if positioning is complete
+    public bool IsModelPositioningComplete => isModelPositioningComplete;
 
     // Public properties for accessing UI elements
     public Button SpectateButton => spectateButton;
@@ -238,7 +245,11 @@ public class CombatCanvasManager : NetworkBehaviour
             // Position combat entities for all fights
             PositionCombatEntitiesForAllFights();
             
-            // Additional UI setup code here
+            // Mark positioning as complete and notify loading screen
+            isModelPositioningComplete = true;
+            NotifyLoadingScreenPositioningComplete();
+            
+            Debug.Log("CombatCanvasManager: Model positioning completed, loading screen can be hidden");
         }
         else
         {
@@ -1345,5 +1356,35 @@ public class CombatCanvasManager : NetworkBehaviour
         }
         
         /* Debug.Log("=== DEBUG: Entity facing test complete ==="); */
+    }
+
+    /// <summary>
+    /// Notifies the loading screen that model positioning is complete
+    /// </summary>
+    private void NotifyLoadingScreenPositioningComplete()
+    {
+        if (loadingScreenManager == null)
+        {
+            loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
+        }
+        
+        if (loadingScreenManager != null)
+        {
+            loadingScreenManager.OnModelPositioningComplete();
+            Debug.Log("CombatCanvasManager: Notified LoadingScreenManager that positioning is complete");
+        }
+        else
+        {
+            Debug.LogWarning("CombatCanvasManager: LoadingScreenManager not found, cannot notify positioning completion");
+        }
+    }
+
+    /// <summary>
+    /// Resets positioning completion state (for new combat rounds)
+    /// </summary>
+    public void ResetPositioningState()
+    {
+        isModelPositioningComplete = false;
+        Debug.Log("CombatCanvasManager: Reset positioning state for new combat round");
     }
 } 

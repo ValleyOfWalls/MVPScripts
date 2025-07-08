@@ -444,6 +444,9 @@ public class CombatSetup : NetworkBehaviour
         {
             /* Debug.Log("CombatSetup: Found CombatCanvasManager, proceeding with setup"); */
             
+            // Reset positioning state for new combat round
+            combatCanvasManager.ResetPositioningState();
+            
             // Ensure draft canvas is disabled before enabling combat canvas
             DraftCanvasManager draftCanvasManager = FindFirstObjectByType<DraftCanvasManager>();
             if (draftCanvasManager != null)
@@ -739,8 +742,8 @@ public class CombatSetup : NetworkBehaviour
         
         if (loadingScreenManager != null)
         {
-            Debug.Log("CombatSetup: Found LoadingScreenManager, hiding loading screen");
-            loadingScreenManager.HideLoadingScreen();
+            Debug.Log("CombatSetup: Found LoadingScreenManager, notifying deck setup complete");
+            loadingScreenManager.OnDeckSetupComplete();
         }
         else
         {
@@ -748,19 +751,19 @@ public class CombatSetup : NetworkBehaviour
             loadingScreenManager = FindFirstObjectByType<LoadingScreenManager>();
             if (loadingScreenManager != null)
             {
-                Debug.Log("CombatSetup: Found LoadingScreenManager via FindFirstObjectByType, hiding loading screen");
-                loadingScreenManager.HideLoadingScreen();
+                Debug.Log("CombatSetup: Found LoadingScreenManager via FindFirstObjectByType, notifying deck setup complete");
+                loadingScreenManager.OnDeckSetupComplete();
             }
             else
             {
-                Debug.LogWarning("CombatSetup: LoadingScreenManager not found, cannot hide loading screen");
+                Debug.LogWarning("CombatSetup: LoadingScreenManager not found, cannot notify deck setup completion");
             }
         }
         
-        // After hiding loading screen, trigger initial card drawing (server only)
+        // After deck setup completion, trigger initial card drawing (server only)
         if (IsServerInitialized && combatManager != null)
         {
-            Debug.Log("CombatSetup: Loading screen hidden, now drawing initial hands");
+            Debug.Log("CombatSetup: Deck setup complete, now drawing initial hands");
             combatManager.DrawInitialHands();
         }
     }

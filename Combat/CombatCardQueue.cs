@@ -324,6 +324,18 @@ public class CombatCardQueue : NetworkBehaviour
         {
             QueuedCardPlay queuedPlay = allQueuedPlays[i];
             
+            // Check if this card's fight is still active before executing
+            if (!ShouldExecuteCard(queuedPlay))
+            {
+                Debug.Log($"CombatCardQueue: Skipping card {i + 1}/{allQueuedPlays.Count}: {queuedPlay.cardData.CardName} from entity {queuedPlay.sourceEntityId} - fight has ended");
+                
+                // Still notify visualization system that this card was "executed" (skipped)
+                OnCardExecuted?.Invoke(queuedPlay.cardData.CardName, i);
+                RpcNotifyCardExecuted(queuedPlay.cardData.CardName, i);
+                
+                continue;
+            }
+            
             if (queuedPlay.cardObject != null)
             {
                 HandleCardPlay cardPlayHandler = queuedPlay.cardObject.GetComponent<HandleCardPlay>();
@@ -462,6 +474,61 @@ public class CombatCardQueue : NetworkBehaviour
         
         entityCardQueues.Clear();
         Debug.Log("CombatCardQueue: Cleared all queued card plays");
+    }
+
+    /// <summary>
+    /// Removes all queued cards for entities involved in a specific fight
+    /// Called when a fight ends during card execution
+    /// </summary>
+    [Server]
+    public void RemoveCardsForEndedFight(int playerEntityId, int petEntityId)
+    {
+        if (!IsServerInitialized) return;
+        
+        int removedCount = 0;
+        
+        // Remove cards for the player
+        if (entityCardQueues.ContainsKey(playerEntityId))
+        {
+            int playerCardCount = entityCardQueues[playerEntityId].Count;
+            removedCount += playerCardCount;
+            entityCardQueues[playerEntityId].Clear();
+            Debug.Log($"CombatCardQueue: Removed {playerCardCount} queued cards for player entity {playerEntityId}");
+        }
+        
+        // Remove cards for the pet
+        if (entityCardQueues.ContainsKey(petEntityId))
+        {
+            int petCardCount = entityCardQueues[petEntityId].Count;
+            removedCount += petCardCount;
+            entityCardQueues[petEntityId].Clear();
+            Debug.Log($"CombatCardQueue: Removed {petCardCount} queued cards for pet entity {petEntityId}");
+        }
+        
+        if (removedCount > 0)
+        {
+            Debug.Log($"CombatCardQueue: Removed {removedCount} total queued cards for ended fight (player: {playerEntityId}, pet: {petEntityId})");
+        }
+    }
+
+    /// <summary>
+    /// Checks if a card should still be executed based on whether its associated fight is still active
+    /// </summary>
+    [Server]
+    public bool ShouldExecuteCard(QueuedCardPlay queuedPlay)
+    {
+        if (!IsServerInitialized) return false;
+        
+        // Find the CombatManager to check if the fight is still active
+        CombatManager combatManager = FindFirstObjectByType<CombatManager>();
+        if (combatManager == null)
+        {
+            Debug.LogWarning("CombatCardQueue: CombatManager not found, assuming card should execute");
+            return true;
+        }
+        
+        // Check if the source entity's fight is still active
+        return combatManager.IsFightActive(queuedPlay.sourceEntityId);
     }
 
     #region Unity Lifecycle

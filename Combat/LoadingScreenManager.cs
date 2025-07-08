@@ -40,10 +40,15 @@ public class LoadingScreenManager : NetworkBehaviour
     [Header("References")]
     [SerializeField] private CombatSetup combatSetup;
     [SerializeField] private GamePhaseManager gamePhaseManager;
+    [SerializeField] private CombatCanvasManager combatCanvasManager;
     
     private bool isLoadingScreenActive = false;
     private Coroutine loadingTextAnimation;
     private int currentMessageIndex = 0;
+    
+    // Track completion states
+    private bool isDeckSetupComplete = false;
+    private bool isModelPositioningComplete = false;
     
     private void Awake()
     {
@@ -64,6 +69,9 @@ public class LoadingScreenManager : NetworkBehaviour
             
         if (gamePhaseManager == null)
             gamePhaseManager = FindFirstObjectByType<GamePhaseManager>();
+            
+        if (combatCanvasManager == null)
+            combatCanvasManager = FindFirstObjectByType<CombatCanvasManager>();
             
         if (loadingCanvas == null)
             loadingCanvas = GetComponent<Canvas>();
@@ -91,11 +99,8 @@ public class LoadingScreenManager : NetworkBehaviour
             gamePhaseManager.OnPhaseChanged += OnGamePhaseChanged;
         }
         
-        // Subscribe to combat setup completion
-        if (combatSetup != null)
-        {
-            StartCoroutine(MonitorCombatSetupCompletion());
-        }
+        // Combat setup completion is now handled via OnDeckSetupComplete callback
+        // Model positioning completion is handled via OnModelPositioningComplete callback
     }
     
     public override void OnStopClient()
@@ -128,6 +133,9 @@ public class LoadingScreenManager : NetworkBehaviour
         
         /* Debug.Log("LoadingScreenManager: Showing loading screen"); */
         isLoadingScreenActive = true;
+        
+        // Reset completion states for new combat round
+        ResetCompletionStates();
         
         // Activate the loading screen panel
         if (loadingScreenPanel != null)
@@ -234,52 +242,7 @@ public class LoadingScreenManager : NetworkBehaviour
         }
     }
     
-    private IEnumerator MonitorCombatSetupCompletion()
-    {
-        // EVENT-DRIVEN: Use frame-based checking with adaptive intervals
-        float startTime = Time.time;
-        float checkInterval = 0.016f; // Start with frame-based checking (60fps)
-        const float maxCheckInterval = 0.2f; // Max 5 checks per second
-        const float intervalIncrease = 1.05f; // Gradually slow down checking
-        
-        // Wait until combat setup exists and we're in loading state
-        while (combatSetup == null || !isLoadingScreenActive)
-        {
-            yield return new WaitForSeconds(checkInterval);
-            
-            if (combatSetup == null)
-                combatSetup = FindFirstObjectByType<CombatSetup>();
-            
-            // Gradually slow down checking if taking long
-            checkInterval = Mathf.Min(checkInterval * intervalIncrease, maxCheckInterval);
-        }
-        
-        Debug.Log($"LoadingScreenManager: Found CombatSetup, monitoring for completion (found after {Time.time - startTime:F2}s)");
-        
-        // Reset check interval for setup monitoring
-        checkInterval = 0.016f; // Back to frame-based for responsive completion detection
-        
-        // Monitor combat setup completion
-        while (isLoadingScreenActive)
-        {
-            if (combatSetup != null && combatSetup.IsSetupComplete)
-            {
-                float setupTime = Time.time - startTime;
-                Debug.Log($"LoadingScreenManager: Combat setup completed after {setupTime:F2}s, hiding loading screen");
-                
-                // EVENT-DRIVEN: Minimal delay for smooth visual transition only
-                yield return new WaitForSeconds(0.1f);
-                
-                HideLoadingScreen();
-                break;
-            }
-            
-            yield return new WaitForSeconds(checkInterval);
-            
-            // Gradually slow down checking to avoid excessive polling
-            checkInterval = Mathf.Min(checkInterval * intervalIncrease, maxCheckInterval);
-        }
-    }
+
     
     /// <summary>
     /// Force show loading screen (for testing or manual control)
@@ -321,6 +284,56 @@ public class LoadingScreenManager : NetworkBehaviour
         List<Sprite> spriteList = new List<Sprite>(loadingTipSprites);
         spriteList.Add(sprite);
         loadingTipSprites = spriteList.ToArray();
+    }
+    
+    /// <summary>
+    /// Called by CombatCanvasManager when model positioning is complete
+    /// </summary>
+    public void OnModelPositioningComplete()
+    {
+        isModelPositioningComplete = true;
+        Debug.Log("LoadingScreenManager: Model positioning completed");
+        
+        // Check if we can hide the loading screen now
+        CheckCanHideLoadingScreen();
+    }
+    
+    /// <summary>
+    /// Called by CombatSetup when deck setup is complete
+    /// </summary>
+    public void OnDeckSetupComplete()
+    {
+        isDeckSetupComplete = true;
+        Debug.Log("LoadingScreenManager: Deck setup completed");
+        
+        // Check if we can hide the loading screen now
+        CheckCanHideLoadingScreen();
+    }
+    
+    /// <summary>
+    /// Checks if both deck setup and model positioning are complete, then hides loading screen
+    /// </summary>
+    private void CheckCanHideLoadingScreen()
+    {
+        if (isDeckSetupComplete && isModelPositioningComplete && isLoadingScreenActive)
+        {
+            Debug.Log("LoadingScreenManager: Both deck setup and model positioning complete, hiding loading screen");
+            HideLoadingScreen();
+        }
+        else
+        {
+            Debug.Log($"LoadingScreenManager: Waiting for completion - DeckSetup: {isDeckSetupComplete}, ModelPositioning: {isModelPositioningComplete}, LoadingActive: {isLoadingScreenActive}");
+        }
+    }
+    
+    /// <summary>
+    /// Resets completion states for new combat round
+    /// </summary>
+    public void ResetCompletionStates()
+    {
+        isDeckSetupComplete = false;
+        isModelPositioningComplete = false;
+        Debug.Log("LoadingScreenManager: Reset completion states for new combat round");
     }
     
     // Public getters for external systems

@@ -138,7 +138,7 @@ public class CardAnimator : MonoBehaviour
     
     /// <summary>
     /// Animates card drawing into hand from below screen
-    /// CENTRALIZED: Delegates all positioning/scaling to HandLayoutManager
+    /// Uses DOTween for smooth animation instead of immediate positioning
     /// </summary>
     public void AnimateDrawToHand(Vector3 targetPosition, System.Action onComplete = null)
     {
@@ -148,7 +148,7 @@ public class CardAnimator : MonoBehaviour
             return;
         }
         
-        LogDebug($"CENTRALIZED: Starting draw animation for {gameObject.name} - delegating to HandLayoutManager");
+        LogDebug($"Starting draw animation for {gameObject.name} to position {targetPosition}");
         
         // Clear any hover state before major animation
         if (isHovered)
@@ -164,29 +164,56 @@ public class CardAnimator : MonoBehaviour
         
         isAnimating = true;
         
-        // CENTRALIZED: Delegate all positioning/scaling to HandLayoutManager
-        if (handLayoutManager != null)
+        // Store current position and set start position
+        Vector3 startPosition = targetPosition + drawStartOffset;
+        rectTransform.localPosition = startPosition;
+        
+        // Ensure card is visible at start
+        if (canvasGroup != null)
         {
-            Vector3 targetScale = GetCurrentLayoutScale();
-            handLayoutManager.SetCardDrawingState(gameObject, targetPosition, targetScale, () => {
-                isAnimating = false;
-                
-                // Notify HandAnimator that this card is done animating
-                if (handAnimator != null)
-                {
-                    handAnimator.RemoveAnimatingCard(this);
-                }
-                
-                onComplete?.Invoke();
-                LogDebug($"CENTRALIZED: Draw animation completed for {gameObject.name}");
-            });
+            canvasGroup.alpha = 1f;
+        }
+        
+        // Get target scale from layout manager if available
+        Vector3 targetScale = GetCurrentLayoutScale();
+        
+        // Create animation sequence
+        currentSequence = DOTween.Sequence();
+        float duration = GetAdjustedDuration(drawAnimationDuration);
+        
+        // Animate position with easing
+        currentSequence.Append(rectTransform.DOLocalMove(targetPosition, duration).SetEase(drawEase));
+        
+        // Animate scale with slight overshoot effect
+        if (drawScaleOvershoot > 1f)
+        {
+            Vector3 overshootScale = targetScale * drawScaleOvershoot;
+            currentSequence.Join(rectTransform.DOScale(overshootScale, duration * 0.6f).SetEase(Ease.OutQuad));
+            currentSequence.Append(rectTransform.DOScale(targetScale, duration * 0.4f).SetEase(Ease.InQuad));
         }
         else
         {
-            Debug.LogError($"CardAnimator: No HandLayoutManager found for {gameObject.name} - cannot perform centralized draw animation");
-            isAnimating = false;
-            onComplete?.Invoke();
+            currentSequence.Join(rectTransform.DOScale(targetScale, duration).SetEase(drawEase));
         }
+        
+        currentSequence.OnComplete(() => {
+            isAnimating = false;
+            
+            // Notify HandAnimator that this card is done animating
+            if (handAnimator != null)
+            {
+                handAnimator.RemoveAnimatingCard(this);
+            }
+            
+            // Update layout manager about final position
+            if (handLayoutManager != null)
+            {
+                handLayoutManager.OnCardAddedToHand(gameObject);
+            }
+            
+            onComplete?.Invoke();
+            LogDebug($"Draw animation completed for {gameObject.name}");
+        });
     }
     
     /// <summary>

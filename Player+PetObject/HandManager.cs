@@ -336,13 +336,16 @@ public class HandManager : NetworkBehaviour
         // Start animations on all clients
         RpcStartDiscardAnimations(cardNetObjIds.ToArray());
         
-        // Wait for animations to start and progress
+        // Wait for animations to complete properly
         // The dissolve animation duration is typically 0.3 seconds in CardAnimator
-        yield return new WaitForSeconds(0.35f);
+        // Add extra time for staggered animations (0.05s delay between cards) plus buffer
+        float totalAnimationTime = 0.3f + (cardNetObjIds.Count * 0.05f) + 0.2f; // Base + stagger + buffer
+        Debug.Log($"HandManager: Waiting {totalAnimationTime:F2}s for dissolve animations to complete");
+        yield return new WaitForSeconds(totalAnimationTime);
         
         Debug.Log($"HandManager: ServerDiscardHandSequence proceeding to move cards for {entityName} (ID: {entityId})");
         
-        // Move all cards to discard immediately (animations are handled by RPC)
+        // Move all cards to discard immediately (animations should now be complete)
         int successfullyMoved = 0;
         foreach (GameObject card in cardsToDiscard)
         {
