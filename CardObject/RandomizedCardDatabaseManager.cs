@@ -488,7 +488,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
                 amount = Mathf.RoundToInt(effect.amount * UnityEngine.Random.Range(1.25f, 1.5f)),
                 targetType = effect.targetType,
                 duration = effect.duration,
-                elementalType = effect.elementalType,
+
                 conditionType = effect.conditionType,
                 conditionValue = effect.conditionValue
             };

@@ -166,14 +166,11 @@ public class HandleCardPlay : NetworkBehaviour
 
         Debug.Log($"CARDPLAY_DEBUG: Found source entity: {sourceEntity.EntityName.Value}");
 
-        // Check stun status
+        // Check for fizzle effects (cards can be played but may have no effect)
         EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
-        if (sourceTracker != null && sourceTracker.IsStunned)
+        if (sourceTracker != null && sourceTracker.HasFizzleEffect)
         {
-            canPlay = false;
-            playBlockReason = "Source entity is stunned";
-            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Source entity is stunned");
-            return false;
+            Debug.Log($"CARDPLAY_DEBUG: Warning - Source entity has {sourceTracker.FizzleCardCount} fizzle effects remaining");
         }
 
         // Check sequence requirements
@@ -290,14 +287,11 @@ public class HandleCardPlay : NetworkBehaviour
 
         Debug.Log($"CARDPLAY_DEBUG: Found source entity: {sourceEntity.EntityName.Value}");
 
-        // Check stun status
+        // Check for fizzle effects (cards can be played but may have no effect)
         EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
-        if (sourceTracker != null && sourceTracker.IsStunned)
+        if (sourceTracker != null && sourceTracker.HasFizzleEffect)
         {
-            canPlay = false;
-            playBlockReason = "Source entity is stunned";
-            Debug.Log($"CARDPLAY_DEBUG: Validation failed - Source entity is stunned");
-            return false;
+            Debug.Log($"CARDPLAY_DEBUG: Warning - Source entity has {sourceTracker.FizzleCardCount} fizzle effects remaining");
         }
 
         // Check sequence requirements
@@ -641,8 +635,24 @@ public class HandleCardPlay : NetworkBehaviour
             }
         }
 
+        // Check for fizzle effect before processing card effects
+        NetworkEntity fizzleSourceEntity = FindEntityById(sourceId);
+        bool cardFizzled = false;
+        if (fizzleSourceEntity != null)
+        {
+            EntityTracker sourceTracker = fizzleSourceEntity.GetComponent<EntityTracker>();
+            if (sourceTracker != null)
+            {
+                cardFizzled = sourceTracker.ConsumeAndCheckFizzle();
+                if (cardFizzled)
+                {
+                    Debug.Log($"CARDPLAY_DEBUG: Card {card.CardData?.CardName} fizzled! No effects will be processed.");
+                }
+            }
+        }
+
         // Process card effects through the resolver - this is the SINGLE processing route
-        if (cardEffectResolver != null)
+        if (cardEffectResolver != null && !cardFizzled)
         {
             var allTargets = targetIds.Select(id => id > 0 ? FindEntityById(id) : null).Where(e => e != null).ToArray();
             
@@ -650,20 +660,32 @@ public class HandleCardPlay : NetworkBehaviour
             
             if (sourceId > 0 && allTargets != null && allTargets.Length > 0)
             {
-                NetworkEntity sourceEntity = FindEntityById(sourceId);
-                if (sourceEntity != null)
+                if (fizzleSourceEntity != null)
                 {
                     // Use the server-side resolver method for consistent processing
                     foreach (var targetEntity in allTargets)
                     {
                         Debug.Log($"CARDPLAY_DEBUG: Calling ServerResolveCardEffect for target {targetEntity.EntityName.Value}");
-                        cardEffectResolver.ServerResolveCardEffect(sourceEntity, targetEntity, card.CardData);
+                        cardEffectResolver.ServerResolveCardEffect(fizzleSourceEntity, targetEntity, card.CardData);
                     }
                 }
             }
             else
             {
                 Debug.LogError($"CARDPLAY_DEBUG: Missing entities - Source: {sourceId > 0}, Targets: {(allTargets?.Length ?? 0)}");
+            }
+        }
+        else if (cardFizzled)
+        {
+            Debug.Log($"CARDPLAY_DEBUG: Card fizzled - skipping effect processing but still recording card play for tracking");
+            // Still record the card play for combo tracking even if effects fizzled
+            if (fizzleSourceEntity != null)
+            {
+                EntityTracker sourceTracker = fizzleSourceEntity.GetComponent<EntityTracker>();
+                if (sourceTracker != null)
+                {
+                    sourceTracker.RecordCardPlayed(card.CardData.CardId, card.CardData.BuildsCombo, card.CardData.CardType, card.CardData.EnergyCost == 0);
+                }
             }
         }
         else

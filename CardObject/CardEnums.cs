@@ -48,14 +48,14 @@ public enum CardEffectType
     RaiseCriticalChance,
     ApplyThorns,
     ApplyShield,
-    ApplyElementalStatus,
+
     ApplyStun,
-    ApplyLimitBreak,
+
     ApplyStrength,
     ApplyCurse,
     
     // ═══ CARD MANIPULATION ═══
-    DiscardRandomCards,
+
     
     // ═══ STANCE EFFECTS ═══
     EnterStance,
@@ -76,14 +76,7 @@ public enum CardTargetType
 /// <summary>
 /// Elemental types for status effects
 /// </summary>
-public enum ElementalType
-{
-    None,
-    Fire,
-    Ice,
-    Lightning,
-    Void
-}
+
 
 /// <summary>
 /// Stance types for the stance system

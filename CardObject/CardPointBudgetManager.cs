@@ -140,8 +140,8 @@ public class CardPointBudgetManager
     /// </summary>
     private ProposedCardEffect GenerateRandomEffect(float budgetLimit, CardRarity rarity)
     {
-        // Get available effect types
-        var effectTypes = System.Enum.GetValues(typeof(CardEffectType)).Cast<CardEffectType>().ToList();
+        // Get available effect types - exclude problematic effects
+        var effectTypes = GetAllowedEffectTypes();
         
         // Try multiple times to find a suitable effect
         for (int attempts = 0; attempts < 10; attempts++)
@@ -164,26 +164,16 @@ public class CardPointBudgetManager
                 conditionalType = GetRandomConditionalType();
             }
             
-            // Generate elemental type if this is an elemental effect
-            ElementalType elementalType = ElementalType.None;
-            if (effectType == CardEffectType.ApplyElementalStatus || effectType == CardEffectType.Damage)
-            {
-                if (UnityEngine.Random.value < 0.4f) // 40% chance for elemental typing
-                {
-                    var elements = new[] { ElementalType.Fire, ElementalType.Ice, ElementalType.Lightning, ElementalType.Void };
-                    elementalType = elements[UnityEngine.Random.Range(0, elements.Length)];
-                }
-            }
+            // Elemental system removed - no elemental typing
             
             // Generate duration for duration-based effects
             int duration = 0;
-            if (effectType == CardEffectType.ApplyElementalStatus || 
-                effectType == CardEffectType.ApplyStun ||
-                effectType == CardEffectType.EnterStance ||
-                effectType == CardEffectType.ApplyLimitBreak)
+            if ( 
+                effectType == CardEffectType.ApplyStun)
             {
                 duration = UnityEngine.Random.Range(1, 4); // 1-3 turns
             }
+            // Stance effects don't use duration - they're state-based
 
             return new ProposedCardEffect
             {
@@ -191,7 +181,7 @@ public class CardPointBudgetManager
                 amount = amount,
                 conditionalType = conditionalType,
                 targetType = GetRandomTargetForEffect(effectType),
-                elementalType = elementalType,
+
                 duration = duration
             };
         }
@@ -214,6 +204,47 @@ public class CardPointBudgetManager
     }
     
     /// <summary>
+    /// Get allowed effect types for card generation (excludes problematic effects)
+    /// </summary>
+    private List<CardEffectType> GetAllowedEffectTypes()
+    {
+        return new List<CardEffectType>
+        {
+            // Core positive effects
+            CardEffectType.Damage,
+            CardEffectType.Heal,
+            // DrawCard removed per requirements (no longer fits game flow)
+            // RestoreEnergy removed per requirements
+            
+            // Defensive buffs
+            CardEffectType.ApplyShield,
+            CardEffectType.ApplyThorns,
+            
+            // Positive status effects
+            CardEffectType.ApplyStrength,
+            CardEffectType.ApplySalve,
+            CardEffectType.RaiseCriticalChance,
+
+            
+            // Negative status effects (for enemies)
+            CardEffectType.ApplyWeak,
+            CardEffectType.ApplyBreak,
+            CardEffectType.ApplyBurn,
+            CardEffectType.ApplyStun,
+            CardEffectType.ApplyCurse,
+            
+            // Elemental effects
+
+            
+            // Stance effects
+            CardEffectType.EnterStance
+            // ExitStance removed per requirements - replaced with conditional stance exit mechanics
+            
+    
+        };
+    }
+    
+    /// <summary>
     /// Get a random conditional type with weighted selection
     /// </summary>
     private ConditionalType GetRandomConditionalType()
@@ -226,7 +257,7 @@ public class CardPointBudgetManager
             (ConditionalType.IfSourceHealthBelow, 15),
             (ConditionalType.IfCardsInHand, 12),
             (ConditionalType.IfComboCount, 12),
-            (ConditionalType.IfEnergyRemaining, 10),
+            // IfEnergyRemaining removed per requirements
             
             // Medium probability - moderately complex conditions  
             (ConditionalType.IfTargetHealthAbove, 8),
@@ -243,7 +274,7 @@ public class CardPointBudgetManager
             (ConditionalType.IfHealingReceivedLastRound, 3),
             (ConditionalType.IfZeroCostCardsThisFight, 2),
             (ConditionalType.IfPerfectionStreak, 2),
-            (ConditionalType.IfInStance, 2),
+            (ConditionalType.IfInStance, 8), // Higher weight for stance-based conditional effects
             (ConditionalType.IfLastCardType, 2)
         };
         
@@ -271,15 +302,15 @@ public class CardPointBudgetManager
     {
         return effectType switch
         {
-            // Damage effects - primarily target enemies
-            CardEffectType.Damage => UnityEngine.Random.value < 0.8f ? CardTargetType.Opponent : CardTargetType.Random,
+            // Damage effects - target enemies only
+            CardEffectType.Damage => CardTargetType.Opponent,
             
             // Healing effects - balanced between self and ally pet
             CardEffectType.Heal => UnityEngine.Random.value < 0.5f ? CardTargetType.Self : CardTargetType.Ally,
             
-            // Utility effects - card draw stays self-targeted
-            CardEffectType.DrawCard => CardTargetType.Self,
-            CardEffectType.DiscardRandomCards => CardTargetType.Self,
+            // Utility effects removed per requirements
+            // DrawCard removed per requirements (no longer fits game flow)
+    
             
             // Energy effects - REMOVED per requirements (energy restoration no longer fits game flow)
             
@@ -291,21 +322,21 @@ public class CardPointBudgetManager
             CardEffectType.ApplyStrength => UnityEngine.Random.value < 0.4f ? CardTargetType.Self : CardTargetType.Ally,
             CardEffectType.ApplySalve => UnityEngine.Random.value < 0.3f ? CardTargetType.Self : CardTargetType.Ally,
             CardEffectType.RaiseCriticalChance => UnityEngine.Random.value < 0.4f ? CardTargetType.Self : CardTargetType.Ally,
-            CardEffectType.ApplyLimitBreak => UnityEngine.Random.value < 0.6f ? CardTargetType.Self : CardTargetType.Ally,
+
             
             // Elemental and special effects - can target allies for buffs
-            CardEffectType.ApplyElementalStatus => UnityEngine.Random.value < 0.4f ? CardTargetType.Self : CardTargetType.Ally,
+
             
             // Stance effects - generally self-targeted but can buff allies
             CardEffectType.EnterStance => UnityEngine.Random.value < 0.8f ? CardTargetType.Self : CardTargetType.Ally,
             CardEffectType.ExitStance => CardTargetType.Self,
             
-            // Negative status effects - target enemies
-            CardEffectType.ApplyWeak => UnityEngine.Random.value < 0.7f ? CardTargetType.Opponent : CardTargetType.Random,
-            CardEffectType.ApplyBreak => UnityEngine.Random.value < 0.7f ? CardTargetType.Opponent : CardTargetType.Random,
-            CardEffectType.ApplyBurn => UnityEngine.Random.value < 0.7f ? CardTargetType.Opponent : CardTargetType.Random,
-            CardEffectType.ApplyStun => UnityEngine.Random.value < 0.8f ? CardTargetType.Opponent : CardTargetType.Random,
-            CardEffectType.ApplyCurse => UnityEngine.Random.value < 0.8f ? CardTargetType.Opponent : CardTargetType.Random,
+            // Negative status effects - target enemies only
+            CardEffectType.ApplyWeak => CardTargetType.Opponent,
+            CardEffectType.ApplyBreak => CardTargetType.Opponent,
+            CardEffectType.ApplyBurn => CardTargetType.Opponent,
+            CardEffectType.ApplyStun => CardTargetType.Opponent,
+            CardEffectType.ApplyCurse => CardTargetType.Opponent,
             
             // Default fallback
             _ => UnityEngine.Random.value < 0.5f ? CardTargetType.Self : CardTargetType.Opponent
@@ -325,13 +356,17 @@ public class CardPointBudgetManager
             _ => 20
         };
         
-        // Calculate proper energy cost for fallback
+        // Calculate proper energy cost for fallback (multiples of 5)
+        int[] commonCosts = { 10, 15 };
+        int[] uncommonCosts = { 15, 20, 25 };
+        int[] rareCosts = { 25, 30, 35 };
+        
         int energyCost = rarity switch
         {
-            CardRarity.Common => UnityEngine.Random.Range(12, 16),
-            CardRarity.Uncommon => UnityEngine.Random.Range(18, 24),
-            CardRarity.Rare => UnityEngine.Random.Range(28, 35),
-            _ => UnityEngine.Random.Range(12, 16)
+            CardRarity.Common => commonCosts[UnityEngine.Random.Range(0, commonCosts.Length)],
+            CardRarity.Uncommon => uncommonCosts[UnityEngine.Random.Range(0, uncommonCosts.Length)],
+            CardRarity.Rare => rareCosts[UnityEngine.Random.Range(0, rareCosts.Length)],
+            _ => commonCosts[UnityEngine.Random.Range(0, commonCosts.Length)]
         };
         
         Debug.LogWarning($"[BUDGET] ⚠️ Using FALLBACK values for {rarity} card - " +
@@ -374,5 +409,5 @@ public class ProposedCardEffect
     public ConditionalType conditionalType;
     public CardTargetType targetType;
     public int duration;
-    public ElementalType elementalType;
+
 } 

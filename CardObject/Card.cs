@@ -102,13 +102,8 @@ public class Card : NetworkBehaviour
             cardTracker = gameObject.AddComponent<CardTracker>();
         }
         
-        // Check and get/add CardDragDrop for drag and drop functionality
+        // Get CardDragDrop component if it exists (no longer auto-adding)
         CardDragDrop cardDragDrop = GetComponent<CardDragDrop>();
-        if (cardDragDrop == null)
-        {
-            /* Debug.Log($"Card {gameObject.name}: Adding missing CardDragDrop component"); */
-            cardDragDrop = gameObject.AddComponent<CardDragDrop>();
-        }
         
         // Check for collider for mouse interactions
         cardCollider = GetComponent<BoxCollider2D>();

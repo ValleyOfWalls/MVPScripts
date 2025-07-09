@@ -138,6 +138,170 @@ public class CardData : ScriptableObject
     public bool IsZeroCost => _energyCost == 0;
 
     // ═══════════════════════════════════════════════════════════════
+    // VALIDATION METHODS
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// <summary>
+    /// Validates that the card configuration follows design rules
+    /// </summary>
+    public bool ValidateCardConfiguration(out List<string> errors)
+    {
+        errors = new List<string>();
+        
+        // Check for restricted effect types
+        foreach (var effect in _effects)
+        {
+            // RestoreEnergy is no longer supported
+            if (effect.effectType == CardEffectType.RestoreEnergy)
+            {
+                errors.Add("RestoreEnergy effects are no longer supported. Use other utility effects instead.");
+            }
+            
+            // DrawCard is no longer supported
+            if (effect.effectType == CardEffectType.DrawCard)
+            {
+                errors.Add("DrawCard effects are no longer supported. The game flow no longer accommodates card drawing.");
+            }
+            
+            // Verify that status effects have valid names
+            if (IsStatusEffect(effect.effectType) && effect.amount <= 0)
+            {
+                errors.Add($"Status effect {effect.effectType} must have a positive amount value.");
+            }
+            
+
+            
+            // Random targeting is not allowed
+            if (effect.targetType == CardTargetType.Random)
+            {
+                errors.Add("Random targeting is not allowed. Use specific targets (Self, Ally, Opponent).");
+            }
+            
+            // IfEnergyRemaining conditions are not allowed
+            if (effect.conditionType == ConditionalType.IfEnergyRemaining)
+            {
+                errors.Add("IfEnergyRemaining conditions are not allowed. Use other conditional types.");
+            }
+            
+            // Stance effects should not have duration
+            if (effect.effectType == CardEffectType.EnterStance && effect.amount > 0)
+            {
+                errors.Add("Stance effects should not have duration. Stances are state-based, not time-limited.");
+            }
+            
+
+            
+            // Check for effects that shouldn't scale
+            if (effect.scalingType != ScalingType.None && !CanEffectTypeScale(effect.effectType))
+            {
+                errors.Add($"{effect.effectType} effects cannot scale. Remove scaling from this effect.");
+            }
+            
+            // Negative effects should specify targets when not targeting enemies
+            if (IsNegativeEffect(effect.effectType) && effect.targetType != CardTargetType.Opponent && effect.targetType != CardTargetType.Self)
+            {
+                // This is actually fine for ally targeting in some cases, so just a warning
+                // errors.Add($"Negative effect {effect.effectType} should typically target enemies unless intentionally targeting allies.");
+            }
+        }
+        
+        return errors.Count == 0;
+    }
+    
+    /// <summary>
+    /// Check if an effect type can logically scale
+    /// </summary>
+    private bool CanEffectTypeScale(CardEffectType effectType)
+    {
+        return effectType switch
+        {
+            // Effects that make sense to scale
+            CardEffectType.Damage => true,
+            CardEffectType.Heal => true,
+            // DrawCard removed per requirements
+            CardEffectType.ApplyShield => true,
+            CardEffectType.ApplyThorns => true,
+            CardEffectType.ApplyStrength => true,
+            CardEffectType.ApplySalve => true,
+            CardEffectType.ApplyWeak => true,
+            CardEffectType.ApplyBreak => true,
+            CardEffectType.ApplyBurn => true,
+            CardEffectType.ApplyCurse => true,
+            
+            // Effects that don't make sense to scale
+            CardEffectType.ExitStance => false,          // Can't exit stance multiple times
+            CardEffectType.EnterStance => false,         // Entering stance is binary
+            CardEffectType.ApplyStun => false,           // Stun duration doesn't scale well
+
+            CardEffectType.RaiseCriticalChance => false, // Percentage scaling would be weird
+
+            CardEffectType.RestoreEnergy => false,       // Removed from game
+
+            
+            _ => false // Default to no scaling for unknown effects
+        };
+    }
+    
+    /// <summary>
+    /// Check if an effect type is considered negative
+    /// </summary>
+    private bool IsNegativeEffect(CardEffectType effectType)
+    {
+        return effectType switch
+        {
+            CardEffectType.ApplyWeak => true,
+            CardEffectType.ApplyBreak => true,
+            CardEffectType.ApplyBurn => true,
+            CardEffectType.ApplyStun => true,
+            CardEffectType.ApplyCurse => true,
+
+            _ => false
+        };
+    }
+    
+    /// <summary>
+    /// Helper method to check if an effect type is a status effect
+    /// </summary>
+    private bool IsStatusEffect(CardEffectType effectType)
+    {
+        return effectType switch
+        {
+            CardEffectType.ApplyBreak => true,
+            CardEffectType.ApplyWeak => true,
+            CardEffectType.ApplyBurn => true,
+            CardEffectType.ApplySalve => true,
+            CardEffectType.ApplyThorns => true,
+            CardEffectType.ApplyShield => true,
+
+            CardEffectType.ApplyStun => true,
+
+            CardEffectType.ApplyStrength => true,
+            CardEffectType.ApplyCurse => true,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Validate this card configuration and log any issues (for use in Inspector)
+    /// </summary>
+    [ContextMenu("Validate Card Configuration")]
+    public void ValidateInEditor()
+    {
+        if (ValidateCardConfiguration(out List<string> errors))
+        {
+            Debug.Log($"✅ Card '{_cardName}' configuration is valid!");
+        }
+        else
+        {
+            Debug.LogError($"❌ Card '{_cardName}' has configuration errors:");
+            foreach (string error in errors)
+            {
+                Debug.LogError($"  • {error}");
+            }
+        }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
     // HELPER METHODS FOR CARD SETUP
     // ═══════════════════════════════════════════════════════════════
 
@@ -158,8 +322,7 @@ public class CardData : ScriptableObject
             effectType = CardEffectType.Damage,
             amount = damage,
             targetType = target,
-            duration = 0,
-            elementalType = ElementalType.None
+            duration = 0
         });
     }
 
@@ -180,8 +343,7 @@ public class CardData : ScriptableObject
             effectType = CardEffectType.Heal,
             amount = healing,
             targetType = target,
-            duration = 0,
-            elementalType = ElementalType.None
+            duration = 0
         });
     }
 
@@ -202,8 +364,7 @@ public class CardData : ScriptableObject
             effectType = statusType,
             amount = potency,
             targetType = GetDefaultTargetForStatus(statusType),
-            duration = duration,
-            elementalType = ElementalType.None
+            duration = duration
         });
     }
 
@@ -219,8 +380,7 @@ public class CardData : ScriptableObject
             effectType = effectType,
             amount = amount,
             targetType = target,
-            duration = duration,
-            elementalType = ElementalType.None
+            duration = duration
         });
     }
 
@@ -288,7 +448,6 @@ public class CardData : ScriptableObject
             amount = mainAmount,
             targetType = target,
             duration = 0,
-            elementalType = ElementalType.None,
             conditionType = conditionType,
             conditionValue = conditionValue,
             hasAlternativeEffect = true,
@@ -312,7 +471,6 @@ public class CardData : ScriptableObject
             amount = mainAmount,
             targetType = target,
             duration = 0,
-            elementalType = ElementalType.None,
             conditionType = conditionType,
             conditionValue = conditionValue,
             hasAlternativeEffect = true,
@@ -526,8 +684,8 @@ public class CardEffect
         (int)CardEffectType.ApplyStrength,
         (int)CardEffectType.ApplyCurse,
         (int)CardEffectType.ApplyThorns,
-        (int)CardEffectType.RaiseCriticalChance,
-        (int)CardEffectType.DiscardRandomCards)]
+        (int)CardEffectType.RaiseCriticalChance)]
+
     [Tooltip("Base power/amount of the effect")]
     public int amount = 3;
     
@@ -543,8 +701,7 @@ public class CardEffect
     [Tooltip("Who this effect targets")]
     public CardTargetType targetType = CardTargetType.Opponent;
     
-    [Tooltip("Elemental type for special interactions")]
-    public ElementalType elementalType = ElementalType.None;
+
     
     [Header("═══ CONDITIONAL TRIGGER (Optional) ═══")]
     [Tooltip("This effect only triggers if a condition is met")]
@@ -699,6 +856,10 @@ public class CardEffect
         (int)ScalingType.HandSize)]
     [Tooltip("Maximum value this effect can scale to")]
     public int maxScaling = 10;
+
+    [Header("═══ STANCE EXIT (Optional) ═══")]
+    [Tooltip("If true, this effect will also exit the current stance when triggered")]
+    public bool shouldExitStance = false;
     
     [Header("═══ VISUAL EFFECTS (Optional) ═══")]
     [Tooltip("How this effect's visual animation should behave")]
@@ -832,7 +993,6 @@ public class ScalingEffect
     
     [Header("Effect")]
     public CardEffectType effectType;
-    public ElementalType elementalType;
 }
 
 /// <summary>
@@ -850,7 +1010,6 @@ public class ConditionalEffect
     public CardEffectType effectType;
     public int effectAmount;
     public int effectDuration;
-    public ElementalType elementalType;
     
     [Header("Alternative Effect if Condition Not Met")]
     public bool hasAlternativeEffect;
@@ -903,7 +1062,6 @@ public class MultiEffect
     public CardEffectType effectType;
     public int amount;
     public int duration;
-    public ElementalType elementalType;
     public CardTargetType targetType; // Can override the main card's target type
     
     [Header("Scaling")]

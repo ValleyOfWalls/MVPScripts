@@ -61,13 +61,22 @@ public class CardPointBudgetConfig : ScriptableObject
     }
     
     /// <summary>
-    /// Calculate energy cost based on point budget allocation
+    /// Calculate energy cost based on point budget allocation (always multiples of 5 or 0)
     /// </summary>
     public int CalculateEnergyCost(int totalBudget)
     {
         float energyBudget = totalBudget * energyCostBudgetPercentage;
-        int energyCost = Mathf.RoundToInt(energyBudget / pointsPerEnergyCost);
-        return Mathf.Max(0, energyCost);
+        int rawEnergyCost = Mathf.RoundToInt(energyBudget / pointsPerEnergyCost);
+        
+        // Round to nearest multiple of 5, or 0 if very low
+        if (rawEnergyCost < 3)
+        {
+            return 0; // Very low cost cards are free
+        }
+        
+        // Round to nearest multiple of 5
+        int roundedCost = Mathf.RoundToInt(rawEnergyCost / 5f) * 5;
+        return Mathf.Max(5, roundedCost); // Minimum non-zero cost is 5
     }
     
     /// <summary>

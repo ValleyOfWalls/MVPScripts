@@ -336,7 +336,10 @@ public class CardEffectResolver : NetworkBehaviour
         }
         
         /* Debug.Log($"CardEffectResolver: Calling ProcessSingleEffect with amount {amount}, duration {effect.duration}"); */
-        ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, amount, effect.duration, effect.elementalType);
+                        ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, amount, effect.duration);
+        
+        // Check if this effect should also exit stance
+        ProcessStanceExitIfNeeded(sourceEntity, effect);
     }
     
     /// <summary>
@@ -366,7 +369,7 @@ public class CardEffectResolver : NetworkBehaviour
             {
                 // Replace logic: execute only alternative effect when condition is met
                 Debug.Log($"CardEffectResolver: Condition MET with Replace logic - executing alternative effect {effect.alternativeEffectType} with amount {effect.alternativeEffectAmount} INSTEAD of main effect");
-                ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, effect.duration, effect.elementalType);
+                ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, effect.duration);
             }
             else
             {
@@ -380,13 +383,13 @@ public class CardEffectResolver : NetworkBehaviour
                 }
                 
                 Debug.Log($"CardEffectResolver: Condition MET - executing main effect {effect.effectType} with amount {mainAmount}");
-                ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, mainAmount, effect.duration, effect.elementalType);
+                ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, mainAmount, effect.duration);
                 
                 // If has alternative effect with "Additional" logic, also execute alternative
                 if (effect.hasAlternativeEffect && effect.alternativeLogic == AlternativeEffectLogic.Additional)
                 {
                     Debug.Log($"CardEffectResolver: Also executing additional alternative effect {effect.alternativeEffectType} with amount {effect.alternativeEffectAmount}");
-                    ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, effect.duration, effect.elementalType);
+                    ProcessSingleEffect(sourceEntity, effectTargets, effect.alternativeEffectType, effect.alternativeEffectAmount, effect.duration);
                 }
             }
         }
@@ -402,8 +405,11 @@ public class CardEffectResolver : NetworkBehaviour
             }
             
             Debug.Log($"CardEffectResolver: Condition NOT MET - executing main effect {effect.effectType} with amount {mainAmount}");
-            ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, mainAmount, effect.duration, effect.elementalType);
+            ProcessSingleEffect(sourceEntity, effectTargets, effect.effectType, mainAmount, effect.duration);
         }
+        
+        // Check if this effect should also exit stance (applies regardless of condition)
+        ProcessStanceExitIfNeeded(sourceEntity, effect);
     }
     
     /// <summary>
@@ -570,7 +576,7 @@ public class CardEffectResolver : NetworkBehaviour
     /// <summary>
     /// Processes a single effect on the given targets
     /// </summary>
-    private void ProcessSingleEffect(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardEffectType effectType, int amount, int duration, ElementalType elementalType)
+    private void ProcessSingleEffect(NetworkEntity sourceEntity, List<NetworkEntity> targetEntities, CardEffectType effectType, int amount, int duration)
     {
         /* Debug.Log($"CardEffectResolver: ProcessSingleEffect called with type={effectType}, amount={amount}, duration={duration}"); */
         
@@ -629,9 +635,7 @@ public class CardEffectResolver : NetworkBehaviour
                     ProcessStunEffect(targetEntity, duration);
                     break;
                     
-                case CardEffectType.ApplyLimitBreak:
-                    ProcessLimitBreakEffect(targetEntity);
-                    break;
+
                     
                 case CardEffectType.ApplyStrength:
                     ProcessStrengthEffect(targetEntity, amount);
@@ -641,13 +645,9 @@ public class CardEffectResolver : NetworkBehaviour
                     ProcessStatusEffect(sourceEntity, targetEntity, "Curse", amount, duration);
                     break;
                     
-                case CardEffectType.ApplyElementalStatus:
-                    ProcessElementalStatusEffect(sourceEntity, targetEntity, elementalType, amount, duration);
-                    break;
+
                     
-                case CardEffectType.DiscardRandomCards:
-                    ProcessDiscardRandomCardsEffect(targetEntity, amount);
-                    break;
+
                     
                 case CardEffectType.EnterStance:
                     ProcessStanceChangeEffect(targetEntity, (StanceType)amount); // amount represents stance type
@@ -777,17 +777,7 @@ public class CardEffectResolver : NetworkBehaviour
         ProcessStatusEffect(null, targetEntity, "Stun", 1, duration);
     }
     
-    private void ProcessLimitBreakEffect(NetworkEntity targetEntity)
-    {
-        EntityTracker targetTracker = targetEntity.GetComponent<EntityTracker>();
-        if (targetTracker != null)
-        {
-            targetTracker.SetLimitBreak(true);
-        }
-        
-        // Add as a status effect
-        ProcessStatusEffect(null, targetEntity, "LimitBreak", 1, 3); // Default 3 turn duration
-    }
+
     
     private void ProcessStrengthEffect(NetworkEntity targetEntity, int amount)
     {
@@ -810,28 +800,9 @@ public class CardEffectResolver : NetworkBehaviour
         }
     }
     
-    private void ProcessElementalStatusEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, ElementalType elementalType, int potency, int duration)
-    {
-        string effectName = elementalType.ToString();
-        ProcessStatusEffect(sourceEntity, targetEntity, effectName, potency, duration);
-    }
+
     
-    private void ProcessDiscardRandomCardsEffect(NetworkEntity targetEntity, int amount)
-    {
-        HandManager handManager = GetHandManagerForEntity(targetEntity);
-        if (handManager != null)
-        {
-            List<GameObject> cardsInHand = handManager.GetCardsInHand();
-            
-            for (int i = 0; i < amount && cardsInHand.Count > 0; i++)
-            {
-                int randomIndex = Random.Range(0, cardsInHand.Count);
-                GameObject cardToDiscard = cardsInHand[randomIndex];
-                handManager.DiscardCard(cardToDiscard);
-                cardsInHand.RemoveAt(randomIndex);
-            }
-        }
-    }
+
     
     /// <summary>
     /// Gets the HandManager for an entity
@@ -1019,5 +990,17 @@ public class CardEffectResolver : NetworkBehaviour
         
         // Route through the main server processing method for consistency
         CmdResolveEffect(sourceEntity.ObjectId, new int[] { targetEntity.ObjectId }, cardData.CardId);
+    }
+    
+    /// <summary>
+    /// Process stance exit if an effect has shouldExitStance flag set
+    /// </summary>
+    private void ProcessStanceExitIfNeeded(NetworkEntity sourceEntity, CardEffect effect)
+    {
+        if (effect.shouldExitStance)
+        {
+            Debug.Log($"[CARDEFFECT] Effect {effect.effectType} has shouldExitStance=true, exiting stance for {sourceEntity.EntityName.Value}");
+            ProcessStanceChangeEffect(sourceEntity, StanceType.None);
+        }
     }
 } 

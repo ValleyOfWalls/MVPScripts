@@ -11,21 +11,20 @@ public class ProceduralCardGenerator
     private RandomCardConfig config;
     private CardPointBudgetManager budgetManager;
     
-    // Card naming components for mystical procedural generation
+    // Card naming components for mystical procedural generation (shorter names)
     private readonly string[] damageWords = { 
-        "Detonation", "Reckoning", "Undoing", "Convergence", "Implodes", "Shear", "Gambit", "Petition",
-        "Whispers Over Cinders", "Subtext of Undoing", "Orbital Geometry", "Chronoshear", "Burnished Fetters",
-        "Ritual of Splintered Bone", "The Word That Eats Light", "Collapsing into Radiance", "Symbiotic Reckoning"
+        "Detonation", "Reckoning", "Undoing", "Convergence", "Shear", "Gambit", "Petition",
+        "Chronoshear", "Burnished Fetters", "Symbiotic Reckoning", "Strike", "Blast", "Surge"
     };
     
     private readonly string[] healWords = { 
-        "Litany of Smoke-Eaters", "Mycelial Memory", "Fleshroot Convergence", "Twin Suns in Ascension",
-        "Nebula's First Cry", "Sporebound Oath", "Celestial Drift", "Seal of Melted Brass"
+        "Mycelial Memory", "Celestial Drift", "Sporebound Oath", "Restoration", "Renewal",
+        "Blessing", "Mending", "Recovery", "Vitality", "Regeneration"
     };
     
     private readonly string[] statusWords = { 
-        "Ash Psalm", "Marginalia of Dread", "Pendulum Gambit", "Debt of the Hollow Crown",
-        "Oathroot Binding", "Golem's Half-Heart", "Unquenched Forgefire", "Petition of Barbed Favor"
+        "Ash Psalm", "Pendulum Gambit", "Oathroot Binding", "Unquenched Forgefire",
+        "Hex", "Curse", "Blessing", "Ward", "Enchantment", "Aura"
     };
     
     private readonly string[] powerWords = { 
@@ -223,6 +222,79 @@ public class ProceduralCardGenerator
         
         return cards;
     }
+
+    /// <summary>
+    /// Generate a starter deck that checks OfflineGameManager for themed vs random preference
+    /// </summary>
+    public List<CardData> GenerateStarterDeck(string characterClass, int maxUniqueCards = 10)
+    {
+        bool useThemed = true; // Default to themed
+        
+        // Check OfflineGameManager if available
+        if (OfflineGameManager.Instance != null)
+        {
+            useThemed = OfflineGameManager.Instance.UseThemedStarterDecks;
+            Debug.Log($"[PROCGEN] OfflineGameManager found - using themed decks: {useThemed}");
+        }
+        else
+        {
+            Debug.LogWarning("[PROCGEN] OfflineGameManager not available - defaulting to themed decks");
+        }
+        
+        if (useThemed)
+        {
+            return GenerateThematicStarterDeck(characterClass, maxUniqueCards);
+        }
+        else
+        {
+            return GenerateRandomStarterDeck(maxUniqueCards);
+        }
+    }
+
+    /// <summary>
+    /// Generate a completely random starter deck without thematic bias
+    /// </summary>
+    private List<CardData> GenerateRandomStarterDeck(int maxUniqueCards = 10)
+    {
+        if (config?.rarityDistributionConfig == null)
+        {
+            Debug.LogError("ProceduralCardGenerator: Missing rarity distribution configuration!");
+            return new List<CardData>();
+        }
+        
+        var cards = new List<CardData>();
+        var distConfig = config.rarityDistributionConfig;
+        
+        // Calculate total cards needed for starter deck
+        int totalCardsNeeded = distConfig.starterDeckCommons + distConfig.starterDeckUncommons + distConfig.starterDeckRares;
+        
+        // Limit unique cards to the maximum specified
+        int uniqueCardsToGenerate = Mathf.Min(maxUniqueCards, totalCardsNeeded);
+        
+        Debug.Log($"[PROCGEN] Generating random starter deck: {uniqueCardsToGenerate} unique cards out of {totalCardsNeeded} total");
+        
+        // Generate unique cards with balanced rarity distribution
+        for (int i = 0; i < uniqueCardsToGenerate; i++)
+        {
+            CardRarity rarity = DetermineRarityForUniqueCard(i, uniqueCardsToGenerate, distConfig);
+            cards.Add(GenerateRandomCard(rarity));
+        }
+        
+        // Fill remaining slots with duplicates of existing cards
+        int duplicatesNeeded = totalCardsNeeded - uniqueCardsToGenerate;
+        if (duplicatesNeeded > 0 && cards.Count > 0)
+        {
+            Debug.Log($"[PROCGEN] Adding {duplicatesNeeded} duplicates to reach target deck size of {totalCardsNeeded}");
+            
+            for (int i = 0; i < duplicatesNeeded; i++)
+            {
+                var cardToDuplicate = cards[UnityEngine.Random.Range(0, cards.Count)];
+                cards.Add(DuplicateCard(cardToDuplicate));
+            }
+        }
+        
+        return cards;
+    }
     
     /// <summary>
     /// Generate a thematic starter deck for a character class with a limited number of unique cards
@@ -343,26 +415,10 @@ public class ProceduralCardGenerator
             var effect = effects[i];
             
             // Add elemental typing to damage effects
-            if (effect.effectType == CardEffectType.Damage)
-            {
-                if (effect.elementalType == ElementalType.None)
-                {
-                    var elements = new[] { ElementalType.Fire, ElementalType.Ice, ElementalType.Lightning, ElementalType.Void };
-                    effect.elementalType = elements[UnityEngine.Random.Range(0, elements.Length)];
-                }
-            }
+            // Elemental system removed - no elemental typing for damage
         }
         
-        // Mystics favor draw mechanics instead of energy manipulation
-        if (UnityEngine.Random.value < 0.4f && effects.Count < 3)
-        {
-            effects.Add(new CardEffect
-            {
-                effectType = CardEffectType.DrawCard,
-                amount = UnityEngine.Random.Range(1, 2),
-                targetType = CardTargetType.Self
-            });
-        }
+        // Mystics favor mystical effects (elemental system removed)
         
         // Mystics can enter mystical stances
         if (UnityEngine.Random.value < 0.25f && !card.ChangesStance)
@@ -517,7 +573,7 @@ public class ProceduralCardGenerator
                 amount = 3,
                 targetType = CardTargetType.Opponent,
                 conditionalType = ConditionalType.None,
-                elementalType = ElementalType.None
+
             }
         };
     }
@@ -664,7 +720,7 @@ public class ProceduralCardGenerator
                 amount = proposed.amount,
                 targetType = proposed.targetType,
                 duration = proposed.duration,
-                elementalType = proposed.elementalType,
+                // elementalType removed - elemental system removed
                 conditionType = proposed.conditionalType
             };
             
@@ -678,10 +734,16 @@ public class ProceduralCardGenerator
                 {
                     ApplyAlternativeEffect(effect);
                 }
+                
+                // Special handling for stance-based conditionals to add stance exit
+                if (effect.conditionType == ConditionalType.IfInStance && UnityEngine.Random.value < 0.5f)
+                {
+                    effect.shouldExitStance = true;
+                }
             }
             
-            // 20% chance for effects to have scaling
-            if (UnityEngine.Random.value < 0.20f)
+            // 20% chance for effects to have scaling (only for scalable effects)
+            if (UnityEngine.Random.value < 0.20f && CanEffectScale(effect.effectType))
             {
                 ApplyScalingEffect(effect);
             }
@@ -719,6 +781,37 @@ public class ProceduralCardGenerator
     }
     
     /// <summary>
+    /// Check if an effect type can logically scale
+    /// </summary>
+    private bool CanEffectScale(CardEffectType effectType)
+    {
+        return effectType switch
+        {
+            // Effects that make sense to scale
+            CardEffectType.Damage => true,
+            CardEffectType.Heal => true,
+            // DrawCard removed per requirements
+            CardEffectType.ApplyShield => true,
+            CardEffectType.ApplyThorns => true,
+            CardEffectType.ApplyStrength => true,
+            CardEffectType.ApplySalve => true,
+            CardEffectType.ApplyWeak => true,
+            CardEffectType.ApplyBreak => true,
+            CardEffectType.ApplyBurn => true,
+            CardEffectType.ApplyCurse => true,
+            
+            // Effects that don't make sense to scale
+            CardEffectType.ExitStance => false,          // Can't exit stance multiple times
+            CardEffectType.EnterStance => false,         // Entering stance is binary
+            CardEffectType.ApplyStun => false,           // Stun duration doesn't scale well
+
+            CardEffectType.RaiseCriticalChance => false, // Percentage scaling would be weird
+            
+            _ => false // Default to no scaling for unknown effects
+        };
+    }
+    
+    /// <summary>
     /// Apply scaling effect to make the effect scale with game state
     /// </summary>
     private void ApplyScalingEffect(CardEffect effect)
@@ -739,12 +832,7 @@ public class ProceduralCardGenerator
                 ScalingType.HandSize, 
                 ScalingType.CardsPlayedThisTurn
             },
-            CardEffectType.DrawCard => new[] 
-            { 
-                ScalingType.HandSize, 
-                ScalingType.ZeroCostCardsThisTurn,
-                ScalingType.ComboCount
-            },
+            // DrawCard removed per requirements
 
             _ => new[] { ScalingType.ComboCount, ScalingType.CardsPlayedThisTurn }
         };
@@ -764,9 +852,9 @@ public class ProceduralCardGenerator
             CardEffectType.Damage => UnityEngine.Random.value < 0.7f ? 
                 EffectAnimationBehavior.ProjectileFromSource : EffectAnimationBehavior.InstantOnTarget,
             CardEffectType.Heal => EffectAnimationBehavior.OnSourceOnly,
-            CardEffectType.ApplyElementalStatus => EffectAnimationBehavior.BeamToTarget,
-            CardEffectType.DiscardRandomCards => EffectAnimationBehavior.OnSourceOnly,
-            CardEffectType.DrawCard => EffectAnimationBehavior.OnSourceOnly,
+
+            
+            // DrawCard removed per requirements
 
             CardEffectType.EnterStance => EffectAnimationBehavior.OnSourceOnly,
             CardEffectType.ExitStance => EffectAnimationBehavior.OnSourceOnly,
@@ -782,11 +870,11 @@ public class ProceduralCardGenerator
     {
         return conditionType switch
         {
-            // Health-based conditions
-            ConditionalType.IfTargetHealthBelow => UnityEngine.Random.Range(25, 60),
-            ConditionalType.IfTargetHealthAbove => UnityEngine.Random.Range(50, 80),
-            ConditionalType.IfSourceHealthBelow => UnityEngine.Random.Range(25, 50),
-            ConditionalType.IfSourceHealthAbove => UnityEngine.Random.Range(60, 90),
+            // Health-based conditions (multiples of 5)
+            ConditionalType.IfTargetHealthBelow => GetRandomMultipleOf5(25, 60),
+            ConditionalType.IfTargetHealthAbove => GetRandomMultipleOf5(50, 80),
+            ConditionalType.IfSourceHealthBelow => GetRandomMultipleOf5(25, 50),
+            ConditionalType.IfSourceHealthAbove => GetRandomMultipleOf5(60, 90),
             
             // Card count conditions
             ConditionalType.IfCardsInHand => UnityEngine.Random.Range(1, 4),
@@ -805,7 +893,7 @@ public class ProceduralCardGenerator
             ConditionalType.IfComboCount => UnityEngine.Random.Range(2, 5),
             ConditionalType.IfZeroCostCardsThisTurn => UnityEngine.Random.Range(1, 3),
             ConditionalType.IfZeroCostCardsThisFight => UnityEngine.Random.Range(3, 6),
-            ConditionalType.IfEnergyRemaining => UnityEngine.Random.Range(10, 30), // Energy values
+            // IfEnergyRemaining removed per requirements
             
             // Special conditions (stance and card type will need special handling)
             ConditionalType.IfInStance => 1, // Binary condition
@@ -877,22 +965,17 @@ public class ProceduralCardGenerator
                 case CardEffectType.ApplyStrength:
                 case CardEffectType.ApplyCurse:
                 case CardEffectType.RaiseCriticalChance:
-                case CardEffectType.ApplyLimitBreak:
-                case CardEffectType.ApplyElementalStatus:
+
+
                 case CardEffectType.EnterStance:
                 case CardEffectType.ExitStance:
                     profile.statusEffects.Add(effect);
                     break;
-                case CardEffectType.DiscardRandomCards:
-                    profile.utilityEffects.Add(effect);
-                    break;
+
             }
             
             // Track elemental types
-            if (effect.elementalType != ElementalType.None)
-            {
-                profile.elementalTypes.Add(effect.elementalType);
-            }
+            // Elemental system removed - no elemental types to track
             
             // Track conditional effects
             if (effect.conditionalType != ConditionalType.None)
@@ -1008,42 +1091,42 @@ public class ProceduralCardGenerator
         {
             CardArchetype.PureDamage => new NameComponents
             {
-                primaryWords = new[] { "Annihilation", "Devastation", "Obliteration", "Sundering", "Reckoning" },
+                primaryWords = new[] { "Annihilation", "Devastation", "Sundering", "Reckoning", "Strike", "Blast" },
                 modifiers = new[] { "Brutal", "Savage", "Merciless", "Crushing", "Rending" }
             },
             CardArchetype.PureHealing => new NameComponents
             {
-                primaryWords = new[] { "Restoration", "Benediction", "Salvation", "Renewal", "Revival" },
+                primaryWords = new[] { "Restoration", "Benediction", "Renewal", "Revival", "Mending", "Recovery" },
                 modifiers = new[] { "Divine", "Sacred", "Blessed", "Pure", "Radiant" }
             },
             CardArchetype.LifeDrain => new NameComponents
             {
-                primaryWords = new[] { "Siphoning", "Vampiric Touch", "Life Leech", "Soul Drain", "Blood Pact" },
+                primaryWords = new[] { "Siphoning", "Leech", "Drain", "Vampirism", "Absorption" },
                 modifiers = new[] { "Parasitic", "Draining", "Consuming", "Hungering", "Thirsting" }
             },
             CardArchetype.BattleMage => new NameComponents
             {
-                primaryWords = new[] { "Spellblade", "Arcane Strike", "Mage's Wrath", "Enchanted Blow", "Mystic Assault" },
+                primaryWords = new[] { "Spellblade", "Enchantment", "Sorcery", "Wizardry", "Arcanum" },
                 modifiers = new[] { "Spellwoven", "Enchanted", "Arcane", "Mystical", "Magical" }
             },
             CardArchetype.StatusWeaver => new NameComponents
             {
-                primaryWords = new[] { "Hexweaving", "Curse Spiral", "Affliction Web", "Status Storm", "Condition Cascade" },
+                primaryWords = new[] { "Hexweaving", "Affliction", "Condition", "Manipulation", "Weaving" },
                 modifiers = new[] { "Twisted", "Layered", "Complex", "Intricate", "Woven" }
             },
             CardArchetype.ConditionalCaster => new NameComponents
             {
-                primaryWords = new[] { "Contingency", "Triggered Response", "Reactive Spell", "Conditional Strike", "Circumstantial Power" },
+                primaryWords = new[] { "Contingency", "Response", "Reaction", "Adaptation", "Trigger" },
                 modifiers = new[] { "Adaptive", "Responsive", "Situational", "Triggered", "Conditional" }
             },
             CardArchetype.TacticalStrike => new NameComponents
             {
-                primaryWords = new[] { "Strategic Blow", "Calculated Strike", "Tactical Assault", "Measured Attack", "Precise Hit" },
+                primaryWords = new[] { "Assault", "Strike", "Attack", "Maneuver", "Technique" },
                 modifiers = new[] { "Calculated", "Strategic", "Tactical", "Measured", "Precise" }
             },
             CardArchetype.SupportHealer => new NameComponents
             {
-                primaryWords = new[] { "Guardian's Care", "Protective Healing", "Warding Restoration", "Shielding Light", "Defensive Blessing" },
+                primaryWords = new[] { "Care", "Protection", "Warding", "Shielding", "Blessing" },
                 modifiers = new[] { "Protective", "Warding", "Shielding", "Guardian", "Defensive" }
             },
             _ => new NameComponents
@@ -1091,59 +1174,47 @@ public class ProceduralCardGenerator
     }
 
     /// <summary>
-    /// Apply elemental theming to name components
+    /// Apply elemental theming to name components (deprecated - elemental system removed)
     /// </summary>
-    private NameComponents ApplyElementalTheming(NameComponents components, List<ElementalType> elementalTypes)
+    private NameComponents ApplyElementalTheming(NameComponents components, List<object> elementalTypes)
     {
-        if (elementalTypes.Count == 0) return components;
-        
-        var primaryElement = elementalTypes[0];
-        var elementalPrefixes = primaryElement switch
-        {
-            ElementalType.Fire => new[] { "Blazing", "Infernal", "Molten", "Scorching", "Pyroclastic" },
-            ElementalType.Ice => new[] { "Frozen", "Glacial", "Crystalline", "Frigid", "Boreal" },
-            ElementalType.Lightning => new[] { "Shocking", "Voltaic", "Thunderous", "Crackling", "Electrified" },
-            ElementalType.Void => new[] { "Void-touched", "Abyssal", "Nihilistic", "Entropy-born", "Dark-matter" },
-            _ => new[] { "Elemental", "Primal", "Natural", "Forced", "Empowered" }
-        };
-        
-        // Add elemental prefixes to modifiers
-        var newModifiers = components.modifiers.Concat(elementalPrefixes).ToArray();
-        
-        return new NameComponents
-        {
-            primaryWords = components.primaryWords,
-            modifiers = newModifiers,
-            suffixes = components.suffixes
-        };
+        // Elemental system removed - return components unchanged
+        return components;
     }
 
     /// <summary>
-    /// Construct the final name from components
+    /// Construct the final name from components (limited to 2 words, 3 on rare occasions)
     /// </summary>
     private string ConstructNameFromComponents(NameComponents components, CardRarity rarity)
     {
         string primaryWord = components.primaryWords[UnityEngine.Random.Range(0, components.primaryWords.Length)];
         
-        // Simple name for common cards
-        if (rarity == CardRarity.Common && UnityEngine.Random.value < 0.6f)
+        // Count current words in primary word
+        int currentWordCount = primaryWord.Split(' ').Length;
+        
+        // Simple name for common cards or if primary word is already multi-word
+        if ((rarity == CardRarity.Common && UnityEngine.Random.value < 0.6f) || currentWordCount >= 2)
         {
             return primaryWord;
         }
         
-        // Add modifiers for higher rarity or random chance
+        // Add modifiers for higher rarity or random chance (but respect word limit)
         if (rarity != CardRarity.Common || UnityEngine.Random.value < 0.4f)
         {
-            if (UnityEngine.Random.value < 0.7f && components.modifiers.Length > 0)
+            if (UnityEngine.Random.value < 0.7f && components.modifiers.Length > 0 && currentWordCount < 2)
             {
                 string modifier = components.modifiers[UnityEngine.Random.Range(0, components.modifiers.Length)];
                 primaryWord = $"{modifier} {primaryWord}";
+                currentWordCount++;
             }
             
-            // Add suffixes for rare cards or special combinations
-            if ((rarity == CardRarity.Rare || UnityEngine.Random.value < 0.3f) && components.suffixes != null && components.suffixes.Length > 0)
+            // Add suffixes very rarely and only for rare cards (3 word limit)
+            if (rarity == CardRarity.Rare && UnityEngine.Random.value < 0.1f && // Only 10% chance for rare cards
+                components.suffixes != null && components.suffixes.Length > 0 && currentWordCount < 3)
             {
-                string suffix = components.suffixes[UnityEngine.Random.Range(0, components.suffixes.Length)];
+                // Use shorter suffixes to avoid overly long names
+                string[] shortSuffixes = { "of Dread", "of Power", "of Light", "of Shadow", "of Fire", "of Ice" };
+                string suffix = shortSuffixes[UnityEngine.Random.Range(0, shortSuffixes.Length)];
                 primaryWord = $"{primaryWord} {suffix}";
             }
         }
@@ -1152,28 +1223,44 @@ public class ProceduralCardGenerator
     }
 
     /// <summary>
-    /// Apply final naming enhancements based on profile
+    /// Apply final naming enhancements based on profile (respecting word limits)
     /// </summary>
     private string ApplyNamingEnhancements(string baseName, CardProfile profile, CardRarity rarity)
     {
+        // Count current words in base name
+        int currentWordCount = baseName.Split(' ').Length;
+        
+        // Don't enhance if already at word limit
+        if (currentWordCount >= 2) return baseName;
+        
         // Add mystical enhancement for complex cards or rare cards
         bool shouldEnhance = rarity == CardRarity.Rare || 
                             profile.effectCombination != EffectCombination.SimpleEffect ||
                             profile.conditionalEffects.Count > 0 ||
                             profile.elementalTypes.Count > 1;
         
-        if (shouldEnhance && UnityEngine.Random.value < 0.5f)
+        if (shouldEnhance && UnityEngine.Random.value < 0.3f) // Reduced chance to keep names shorter
         {
-            // Use existing mystical enhancement system for final touch
-            if (UnityEngine.Random.value < 0.5f && !baseName.Contains(" "))
+            // Only add single word enhancements
+            if (currentWordCount == 1)
             {
-                string prefix = powerWords[UnityEngine.Random.Range(0, powerWords.Length)];
-                baseName = $"{prefix} {baseName}";
-            }
-            else if (!baseName.Contains("of "))
-            {
-                string suffix = mysticalSuffixes[UnityEngine.Random.Range(0, mysticalSuffixes.Length)];
-                baseName = $"{baseName} {suffix}";
+                if (UnityEngine.Random.value < 0.5f)
+                {
+                    // Add a simple prefix
+                    string[] shortPrefixes = { "Dark", "Bright", "Swift", "Hidden", "Ancient", "Mystic" };
+                    string prefix = shortPrefixes[UnityEngine.Random.Range(0, shortPrefixes.Length)];
+                    baseName = $"{prefix} {baseName}";
+                }
+                else
+                {
+                    // Add a simple suffix (only for rare cards and very rarely)
+                    if (rarity == CardRarity.Rare && UnityEngine.Random.value < 0.1f)
+                    {
+                        string[] shortSuffixes = { "Strike", "Force", "Power", "Art", "Skill", "Talent" };
+                        string suffix = shortSuffixes[UnityEngine.Random.Range(0, shortSuffixes.Length)];
+                        baseName = $"{baseName} {suffix}";
+                    }
+                }
             }
         }
         
@@ -1194,7 +1281,7 @@ public class ProceduralCardGenerator
                 // Core effects
                 CardEffectType.Damage => GenerateDamageDescription(effect),
                 CardEffectType.Heal => GenerateHealDescription(effect),
-                CardEffectType.DrawCard => GenerateDrawCardDescription(effect),
+                // DrawCard removed per requirements
                 // Note: RestoreEnergy removed from generation per requirements
                 
                 // Defensive buffs
@@ -1205,7 +1292,7 @@ public class ProceduralCardGenerator
                 CardEffectType.ApplyStrength => GenerateStatusDescription(effect, "Strength"),
                 CardEffectType.ApplySalve => GenerateStatusDescription(effect, "Salve"),
                 CardEffectType.RaiseCriticalChance => $"Increase critical chance by {effect.amount}%",
-                CardEffectType.ApplyLimitBreak => $"Grant Limit Break for {effect.amount} turns",
+
                 
                 // Negative status effects
                 CardEffectType.ApplyWeak => GenerateStatusDescription(effect, "Weak", isNegative: true),
@@ -1215,18 +1302,24 @@ public class ProceduralCardGenerator
                 CardEffectType.ApplyCurse => GenerateStatusDescription(effect, "Curse", isNegative: true),
                 
                 // Card manipulation
-                CardEffectType.DiscardRandomCards => $"Discard {effect.amount} random card(s)",
+
                 
                 // Elemental effects
-                CardEffectType.ApplyElementalStatus => $"Apply {effect.elementalType} status for {effect.amount} turns",
+
                 
                 // Stance effects
-                CardEffectType.EnterStance => $"Enter combat stance for {effect.amount} turns",
+                CardEffectType.EnterStance => "Enter combat stance",
                 CardEffectType.ExitStance => "Exit current stance",
                 
                 // Fallback for any missing effects
                 _ => effect.effectType.ToString().Replace("Apply", "Apply ")
             };
+            
+            // Add stance exit modifier if this effect should exit stance
+            if (effect.shouldExitStance)
+            {
+                effectDesc += " and exit current stance";
+            }
             
             // Add scaling information in parentheses within the same sentence
             if (effect.scalingType != ScalingType.None)
@@ -1273,7 +1366,7 @@ public class ProceduralCardGenerator
         string base_desc = $"Deal {effect.amount} damage";
         string targetDesc = GetTargetDescription(effect.targetType);
         
-        // Only add target description for non-obvious targets
+        // Always specify target for damage (damage to self would be unusual and should be explicit)
         if (!string.IsNullOrEmpty(targetDesc) && effect.targetType != CardTargetType.Opponent)
         {
             base_desc += $" {targetDesc}";
@@ -1283,33 +1376,42 @@ public class ProceduralCardGenerator
     }
     
     /// <summary>
-    /// Generate description for heal effects with proper targeting
+    /// Generate description for heal effects with proper targeting and wording
     /// </summary>
     private string GenerateHealDescription(CardEffect effect)
     {
-        string base_desc = $"Heal {effect.amount} health";
-        string targetDesc = GetTargetDescription(effect.targetType);
+        string base_desc;
         
-        // Only add target description for non-self targets
-        if (!string.IsNullOrEmpty(targetDesc) && effect.targetType != CardTargetType.Self)
+        if (effect.targetType == CardTargetType.Self)
         {
-            base_desc += $" {targetDesc}";
+            base_desc = $"Heal {effect.amount} health";
+        }
+        else if (effect.targetType == CardTargetType.Opponent)
+        {
+            base_desc = $"Heal enemy for {effect.amount}";
+        }
+        else if (effect.targetType == CardTargetType.Ally)
+        {
+            base_desc = $"Heal ally for {effect.amount}";
+        }
+        else
+        {
+            // Fallback for other target types
+            base_desc = $"Heal {effect.amount} health";
+            string targetDesc = GetTargetDescription(effect.targetType);
+            if (!string.IsNullOrEmpty(targetDesc))
+            {
+                base_desc += $" {targetDesc}";
+            }
         }
         
         return base_desc;
     }
     
-    /// <summary>
-    /// Generate description for draw card effects
-    /// </summary>
-    private string GenerateDrawCardDescription(CardEffect effect)
-    {
-        // Draw effects are always self-targeted, no need to specify
-        return effect.amount == 1 ? "Draw a card" : $"Draw {effect.amount} cards";
-    }
+    // DrawCard effects removed per requirements
     
     /// <summary>
-    /// Generate description for status effects with proper targeting
+    /// Generate description for status effects with proper targeting and wording
     /// </summary>
     private string GenerateStatusDescription(CardEffect effect, string statusName, bool isNegative = false)
     {
@@ -1317,24 +1419,44 @@ public class ProceduralCardGenerator
         
         if (isNegative)
         {
-            base_desc = $"Apply {effect.amount} {statusName}";
-            string targetDesc = GetTargetDescription(effect.targetType);
-            
-            // Only add target description for non-obvious targets (negatives usually target enemies)
-            if (!string.IsNullOrEmpty(targetDesc) && effect.targetType != CardTargetType.Opponent)
+            if (effect.targetType == CardTargetType.Self)
             {
-                base_desc += $" {targetDesc}";
+                // Use "Suffer" for negative effects on self
+                base_desc = $"Suffer {effect.amount} {statusName}";
+            }
+            else
+            {
+                base_desc = $"Apply {effect.amount} {statusName}";
+                string targetDesc = GetTargetDescription(effect.targetType);
+                
+                // Always specify target for negative effects when not targeting enemies
+                if (!string.IsNullOrEmpty(targetDesc) && effect.targetType != CardTargetType.Opponent)
+                {
+                    base_desc += $" {targetDesc}";
+                }
+                else if (effect.targetType == CardTargetType.Opponent)
+                {
+                    base_desc += " to enemy";
+                }
             }
         }
         else
         {
-            base_desc = $"Grant {effect.amount} {statusName}";
-            string targetDesc = GetTargetDescription(effect.targetType);
-            
-            // Only add target description for non-self targets (buffs usually target self/ally)
-            if (!string.IsNullOrEmpty(targetDesc) && effect.targetType != CardTargetType.Self)
+            if (effect.targetType == CardTargetType.Self)
             {
-                base_desc += $" {targetDesc}";
+                // Use "Gain" for positive effects on self
+                base_desc = $"Gain {effect.amount} {statusName}";
+            }
+            else
+            {
+                base_desc = $"Grant {effect.amount} {statusName}";
+                string targetDesc = GetTargetDescription(effect.targetType);
+                
+                // Always specify target for buffs when not targeting self
+                if (!string.IsNullOrEmpty(targetDesc) && effect.targetType != CardTargetType.Self)
+                {
+                    base_desc += $" {targetDesc}";
+                }
             }
         }
         
@@ -1342,17 +1464,40 @@ public class ProceduralCardGenerator
     }
     
     /// <summary>
-    /// Generate description for stun effects
+    /// Generate description for stun effects with proper targeting
     /// </summary>
     private string GenerateStunDescription(CardEffect effect)
     {
-        string base_desc = $"Stun for {effect.amount} turns";
-        string targetDesc = GetTargetDescription(effect.targetType);
+        string base_desc;
         
-        // Only add target description for non-obvious targets
-        if (!string.IsNullOrEmpty(targetDesc) && effect.targetType != CardTargetType.Opponent)
+        if (effect.targetType == CardTargetType.Self)
         {
-            base_desc += $" {targetDesc}";
+            // Use "Suffer" for stunning self (negative effect)
+            base_desc = effect.amount == 1 
+                ? "Your next card fizzles" 
+                : $"Your next {effect.amount} cards fizzle";
+        }
+        else if (effect.targetType == CardTargetType.Opponent)
+        {
+            base_desc = effect.amount == 1 
+                ? "Enemy's next card fizzles" 
+                : $"Enemy's next {effect.amount} cards fizzle";
+        }
+        else
+        {
+            // For ally targeting, be explicit
+            if (effect.targetType == CardTargetType.Ally)
+            {
+                base_desc = effect.amount == 1 
+                    ? "Ally's next card fizzles" 
+                    : $"Ally's next {effect.amount} cards fizzle";
+            }
+            else
+            {
+                base_desc = effect.amount == 1 
+                    ? "Next card fizzles" 
+                    : $"Next {effect.amount} cards fizzle";
+            }
         }
         
         return base_desc;
@@ -1366,9 +1511,9 @@ public class ProceduralCardGenerator
         return targetType switch
         {
             CardTargetType.Self => "to self",
-            CardTargetType.Ally => "to ally pet", 
+            CardTargetType.Ally => "to ally", 
             CardTargetType.Opponent => "to enemy",
-            CardTargetType.Random => "to random target",
+            // Random targeting removed per requirements
             _ => ""
         };
     }
@@ -1398,15 +1543,15 @@ public class ProceduralCardGenerator
             ConditionalType.IfTimesPlayedThisFight => $"If played {conditionValue}+ times this fight",
             ConditionalType.IfDamageTakenThisFight => $"If taken {conditionValue}+ damage this fight",
             ConditionalType.IfDamageTakenLastRound => $"If took {conditionValue}+ damage last round",
-            ConditionalType.IfHealingReceivedThisFight => $"If healed {conditionValue}+ this fight",
-            ConditionalType.IfHealingReceivedLastRound => $"If healed {conditionValue}+ last round",
+            ConditionalType.IfHealingReceivedThisFight => $"If healed for {conditionValue} or more this fight",
+            ConditionalType.IfHealingReceivedLastRound => $"If healed for {conditionValue} or more last round",
             ConditionalType.IfPerfectionStreak => $"If {conditionValue}+ perfect turns",
             
             // Tactical conditions
-            ConditionalType.IfComboCount => $"If this is your {conditionValue}+ card this turn",
+            ConditionalType.IfComboCount => $"If this is your {GetOrdinalNumber(conditionValue)} card played this turn",
             ConditionalType.IfZeroCostCardsThisTurn => $"If played {conditionValue}+ zero-cost cards this turn",
             ConditionalType.IfZeroCostCardsThisFight => $"If played {conditionValue}+ zero-cost cards this fight",
-            ConditionalType.IfEnergyRemaining => $"If you have {conditionValue}+ energy remaining",
+            // IfEnergyRemaining removed per requirements
             
             // Special conditions
             ConditionalType.IfInStance => "If in combat stance",
@@ -1425,6 +1570,52 @@ public class ProceduralCardGenerator
         // This provides concrete numbers that are easier to understand than percentages
         const int standardBaseHealth = 100;
         return Mathf.RoundToInt(standardBaseHealth * percentage / 100f);
+    }
+    
+    /// <summary>
+    /// Get a random multiple of 5 within the specified range
+    /// </summary>
+    private int GetRandomMultipleOf5(int min, int max)
+    {
+        // Round min up to nearest multiple of 5
+        int minMultiple = ((min + 4) / 5) * 5;
+        // Round max down to nearest multiple of 5
+        int maxMultiple = (max / 5) * 5;
+        
+        if (minMultiple > maxMultiple) return minMultiple;
+        
+        // Generate random multiple of 5 in range
+        int numSteps = (maxMultiple - minMultiple) / 5 + 1;
+        int randomStep = UnityEngine.Random.Range(0, numSteps);
+        return minMultiple + (randomStep * 5);
+    }
+    
+    /// <summary>
+    /// Convert numbers to ordinal format (1st, 2nd, 3rd, 4th, etc.)
+    /// </summary>
+    private string GetOrdinalNumber(int number)
+    {
+        if (number <= 0) return number.ToString();
+        
+        switch (number % 100)
+        {
+            case 11:
+            case 12:
+            case 13:
+                return number + "th";
+        }
+        
+        switch (number % 10)
+        {
+            case 1:
+                return number + "st";
+            case 2:
+                return number + "nd";
+            case 3:
+                return number + "rd";
+            default:
+                return number + "th";
+        }
     }
     
     /// <summary>
@@ -1568,7 +1759,7 @@ public class CardProfile
     public List<ProposedCardEffect> utilityEffects = new List<ProposedCardEffect>();
     public List<ProposedCardEffect> conditionalEffects = new List<ProposedCardEffect>();
     
-    public List<ElementalType> elementalTypes = new List<ElementalType>();
+    public List<object> elementalTypes = new List<object>();
     public List<CardTargetType> targetTypes = new List<CardTargetType>();
     
     public int totalDamage = 0;

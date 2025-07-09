@@ -17,7 +17,8 @@ public class EntityTracker : NetworkBehaviour
     [SerializeField, ReadOnly] private EntityTrackingData trackingData = new EntityTrackingData();
 
     // Network synchronized data
-    private readonly SyncVar<bool> _isStunned = new SyncVar<bool>();
+    private readonly SyncVar<bool> _isStunned = new SyncVar<bool>(); // Legacy - kept for backwards compatibility
+    private readonly SyncVar<int> _fizzleCardCount = new SyncVar<int>(); // Number of cards that will fizzle
     private readonly SyncVar<bool> _isInLimitBreak = new SyncVar<bool>();
     private readonly SyncVar<int> _comboCount = new SyncVar<int>();
     private readonly SyncVar<int> _perfectionStreak = new SyncVar<int>();
@@ -45,7 +46,9 @@ public class EntityTracker : NetworkBehaviour
     public event Action<int> OnStrengthChanged;
 
     // Public accessors
-    public bool IsStunned => _isStunned.Value;
+    public bool IsStunned => _isStunned.Value; // Legacy - for backwards compatibility
+    public int FizzleCardCount => _fizzleCardCount.Value; // Number of cards that will fizzle
+    public bool HasFizzleEffect => _fizzleCardCount.Value > 0; // Convenience property
     public bool IsInLimitBreak => _isInLimitBreak.Value;
     public int ComboCount => _comboCount.Value;
     public int PerfectionStreak => _perfectionStreak.Value;
@@ -61,6 +64,7 @@ public class EntityTracker : NetworkBehaviour
 
         // Subscribe to sync var changes for debug display
         _isStunned.OnChange += (prev, next, asServer) => UpdateTrackingData();
+        _fizzleCardCount.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _isInLimitBreak.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _comboCount.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _perfectionStreak.OnChange += (prev, next, asServer) => UpdateTrackingData();
@@ -86,6 +90,7 @@ public class EntityTracker : NetworkBehaviour
     private void UpdateTrackingData()
     {
         trackingData.isStunned = _isStunned.Value;
+        trackingData.fizzleCardCount = _fizzleCardCount.Value;
         trackingData.isInLimitBreak = _isInLimitBreak.Value;
         trackingData.comboCount = _comboCount.Value;
         trackingData.perfectionStreak = _perfectionStreak.Value;
@@ -216,16 +221,58 @@ public class EntityTracker : NetworkBehaviour
         Debug.Log($"EntityTracker: {entity.EntityName.Value} received {amount} healing. Total this fight: {trackingData.healingReceivedThisFight}");
     }
 
-    /// <summary>
-    /// Sets the stunned state
+        /// <summary>
+    /// Sets the stunned state (legacy - use SetFizzleCardCount instead)
     /// </summary>
     [Server]
     public void SetStunned(bool stunned)
     {
         if (!IsServerInitialized) return;
-        
+
         _isStunned.Value = stunned;
         Debug.Log($"EntityTracker: {entity.EntityName.Value} stun state set to {stunned}");
+    }
+    
+    /// <summary>
+    /// Sets the number of cards that will fizzle when played
+    /// </summary>
+    [Server]
+    public void SetFizzleCardCount(int fizzleCount)
+    {
+        if (!IsServerInitialized) return;
+
+        _fizzleCardCount.Value = Mathf.Max(0, fizzleCount);
+        Debug.Log($"EntityTracker: {entity.EntityName.Value} fizzle count set to {_fizzleCardCount.Value}");
+    }
+    
+    /// <summary>
+    /// Adds to the fizzle card count
+    /// </summary>
+    [Server]
+    public void AddFizzleCards(int additionalCards)
+    {
+        if (!IsServerInitialized) return;
+
+        SetFizzleCardCount(_fizzleCardCount.Value + additionalCards);
+    }
+    
+    /// <summary>
+    /// Consumes one fizzle effect when a card is played
+    /// Returns true if the card should fizzle
+    /// </summary>
+    [Server]
+    public bool ConsumeAndCheckFizzle()
+    {
+        if (!IsServerInitialized) return false;
+
+        if (_fizzleCardCount.Value > 0)
+        {
+            _fizzleCardCount.Value--;
+            Debug.Log($"EntityTracker: {entity.EntityName.Value} card fizzled! Remaining fizzle count: {_fizzleCardCount.Value}");
+            return true;
+        }
+        
+        return false;
     }
 
     /// <summary>
@@ -565,6 +612,7 @@ public class EntityTracker : NetworkBehaviour
         _zeroCostCardsThisFight.Value = 0;
         _cardsPlayedThisFight.Value = 0;
         _isStunned.Value = false;
+        _fizzleCardCount.Value = 0;
         _isInLimitBreak.Value = false;
         _strengthStacks.Value = 0;
         _currentStance.Value = (int)StanceType.None;
@@ -741,7 +789,8 @@ public class EntityTrackingData
     
     [Header("Combat State")]
     public int comboCount;
-    public bool isStunned;
+    public bool isStunned; // Legacy - kept for compatibility
+    public int fizzleCardCount; // Number of cards that will fizzle
     public bool isInLimitBreak;
     public StanceType currentStance;
     public int stanceDuration; // How many consecutive turns in current stance

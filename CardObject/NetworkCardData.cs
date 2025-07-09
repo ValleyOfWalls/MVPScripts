@@ -138,7 +138,7 @@ public struct NetworkCardEffect
     public int amount;
     public CardTargetType targetType;
     public int duration;
-    public ElementalType elementalType;
+
 
     // Conditional effects
     public ConditionalType conditionType;
@@ -165,7 +165,7 @@ public struct NetworkCardEffect
             amount = effect.amount,
             targetType = effect.targetType,
             duration = effect.duration,
-            elementalType = effect.elementalType,
+
             conditionType = effect.conditionType,
             conditionValue = effect.conditionValue,
             alternativeEffectType = effect.alternativeEffectType,
@@ -188,7 +188,7 @@ public struct NetworkCardEffect
             amount = amount,
             targetType = targetType,
             duration = duration,
-            elementalType = elementalType,
+
             conditionType = conditionType,
             conditionValue = conditionValue,
             alternativeEffectType = alternativeEffectType,

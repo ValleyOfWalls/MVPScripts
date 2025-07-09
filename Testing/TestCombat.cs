@@ -525,7 +525,7 @@ public class CardSpawnerWindow : EditorWindow
         {
             bool hasScaling = card.Effects.Any(e => e.scalingType != ScalingType.None);
             bool hasConditional = card.Effects.Any(e => e.conditionType != ConditionalType.None);
-            bool hasElemental = card.Effects.Any(e => e.elementalType != ElementalType.None);
+            bool hasElemental = false; // Elemental system removed
             
             if (hasScaling) features.Add("Scaling");
             if (hasConditional) features.Add("Conditional");

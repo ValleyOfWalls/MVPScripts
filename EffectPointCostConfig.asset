@@ -17,7 +17,7 @@ MonoBehaviour:
   drawCardPointCost: 3
   restoreEnergyPointCost: 0.15
   applyBreakPointCost: 4
-  applyWeakPointCost: 3
+  applyWeakPointCost: 4.5
   applyBurnPointCost: 0.6
   applySalvePointCost: 0.5
   raiseCriticalChancePointCost: 2.5

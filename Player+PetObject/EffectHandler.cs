@@ -217,6 +217,18 @@ public class EffectHandler : NetworkBehaviour
                 // Shield lasts until consumed or manually removed
                 duration = 999; // High duration since it's consumed by damage
                 break;
+                
+            case "Stun":
+                // Stun now sets fizzle card count instead of blocking turns
+                EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
+                if (entityTracker != null)
+                {
+                    entityTracker.AddFizzleCards(potency); // potency = number of cards to fizzle
+                    entityTracker.SetStunned(true); // Legacy flag for backwards compatibility
+                }
+                // Set duration to 1 since fizzle is handled per-card, not per-turn
+                duration = 1;
+                break;
         }
         
         // Format effect data as a string for syncing
@@ -403,8 +415,8 @@ public class EffectHandler : NetworkBehaviour
                     break;
                     
                 case "Stun":
-                    // Stun is handled by EntityTracker, but we track duration here
-                    /* Debug.Log($"EffectHandler: {entity.EntityName.Value} is stunned for {duration} more turns"); */
+                    // Stun now causes fizzle instead of preventing card play entirely
+                    /* Debug.Log($"EffectHandler: {entity.EntityName.Value} has fizzle effect for {duration} more turns"); */
                     break;
                     
                 case "LimitBreak":
@@ -494,11 +506,13 @@ public class EffectHandler : NetworkBehaviour
         switch (effectName)
         {
             case "Stun":
-                // Remove stun state from entity tracker
+                // Stun effect expiry is now handled by fizzle card count
                 EntityTracker entityTracker = entity.GetComponent<EntityTracker>();
                 if (entityTracker != null)
                 {
+                    // Legacy stun clear for backwards compatibility
                     entityTracker.SetStunned(false);
+                    // Note: Fizzle count is managed separately and counts down per card played
                 }
                 break;
                 
@@ -1003,7 +1017,7 @@ public class ZoneEffect
     public CardEffectType effectType;
     public int baseAmount;
     public int duration;
-    public ElementalType elementalType;
+
     public bool affectAllPlayers;
     public bool affectAllPets;
     public bool affectCaster;

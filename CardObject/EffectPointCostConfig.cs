@@ -51,24 +51,15 @@ public class EffectPointCostConfig : ScriptableObject
     [SerializeField, Tooltip("Point cost per shield amount")]
     public float applyShieldPointCost = 0.3f;
     
-    [SerializeField, Tooltip("Point cost for elemental status effects")]
-    public float applyElementalStatusPointCost = 3f;
-    
     [SerializeField, Tooltip("Point cost for stun effects")]
     public float applyStunPointCost = 5f;
-    
-    [SerializeField, Tooltip("Point cost for limit break effects")]
-    public float applyLimitBreakPointCost = 4.5f;
     
     [SerializeField, Tooltip("Point cost for strength effects")]
     public float applyStrengthPointCost = 2.5f;
     
     [SerializeField, Tooltip("Point cost for curse effects")]
     public float applyCursePointCost = 3.5f;
-    
-    [Header("Card Manipulation Costs")]
-    [SerializeField, Tooltip("Point cost per card discarded")]
-    public float discardRandomCardsPointCost = 2f;
+
     
     [Header("Stance Effect Costs")]
     [SerializeField, Tooltip("Point cost for stance entry effects")]
@@ -108,12 +99,12 @@ public class EffectPointCostConfig : ScriptableObject
             CardEffectType.RaiseCriticalChance => raiseCriticalChancePointCost,
             CardEffectType.ApplyThorns => effectValue * applyThornsPointCost,
             CardEffectType.ApplyShield => effectValue * applyShieldPointCost,
-            CardEffectType.ApplyElementalStatus => applyElementalStatusPointCost,
+
             CardEffectType.ApplyStun => applyStunPointCost,
-            CardEffectType.ApplyLimitBreak => applyLimitBreakPointCost,
+
             CardEffectType.ApplyStrength => applyStrengthPointCost,
             CardEffectType.ApplyCurse => applyCursePointCost,
-            CardEffectType.DiscardRandomCards => effectValue * discardRandomCardsPointCost,
+
             CardEffectType.EnterStance => enterStancePointCost,
             CardEffectType.ExitStance => exitStancePointCost,
             _ => 1f
