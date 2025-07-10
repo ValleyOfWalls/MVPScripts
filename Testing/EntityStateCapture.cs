@@ -21,7 +21,7 @@ public class EntityState
     public StanceType currentStance;
     public int comboCount;
     public bool isStunned;
-    public bool isInLimitBreak;
+    // isInLimitBreak removed - limit break system no longer exists
 
     public EntityState()
     {
@@ -29,7 +29,7 @@ public class EntityState
         currentStance = StanceType.None;
         comboCount = 0;
         isStunned = false;
-        isInLimitBreak = false;
+        // isInLimitBreak removed - limit break system no longer exists
     }
 }
 
@@ -96,7 +96,7 @@ public static class EntityStateCapture
             state.currentStance = entityTracker.CurrentStance;
             state.comboCount = entityTracker.ComboCount;
             state.isStunned = entityTracker.IsStunned;
-            state.isInLimitBreak = entityTracker.IsInLimitBreak;
+            // isInLimitBreak removed - limit break system no longer exists
         }
 
         return state;
@@ -146,7 +146,7 @@ public static class EntityStateCapture
             entityTracker.SetStance(state.currentStance);
             entityTracker.SetComboCount(state.comboCount);
             entityTracker.SetStunned(state.isStunned);
-            entityTracker.SetLimitBreak(state.isInLimitBreak);
+            // SetLimitBreak removed - limit break system no longer exists
         }
     }
 
@@ -236,7 +236,7 @@ public static class EntityStateCapture
             clonedState.currentStance = originalState.currentStance;
             clonedState.comboCount = originalState.comboCount;
             clonedState.isStunned = originalState.isStunned;
-            clonedState.isInLimitBreak = originalState.isInLimitBreak;
+            // isInLimitBreak removed - limit break system no longer exists
 
             clone[kvp.Key] = clonedState;
         }

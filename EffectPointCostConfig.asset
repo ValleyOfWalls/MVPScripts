@@ -21,7 +21,7 @@ MonoBehaviour:
   applyBurnPointCost: 0.6
   applySalvePointCost: 0.5
   raiseCriticalChancePointCost: 2.5
-  applyThornsPointCost: 0.4
+  applyThornsPointCost: 1.2
   applyShieldPointCost: 0.3
   applyElementalStatusPointCost: 3
   applyStunPointCost: 5

@@ -293,9 +293,7 @@ public class PetCombatAI : NetworkBehaviour
                     case CardEffectType.ApplyCurse:
                         hasDebuff = true;
                         break;
-                    case CardEffectType.DrawCard:
-                        hasDrawCard = true;
-                        break;
+                    // DrawCard effect removed
                 }
             }
         }

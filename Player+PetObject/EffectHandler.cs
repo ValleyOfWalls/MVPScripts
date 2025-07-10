@@ -517,12 +517,7 @@ public class EffectHandler : NetworkBehaviour
                 break;
                 
             case "LimitBreak":
-                // Remove limit break state
-                EntityTracker limitBreakTracker = entity.GetComponent<EntityTracker>();
-                if (limitBreakTracker != null)
-                {
-                    limitBreakTracker.SetLimitBreak(false);
-                }
+                // Limit break system removed
                 break;
         }
     }

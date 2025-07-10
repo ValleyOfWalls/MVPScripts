@@ -594,13 +594,7 @@ public class CardEffectResolver : NetworkBehaviour
                     ProcessHealEffect(sourceEntity, targetEntity, amount);
                     break;
                     
-                case CardEffectType.DrawCard:
-                    ProcessDrawCardEffect(targetEntity, amount);
-                    break;
-                    
-                case CardEffectType.RestoreEnergy:
-                    ProcessRestoreEnergyEffect(targetEntity, amount);
-                    break;
+                
                     
                 case CardEffectType.ApplyBreak:
                     ProcessStatusEffect(sourceEntity, targetEntity, "Break", amount, duration);
@@ -716,31 +710,7 @@ public class CardEffectResolver : NetworkBehaviour
         }
     }
     
-    private void ProcessDrawCardEffect(NetworkEntity targetEntity, int amount)
-    {
-        HandManager handManager = GetHandManagerForEntity(targetEntity);
-        if (handManager != null)
-        {
-            for (int i = 0; i < amount; i++)
-            {
-                handManager.DrawOneCard(); // Use DrawOneCard for multiple single draws
-            }
-        }
-    }
-    
-    private void ProcessRestoreEnergyEffect(NetworkEntity targetEntity, int amount)
-    {
-        // Always use EnergyHandler for consistent server-authoritative energy management
-        EnergyHandler energyHandler = targetEntity.GetComponent<EnergyHandler>();
-        if (energyHandler != null)
-        {
-            energyHandler.AddEnergy(amount, null);
-        }
-        else
-        {
-            Debug.LogError($"CardEffectResolver: Target entity {targetEntity.EntityName.Value} has no EnergyHandler! Energy effects require EnergyHandler component.");
-        }
-    }
+
     
     private void ProcessStatusEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, string effectName, int potency, int duration)
     {

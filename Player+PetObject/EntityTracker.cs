@@ -19,15 +19,14 @@ public class EntityTracker : NetworkBehaviour
     // Network synchronized data
     private readonly SyncVar<bool> _isStunned = new SyncVar<bool>(); // Legacy - kept for backwards compatibility
     private readonly SyncVar<int> _fizzleCardCount = new SyncVar<int>(); // Number of cards that will fizzle
-    private readonly SyncVar<bool> _isInLimitBreak = new SyncVar<bool>();
+
     private readonly SyncVar<int> _comboCount = new SyncVar<int>();
     private readonly SyncVar<int> _perfectionStreak = new SyncVar<int>();
     private readonly SyncVar<int> _strengthStacks = new SyncVar<int>();
     private readonly SyncVar<int> _currentStance = new SyncVar<int>(); // StanceType as int
     private readonly SyncVar<int> _stanceDuration = new SyncVar<int>(); // How many turns in current stance
 
-    // Persistent fight effects
-    private readonly SyncList<string> _persistentEffects = new SyncList<string>();
+
 
     // Turn tracking
     private readonly SyncVar<int> _zeroCostCardsThisTurn = new SyncVar<int>();
@@ -49,7 +48,7 @@ public class EntityTracker : NetworkBehaviour
     public bool IsStunned => _isStunned.Value; // Legacy - for backwards compatibility
     public int FizzleCardCount => _fizzleCardCount.Value; // Number of cards that will fizzle
     public bool HasFizzleEffect => _fizzleCardCount.Value > 0; // Convenience property
-    public bool IsInLimitBreak => _isInLimitBreak.Value;
+
     public int ComboCount => _comboCount.Value;
     public int PerfectionStreak => _perfectionStreak.Value;
     public int StrengthStacks => _strengthStacks.Value;
@@ -65,7 +64,7 @@ public class EntityTracker : NetworkBehaviour
         // Subscribe to sync var changes for debug display
         _isStunned.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _fizzleCardCount.OnChange += (prev, next, asServer) => UpdateTrackingData();
-        _isInLimitBreak.OnChange += (prev, next, asServer) => UpdateTrackingData();
+
         _comboCount.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _perfectionStreak.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _strengthStacks.OnChange += (prev, next, asServer) =>
@@ -91,7 +90,7 @@ public class EntityTracker : NetworkBehaviour
     {
         trackingData.isStunned = _isStunned.Value;
         trackingData.fizzleCardCount = _fizzleCardCount.Value;
-        trackingData.isInLimitBreak = _isInLimitBreak.Value;
+
         trackingData.comboCount = _comboCount.Value;
         trackingData.perfectionStreak = _perfectionStreak.Value;
         trackingData.strengthStacks = _strengthStacks.Value;
@@ -275,24 +274,7 @@ public class EntityTracker : NetworkBehaviour
         return false;
     }
 
-    /// <summary>
-    /// Sets the limit break state
-    /// </summary>
-    [Server]
-    public void SetLimitBreak(bool limitBreak)
-    {
-        if (!IsServerInitialized) return;
-        
-        _isInLimitBreak.Value = limitBreak;
-        
-        // Limit break also counts as a stance
-        if (limitBreak)
-        {
-            SetStance(StanceType.LimitBreak);
-        }
-        
-        Debug.Log($"EntityTracker: {entity.EntityName.Value} limit break state set to {limitBreak}");
-    }
+
 
     /// <summary>
     /// Sets the combo count directly (for testing purposes)
@@ -349,14 +331,7 @@ public class EntityTracker : NetworkBehaviour
             case StanceType.Defensive:
                 // +defense, -damage would be handled by EffectHandler
                 break;
-            case StanceType.LimitBreak:
-                _isInLimitBreak.Value = true;
-                break;
             case StanceType.None:
-                if (oldStance == StanceType.LimitBreak)
-                {
-                    _isInLimitBreak.Value = false;
-                }
                 break;
         }
     }
@@ -385,29 +360,7 @@ public class EntityTracker : NetworkBehaviour
         Debug.Log($"EntityTracker: {entity.EntityName.Value} lost {amount} strength. Total: {_strengthStacks.Value}");
     }
 
-    /// <summary>
-    /// Adds a persistent fight effect
-    /// </summary>
-    [Server]
-    public void AddPersistentEffect(string effectData)
-    {
-        if (!IsServerInitialized) return;
-        
-        _persistentEffects.Add(effectData);
-        Debug.Log($"EntityTracker: Added persistent effect to {entity.EntityName.Value}: {effectData}");
-    }
 
-    /// <summary>
-    /// Removes a persistent fight effect
-    /// </summary>
-    [Server]
-    public void RemovePersistentEffect(string effectData)
-    {
-        if (!IsServerInitialized) return;
-        
-        _persistentEffects.Remove(effectData);
-        Debug.Log($"EntityTracker: Removed persistent effect from {entity.EntityName.Value}: {effectData}");
-    }
 
     /// <summary>
     /// Processes turn start effects
@@ -443,8 +396,7 @@ public class EntityTracker : NetworkBehaviour
             effectHandler.ProcessStartOfTurnEffects();
         }
 
-        // Process persistent effects
-        ProcessPersistentEffects();
+
 
         // Process stance turn-start effects
         ProcessStanceTurnEffects(true);
@@ -501,19 +453,7 @@ public class EntityTracker : NetworkBehaviour
         /* Debug.Log($"EntityTracker: Turn end for {entity.EntityName.Value}"); */
     }
 
-    /// <summary>
-    /// Processes persistent fight effects
-    /// </summary>
-    private void ProcessPersistentEffects()
-    {
-        // This would process each persistent effect based on its trigger interval
-        // For now, placeholder for the system
-        foreach (string effectData in _persistentEffects)
-        {
-            // Parse and process persistent effect
-            Debug.Log($"EntityTracker: Processing persistent effect: {effectData}");
-        }
-    }
+
 
     /// <summary>
     /// Processes stance-based turn effects
@@ -613,13 +553,12 @@ public class EntityTracker : NetworkBehaviour
         _cardsPlayedThisFight.Value = 0;
         _isStunned.Value = false;
         _fizzleCardCount.Value = 0;
-        _isInLimitBreak.Value = false;
+
         _strengthStacks.Value = 0;
         _currentStance.Value = (int)StanceType.None;
         _stanceDuration.Value = 0;
         
-        // Clear persistent effects
-        _persistentEffects.Clear();
+
         
         // Reset turn data
         ResetTurnData();
@@ -735,28 +674,7 @@ public class EntityTracker : NetworkBehaviour
         Debug.Log($"EntityTracker: Fight ended with victory={victory}, {participatingEntities.Count} participating entities");
     }
     
-    /// <summary>
-    /// Gets all entities for zone effects
-    /// </summary>
-    public static List<NetworkEntity> GetAllEntitiesForZoneEffect(bool includeAllPlayers, bool includeAllPets)
-    {
-        List<NetworkEntity> entities = new List<NetworkEntity>();
-        NetworkEntity[] allEntities = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None);
 
-        foreach (NetworkEntity entity in allEntities)
-        {
-            if (includeAllPlayers && entity.EntityType == EntityType.Player)
-            {
-                entities.Add(entity);
-            }
-            else if (includeAllPets && entity.EntityType == EntityType.Pet)
-            {
-                entities.Add(entity);
-            }
-        }
-
-        return entities;
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -791,7 +709,7 @@ public class EntityTrackingData
     public int comboCount;
     public bool isStunned; // Legacy - kept for compatibility
     public int fizzleCardCount; // Number of cards that will fizzle
-    public bool isInLimitBreak;
+
     public StanceType currentStance;
     public int stanceDuration; // How many consecutive turns in current stance
     

@@ -16,6 +16,8 @@ This document provides a comprehensive overview of all card effects supported by
 - **Scaling**: ✅ Supported
 - **Notes**: Primary healing mechanic
 
+
+
 ## Defensive Status Effects
 
 ### **Apply Shield**
@@ -27,12 +29,12 @@ This document provides a comprehensive overview of all card effects supported by
 - **Notes**: Removed at start of entity's turn if not consumed
 
 ### **Apply Thorns**
-- **Description**: Reflects damage back to attackers
-- **Duration**: 1 turn (until start of next turn)
+- **Description**: Reflects damage back to attackers, then clears
+- **Duration**: Until triggered by taking damage
 - **Targeting**: Self or allies
 - **Scaling**: ✅ Supported
 - **Behavior**: Stacks with existing Thorns effects
-- **Notes**: Reflects full thorns amount regardless of damage taken
+- **Notes**: Reflects full thorns amount when damage is taken, then thorns are completely consumed/cleared
 
 ## Positive Status Effects
 
@@ -104,10 +106,12 @@ This document provides a comprehensive overview of all card effects supported by
 ### **Enter Stance**
 - **Description**: Changes entity to specified stance
 - **Available Stances**: 
-  - Warrior (defensive)
-  - Mystic (magical)
-  - Assassin (offensive)
-  - Focused (concentration)
+  - Aggressive (bonus damage, reduced defense)
+  - Defensive (bonus defense, reduced damage)
+  - Focused (energy and draw bonuses)
+  - Berserker (high damage and speed, health cost)
+  - Guardian (shield and thorns bonuses)
+  - Mystic (enhanced magical effects)
 - **Targeting**: Self primarily
 - **Scaling**: ❌ Not supported (binary state)
 - **Notes**: Stance changes are tracked in EntityTracker
@@ -116,7 +120,8 @@ This document provides a comprehensive overview of all card effects supported by
 - **Description**: Returns entity to neutral stance
 - **Targeting**: Self
 - **Scaling**: ❌ Not supported
-- **Notes**: Can't exit stance multiple times
+- **Integration**: Can be triggered automatically by conditional effects
+- **Notes**: Now only used via shouldExitStance flag on conditional effects
 
 ## Advanced Mechanics
 
@@ -153,14 +158,42 @@ Many effects support scaling based on:
 - **Burn + Salve**: Damage and healing can coexist
 - **Weak + Break**: Damage reduction and amplification stack
 
+## Advanced Mechanics
+
+### **Perfection Streak**
+- **Description**: Tracks consecutive turns without taking damage
+- **Usage**: Used as conditional trigger (IfPerfectionStreak)
+- **Duration**: Resets when any damage is taken
+- **Tracking**: Each turn survived without damage adds +1 to streak
+- **Notes**: Different from Perfect Turns - only requires avoiding damage
+
+### **Perfect Turns**
+- **Description**: Special turns where entity uses ALL energy AND takes no damage
+- **Tracking**: Separate from perfection streak
+- **Conditions**: Must spend all available energy in turn AND take 0 damage
+- **Usage**: Used in upgrade conditions (PerfectTurnPlayed, TotalPerfectTurns)
+- **Notes**: Much rarer than perfection streak due to dual requirements
+
+### **Combo System**
+- **Description**: Sequential card play mechanic that builds combo count
+- **Usage**: Some cards require combo count to play (finishers)
+- **Reset**: Combo resets when cards are played out of sequence
+- **Conditions**: Can be used as conditional trigger (IfComboCount)
+- **Upgrade Conditions**: ComboCountReached, PlayedWithCombo, PlayedAsFinisher
+- **Notes**: Essential for "finishing move" mechanics
+
+
+
 ## Removed Effects
 
 The following effects have been removed from the system:
-- ~~**Draw Cards**~~ - No longer fits game flow
+- ~~**Draw Cards**~~ - Card manipulation removed
 - ~~**Restore Energy**~~ - Energy restoration removed
+- ~~**Persistent Effects**~~ - Complex persistence removed
+- ~~**Zone Effects**~~ - Multi-target effects removed
+- ~~**Limit Break Stance**~~ - Limit break system removed
 - ~~**Discard Random Cards**~~ - Card manipulation removed
 - ~~**Apply Elemental Status**~~ - Elemental system removed
-- ~~**Apply Limit Break**~~ - Removed for simplification
 
 ## Technical Notes
 

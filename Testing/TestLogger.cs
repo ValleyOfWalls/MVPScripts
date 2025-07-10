@@ -73,11 +73,7 @@ public static class TestLogger
             changes.Add($"Stunned: {before.isStunned} → {after.isStunned}");
         }
         
-        // Check limit break changes
-        if (before.isInLimitBreak != after.isInLimitBreak)
-        {
-            changes.Add($"LimitBreak: {before.isInLimitBreak} → {after.isInLimitBreak}");
-        }
+        // Limit break system removed - no longer tracking changes
         
         // Check effect changes
         var beforeEffects = before.activeEffects.Select(e => $"{e.effectName}({e.potency})").OrderBy(x => x).ToList();

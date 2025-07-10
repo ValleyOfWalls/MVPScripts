@@ -37,8 +37,6 @@ public enum CardEffectType
     // ═══ CORE EFFECTS ═══
     Damage,
     Heal,
-    DrawCard,
-    RestoreEnergy,
     
     // ═══ STATUS EFFECTS ═══
     ApplyBreak,
@@ -89,8 +87,7 @@ public enum StanceType
     Focused,        // +energy, +draw
     Berserker,      // +damage, +speed, -health
     Guardian,       // +shield, +thorns
-    Mystic,         // +elemental effects
-    LimitBreak      // Enhanced abilities (existing)
+    Mystic          // +elemental effects
 }
 
 /// <summary>

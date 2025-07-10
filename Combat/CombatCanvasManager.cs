@@ -360,17 +360,17 @@ public class CombatCanvasManager : NetworkBehaviour
             generateTestCardsButton.onClick.RemoveAllListeners();
             #if UNITY_EDITOR
             generateTestCardsButton.onClick.AddListener(() => {
-                // Use reflection to get the TestCardGenerator type since it's in Editor assembly
-                var testCardGeneratorType = System.Type.GetType("TestCardGenerator");
-                if (testCardGeneratorType != null)
+                // Use reflection to get the CardEffectGenerationValidator type since it's in Editor assembly
+                var validatorType = System.Type.GetType("CardEffectGenerationValidator");
+                if (validatorType != null)
                 {
-                    var window = UnityEditor.EditorWindow.GetWindow(testCardGeneratorType, false, "Test Card Generator");
+                    var window = UnityEditor.EditorWindow.GetWindow(validatorType, false, "Card Effect Validator");
                     window.Show();
-                    Debug.Log("Opening Test Card Generator window...");
+                    Debug.Log("Opening Card Effect Validator window...");
                 }
                 else
                 {
-                    Debug.LogError("TestCardGenerator class not found. Make sure it's in the Editor folder.");
+                    Debug.LogError("CardEffectGenerationValidator class not found. Make sure it's in the Editor folder.");
                 }
             });
             #else
@@ -391,17 +391,17 @@ public class CombatCanvasManager : NetworkBehaviour
             generateTestDecksButton.onClick.RemoveAllListeners();
             #if UNITY_EDITOR
             generateTestDecksButton.onClick.AddListener(() => {
-                // Use reflection to get the TestDeckGenerator type since it's in Editor assembly
-                var testDeckGeneratorType = System.Type.GetType("TestDeckGenerator");
-                if (testDeckGeneratorType != null)
+                // Use reflection to get the DescriptionReviewGenerator type since it's in Editor assembly
+                var descriptionReviewType = System.Type.GetType("DescriptionReviewGenerator");
+                if (descriptionReviewType != null)
                 {
-                    var window = UnityEditor.EditorWindow.GetWindow(testDeckGeneratorType, false, "Test Deck Generator");
+                    var window = UnityEditor.EditorWindow.GetWindow(descriptionReviewType, false, "Description Review Generator");
                     window.Show();
-                    Debug.Log("Opening Test Deck Generator window...");
+                    Debug.Log("Opening Description Review Generator window...");
                 }
                 else
                 {
-                    Debug.LogError("TestDeckGenerator class not found. Make sure it's in the Editor folder.");
+                    Debug.LogError("DescriptionReviewGenerator class not found. Make sure it's in the Editor folder.");
                 }
             });
             #else

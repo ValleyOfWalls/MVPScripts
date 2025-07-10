@@ -165,11 +165,7 @@ public class CombatTestManager : NetworkBehaviour
                 }
                 
                 // Also clear other combat states that might interfere
-                if (entityTracker.IsInLimitBreak)
-                {
-                    entityTracker.SetLimitBreak(false);
-                    TestLogger.LogEvent($"Cleared limit break state from {entity.EntityName.Value}");
-                }
+                // Limit break system removed - no longer available
                 
                 // Reset stance to None
                 if (entityTracker.CurrentStance != StanceType.None)
@@ -1160,11 +1156,7 @@ public class CombatTestManager : NetworkBehaviour
                     TestLogger.LogEvent($"Cleared stun state from {caster.EntityName.Value}");
                 }
                 
-                if (entityTracker.IsInLimitBreak)
-                {
-                    entityTracker.SetLimitBreak(false);
-                    TestLogger.LogEvent($"Cleared limit break state from {caster.EntityName.Value}");
-                }
+                // Limit break system removed - no longer available
             }
             
             // Wait a moment for the effect clearing to process
@@ -1523,15 +1515,7 @@ public class CombatTestManager : NetworkBehaviour
                     }
                     return healingOccurred;
                     
-                case CardEffectType.RestoreEnergy:
-                    bool energyRestored = targetAfter.currentEnergy > targetBefore.currentEnergy;
-                    TestLogger.LogEvent($"Energy restore validation: expected energy gain, actual change={targetAfter.currentEnergy - targetBefore.currentEnergy}, valid={energyRestored}");
-                    return energyRestored;
-                    
-                case CardEffectType.DrawCard:
-                    // Would need to check hand size, but that's more complex
-                    TestLogger.LogEvent($"Draw card validation: assuming valid (hand size checking not implemented)");
-                    return true;
+
                     
                 default:
                     // For status effects, check if any effects were added

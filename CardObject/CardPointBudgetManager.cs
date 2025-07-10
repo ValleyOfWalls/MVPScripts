@@ -171,7 +171,7 @@ public class CardPointBudgetManager
             if ( 
                 effectType == CardEffectType.ApplyStun)
             {
-                duration = UnityEngine.Random.Range(1, 4); // 1-3 turns
+                duration = UnityEngine.Random.Range(1, 3); // 1-2 cards max (fizzle is very strong)
             }
             // Stance effects don't use duration - they're state-based
 
@@ -238,7 +238,7 @@ public class CardPointBudgetManager
             
             // Stance effects
             CardEffectType.EnterStance
-            // ExitStance removed per requirements - replaced with conditional stance exit mechanics
+            // ExitStance removed - should only be used via shouldExitStance flag on conditional effects
             
     
         };
@@ -307,10 +307,6 @@ public class CardPointBudgetManager
             
             // Healing effects - balanced between self and ally pet
             CardEffectType.Heal => UnityEngine.Random.value < 0.5f ? CardTargetType.Self : CardTargetType.Ally,
-            
-            // Utility effects removed per requirements
-            // DrawCard removed per requirements (no longer fits game flow)
-    
             
             // Energy effects - REMOVED per requirements (energy restoration no longer fits game flow)
             

@@ -151,17 +151,7 @@ public class CardData : ScriptableObject
         // Check for restricted effect types
         foreach (var effect in _effects)
         {
-            // RestoreEnergy is no longer supported
-            if (effect.effectType == CardEffectType.RestoreEnergy)
-            {
-                errors.Add("RestoreEnergy effects are no longer supported. Use other utility effects instead.");
-            }
-            
-            // DrawCard is no longer supported
-            if (effect.effectType == CardEffectType.DrawCard)
-            {
-                errors.Add("DrawCard effects are no longer supported. The game flow no longer accommodates card drawing.");
-            }
+            // Removed effects are no longer supported - validation removed since enums no longer exist
             
             // Verify that status effects have valid names
             if (IsStatusEffect(effect.effectType) && effect.amount <= 0)
@@ -218,7 +208,6 @@ public class CardData : ScriptableObject
             // Effects that make sense to scale
             CardEffectType.Damage => true,
             CardEffectType.Heal => true,
-            // DrawCard removed per requirements
             CardEffectType.ApplyShield => true,
             CardEffectType.ApplyThorns => true,
             CardEffectType.ApplyStrength => true,
@@ -232,10 +221,7 @@ public class CardData : ScriptableObject
             CardEffectType.ExitStance => false,          // Can't exit stance multiple times
             CardEffectType.EnterStance => false,         // Entering stance is binary
             CardEffectType.ApplyStun => false,           // Stun duration doesn't scale well
-
             CardEffectType.RaiseCriticalChance => false, // Percentage scaling would be weird
-
-            CardEffectType.RestoreEnergy => false,       // Removed from game
 
             
             _ => false // Default to no scaling for unknown effects
@@ -676,8 +662,6 @@ public class CardEffect
     [ShowIfAny("effectType", 
         (int)CardEffectType.Damage, 
         (int)CardEffectType.Heal, 
-        (int)CardEffectType.DrawCard, 
-        (int)CardEffectType.RestoreEnergy,
         (int)CardEffectType.ApplyBurn, 
         (int)CardEffectType.ApplySalve, 
         (int)CardEffectType.ApplyShield,

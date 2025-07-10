@@ -119,8 +119,7 @@ public class ProceduralCardGenerator
         
         Debug.Log("[CONFIG] ✅ EffectPointCostConfig loaded successfully");
         Debug.Log($"[CONFIG] Key Effect Costs - Damage: {config.effectCostConfig.damagePointCost:F1}, " +
-                  $"Heal: {config.effectCostConfig.healPointCost:F1}, " +
-                  $"Energy Restore: {config.effectCostConfig.restoreEnergyPointCost:F1}");
+                  $"Heal: {config.effectCostConfig.healPointCost:F1}");
         
         return true;
     }
@@ -389,10 +388,17 @@ public class ProceduralCardGenerator
                 effect.effectType = CardEffectType.ApplyShield;
                 effect.targetType = CardTargetType.Self;
             }
+            
+            // Add stance-based conditionals for warrior effects
+            if (effect.conditionType == ConditionalType.None && UnityEngine.Random.value < 0.3f)
+            {
+                effect.conditionType = ConditionalType.IfInStance;
+                effect.conditionValue = (int)StanceType.Defensive; // Warriors benefit from defensive stance
+            }
         }
         
         // Increase chance of stance effects for warriors
-        if (UnityEngine.Random.value < 0.3f)
+        if (UnityEngine.Random.value < 0.4f)
         {
             // Add stance effects with warrior bias
             if (!card.ChangesStance && effects.Count < 3)
@@ -414,16 +420,36 @@ public class ProceduralCardGenerator
         {
             var effect = effects[i];
             
-            // Add elemental typing to damage effects
-            // Elemental system removed - no elemental typing for damage
+            // Mystics favor conditional effects based on health and resources
+            if (effect.conditionType == ConditionalType.None && UnityEngine.Random.value < 0.4f)
+            {
+                var mysticConditions = new[] 
+                { 
+                    ConditionalType.IfSourceHealthAbove,
+                    ConditionalType.IfCardsInHand,
+                    ConditionalType.IfInStance
+                };
+                effect.conditionType = mysticConditions[UnityEngine.Random.Range(0, mysticConditions.Length)];
+                
+                if (effect.conditionType == ConditionalType.IfInStance)
+                {
+                    effect.conditionValue = (int)StanceType.Mystic; // Mystics benefit from mystic stance
+                }
+                else if (effect.conditionType == ConditionalType.IfSourceHealthAbove)
+                {
+                    effect.conditionValue = UnityEngine.Random.Range(60, 80); // High health requirement
+                }
+                else if (effect.conditionType == ConditionalType.IfCardsInHand)
+                {
+                    effect.conditionValue = UnityEngine.Random.Range(3, 6); // Requires multiple cards
+                }
+            }
         }
         
-        // Mystics favor mystical effects (elemental system removed)
-        
         // Mystics can enter mystical stances
-        if (UnityEngine.Random.value < 0.25f && !card.ChangesStance)
+        if (UnityEngine.Random.value < 0.35f && !card.ChangesStance)
         {
-            var mysticStances = new[] { StanceType.Mystic, StanceType.Focused, StanceType.LimitBreak };
+            var mysticStances = new[] { StanceType.Mystic, StanceType.Focused };
             StanceType stanceToEnter = mysticStances[UnityEngine.Random.Range(0, mysticStances.Length)];
             card.ChangeStance(stanceToEnter);
         }
@@ -440,22 +466,40 @@ public class ProceduralCardGenerator
         for (int i = 0; i < effects.Count; i++)
         {
             var effect = effects[i];
-            if (effect.conditionType == ConditionalType.None && UnityEngine.Random.value < 0.4f)
+            if (effect.conditionType == ConditionalType.None && UnityEngine.Random.value < 0.5f)
             {
                 // Add conditions to effects
-                var conditions = new[] 
+                var assassinConditions = new[] 
                 { 
                     ConditionalType.IfTargetHealthBelow, 
                     ConditionalType.IfComboCount,
-                    ConditionalType.IfSourceHealthBelow 
+                    ConditionalType.IfSourceHealthBelow,
+                    ConditionalType.IfInStance
                 };
-                effect.conditionType = conditions[UnityEngine.Random.Range(0, conditions.Length)];
-                effect.conditionValue = UnityEngine.Random.Range(2, 6);
+                effect.conditionType = assassinConditions[UnityEngine.Random.Range(0, assassinConditions.Length)];
+                
+                if (effect.conditionType == ConditionalType.IfTargetHealthBelow)
+                {
+                    effect.conditionValue = UnityEngine.Random.Range(30, 50); // Execution threshold
+                }
+                else if (effect.conditionType == ConditionalType.IfComboCount)
+                {
+                    effect.conditionValue = UnityEngine.Random.Range(2, 4); // Low combo requirement
+                }
+                else if (effect.conditionType == ConditionalType.IfSourceHealthBelow)
+                {
+                    effect.conditionValue = UnityEngine.Random.Range(40, 60); // Risk/reward
+                }
+                else if (effect.conditionType == ConditionalType.IfInStance)
+                {
+                    var assassinStanceTypes = new[] { StanceType.Aggressive, StanceType.Berserker };
+                    effect.conditionValue = (int)assassinStanceTypes[UnityEngine.Random.Range(0, assassinStanceTypes.Length)];
+                }
             }
         }
         
         // Assassins can enter aggressive or focused stances
-        if (UnityEngine.Random.value < 0.2f && !card.ChangesStance)
+        if (UnityEngine.Random.value < 0.3f && !card.ChangesStance)
         {
             var assassinStances = new[] { StanceType.Aggressive, StanceType.Berserker, StanceType.Focused };
             StanceType stanceToEnter = assassinStances[UnityEngine.Random.Range(0, assassinStances.Length)];
@@ -556,6 +600,12 @@ public class ProceduralCardGenerator
             UpgradeConditionType.ComboCountReached => UnityEngine.Random.Range(3, 6),
             UpgradeConditionType.CopiesInDeck => UnityEngine.Random.Range(2, 4),
             UpgradeConditionType.HealingGivenThisFight => UnityEngine.Random.Range(8, 20),
+            
+            // Health-based conditions - minimum 10% health to avoid "always true" conditions
+            UpgradeConditionType.PlayedAtLowHealth => 1, // Boolean condition - just needs to be triggered once
+            UpgradeConditionType.PlayedAtHighHealth => 1, // Boolean condition - just needs to be triggered once  
+            UpgradeConditionType.PlayedAtHalfHealth => 1, // Boolean condition - just needs to be triggered once
+            
             _ => UnityEngine.Random.Range(1, 4)
         };
     }
@@ -676,14 +726,17 @@ public class ProceduralCardGenerator
     /// </summary>
     private int GenerateInitiative(CardRarity rarity)
     {
+        // Generate initiative in multiples of 5 to match actual game values
         return rarity switch
         {
-            CardRarity.Common => UnityEngine.Random.Range(0, 3),
-            CardRarity.Uncommon => UnityEngine.Random.Range(1, 5),
-            CardRarity.Rare => UnityEngine.Random.Range(2, 7),
+            CardRarity.Common => GetRandomMultipleOf5(0, 15),      // 0, 5, 10, 15
+            CardRarity.Uncommon => GetRandomMultipleOf5(10, 25),   // 10, 15, 20, 25
+            CardRarity.Rare => GetRandomMultipleOf5(20, 35),       // 20, 25, 30, 35
             _ => 0
         };
     }
+    
+
     
     /// <summary>
     /// Determine card type based on the effects it has
@@ -695,9 +748,6 @@ public class ProceduralCardGenerator
         
         if (effects.Any(e => e.effectType == CardEffectType.Heal || e.effectType == CardEffectType.ApplyShield))
             return CardType.Skill;
-        
-        if (effects.Any(e => e.effectType == CardEffectType.DrawCard))
-            return CardType.Spell;
         
         if (effects.Any(e => e.effectType == CardEffectType.EnterStance || e.effectType == CardEffectType.ExitStance))
             return CardType.Stance;
@@ -771,9 +821,9 @@ public class ProceduralCardGenerator
         // Generate a reasonable alternative effect
         var alternativeEffects = new[]
         {
-            CardEffectType.DrawCard,
             CardEffectType.ApplyShield,
-            CardEffectType.Heal
+            CardEffectType.Heal,
+            CardEffectType.ApplyStrength
         };
         
         effect.alternativeEffectType = alternativeEffects[UnityEngine.Random.Range(0, alternativeEffects.Length)];
@@ -790,7 +840,6 @@ public class ProceduralCardGenerator
             // Effects that make sense to scale
             CardEffectType.Damage => true,
             CardEffectType.Heal => true,
-            // DrawCard removed per requirements
             CardEffectType.ApplyShield => true,
             CardEffectType.ApplyThorns => true,
             CardEffectType.ApplyStrength => true,
@@ -832,8 +881,6 @@ public class ProceduralCardGenerator
                 ScalingType.HandSize, 
                 ScalingType.CardsPlayedThisTurn
             },
-            // DrawCard removed per requirements
-
             _ => new[] { ScalingType.ComboCount, ScalingType.CardsPlayedThisTurn }
         };
         
@@ -852,10 +899,6 @@ public class ProceduralCardGenerator
             CardEffectType.Damage => UnityEngine.Random.value < 0.7f ? 
                 EffectAnimationBehavior.ProjectileFromSource : EffectAnimationBehavior.InstantOnTarget,
             CardEffectType.Heal => EffectAnimationBehavior.OnSourceOnly,
-
-            
-            // DrawCard removed per requirements
-
             CardEffectType.EnterStance => EffectAnimationBehavior.OnSourceOnly,
             CardEffectType.ExitStance => EffectAnimationBehavior.OnSourceOnly,
             CardEffectType.ApplyStun => EffectAnimationBehavior.InstantOnTarget,
@@ -895,8 +938,8 @@ public class ProceduralCardGenerator
             ConditionalType.IfZeroCostCardsThisFight => UnityEngine.Random.Range(3, 6),
             // IfEnergyRemaining removed per requirements
             
-            // Special conditions (stance and card type will need special handling)
-            ConditionalType.IfInStance => 1, // Binary condition
+            // Stance conditions - use specific stance types
+            ConditionalType.IfInStance => GenerateStanceValue(),
             ConditionalType.IfLastCardType => 1, // Binary condition
             
             _ => UnityEngine.Random.Range(1, 5)
@@ -953,7 +996,7 @@ public class ProceduralCardGenerator
                     profile.healingEffects.Add(effect);
                     profile.totalHealing += effect.amount;
                     break;
-                case CardEffectType.DrawCard:
+                // DrawCard effect removed
 
                 case CardEffectType.ApplyShield:
                 case CardEffectType.ApplyThorns:
@@ -1281,8 +1324,6 @@ public class ProceduralCardGenerator
                 // Core effects
                 CardEffectType.Damage => GenerateDamageDescription(effect),
                 CardEffectType.Heal => GenerateHealDescription(effect),
-                // DrawCard removed per requirements
-                // Note: RestoreEnergy removed from generation per requirements
                 
                 // Defensive buffs
                 CardEffectType.ApplyShield => GenerateStatusDescription(effect, "Shield"),
@@ -1300,9 +1341,6 @@ public class ProceduralCardGenerator
                 CardEffectType.ApplyBurn => GenerateStatusDescription(effect, "Burn", isNegative: true),
                 CardEffectType.ApplyStun => GenerateStunDescription(effect),
                 CardEffectType.ApplyCurse => GenerateStatusDescription(effect, "Curse", isNegative: true),
-                
-                // Card manipulation
-
                 
                 // Elemental effects
 
@@ -1407,8 +1445,6 @@ public class ProceduralCardGenerator
         
         return base_desc;
     }
-    
-    // DrawCard effects removed per requirements
     
     /// <summary>
     /// Generate description for status effects with proper targeting and wording
@@ -1553,8 +1589,8 @@ public class ProceduralCardGenerator
             ConditionalType.IfZeroCostCardsThisFight => $"If played {conditionValue}+ zero-cost cards this fight",
             // IfEnergyRemaining removed per requirements
             
-            // Special conditions
-            ConditionalType.IfInStance => "If in combat stance",
+            // Stance conditions
+            ConditionalType.IfInStance => $"If in {GetStanceName(actualEffect.conditionValue)} stance",
             ConditionalType.IfLastCardType => "If last card was same type",
             
             _ => "If condition met"
@@ -1588,6 +1624,46 @@ public class ProceduralCardGenerator
         int numSteps = (maxMultiple - minMultiple) / 5 + 1;
         int randomStep = UnityEngine.Random.Range(0, numSteps);
         return minMultiple + (randomStep * 5);
+    }
+    
+    /// <summary>
+    /// Generate a random stance type value for conditional effects
+    /// </summary>
+    private int GenerateStanceValue()
+    {
+        // Get all available stance types except None
+        var availableStances = new[]
+        {
+            StanceType.Aggressive,
+            StanceType.Defensive, 
+            StanceType.Focused,
+            StanceType.Berserker,
+            StanceType.Guardian,
+            StanceType.Mystic
+        };
+        
+        // Return a random stance type as an integer
+        var randomStance = availableStances[UnityEngine.Random.Range(0, availableStances.Length)];
+        return (int)randomStance;
+    }
+    
+    /// <summary>
+    /// Get a readable stance name from an integer value
+    /// </summary>
+    private string GetStanceName(int stanceValue)
+    {
+        StanceType stance = (StanceType)stanceValue;
+        return stance switch
+        {
+            StanceType.Aggressive => "Aggressive",
+            StanceType.Defensive => "Defensive",
+            StanceType.Focused => "Focused",
+            StanceType.Berserker => "Berserker",
+            StanceType.Guardian => "Guardian",
+            StanceType.Mystic => "Mystic",
+
+            _ => "Combat"
+        };
     }
     
     /// <summary>
@@ -1650,9 +1726,8 @@ public class ProceduralCardGenerator
         {
             CardEffectType.Damage => $"deal {effect.alternativeEffectAmount} damage",
             CardEffectType.Heal => $"heal {effect.alternativeEffectAmount} health",
-            CardEffectType.DrawCard => $"draw {effect.alternativeEffectAmount} card(s)",
-
             CardEffectType.ApplyShield => $"gain {effect.alternativeEffectAmount} shield",
+            CardEffectType.ApplyStrength => $"gain {effect.alternativeEffectAmount} strength",
             _ => effect.alternativeEffectType.ToString().ToLower()
         };
         

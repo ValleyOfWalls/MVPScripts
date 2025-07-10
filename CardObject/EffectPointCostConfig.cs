@@ -23,11 +23,7 @@ public class EffectPointCostConfig : ScriptableObject
     [SerializeField, Tooltip("Point cost per healing done")]
     public float healPointCost = 0.35f;
     
-    [SerializeField, Tooltip("Point cost per card drawn")]
-    public float drawCardPointCost = 3f;
-    
-    [SerializeField, Tooltip("Point cost per energy restored")]
-    public float restoreEnergyPointCost = 0.15f;
+
     
     [Header("Status Effect Base Costs")]
     [SerializeField, Tooltip("Point cost for applying Break status")]
@@ -90,8 +86,6 @@ public class EffectPointCostConfig : ScriptableObject
         {
             CardEffectType.Damage => effectValue * damagePointCost,
             CardEffectType.Heal => effectValue * healPointCost,
-            CardEffectType.DrawCard => effectValue * drawCardPointCost,
-            CardEffectType.RestoreEnergy => effectValue * restoreEnergyPointCost,
             CardEffectType.ApplyBreak => applyBreakPointCost,
             CardEffectType.ApplyWeak => applyWeakPointCost,
             CardEffectType.ApplyBurn => effectValue * applyBurnPointCost,

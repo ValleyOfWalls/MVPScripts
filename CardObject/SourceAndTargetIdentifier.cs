@@ -683,10 +683,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
                     healAmount += effect.amount;
                     break;
 
-                case CardEffectType.RestoreEnergy:
-                    // Could show energy restore as green text too
-                    healAmount += effect.amount;
-                    break;
+                // RestoreEnergy effect removed
             }
         }
 

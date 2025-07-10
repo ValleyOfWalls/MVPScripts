@@ -287,18 +287,18 @@ public class ConditionalEffectTestManager : NetworkBehaviour
                 name = "Perfection Streak - Condition Not Met",
                 conditionType = ConditionalType.IfPerfectionStreak,
                 conditionValue = 2,
-                mainEffect = CardEffectType.DrawCard,
-                mainAmount = 3,
-                alternativeEffect = CardEffectType.DrawCard,
-                alternativeAmount = 1,
+                mainEffect = CardEffectType.Heal,
+                mainAmount = 15,
+                alternativeEffect = CardEffectType.Heal,
+                alternativeAmount = 5,
                 alternativeLogic = AlternativeEffectLogic.Replace,
                 setupAction = (source, target, tracker) => {
                     // Perfection streak starts at 0 and can't be directly set in tests
                     // This test verifies that the condition fails when streak is below threshold
                     // In a real scenario, perfection streak would be managed by the combat system
                 },
-                expectedEffectType = CardEffectType.DrawCard,
-                expectedAmount = 1, // Should use alternative effect
+                expectedEffectType = CardEffectType.Heal,
+                expectedAmount = 5, // Should use alternative effect
                 expectedResult = false // Condition not met since streak is 0 < 2
             },
             
@@ -307,17 +307,17 @@ public class ConditionalEffectTestManager : NetworkBehaviour
                 name = "Zero Cost Cards This Turn - Condition Met",
                 conditionType = ConditionalType.IfZeroCostCardsThisTurn,
                 conditionValue = 1,
-                mainEffect = CardEffectType.RestoreEnergy,
-                mainAmount = 2,
-                alternativeEffect = CardEffectType.RestoreEnergy,
-                alternativeAmount = 1,
+                mainEffect = CardEffectType.Damage,
+                mainAmount = 12,
+                alternativeEffect = CardEffectType.Damage,
+                alternativeAmount = 6,
                 alternativeLogic = AlternativeEffectLogic.Replace,
                 setupAction = (source, target, tracker) => {
                     tracker.RecordCardPlayed(1, false, CardType.Attack, true);
                     tracker.RecordCardPlayed(2, false, CardType.Skill, true); // 2 cards, above 1
                 },
-                expectedEffectType = CardEffectType.RestoreEnergy,
-                expectedAmount = 2,
+                expectedEffectType = CardEffectType.Damage,
+                expectedAmount = 12,
                 expectedResult = true
             },
             

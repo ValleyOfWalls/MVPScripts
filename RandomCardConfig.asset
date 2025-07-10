@@ -17,6 +17,6 @@ MonoBehaviour:
   rarityDistributionConfig: {fileID: 11400000, guid: 92b9e1a79a21f4a4b9792e86cd4b5c87, type: 2}
   upgradeCostConfig: {fileID: 11400000, guid: 5f266281c6af1c1429104a91179abca2, type: 2}
   minEffectsPerCard: 1
-  maxEffectsPerCard: 2
+  maxEffectsPerCard: 3
   allowNoUpgradeCondition: 0
   noUpgradeConditionChance: 0.1
