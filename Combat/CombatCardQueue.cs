@@ -15,15 +15,18 @@ public struct QueuedCardPlay
     public int sourceEntityId;
     public int[] targetEntityIds;
     public GameObject cardObject;
-    public CardData cardData;
+    public NetworkCardData networkCardData; // Using NetworkCardData for proper network serialization
     
     public QueuedCardPlay(int sourceId, int[] targetIds, GameObject card, CardData data)
     {
         sourceEntityId = sourceId;
         targetEntityIds = targetIds;
         cardObject = card;
-        cardData = data;
+        networkCardData = NetworkCardData.FromCardData(data); // Convert to network-safe format
     }
+    
+    // Helper property to get CardData when needed (creates temporary instance)
+    public CardData CardData => networkCardData.ToCardData();
 }
 
 /// <summary>
@@ -74,6 +77,10 @@ public class CombatCardQueue : NetworkBehaviour
             return;
         }
         
+        // QUEUENAME: Debug card name at queue entry point
+        string cardName = cardData?.CardName ?? "NULL_CARDDATA";
+        Debug.Log($"QUEUENAME: Queuing card - CardData.CardName='{cardName}', GameObject.name='{cardObject?.name ?? "NULL_GAMEOBJECT"}'");
+        
         // Initialize queue for this entity if it doesn't exist
         if (!entityCardQueues.ContainsKey(sourceEntityId))
         {
@@ -83,6 +90,9 @@ public class CombatCardQueue : NetworkBehaviour
         // Create queued card play
         QueuedCardPlay queuedPlay = new QueuedCardPlay(sourceEntityId, targetEntityIds, cardObject, cardData);
         entityCardQueues[sourceEntityId].Add(queuedPlay);
+        
+        // QUEUENAME: Debug the queued card play data
+        Debug.Log($"QUEUENAME: Created QueuedCardPlay - queuedPlay.CardData.CardName='{queuedPlay.CardData?.CardName ?? "NULL"}'");
         
         Debug.Log($"CombatCardQueue: Queued card play for entity {sourceEntityId} - {cardData.CardName}. Queue size: {entityCardQueues[sourceEntityId].Count}");
     }
@@ -113,7 +123,7 @@ public class CombatCardQueue : NetworkBehaviour
         var random = new System.Random();
         var playWithRandomTiebreaker = queuedPlays.Select(play => new {
             Play = play,
-            Initiative = play.cardData?.Initiative ?? 0,
+            Initiative = play.CardData?.Initiative ?? 0,
             RandomTiebreaker = random.Next()
         }).ToList();
         
@@ -129,13 +139,13 @@ public class CombatCardQueue : NetworkBehaviour
         // Extract the sorted plays
         queuedPlays = playWithRandomTiebreaker.Select(item => item.Play).ToList();
         
-        if (queuedPlays.Any(q => q.cardData?.Initiative > 0))
+        if (queuedPlays.Any(q => q.CardData?.Initiative > 0))
         {
             Debug.Log($"CombatCardQueue: Sorted cards by initiative for entity {entityId}:");
             foreach (var play in queuedPlays)
             {
-                int initiative = play.cardData?.Initiative ?? 0;
-                Debug.Log($"  - {play.cardData?.CardName} (Initiative: {initiative})");
+                int initiative = play.CardData?.Initiative ?? 0;
+                Debug.Log($"  - {play.CardData?.CardName} (Initiative: {initiative})");
             }
         }
         
@@ -147,7 +157,7 @@ public class CombatCardQueue : NetworkBehaviour
                 HandleCardPlay cardPlayHandler = queuedPlay.cardObject.GetComponent<HandleCardPlay>();
                 if (cardPlayHandler != null)
                 {
-                    Debug.Log($"CombatCardQueue: Executing queued card play: {queuedPlay.cardData.CardName}");
+                    Debug.Log($"CombatCardQueue: Executing queued card play: {queuedPlay.CardData.CardName}");
                     
                     // Execute the card play directly (bypass queuing)
                     cardPlayHandler.ExecuteCardPlayDirectly(queuedPlay.sourceEntityId, queuedPlay.targetEntityIds);
@@ -157,7 +167,7 @@ public class CombatCardQueue : NetworkBehaviour
                 }
                 else
                 {
-                    Debug.LogError($"CombatCardQueue: HandleCardPlay component missing on queued card {queuedPlay.cardData.CardName}");
+                    Debug.LogError($"CombatCardQueue: HandleCardPlay component missing on queued card {queuedPlay.CardData.CardName}");
                 }
             }
         }
@@ -227,7 +237,7 @@ public class CombatCardQueue : NetworkBehaviour
         {
             if (queue[i].cardObject == cardObject)
             {
-                string cardName = queue[i].cardData != null ? queue[i].cardData.CardName : "Unknown";
+                string cardName = queue[i].CardData != null ? queue[i].CardData.CardName : "Unknown";
                 queue.RemoveAt(i);
                 Debug.Log($"CombatCardQueue: Removed queued card {cardName} for entity {entityId}. Queue size: {queue.Count}");
                 return true;
@@ -285,7 +295,7 @@ public class CombatCardQueue : NetworkBehaviour
         var random = new System.Random();
         var playWithRandomTiebreaker = allQueuedPlays.Select(play => new {
             Play = play,
-            Initiative = play.cardData?.Initiative ?? 0,
+            Initiative = play.CardData?.Initiative ?? 0,
             RandomTiebreaker = random.Next()
         }).ToList();
         
@@ -306,13 +316,21 @@ public class CombatCardQueue : NetworkBehaviour
         for (int i = 0; i < allQueuedPlays.Count; i++)
         {
             var play = allQueuedPlays[i];
-            int initiative = play.cardData?.Initiative ?? 0;
-            Debug.Log($"  {i + 1}. Entity {play.sourceEntityId}: {play.cardData?.CardName} (Initiative: {initiative})");
+            int initiative = play.CardData?.Initiative ?? 0;
+            Debug.Log($"  {i + 1}. Entity {play.sourceEntityId}: {play.CardData?.CardName} (Initiative: {initiative})");
         }
         
         // Notify visualization system about the queue order
         OnQueueVisualizationReady?.Invoke(allQueuedPlays);
         RpcNotifyQueueVisualizationReady(allQueuedPlays);
+        
+        // QUEUENAME: Debug queue order before visualization
+        Debug.Log($"QUEUENAME: About to send visualization RPC with {allQueuedPlays.Count} cards:");
+        for (int i = 0; i < allQueuedPlays.Count; i++)
+        {
+            var play = allQueuedPlays[i];
+            Debug.Log($"QUEUENAME: Queue index {i} - CardData.CardName='{play.CardData?.CardName ?? "NULL"}', GameObject.name='{play.cardObject?.name ?? "NULL"}'");
+        }
         
         // Wait for visualization setup to complete
         float visualizationSetupDelay = 1f + (allQueuedPlays.Count * 0.15f); // Base delay + stagger time
@@ -327,11 +345,11 @@ public class CombatCardQueue : NetworkBehaviour
             // Check if this card's fight is still active before executing
             if (!ShouldExecuteCard(queuedPlay))
             {
-                Debug.Log($"CombatCardQueue: Skipping card {i + 1}/{allQueuedPlays.Count}: {queuedPlay.cardData.CardName} from entity {queuedPlay.sourceEntityId} - fight has ended");
+                Debug.Log($"CombatCardQueue: Skipping card {i + 1}/{allQueuedPlays.Count}: {queuedPlay.CardData.CardName} from entity {queuedPlay.sourceEntityId} - fight has ended");
                 
                 // Still notify visualization system that this card was "executed" (skipped)
-                OnCardExecuted?.Invoke(queuedPlay.cardData.CardName, i);
-                RpcNotifyCardExecuted(queuedPlay.cardData.CardName, i);
+                OnCardExecuted?.Invoke(queuedPlay.CardData.CardName, i);
+                RpcNotifyCardExecuted(queuedPlay.CardData.CardName, i);
                 
                 continue;
             }
@@ -341,7 +359,7 @@ public class CombatCardQueue : NetworkBehaviour
                 HandleCardPlay cardPlayHandler = queuedPlay.cardObject.GetComponent<HandleCardPlay>();
                 if (cardPlayHandler != null)
                 {
-                    Debug.Log($"CombatCardQueue: Executing card {i + 1}/{allQueuedPlays.Count}: {queuedPlay.cardData.CardName} from entity {queuedPlay.sourceEntityId}");
+                    Debug.Log($"CombatCardQueue: Executing card {i + 1}/{allQueuedPlays.Count}: {queuedPlay.CardData.CardName} from entity {queuedPlay.sourceEntityId}");
                     
                     // Execute the card play directly (bypass queuing)
                     cardPlayHandler.ExecuteCardPlayDirectly(queuedPlay.sourceEntityId, queuedPlay.targetEntityIds);
@@ -350,8 +368,8 @@ public class CombatCardQueue : NetworkBehaviour
                     yield return StartCoroutine(WaitForCardExecutionComplete(queuedPlay.cardObject));
                     
                     // Notify visualization system that this card finished executing
-                    OnCardExecuted?.Invoke(queuedPlay.cardData.CardName, i);
-                    RpcNotifyCardExecuted(queuedPlay.cardData.CardName, i);
+                    OnCardExecuted?.Invoke(queuedPlay.CardData.CardName, i);
+                    RpcNotifyCardExecuted(queuedPlay.CardData.CardName, i);
                     
                     // Add delay between card executions (except after the last card)
                     if (i < allQueuedPlays.Count - 1 && delayBetweenCardExecutions > 0f)
@@ -362,7 +380,7 @@ public class CombatCardQueue : NetworkBehaviour
                 }
                 else
                 {
-                    Debug.LogError($"CombatCardQueue: HandleCardPlay component missing on queued card {queuedPlay.cardData.CardName}");
+                    Debug.LogError($"CombatCardQueue: HandleCardPlay component missing on queued card {queuedPlay.CardData.CardName}");
                 }
             }
         }
@@ -451,6 +469,18 @@ public class CombatCardQueue : NetworkBehaviour
     private void RpcNotifyQueueVisualizationReady(List<QueuedCardPlay> sortedPlays)
     {
         Debug.Log($"CombatCardQueue (Client): Queue visualization ready with {sortedPlays.Count} cards");
+        
+        // QUEUENAME: Debug received RPC data
+        Debug.Log($"QUEUENAME: RpcNotifyQueueVisualizationReady received {sortedPlays?.Count ?? 0} cards:");
+        if (sortedPlays != null)
+        {
+            for (int i = 0; i < sortedPlays.Count; i++)
+            {
+                var play = sortedPlays[i];
+                Debug.Log($"QUEUENAME: RPC index {i} - CardData.CardName='{play.CardData?.CardName ?? "NULL"}'");
+            }
+        }
+        
         OnQueueVisualizationReady?.Invoke(sortedPlays);
     }
 
@@ -460,6 +490,9 @@ public class CombatCardQueue : NetworkBehaviour
     [ObserversRpc]
     private void RpcNotifyCardExecuted(string cardName, int executionIndex)
     {
+        // QUEUENAME: Debug RPC card execution notification
+        Debug.Log($"QUEUENAME: RpcNotifyCardExecuted received - cardName='{cardName}', executionIndex={executionIndex}");
+        
         Debug.Log($"CombatCardQueue (Client): Card executed - {cardName} (index: {executionIndex})");
         OnCardExecuted?.Invoke(cardName, executionIndex);
     }

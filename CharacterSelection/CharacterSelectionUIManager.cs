@@ -173,6 +173,15 @@ public class CharacterSelectionUIManager : NetworkBehaviour
         InitializeSelectedPortraitsDisplay();
         
         Debug.Log("[CHAR_SELECT_REVAMP] Making default selections (this will trigger model spawning and portrait display)...");
+        
+        // Check randomization status before making selections
+        bool randomizationEnabled = false;
+        if (OfflineGameManager.Instance != null)
+        {
+            randomizationEnabled = OfflineGameManager.Instance.EnableRandomizedCards;
+        }
+        Debug.Log($"[DECKPREVIEW] Randomization enabled: {randomizationEnabled} - if true, P2 clients may show standard cards initially before randomization completes");
+        
         MakeDefaultSelections();
         
         Debug.Log("[CHAR_SELECT_REVAMP] Updating ready button state...");
@@ -1889,12 +1898,38 @@ public class CharacterSelectionUIManager : NetworkBehaviour
                 
                 // Update visual selection and deck preview
                 Debug.Log($"[CHAR_SELECT_REVAMP] About to update character visuals and deck preview");
+                Debug.Log($"[DECKPREVIEW] MakeDefaultSelections calling ShowCharacterDeck(0) - may show standard cards before randomization");
                 UpdateMySelectionVisuals();
+                
+                // Check if we should skip initial deck preview for randomized clients
+                bool shouldSkipInitialDeckPreview = false;
+                bool currentRandomizationEnabled = false;
+                if (OfflineGameManager.Instance != null)
+                {
+                    currentRandomizationEnabled = OfflineGameManager.Instance.EnableRandomizedCards;
+                }
+                
+                if (currentRandomizationEnabled && !IsServerInitialized)
+                {
+                    // We're a client with randomization enabled - skip initial deck preview
+                    shouldSkipInitialDeckPreview = true;
+                    Debug.Log($"[DECKPREVIEW] Skipping initial deck preview for P2 client - will show after randomization completes");
+                }
+                
                 if (deckPreviewController != null)
                 {
                     deckPreviewController.SetCurrentCharacterIndex(0);
-                    deckPreviewController.ShowCharacterDeck(0, isReady);
-                    Debug.Log($"[CHAR_SELECT_REVAMP] Character deck preview setup completed");
+                    
+                    if (!shouldSkipInitialDeckPreview)
+                    {
+                        deckPreviewController.ShowCharacterDeck(0, isReady);
+                        Debug.Log($"[CHAR_SELECT_REVAMP] Character deck preview setup completed");
+                        Debug.Log($"[DECKPREVIEW] Initial deck preview shown for character 0");
+                    }
+                    else
+                    {
+                        Debug.Log($"[DECKPREVIEW] Initial deck preview SKIPPED - waiting for randomization to complete");
+                    }
                 }
                 else
                 {
@@ -3192,12 +3227,20 @@ public class CharacterSelectionUIManager : NetworkBehaviour
     private void OnRandomizationComplete()
     {
         Debug.Log("[CHAR_SELECT_REVAMP] Randomization completed! Refreshing selection to show updated character names and decks.");
+        Debug.Log("[DECKPREVIEW] OnRandomizationComplete - now refreshing deck preview to show randomized cards");
         
-        // Refresh the selection to show updated character names and decks
-        if (selectedCharacterIndex >= 0)
+        // Force refresh the deck preview to show randomized cards
+        if (selectedCharacterIndex >= 0 && deckPreviewController != null)
         {
-            Debug.Log($"[CHAR_SELECT_REVAMP] Refreshing character selection {selectedCharacterIndex} to show updated deck");
-            OnCharacterSelectionChanged(selectedCharacterIndex);
+            Debug.Log($"[CHAR_SELECT_REVAMP] Force refreshing character deck preview for index {selectedCharacterIndex} to show updated randomized deck");
+            Debug.Log($"[DECKPREVIEW] Directly calling ShowCharacterDeck({selectedCharacterIndex}) to force show randomized cards");
+            deckPreviewController.ShowCharacterDeck(selectedCharacterIndex, isReady);
+        }
+        else if (deckPreviewController != null && availableCharacters.Count > 0)
+        {
+            // If no character was previously selected (due to skipped initial preview), show the first character's deck
+            Debug.Log($"[DECKPREVIEW] No character previously selected, showing first character deck after randomization");
+            deckPreviewController.ShowCharacterDeck(0, isReady);
         }
         
         if (selectedPetIndex >= 0)

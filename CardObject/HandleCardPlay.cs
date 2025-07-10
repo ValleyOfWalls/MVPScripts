@@ -219,9 +219,9 @@ public class HandleCardPlay : NetworkBehaviour
             var queuedCards = CombatCardQueue.Instance.GetQueuedCardPlays(sourceId);
             foreach (var queuedCard in queuedCards)
             {
-                if (queuedCard.cardData != null)
+                if (queuedCard.CardData != null)
                 {
-                    queuedCardsCost += queuedCard.cardData.EnergyCost;
+                    queuedCardsCost += queuedCard.CardData.EnergyCost;
                 }
             }
         }
@@ -331,9 +331,9 @@ public class HandleCardPlay : NetworkBehaviour
             var queuedCards = CombatCardQueue.Instance.GetQueuedCardPlays(sourceEntity.ObjectId);
             foreach (var queuedCard in queuedCards)
             {
-                if (queuedCard.cardData != null)
+                if (queuedCard.CardData != null)
                 {
-                    queuedCardsCost += queuedCard.cardData.EnergyCost;
+                    queuedCardsCost += queuedCard.CardData.EnergyCost;
                 }
             }
         }
@@ -448,9 +448,9 @@ public class HandleCardPlay : NetworkBehaviour
             var queuedCards = CombatCardQueue.Instance.GetQueuedCardPlays(sourceAndTargetIdentifier.SourceEntity.ObjectId);
             foreach (var queuedCard in queuedCards)
             {
-                if (queuedCard.cardData != null)
+                if (queuedCard.CardData != null)
                 {
-                    queuedCardsCost += queuedCard.cardData.EnergyCost;
+                    queuedCardsCost += queuedCard.CardData.EnergyCost;
                 }
             }
         }
@@ -509,6 +509,19 @@ public class HandleCardPlay : NetworkBehaviour
         if (CombatCardQueue.Instance != null)
         {
             Debug.Log($"CARDPLAY_DEBUG: About to queue card play for {card.CardData.CardName} with sourceId: {sourceId}");
+            
+            // QUEUENAME: Debug card data before queuing
+            Debug.Log($"QUEUENAME: HandleCardPlay queuing - card.CardData.CardName='{card.CardData?.CardName ?? "NULL"}', gameObject.name='{gameObject.name}'");
+            if (card.CardData != null)
+            {
+                Debug.Log($"QUEUENAME: CardData details - Type={card.CardData.GetType().Name}, ToString='{card.CardData.ToString()}'");
+                // Check if it's a ScriptableObject and get its name
+                if (card.CardData is ScriptableObject so)
+                {
+                    Debug.Log($"QUEUENAME: ScriptableObject name='{so.name}'");
+                }
+            }
+            
             CombatCardQueue.Instance.QueueCardPlay(sourceId, targetIds, gameObject, card.CardData);
             Debug.Log($"CARDPLAY_DEBUG: Queued card play for {card.CardData.CardName}");
             

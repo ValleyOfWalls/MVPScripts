@@ -143,6 +143,17 @@ public class OfflineGameManager : MonoBehaviour
     {
         enableRandomizedCards = enabled;
         Debug.Log($"OfflineGameManager: Randomization setting changed to {enabled}");
+        
+        // Notify RandomizedCardDatabaseManager of the change
+        var randomDbManager = FindFirstObjectByType<RandomizedCardDatabaseManager>();
+        if (randomDbManager != null)
+        {
+            randomDbManager.OnRandomizationSettingChanged();
+        }
+        else
+        {
+            Debug.LogWarning("OfflineGameManager: RandomizedCardDatabaseManager not found to notify of setting change");
+        }
     }
 
     /// <summary>

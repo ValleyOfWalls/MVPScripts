@@ -880,7 +880,7 @@ public class CombatTestManager : NetworkBehaviour
         var entityTracker = caster.GetComponent<EntityTracker>();
         if (entityTracker != null)
         {
-            CardType targetCardType = shouldMeetCondition ? (CardType)requiredCardTypeValue : CardType.None;
+            CardType targetCardType = shouldMeetCondition ? (CardType)requiredCardTypeValue : CardType.Attack;
             // Simulate playing a card of the target type by directly setting the tracking data
             entityTracker.RecordCardPlayed(0, false, targetCardType, false);
             TestLogger.LogEvent($"Set last card type to {targetCardType} (required: {(CardType)requiredCardTypeValue}, should meet: {shouldMeetCondition})");

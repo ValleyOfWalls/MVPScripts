@@ -218,6 +218,33 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     /// </summary>
     private void EnsureUIEventSetup()
     {
+        // CRITICAL: Ensure the card has an Image component with raycastTarget enabled
+        // This is required for Unity's UI pointer events to work
+        Image cardImage = GetComponent<Image>();
+        if (cardImage == null)
+        {
+            // Try to find the cardImage from the Card component
+            if (card != null && card.GetCardImage() != null)
+            {
+                cardImage = card.GetCardImage();
+                LogDebug($"Found card image from Card component: {cardImage.gameObject.name}");
+            }
+            else
+            {
+                // Create a temporary Image component if none exists
+                cardImage = gameObject.AddComponent<Image>();
+                cardImage.color = new Color(1, 1, 1, 0); // Transparent but still receives raycasts
+                LogDebug("Added transparent Image component for UI events");
+            }
+        }
+        
+        // Ensure the Image can receive raycasts
+        if (cardImage != null)
+        {
+            cardImage.raycastTarget = true;
+            LogDebug($"Enabled raycastTarget on card image: {cardImage.gameObject.name}");
+        }
+        
         // Keep mouse collider enabled for hover effects (damage previews), but ensure UI events take priority
         BoxCollider2D mouseCollider = GetComponent<BoxCollider2D>();
         if (mouseCollider != null)
@@ -251,6 +278,64 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         }
         
         LogDebug("UI event setup complete");
+    }
+
+    /// <summary>
+    /// Diagnostic method to check why card interaction might not be working
+    /// </summary>
+    public void DiagnoseInteractionIssues()
+    {
+        LogDebug("=== CARD INTERACTION DIAGNOSTIC ===");
+        
+        // Check for EventSystem
+        EventSystem eventSystem = FindFirstObjectByType<EventSystem>();
+        LogDebug($"EventSystem present: {eventSystem != null}");
+        if (eventSystem != null)
+        {
+            LogDebug($"EventSystem enabled: {eventSystem.enabled}");
+        }
+        
+        // Check Image component and raycastTarget
+        Image cardImage = GetComponent<Image>();
+        if (cardImage == null && card != null)
+        {
+            cardImage = card.GetCardImage();
+        }
+        LogDebug($"Image component present: {cardImage != null}");
+        if (cardImage != null)
+        {
+            LogDebug($"Image raycastTarget: {cardImage.raycastTarget}");
+            LogDebug($"Image enabled: {cardImage.enabled}");
+            LogDebug($"Image gameObject active: {cardImage.gameObject.activeInHierarchy}");
+        }
+        
+        // Check Canvas and GraphicRaycaster
+        Canvas parentCanvas = GetComponentInParent<Canvas>();
+        LogDebug($"Parent Canvas present: {parentCanvas != null}");
+        if (parentCanvas != null)
+        {
+            GraphicRaycaster raycaster = parentCanvas.GetComponent<GraphicRaycaster>();
+            LogDebug($"GraphicRaycaster present: {raycaster != null}");
+            if (raycaster != null)
+            {
+                LogDebug($"GraphicRaycaster enabled: {raycaster.enabled}");
+            }
+        }
+        
+        // Check CanvasGroup
+        LogDebug($"CanvasGroup present: {canvasGroup != null}");
+        if (canvasGroup != null)
+        {
+            LogDebug($"CanvasGroup interactable: {canvasGroup.interactable}");
+            LogDebug($"CanvasGroup blocksRaycasts: {canvasGroup.blocksRaycasts}");
+            LogDebug($"CanvasGroup alpha: {canvasGroup.alpha}");
+        }
+        
+        // Check component status
+        LogDebug($"CardDragDrop enabled: {enabled}");
+        LogDebug($"GameObject active: {gameObject.activeInHierarchy}");
+        
+        LogDebug("=== END DIAGNOSTIC ===");
     }
     
     /// <summary>
@@ -1158,11 +1243,24 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     /// </summary>
     private void OnEnable()
     {
-        // Delay the setup slightly to ensure all components are ready
-        if (Application.isPlaying)
+        LogDebug($"OnEnable called for {gameObject.name}");
+        
+        // Ensure EventSystem exists
+        EnsureEventSystemExists();
+        
+        // Force UI setup when card becomes active
+        ValidateComponents();
+        EnsureUIEventSetup();
+        
+        // If we still have issues, run diagnostics
+        if (debugLogEnabled) // Changed from debugMode to debugLogEnabled
         {
-            StartCoroutine(DelayedUISetup());
+            // Delay the diagnostic slightly to allow for component initialization
+            StartCoroutine(DelayedDiagnostic());
         }
+        
+        // Use delayed setup for additional safety
+        StartCoroutine(DelayedUISetup());
     }
     
     /// <summary>
@@ -1174,6 +1272,32 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         if (this != null && gameObject.activeInHierarchy)
         {
             EnsureUIEventSetup();
+        }
+    }
+    
+    private System.Collections.IEnumerator DelayedDiagnostic()
+    {
+        yield return new WaitForSeconds(0.1f);
+        DiagnoseInteractionIssues();
+    }
+    
+    /// <summary>
+    /// Ensures an EventSystem exists in the scene for UI interactions
+    /// </summary>
+    private void EnsureEventSystemExists()
+    {
+        EventSystem eventSystem = FindFirstObjectByType<EventSystem>();
+        if (eventSystem == null)
+        {
+            LogDebug("No EventSystem found - creating one");
+            GameObject eventSystemObj = new GameObject("EventSystem");
+            eventSystemObj.AddComponent<EventSystem>();
+            eventSystemObj.AddComponent<StandaloneInputModule>();
+            LogDebug("Created EventSystem for UI interactions");
+        }
+        else
+        {
+            LogDebug($"EventSystem found: {eventSystem.gameObject.name}");
         }
     }
     

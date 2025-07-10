@@ -182,7 +182,90 @@ Many effects support scaling based on:
 - **Upgrade Conditions**: ComboCountReached, PlayedWithCombo, PlayedAsFinisher
 - **Notes**: Essential for "finishing move" mechanics
 
+## Complex Tactical Effects
 
+These advanced effects provide MTG-style strategic depth and interaction.
+
+### **Redirect Next Attack**
+- **Description**: Forces the next damage targeting you to hit a different target instead
+- **Targeting**: Self or allies (entity that will have attacks redirected)
+- **Scaling**: ❌ Not supported (targeting is not scalable)
+- **Behavior**: Single-use effect that is consumed when triggered
+- **Redirect Options**:
+  - **1**: Redirect to ally
+  - **2**: Redirect back to attacker
+  - **3**: Redirect to opponent
+- **Notes**: Checks for redirect during damage processing and automatically redirects the attack
+
+### **Amplify**
+- **Description**: Increases the potency of the next card effect by the specified amount
+- **Targeting**: Self or allies (entity whose next effect will be amplified)
+- **Scaling**: ✅ Supported (amplification amount can scale)
+- **Behavior**: Single-use effect that is consumed when the next effect is played
+- **Notes**: Applied before scaling calculations, works with any effect that has an `amount` value
+
+### **Siphon**
+- **Description**: Steals one beneficial status effect from the target and transfers it to the caster
+- **Targeting**: Opponents primarily (entity to steal from)
+- **Scaling**: ❌ Not supported (effect transfer is binary)
+- **Behavior**: Transfers first found beneficial effect (Strength, Shield, Salve, CriticalUp, Thorns)
+- **Notes**: Only transfers one effect per use, removes from target and adds to source with same potency/duration
+
+### **Revenge**
+- **Description**: Conditional effect that triggers bonus effects if you took damage this turn
+- **Implementation**: Uses `IfDamageTakenThisTurn` conditional type
+- **Targeting**: Flexible (depends on the revenge effect)
+- **Scaling**: ✅ Supported (through conditional effect scaling)
+- **Usage Example**:
+  ```csharp
+  // Card deals 4 damage, but 8 damage if you took damage this turn
+  effect.effectType = CardEffectType.Damage;
+  effect.amount = 4;
+  effect.conditionType = ConditionalType.IfDamageTakenThisTurn;
+  effect.conditionValue = 1;
+  effect.hasAlternativeEffect = true;
+  effect.alternativeEffectType = CardEffectType.Damage;
+  effect.alternativeEffectAmount = 8;
+  effect.alternativeLogic = AlternativeEffectLogic.Replace;
+  ```
+- **Notes**: Implemented through conditional system rather than direct effect
+
+### **Corrupt**
+- **Description**: Converts the target's first beneficial status effect into a harmful equivalent
+- **Targeting**: Opponents (entity to corrupt)
+- **Scaling**: ❌ Not supported (conversion is binary)
+- **Behavior**: Converts first found beneficial effect using corruption mapping
+- **Corruption Mappings**:
+  - **Shield** → **Burn**
+  - **Strength** → **Curse**
+  - **Salve** → **Burn**
+  - **CriticalUp** → **Weak**
+  - **Thorns** → **Break**
+- **Notes**: Preserves potency and duration of the original effect
+
+### **Mimic**
+- **Description**: Copies the last card effect that was used against the caster
+- **Targeting**: Opponents (target to use the mimicked effect on)
+- **Scaling**: ❌ Not supported (copies exact effect)
+- **Behavior**: Retrieves and replicates the last hostile effect used against the caster
+- **Tracking**: EntityTracker automatically records effects used against entities
+- **Notes**: Only tracks hostile effects (source != target), applies exact same effect type, amount, and duration
+
+### **Health Swap**
+- **Description**: Swaps current health totals between the caster and target
+- **Targeting**: Allies primarily (though can target opponents strategically)
+- **Scaling**: ❌ Not supported (health values are absolute)
+- **Behavior**: Instantly exchanges current health values between two entities
+- **Strategic Uses**:
+  - Save a low-health ally by giving them your higher health
+  - Tactical positioning when you have more health than maximum damage threats
+- **Notes**: Does not affect maximum health, only current health values
+
+### **Complex Effect Interactions**
+- **Redirect + Amplify**: Redirected attacks can trigger amplified effects on the new target
+- **Siphon + Corrupt**: Can steal an effect, then corrupt the remaining effects
+- **Mimic + Revenge**: Revenge effects can be mimicked if used against you
+- **Health Swap + Conditional Effects**: Health-based conditionals recalculate after swap
 
 ## Removed Effects
 

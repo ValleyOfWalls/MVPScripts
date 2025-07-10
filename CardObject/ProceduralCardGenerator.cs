@@ -363,8 +363,8 @@ public class ProceduralCardGenerator
             case "warrior":
                 BiasTowardWarriorTheme(card);
                 break;
-            case "mystic":
-                BiasTowardMysticTheme(card);
+            case "enhanced":
+                BiasTowardEnhancedTheme(card);
                 break;
             case "assassin":
                 BiasTowardAssassinTheme(card);
@@ -403,7 +403,7 @@ public class ProceduralCardGenerator
             // Add stance effects with warrior bias
             if (!card.ChangesStance && effects.Count < 3)
             {
-                var warriorStances = new[] { StanceType.Defensive, StanceType.Guardian, StanceType.Berserker, StanceType.Aggressive };
+                var warriorStances = new[] { StanceType.Defensive, StanceType.Aggressive };
                 StanceType stanceToEnter = warriorStances[UnityEngine.Random.Range(0, warriorStances.Length)];
                 card.ChangeStance(stanceToEnter);
             }
@@ -411,97 +411,127 @@ public class ProceduralCardGenerator
     }
     
     /// <summary>
-    /// Bias card toward mystic theme (elemental effects, energy, spell-like)
+    /// Bias card toward enhanced theme (amplification, healing, tactical effects)
     /// </summary>
-    private void BiasTowardMysticTheme(CardData card)
+    private void BiasTowardEnhancedTheme(CardData card)
     {
         var effects = card.Effects;
         for (int i = 0; i < effects.Count; i++)
         {
             var effect = effects[i];
             
-            // Mystics favor conditional effects based on health and resources
+            // Enhanced theme favors conditional effects based on health and resources
             if (effect.conditionType == ConditionalType.None && UnityEngine.Random.value < 0.4f)
             {
-                var mysticConditions = new[] 
+                var enhancedConditions = new[] 
                 { 
                     ConditionalType.IfSourceHealthAbove,
                     ConditionalType.IfCardsInHand,
                     ConditionalType.IfInStance
                 };
-                effect.conditionType = mysticConditions[UnityEngine.Random.Range(0, mysticConditions.Length)];
+                effect.conditionType = enhancedConditions[UnityEngine.Random.Range(0, enhancedConditions.Length)];
                 
-                if (effect.conditionType == ConditionalType.IfInStance)
+                if (effect.conditionType == ConditionalType.IfSourceHealthAbove)
                 {
-                    effect.conditionValue = (int)StanceType.Mystic; // Mystics benefit from mystic stance
-                }
-                else if (effect.conditionType == ConditionalType.IfSourceHealthAbove)
-                {
-                    effect.conditionValue = UnityEngine.Random.Range(60, 80); // High health requirement
+                    effect.conditionValue = UnityEngine.Random.Range(50, 80); // High health bonuses
                 }
                 else if (effect.conditionType == ConditionalType.IfCardsInHand)
                 {
-                    effect.conditionValue = UnityEngine.Random.Range(3, 6); // Requires multiple cards
+                    effect.conditionValue = UnityEngine.Random.Range(3, 6); // Resource management
+                }
+                else if (effect.conditionType == ConditionalType.IfInStance)
+                {
+                    effect.conditionValue = (int)StanceType.Aggressive; // Enhanced theme benefits from aggressive stance
+                }
+            }
+            
+            // Convert some damage effects to tactical effects for enhanced theme
+            if (effect.effectType == CardEffectType.Damage && UnityEngine.Random.value < 0.3f)
+            {
+                var tacticalEffects = new[] 
+                { 
+                    CardEffectType.Amplify,
+                    CardEffectType.Heal,
+                    CardEffectType.ApplyShield
+                };
+                effect.effectType = tacticalEffects[UnityEngine.Random.Range(0, tacticalEffects.Length)];
+                effect.targetType = CardTargetType.Self;
+                
+                // Scale tactical effects appropriately
+                if (effect.effectType == CardEffectType.Amplify)
+                {
+                    effect.amount = UnityEngine.Random.Range(2, 5);
+                }
+                else if (effect.effectType == CardEffectType.Heal)
+                {
+                    effect.amount = UnityEngine.Random.Range(8, 15);
+                }
+                else if (effect.effectType == CardEffectType.ApplyShield)
+                {
+                    effect.amount = UnityEngine.Random.Range(10, 20);
                 }
             }
         }
         
-        // Mystics can enter mystical stances
-        if (UnityEngine.Random.value < 0.35f && !card.ChangesStance)
+        // Enhanced theme can enter aggressive stances for tactical bonuses
+        if (UnityEngine.Random.value < 0.3f && !card.ChangesStance)
         {
-            var mysticStances = new[] { StanceType.Mystic, StanceType.Focused };
-            StanceType stanceToEnter = mysticStances[UnityEngine.Random.Range(0, mysticStances.Length)];
+            var enhancedStances = new[] { StanceType.Aggressive };
+            StanceType stanceToEnter = enhancedStances[UnityEngine.Random.Range(0, enhancedStances.Length)];
             card.ChangeStance(stanceToEnter);
         }
     }
+
     
     /// <summary>
     /// Bias card toward assassin theme (high damage, low cost, conditions)
     /// </summary>
     private void BiasTowardAssassinTheme(CardData card)
     {
+        // Assassins prefer low-cost, high-impact effects with conditional bonuses
         var effects = card.Effects;
-        
-        // Assassins favor conditional effects and combos
         for (int i = 0; i < effects.Count; i++)
         {
             var effect = effects[i];
+            
+            // Assassins favor execution-style conditionals
             if (effect.conditionType == ConditionalType.None && UnityEngine.Random.value < 0.5f)
             {
-                // Add conditions to effects
                 var assassinConditions = new[] 
                 { 
-                    ConditionalType.IfTargetHealthBelow, 
-                    ConditionalType.IfComboCount,
+                    ConditionalType.IfTargetHealthBelow,
                     ConditionalType.IfSourceHealthBelow,
-                    ConditionalType.IfInStance
+                    ConditionalType.IfComboCount
                 };
                 effect.conditionType = assassinConditions[UnityEngine.Random.Range(0, assassinConditions.Length)];
                 
                 if (effect.conditionType == ConditionalType.IfTargetHealthBelow)
                 {
-                    effect.conditionValue = UnityEngine.Random.Range(30, 50); // Execution threshold
-                }
-                else if (effect.conditionType == ConditionalType.IfComboCount)
-                {
-                    effect.conditionValue = UnityEngine.Random.Range(2, 4); // Low combo requirement
+                    effect.conditionValue = UnityEngine.Random.Range(25, 50); // Execute below 25-50% health
                 }
                 else if (effect.conditionType == ConditionalType.IfSourceHealthBelow)
                 {
-                    effect.conditionValue = UnityEngine.Random.Range(40, 60); // Risk/reward
+                    effect.conditionValue = UnityEngine.Random.Range(30, 60); // Risk vs reward
                 }
-                else if (effect.conditionType == ConditionalType.IfInStance)
+                else if (effect.conditionType == ConditionalType.IfComboCount)
                 {
-                    var assassinStanceTypes = new[] { StanceType.Aggressive, StanceType.Berserker };
-                    effect.conditionValue = (int)assassinStanceTypes[UnityEngine.Random.Range(0, assassinStanceTypes.Length)];
+                    effect.conditionValue = UnityEngine.Random.Range(1, 3); // Combo requirements
                 }
             }
         }
         
-        // Assassins can enter aggressive or focused stances
+        // Add stance effects that suit assassin playstyle
         if (UnityEngine.Random.value < 0.3f && !card.ChangesStance)
         {
-            var assassinStances = new[] { StanceType.Aggressive, StanceType.Berserker, StanceType.Focused };
+            var assassinStanceTypes = new[] { StanceType.Aggressive };
+            StanceType stanceToEnter = assassinStanceTypes[UnityEngine.Random.Range(0, assassinStanceTypes.Length)];
+            card.ChangeStance(stanceToEnter);
+        }
+        
+        // Assassins can enter aggressive stances
+        if (UnityEngine.Random.value < 0.25f && !card.ChangesStance)
+        {
+            var assassinStances = new[] { StanceType.Aggressive };
             StanceType stanceToEnter = assassinStances[UnityEngine.Random.Range(0, assassinStances.Length)];
             card.ChangeStance(stanceToEnter);
         }
@@ -1290,7 +1320,7 @@ public class ProceduralCardGenerator
                 if (UnityEngine.Random.value < 0.5f)
                 {
                     // Add a simple prefix
-                    string[] shortPrefixes = { "Dark", "Bright", "Swift", "Hidden", "Ancient", "Mystic" };
+                    string[] shortPrefixes = { "Dark", "Bright", "Swift", "Hidden", "Ancient", "Enhanced" };
                     string prefix = shortPrefixes[UnityEngine.Random.Range(0, shortPrefixes.Length)];
                     baseName = $"{prefix} {baseName}";
                 }
@@ -1635,11 +1665,7 @@ public class ProceduralCardGenerator
         var availableStances = new[]
         {
             StanceType.Aggressive,
-            StanceType.Defensive, 
-            StanceType.Focused,
-            StanceType.Berserker,
-            StanceType.Guardian,
-            StanceType.Mystic
+            StanceType.Defensive
         };
         
         // Return a random stance type as an integer
@@ -1657,11 +1683,6 @@ public class ProceduralCardGenerator
         {
             StanceType.Aggressive => "Aggressive",
             StanceType.Defensive => "Defensive",
-            StanceType.Focused => "Focused",
-            StanceType.Berserker => "Berserker",
-            StanceType.Guardian => "Guardian",
-            StanceType.Mystic => "Mystic",
-
             _ => "Combat"
         };
     }

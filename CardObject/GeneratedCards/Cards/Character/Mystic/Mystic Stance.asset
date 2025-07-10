@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
-  m_Name: Mystic Stance
+  m_Name: Aggressive Stance
   m_EditorClassIdentifier: 
   _cardId: 8102
-  _cardName: Mystic Stance
-  _description: Restore 25 energy. Draw a card. Enter Mystic stance.
+  _cardName: Aggressive Stance
+  _description: Restore 25 energy. Draw a card. Enter Aggressive stance.
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
   _cardType: 6
@@ -72,7 +72,7 @@ MonoBehaviour:
   _requiresCombo: 0
   _requiredComboAmount: 1
   _changesStance: 1
-  _newStance: 6
+  _newStance: 1
   _canAlsoTargetSelf: 0
   _canAlsoTargetAllies: 0
   _canAlsoTargetOpponent: 0

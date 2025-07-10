@@ -26,7 +26,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
     
     [Header("Character Classes")]
     [SerializeField, Tooltip("Character classes to generate starter decks for")]
-    private string[] characterClasses = { "Warrior", "Mystic", "Assassin" };
+    private string[] characterClasses = { "Warrior", "Enhanced", "Assassin" };
     
     [Header("Pet Classes")]
     [SerializeField, Tooltip("Pet classes to generate starter decks for")]
@@ -187,8 +187,30 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
         }
         else
         {
-            Debug.Log("[RANDOMDB] Randomization disabled, no action needed");
+            Debug.Log("[RANDOMDB] Randomization disabled, resetting character/pet data to original values");
+            ResetCharacterAndPetDataToOriginal();
         }
+    }
+    
+    /// <summary>
+    /// Reset character and pet data back to original prefab values when randomization is disabled
+    /// </summary>
+    [Server]
+    private void ResetCharacterAndPetDataToOriginal()
+    {
+        Debug.Log("[RANDOMDB] Resetting character and pet data to original prefab values");
+        
+        // Find the CharacterSelectionManager
+        CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
+        if (selectionManager == null)
+        {
+            Debug.LogError("[RANDOMDB] CharacterSelectionManager not found! Cannot reset data.");
+            return;
+        }
+        
+        // Call the reset method to restore original data
+        selectionManager.ResetToOriginalData();
+        Debug.Log("[RANDOMDB] ✓ Character and pet data reset to original prefab values");
     }
     
     /// <summary>
@@ -233,6 +255,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
     private void OnCardsSyncedFromHost()
     {
         Debug.Log("[RANDOMDB] Client: Cards have been synced from host!");
+        Debug.Log("[DECKPREVIEW] RandomizedCardDatabaseManager: Cards synced from host, starting deck update process");
         
         // Start coroutine to properly wait for all cards and then update
         StartCoroutine(WaitForCardSyncAndUpdateDecks());
@@ -553,6 +576,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
     private void ReplaceStarterDeckReferences(GeneratedCardCollection generatedCards)
     {
         Debug.Log("[RANDOMDB] ReplaceStarterDeckReferences() called");
+        Debug.Log("[RANDOMDB] 🔄 NOTE: Modifying RUNTIME COPIES of character/pet data, NOT original prefabs!");
         
         // Find the CharacterSelectionManager to access character and pet data
         CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
@@ -565,11 +589,11 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
 
         Debug.Log("[RANDOMDB] CharacterSelectionManager found, proceeding with deck replacement");
 
-        // Get available characters and pets from the selection manager
+        // Get available characters and pets from the selection manager (these are runtime copies)
         var availableCharacters = selectionManager.GetAvailableCharacters();
         var availablePets = selectionManager.GetAvailablePets();
         
-        Debug.Log($"[RANDOMDB] Found {availableCharacters.Count} available characters, {availablePets.Count} available pets");
+        Debug.Log($"[RANDOMDB] Found {availableCharacters.Count} available characters, {availablePets.Count} available pets (RUNTIME COPIES)");
         Debug.Log($"[RANDOMDB] Generated {generatedCards.starterCards.Count} total starter cards");
 
         // Get theme-based names for characters
@@ -683,6 +707,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
     private void ReplaceStarterDeckReferencesFromCards(List<CardData> starterCards)
     {
         Debug.Log("[RANDOMDB] ReplaceStarterDeckReferencesFromCards() called");
+        Debug.Log("[RANDOMDB] 🔄 NOTE: Modifying RUNTIME COPIES of character/pet data, NOT original prefabs!");
         
         // Find CharacterSelectionManager
         var characterSelectionManager = FindFirstObjectByType<CharacterSelectionManager>();
@@ -825,7 +850,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
         return className.ToLower() switch
         {
             "warrior" => "strength",
-            "mystic" => "arcane",
+            "enhanced" => "arcane",
             "assassin" => "stealth",
             "beast" => "primal",
             "elemental" => "elemental",
@@ -865,7 +890,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
     /// </summary>
     private void ReplaceStarterDeckField(MonoBehaviour dataComponent, DeckData newDeckData)
     {
-        Debug.Log($"[RANDOMDB] Attempting to replace starterDeck field in {dataComponent.GetType().Name}");
+        Debug.Log($"[RANDOMDB] Attempting to replace starterDeck field in {dataComponent.GetType().Name} (runtime copy)");
         
         var field = dataComponent.GetType().GetField("starterDeck", 
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -876,7 +901,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
             Debug.Log($"[RANDOMDB] Found starterDeck field. Old value: {oldValue?.DeckName ?? "null"}");
             
             field.SetValue(dataComponent, newDeckData);
-            Debug.Log($"[RANDOMDB] ✓ Successfully set starterDeck field to: {newDeckData.DeckName}");
+            Debug.Log($"[RANDOMDB] ✓ Successfully set starterDeck field to: {newDeckData.DeckName} (runtime copy only)");
         }
         else
         {
@@ -1019,9 +1044,11 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
         
         Debug.Log("[RANDOMDB] Client: Starter deck references updated from synced cards");
         Debug.Log("[RANDOMDB] Client: Randomization complete!");
+        Debug.Log("[DECKPREVIEW] RandomizedCardDatabaseManager: Firing OnClientRandomizationComplete event");
         
         // Notify UI systems that randomization is complete
         OnClientRandomizationComplete?.Invoke();
+        Debug.Log("[DECKPREVIEW] RandomizedCardDatabaseManager: OnClientRandomizationComplete event fired");
     }
 
     [ContextMenu("Force Regenerate Cards")]
@@ -1035,6 +1062,37 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
         else
         {
             Debug.LogWarning("ForceRegenerateCards can only be called on the server/host");
+        }
+    }
+    
+    /// <summary>
+    /// Public method to handle randomization setting changes at runtime
+    /// Call this when OfflineGameManager.EnableRandomizedCards changes
+    /// </summary>
+    public void OnRandomizationSettingChanged()
+    {
+        if (!IsServerInitialized)
+        {
+            Debug.LogWarning("[RANDOMDB] OnRandomizationSettingChanged can only be called on the server/host");
+            return;
+        }
+        
+        bool randomizationEnabled = OfflineGameManager.Instance?.EnableRandomizedCards ?? false;
+        Debug.Log($"[RANDOMDB] Randomization setting changed to: {randomizationEnabled}");
+        
+        if (randomizationEnabled)
+        {
+            // Re-enable randomization
+            hasRandomized = false;
+            Debug.Log("[RANDOMDB] Re-enabling randomization...");
+            InitializeRandomizedDatabase();
+        }
+        else
+        {
+            // Disable randomization and reset to original data
+            Debug.Log("[RANDOMDB] Disabling randomization, resetting to original data...");
+            ResetCharacterAndPetDataToOriginal();
+            hasRandomized = false;
         }
     }
     
@@ -1251,7 +1309,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Update character name using reflection
+    /// Update character name using reflection (modifies runtime copy, not original prefab)
     /// </summary>
     private void UpdateCharacterName(CharacterData characterData, string newName)
     {
@@ -1261,7 +1319,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
         if (nameField != null)
         {
             nameField.SetValue(characterData, newName);
-            Debug.Log($"[RANDOMDB] ✓ Updated character name to: {newName}");
+            Debug.Log($"[RANDOMDB] ✓ Updated character name to: {newName} (runtime copy only)");
         }
         else
         {
@@ -1270,7 +1328,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Update pet name using reflection
+    /// Update pet name using reflection (modifies runtime copy, not original prefab)
     /// </summary>
     private void UpdatePetName(PetData petData, string newName)
     {
@@ -1280,7 +1338,7 @@ public class RandomizedCardDatabaseManager : NetworkBehaviour
         if (nameField != null)
         {
             nameField.SetValue(petData, newName);
-            Debug.Log($"[RANDOMDB] ✓ Updated pet name to: {newName}");
+            Debug.Log($"[RANDOMDB] ✓ Updated pet name to: {newName} (runtime copy only)");
         }
         else
         {

@@ -300,7 +300,7 @@ public class CardPoolPreviewGenerator : EditorWindow
     private void GenerateStarterDecks(ProceduralCardGenerator generator)
     {
         // Generate starter decks for each character class using the same pathways as the game
-        string[] characterClasses = { "Warrior", "Mystic", "Assassin" };
+        string[] characterClasses = { "Warrior", "Enhanced", "Assassin" };
         string[] petClasses = { "Beast", "Elemental", "Spirit" };
         
         if (useThemedStarterDecks)
@@ -774,11 +774,6 @@ public class CardPoolPreviewGenerator : EditorWindow
         {
             StanceType.Aggressive => "Aggressive",
             StanceType.Defensive => "Defensive",
-            StanceType.Focused => "Focused",
-            StanceType.Berserker => "Berserker",
-            StanceType.Guardian => "Guardian",
-            StanceType.Mystic => "Mystic",
-
             _ => "Combat"
         };
     }

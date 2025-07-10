@@ -387,7 +387,7 @@ public class CharacterSelectionUIAnimator : MonoBehaviour
         string objName = obj.name.ToLower();
         
         // Check for character or pet model indicators
-        bool isCharacterModel = objName.Contains("character") || objName.Contains("warrior") || objName.Contains("mystic") || objName.Contains("assassin");
+        bool isCharacterModel = objName.Contains("character") || objName.Contains("warrior") || objName.Contains("enhanced") || objName.Contains("assassin");
         bool isPetModel = objName.Contains("pet") || objName.Contains("beast") || objName.Contains("elemental") || objName.Contains("spirit");
         
         // Also check for specific model naming patterns

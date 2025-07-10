@@ -34,6 +34,11 @@ public class EntityTracker : NetworkBehaviour
     private readonly SyncVar<int> _cardsPlayedThisTurn = new SyncVar<int>();
     private readonly SyncVar<int> _cardsPlayedThisFight = new SyncVar<int>();
     private readonly SyncVar<int> _lastPlayedCardType = new SyncVar<int>(); // CardType as int
+    
+    // Complex effect tracking
+    private readonly SyncVar<int> _redirectNextAttackTargetId = new SyncVar<int>(); // EntityId to redirect next attack to (0 = none)
+    private readonly SyncVar<int> _amplifyNextEffectAmount = new SyncVar<int>(); // Amount to amplify next effect by (0 = none)
+    private readonly SyncVar<string> _lastEffectUsedAgainstMe = new SyncVar<string>(); // Format: "effectType|amount|duration" for Mimic
 
     // Events for other systems to listen to
     public event Action<int> OnDamageDealt;
@@ -55,6 +60,13 @@ public class EntityTracker : NetworkBehaviour
     public StanceType CurrentStance => (StanceType)_currentStance.Value;
     public int StanceDuration => _stanceDuration.Value;
     public EntityTrackingData TrackingData => trackingData;
+    
+    // Complex effect accessors
+    public int RedirectNextAttackTargetId => _redirectNextAttackTargetId.Value;
+    public int AmplifyNextEffectAmount => _amplifyNextEffectAmount.Value;
+    public string LastEffectUsedAgainstMe => _lastEffectUsedAgainstMe.Value;
+    public bool HasRedirectNextAttack => _redirectNextAttackTargetId.Value != 0;
+    public bool HasAmplifyNextEffect => _amplifyNextEffectAmount.Value > 0;
 
     private void Awake()
     {
@@ -84,6 +96,11 @@ public class EntityTracker : NetworkBehaviour
         _cardsPlayedThisFight.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _lastPlayedCardType.OnChange += (prev, next, asServer) => UpdateTrackingData();
         _stanceDuration.OnChange += (prev, next, asServer) => UpdateTrackingData();
+        
+        // Complex effect change handlers
+        _redirectNextAttackTargetId.OnChange += (prev, next, asServer) => UpdateTrackingData();
+        _amplifyNextEffectAmount.OnChange += (prev, next, asServer) => UpdateTrackingData();
+        _lastEffectUsedAgainstMe.OnChange += (prev, next, asServer) => UpdateTrackingData();
     }
 
     private void UpdateTrackingData()
@@ -101,6 +118,11 @@ public class EntityTracker : NetworkBehaviour
         trackingData.cardsPlayedThisTurn = _cardsPlayedThisTurn.Value;
         trackingData.cardsPlayedThisFight = _cardsPlayedThisFight.Value;
         trackingData.lastPlayedCardType = (CardType)_lastPlayedCardType.Value;
+        
+        // Complex effect tracking
+        trackingData.redirectNextAttackTargetId = _redirectNextAttackTargetId.Value;
+        trackingData.amplifyNextEffectAmount = _amplifyNextEffectAmount.Value;
+        trackingData.lastEffectUsedAgainstMe = _lastEffectUsedAgainstMe.Value;
     }
 
     /// <summary>
@@ -464,18 +486,18 @@ public class EntityTracker : NetworkBehaviour
         
         switch (currentStance)
         {
-            case StanceType.Focused:
+            case StanceType.Aggressive:
                 if (isStartOfTurn)
                 {
-                    // +energy and +draw could be processed here
-                    Debug.Log($"EntityTracker: Focused stance turn start effects for {entity.EntityName.Value}");
+                    // Aggressive stance effects
+                    Debug.Log($"EntityTracker: Aggressive stance turn start effects for {entity.EntityName.Value}");
                 }
                 break;
-            case StanceType.Guardian:
+            case StanceType.Defensive:
                 if (isStartOfTurn)
                 {
-                    // Shield/thorns effects
-                    Debug.Log($"EntityTracker: Guardian stance turn start effects for {entity.EntityName.Value}");
+                    // Defensive stance effects
+                    Debug.Log($"EntityTracker: Defensive stance turn start effects for {entity.EntityName.Value}");
                 }
                 break;
         }
@@ -492,6 +514,8 @@ public class EntityTracker : NetworkBehaviour
                 return trackingData.damageTakenThisFight >= conditionValue;
             case ConditionalType.IfDamageTakenLastRound:
                 return trackingData.damageTakenLastRound >= conditionValue;
+            case ConditionalType.IfDamageTakenThisTurn:
+                return trackingData.tookDamageThisTurn && conditionValue == 1; // Simple boolean check
             case ConditionalType.IfHealingReceivedThisFight:
                 return trackingData.healingReceivedThisFight >= conditionValue;
             case ConditionalType.IfHealingReceivedLastRound:
@@ -513,6 +537,89 @@ public class EntityTracker : NetworkBehaviour
             default:
                 return false;
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // COMPLEX EFFECT MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// <summary>
+    /// Sets redirect next attack effect - next damage targeting this entity will hit the specified target instead
+    /// </summary>
+    [Server]
+    public void SetRedirectNextAttack(int targetEntityId)
+    {
+        if (!IsServerInitialized) return;
+        _redirectNextAttackTargetId.Value = targetEntityId;
+        Debug.Log($"EntityTracker: {entity.EntityName.Value} will redirect next attack to entity {targetEntityId}");
+    }
+    
+    /// <summary>
+    /// Clears redirect next attack effect (called after being used)
+    /// </summary>
+    [Server]
+    public void ClearRedirectNextAttack()
+    {
+        if (!IsServerInitialized) return;
+        _redirectNextAttackTargetId.Value = 0;
+    }
+    
+    /// <summary>
+    /// Sets amplify next effect - next card effect will have its potency increased by the specified amount
+    /// </summary>
+    [Server]
+    public void SetAmplifyNextEffect(int amplifyAmount)
+    {
+        if (!IsServerInitialized) return;
+        _amplifyNextEffectAmount.Value = amplifyAmount;
+        Debug.Log($"EntityTracker: {entity.EntityName.Value} will amplify next effect by {amplifyAmount}");
+    }
+    
+    /// <summary>
+    /// Consumes and returns the amplify next effect amount
+    /// </summary>
+    [Server]
+    public int ConsumeAmplifyNextEffect()
+    {
+        if (!IsServerInitialized) return 0;
+        int amplifyAmount = _amplifyNextEffectAmount.Value;
+        _amplifyNextEffectAmount.Value = 0;
+        return amplifyAmount;
+    }
+    
+    /// <summary>
+    /// Records the last effect used against this entity (for Mimic)
+    /// </summary>
+    [Server]
+    public void RecordEffectUsedAgainstMe(CardEffectType effectType, int amount, int duration)
+    {
+        if (!IsServerInitialized) return;
+        string effectData = $"{effectType}|{amount}|{duration}";
+        _lastEffectUsedAgainstMe.Value = effectData;
+        Debug.Log($"EntityTracker: Recorded effect used against {entity.EntityName.Value}: {effectData}");
+    }
+    
+    /// <summary>
+    /// Gets the last effect used against this entity for Mimic
+    /// </summary>
+    public (CardEffectType effectType, int amount, int duration) GetLastEffectUsedAgainstMe()
+    {
+        string effectData = _lastEffectUsedAgainstMe.Value;
+        if (string.IsNullOrEmpty(effectData)) 
+            return (CardEffectType.Damage, 0, 0); // Default if no effect recorded
+            
+        string[] parts = effectData.Split('|');
+        if (parts.Length >= 3)
+        {
+            if (System.Enum.TryParse<CardEffectType>(parts[0], out CardEffectType effectType) &&
+                int.TryParse(parts[1], out int amount) &&
+                int.TryParse(parts[2], out int duration))
+            {
+                return (effectType, amount, duration);
+            }
+        }
+        
+        return (CardEffectType.Damage, 0, 0); // Default if parsing fails
     }
 
     /// <summary>
@@ -541,7 +648,7 @@ public class EntityTracker : NetworkBehaviour
         trackingData.battleTurnCount = 0;
         trackingData.hadPerfectTurnThisFight = false;
         trackingData.usedAllEnergyThisTurn = false;
-        trackingData.secondLastPlayedCardType = CardType.None;
+        trackingData.secondLastPlayedCardType = CardType.Attack;
         trackingData.wonLastFight = false;
         trackingData.lostLastFight = false;
         trackingData.survivedStatusEffects.Clear();
@@ -558,7 +665,10 @@ public class EntityTracker : NetworkBehaviour
         _currentStance.Value = (int)StanceType.None;
         _stanceDuration.Value = 0;
         
-
+        // Reset complex effect states
+        _redirectNextAttackTargetId.Value = 0;
+        _amplifyNextEffectAmount.Value = 0;
+        _lastEffectUsedAgainstMe.Value = "";
         
         // Reset turn data
         ResetTurnData();
@@ -737,6 +847,11 @@ public class EntityTrackingData
     public int totalBattleTurns; // Total turns across all battles
     public int totalPerfectTurns; // Total perfect turns achieved
     public int totalStatusEffectsSurvived; // Total unique status effects survived
+    
+    [Header("Complex Effect States")]
+    public int redirectNextAttackTargetId; // EntityId to redirect next attack to (0 = none)
+    public int amplifyNextEffectAmount; // Amount to amplify next effect by (0 = none)
+    public string lastEffectUsedAgainstMe; // Format: "effectType|amount|duration" for Mimic
 }
 
 /// <summary>

@@ -313,6 +313,12 @@ public class PlayerSpawner : MonoBehaviour
     /// </summary>
     private void ConfigureEntityVisuals(GameObject entityObj, Material material, Mesh mesh, Color tint, RuntimeAnimatorController animatorController)
     {
+        Debug.Log($"PlayerSpawner: ConfigureEntityVisuals for {entityObj.name}:");
+        Debug.Log($"  - Material: {material?.name ?? "null"}");
+        Debug.Log($"  - Mesh: {mesh?.name ?? "null"}");
+        Debug.Log($"  - Tint: {tint}");
+        Debug.Log($"  - AnimatorController: {animatorController?.name ?? "null"}");
+        
         // Configure mesh renderer
         MeshRenderer meshRenderer = entityObj.GetComponent<MeshRenderer>();
         MeshFilter meshFilter = entityObj.GetComponent<MeshFilter>();
@@ -321,11 +327,21 @@ public class PlayerSpawner : MonoBehaviour
         {
             meshRenderer.material = material;
             meshRenderer.material.color = tint;
+            Debug.Log($"PlayerSpawner: ✓ Applied material and tint to MeshRenderer");
+        }
+        else
+        {
+            Debug.LogWarning($"PlayerSpawner: ⚠ Could not apply material - MeshRenderer: {meshRenderer != null}, Material: {material != null}");
         }
         
         if (meshFilter != null && mesh != null)
         {
             meshFilter.mesh = mesh;
+            Debug.Log($"PlayerSpawner: ✓ Applied mesh to MeshFilter");
+        }
+        else
+        {
+            Debug.LogWarning($"PlayerSpawner: ⚠ Could not apply mesh - MeshFilter: {meshFilter != null}, Mesh: {mesh != null}");
         }
 
         // Configure animator
@@ -333,9 +349,14 @@ public class PlayerSpawner : MonoBehaviour
         if (animator != null && animatorController != null)
         {
             animator.runtimeAnimatorController = animatorController;
+            Debug.Log($"PlayerSpawner: ✓ Applied animator controller");
+        }
+        else if (animator != null && animatorController == null)
+        {
+            Debug.LogWarning($"PlayerSpawner: ⚠ Animator found but no controller provided");
         }
 
-        /* Debug.Log($"PlayerSpawner: Configured visual appearance for {entityObj.name}"); */
+        Debug.Log($"PlayerSpawner: Visual configuration completed for {entityObj.name}");
     }
 
     /// <summary>

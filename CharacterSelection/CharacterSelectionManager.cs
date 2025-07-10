@@ -20,9 +20,13 @@ public class CharacterSelectionManager : NetworkBehaviour
     [SerializeField] private List<GameObject> availableCharacterPrefabs = new List<GameObject>();
     [SerializeField] private List<GameObject> availablePetPrefabs = new List<GameObject>();
     
-    // Cached data components from prefabs
+    // Cached data components from prefabs - these are RUNTIME COPIES, not the original prefabs
     private List<CharacterData> availableCharacters = new List<CharacterData>();
     private List<PetData> availablePets = new List<PetData>();
+    
+    // References to original prefab data (read-only, never modified)
+    private List<CharacterData> originalCharacterData = new List<CharacterData>();
+    private List<PetData> originalPetData = new List<PetData>();
     
     [Header("Phase Management")]
     [SerializeField] private GamePhaseManager gamePhaseManager;
@@ -61,24 +65,56 @@ public class CharacterSelectionManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Extracts CharacterData and PetData components from the assigned prefabs
+    /// Extracts CharacterData and PetData components from the assigned prefabs and creates runtime copies
     /// </summary>
     private void ExtractDataFromPrefabs()
     {
         // Clear existing data
         availableCharacters.Clear();
         availablePets.Clear();
+        originalCharacterData.Clear();
+        originalPetData.Clear();
         
-        // Extract character data from prefabs
+        // Extract character data from prefabs and create runtime copies
         foreach (GameObject prefab in availableCharacterPrefabs)
         {
             if (prefab == null) continue;
             
-            CharacterData characterData = prefab.GetComponent<CharacterData>();
-            if (characterData != null)
+            CharacterData originalCharacterData = prefab.GetComponent<CharacterData>();
+            if (originalCharacterData != null)
             {
-                availableCharacters.Add(characterData);
-                Debug.Log($"CharacterSelectionManager: Found CharacterData component on prefab {prefab.name}");
+                // Store reference to original (never modify this)
+                this.originalCharacterData.Add(originalCharacterData);
+                
+                // Create runtime copy by instantiating the actual prefab (preserves all visual components)
+                GameObject runtimeInstance = Instantiate(prefab);
+                runtimeInstance.name = $"RuntimeCopy_{originalCharacterData.CharacterName}";
+                
+                // Temporarily activate to ensure component discovery works properly
+                runtimeInstance.SetActive(true);
+                
+                // Get the CharacterData component from the spawned instance
+                CharacterData runtimeCopy = runtimeInstance.GetComponent<CharacterData>();
+                
+                // Force visual component discovery to ensure all visual data is cached properly
+                runtimeCopy.DiscoverVisualComponents();
+                
+                // Now make it inactive and move it to this GameObject as parent to keep it organized
+                runtimeInstance.SetActive(false);
+                runtimeInstance.transform.SetParent(this.transform);
+                
+                availableCharacters.Add(runtimeCopy);
+                Debug.Log($"CharacterSelectionManager: Created runtime instance of {originalCharacterData.CharacterName} with all visual components");
+                
+                // Verify visual components were discovered properly
+                if (runtimeCopy.CharacterMesh != null && runtimeCopy.CharacterMaterial != null)
+                {
+                    Debug.Log($"CharacterSelectionManager: ✓ Visual components discovered - Mesh: {runtimeCopy.CharacterMesh.name}, Material: {runtimeCopy.CharacterMaterial.name}");
+                }
+                else
+                {
+                    Debug.LogWarning($"CharacterSelectionManager: ⚠ Missing visual components - Mesh: {runtimeCopy.CharacterMesh?.name ?? "null"}, Material: {runtimeCopy.CharacterMaterial?.name ?? "null"}");
+                }
             }
             else
             {
@@ -86,22 +122,186 @@ public class CharacterSelectionManager : NetworkBehaviour
             }
         }
         
-        // Extract pet data from prefabs
+        // Extract pet data from prefabs and create runtime copies
         foreach (GameObject prefab in availablePetPrefabs)
         {
             if (prefab == null) continue;
             
-            PetData petData = prefab.GetComponent<PetData>();
-            if (petData != null)
+            PetData originalPetData = prefab.GetComponent<PetData>();
+            if (originalPetData != null)
             {
-                availablePets.Add(petData);
-                /* Debug.Log($"CharacterSelectionManager: Found PetData component on prefab {prefab.name}"); */
+                // Store reference to original (never modify this)
+                this.originalPetData.Add(originalPetData);
+                
+                // Create runtime copy by instantiating the actual prefab (preserves all visual components)
+                GameObject runtimeInstance = Instantiate(prefab);
+                runtimeInstance.name = $"RuntimeCopy_{originalPetData.PetName}";
+                
+                // Temporarily activate to ensure component discovery works properly
+                runtimeInstance.SetActive(true);
+                
+                // Get the PetData component from the spawned instance
+                PetData runtimeCopy = runtimeInstance.GetComponent<PetData>();
+                
+                // Force visual component discovery to ensure all visual data is cached properly
+                runtimeCopy.DiscoverVisualComponents();
+                
+                // Now make it inactive and move it to this GameObject as parent to keep it organized
+                runtimeInstance.SetActive(false);
+                runtimeInstance.transform.SetParent(this.transform);
+                
+                availablePets.Add(runtimeCopy);
+                Debug.Log($"CharacterSelectionManager: Created runtime instance of {originalPetData.PetName} with all visual components");
+                
+                // Verify visual components were discovered properly
+                if (runtimeCopy.PetMesh != null && runtimeCopy.PetMaterial != null)
+                {
+                    Debug.Log($"CharacterSelectionManager: ✓ Visual components discovered - Mesh: {runtimeCopy.PetMesh.name}, Material: {runtimeCopy.PetMaterial.name}");
+                }
+                else
+                {
+                    Debug.LogWarning($"CharacterSelectionManager: ⚠ Missing visual components - Mesh: {runtimeCopy.PetMesh?.name ?? "null"}, Material: {runtimeCopy.PetMaterial?.name ?? "null"}");
+                }
             }
             else
             {
                 Debug.LogError($"CharacterSelectionManager: Pet prefab {prefab.name} is missing PetData component!");
             }
         }
+    }
+    
+    /// <summary>
+    /// Copy all fields from source CharacterData to target CharacterData using reflection
+    /// </summary>
+    private void CopyCharacterDataFields(CharacterData source, CharacterData target)
+    {
+        var fields = typeof(CharacterData).GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        
+        foreach (var field in fields)
+        {
+            try
+            {
+                // Skip visual component fields since they should remain from the instantiated prefab
+                if (field.Name.Contains("discovered") || field.Name.Contains("cached"))
+                {
+                    continue;
+                }
+                
+                var value = field.GetValue(source);
+                field.SetValue(target, value);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"Failed to copy field {field.Name}: {e.Message}");
+            }
+        }
+        
+        // Re-trigger component discovery to ensure visual components are properly cached
+        target.DiscoverVisualComponents();
+    }
+    
+    /// <summary>
+    /// Copy all fields from source PetData to target PetData using reflection  
+    /// </summary>
+    private void CopyPetDataFields(PetData source, PetData target)
+    {
+        var fields = typeof(PetData).GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        
+        foreach (var field in fields)
+        {
+            try
+            {
+                // Skip visual component fields since they should remain from the instantiated prefab
+                if (field.Name.Contains("discovered") || field.Name.Contains("cached"))
+                {
+                    continue;
+                }
+                
+                var value = field.GetValue(source);
+                field.SetValue(target, value);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"Failed to copy field {field.Name}: {e.Message}");
+            }
+        }
+        
+        // Re-trigger component discovery to ensure visual components are properly cached
+        target.DiscoverVisualComponents();
+    }
+    
+    /// <summary>
+    /// Reset runtime copies back to original prefab data (useful when randomization is disabled)
+    /// </summary>
+    public void ResetToOriginalData()
+    {
+        Debug.Log("CharacterSelectionManager: Resetting runtime data copies to original prefab data");
+        
+        // Recreate runtime copies from original data
+        for (int i = 0; i < originalCharacterData.Count && i < availableCharacters.Count; i++)
+        {
+            // Temporarily activate to ensure proper component access
+            bool wasActive = availableCharacters[i].gameObject.activeSelf;
+            availableCharacters[i].gameObject.SetActive(true);
+            
+            CopyCharacterDataFields(originalCharacterData[i], availableCharacters[i]);
+            
+            // Restore previous active state
+            availableCharacters[i].gameObject.SetActive(wasActive);
+            
+            Debug.Log($"CharacterSelectionManager: Reset {availableCharacters[i].CharacterName} to original data");
+        }
+        
+        for (int i = 0; i < originalPetData.Count && i < availablePets.Count; i++)
+        {
+            // Temporarily activate to ensure proper component access
+            bool wasActive = availablePets[i].gameObject.activeSelf;
+            availablePets[i].gameObject.SetActive(true);
+            
+            CopyPetDataFields(originalPetData[i], availablePets[i]);
+            
+            // Restore previous active state
+            availablePets[i].gameObject.SetActive(wasActive);
+            
+            Debug.Log($"CharacterSelectionManager: Reset {availablePets[i].PetName} to original data");
+        }
+    }
+    
+    /// <summary>
+    /// Clean up runtime copy GameObjects to prevent memory leaks
+    /// </summary>
+    private void CleanupRuntimeCopies()
+    {
+        Debug.Log("CharacterSelectionManager: Cleaning up runtime instance GameObjects");
+        
+        // Destroy instantiated character prefab copies
+        foreach (var characterData in availableCharacters)
+        {
+            if (characterData != null && characterData.gameObject != null)
+            {
+                Debug.Log($"CharacterSelectionManager: Destroying runtime instance for {characterData.CharacterName}");
+                DestroyImmediate(characterData.gameObject);
+            }
+        }
+        
+        // Destroy instantiated pet prefab copies
+        foreach (var petData in availablePets)
+        {
+            if (petData != null && petData.gameObject != null)
+            {
+                Debug.Log($"CharacterSelectionManager: Destroying runtime instance for {petData.PetName}");
+                DestroyImmediate(petData.gameObject);
+            }
+        }
+        
+        availableCharacters.Clear();
+        availablePets.Clear();
+    }
+    
+    private void OnDestroy()
+    {
+        // Clean up runtime copies when this component is destroyed
+        CleanupRuntimeCopies();
     }
 
     private void ValidateConfiguration()
@@ -673,16 +873,70 @@ public class CharacterSelectionManager : NetworkBehaviour
     
     public GameObject GetCharacterPrefabByIndex(int index)
     {
-        if (index < 0 || index >= availableCharacterPrefabs.Count)
-            return null;
-        return availableCharacterPrefabs[index];
+        if (index >= 0 && index < availableCharacterPrefabs.Count)
+            return availableCharacterPrefabs[index];
+        return null;
     }
-    
+
     public GameObject GetPetPrefabByIndex(int index)
     {
-        if (index < 0 || index >= availablePetPrefabs.Count)
-            return null;
-        return availablePetPrefabs[index];
+        if (index >= 0 && index < availablePetPrefabs.Count)
+            return availablePetPrefabs[index];
+        return null;
+    }
+    
+    /// <summary>
+    /// Get the runtime instance GameObject for a character by index (with modified data if randomization is enabled)
+    /// </summary>
+    public GameObject GetCharacterRuntimeInstanceByIndex(int index)
+    {
+        if (index >= 0 && index < availableCharacters.Count && availableCharacters[index] != null)
+            return availableCharacters[index].gameObject;
+        return null;
+    }
+    
+    /// <summary>
+    /// Get the runtime instance GameObject for a pet by index (with modified data if randomization is enabled)
+    /// </summary>
+    public GameObject GetPetRuntimeInstanceByIndex(int index)
+    {
+        if (index >= 0 && index < availablePets.Count && availablePets[index] != null)
+            return availablePets[index].gameObject;
+        return null;
+    }
+    
+    /// <summary>
+    /// Get the appropriate prefab/instance for spawning in combat - returns runtime instance if available, otherwise original prefab
+    /// </summary>
+    public GameObject GetCharacterForSpawning(int index)
+    {
+        // Prefer runtime instance (which has modified data) over original prefab
+        GameObject runtimeInstance = GetCharacterRuntimeInstanceByIndex(index);
+        if (runtimeInstance != null)
+        {
+            Debug.Log($"CharacterSelectionManager: Using runtime instance for character {index}");
+            return runtimeInstance;
+        }
+        
+        Debug.Log($"CharacterSelectionManager: Using original prefab for character {index}");
+        return GetCharacterPrefabByIndex(index);
+    }
+    
+    /// <summary>
+    /// Get the appropriate prefab/instance for spawning in combat - returns runtime instance if available, otherwise original prefab
+    /// </summary>
+    public GameObject GetPetForSpawning(int index)
+    {
+        // Prefer runtime instance (which has modified data) over original prefab
+        GameObject runtimeInstance = GetPetRuntimeInstanceByIndex(index);
+        if (runtimeInstance != null)
+        {
+            Debug.Log($"CharacterSelectionManager: Using runtime instance for pet {index}");
+            return runtimeInstance;
+        }
+        
+        Debug.Log($"CharacterSelectionManager: Using original prefab for pet {index}");
+        return GetPetPrefabByIndex(index);
     }
     
     public int GetConnectedPlayerCount() => connectedPlayers.Count;

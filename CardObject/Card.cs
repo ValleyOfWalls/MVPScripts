@@ -980,14 +980,20 @@ public class Card : NetworkBehaviour
             case CardType.Skill:
                 cardColor = new Color(0.8f, 1f, 0.8f); // Light green
                 break;
-            case CardType.Spell:
-                cardColor = new Color(0.8f, 0.8f, 1f); // Light blue
-                break;
             case CardType.Combo:
                 cardColor = new Color(1f, 1f, 0.8f); // Light yellow
                 break;
             case CardType.Finisher:
                 cardColor = new Color(1f, 0.8f, 1f); // Light magenta
+                break;
+            case CardType.Stance:
+                cardColor = new Color(0.9f, 0.9f, 0.9f); // Light gray
+                break;
+            case CardType.Counter:
+                cardColor = new Color(0.8f, 1f, 1f); // Light cyan
+                break;
+            case CardType.Reaction:
+                cardColor = new Color(1f, 0.9f, 0.8f); // Light orange
                 break;
         }
 

@@ -15,7 +15,7 @@ using FishNet.Object.Synchronizing;
 public class CombatSetup : NetworkBehaviour
 {
     [SerializeField] private GameObject combatCanvas;
-    
+    //
     [Header("Required Components")]
     [SerializeField] private FightManager fightManager;
     [SerializeField] private CombatManager combatManager;

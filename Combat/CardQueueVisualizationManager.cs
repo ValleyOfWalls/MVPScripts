@@ -313,7 +313,18 @@ public class CardQueueVisualizationManager : NetworkBehaviour
         for (int i = 0; i < sortedCardPlays.Count; i++)
         {
             QueuedCardPlay cardPlay = sortedCardPlays[i];
-            string cardName = cardPlay.cardData?.CardName ?? "Unknown Card";
+            string cardName = cardPlay.CardData?.CardName ?? "Unknown Card";
+            
+            // QUEUENAME: Debug card name extraction in visualization
+            Debug.Log($"QUEUENAME: Creating tile {i} - cardPlay.CardData?.CardName='{cardPlay.CardData?.CardName ?? "NULL"}', final cardName='{cardName}'");
+            if (cardPlay.CardData != null)
+            {
+                Debug.Log($"QUEUENAME: CardData object exists - Type={cardPlay.CardData.GetType().Name}, CardName property='{cardPlay.CardData.CardName}'");
+            }
+            else
+            {
+                Debug.Log($"QUEUENAME: CardData is null!");
+            }
             
             // Create unique key for this card based on execution order
             string uniqueKey = $"{cardName}_{i}";

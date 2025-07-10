@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc019766a33d29a44823a347b69e299b, type: 3}
-  m_Name: Guardian Stance
+  m_Name: Defensive Stance
   m_EditorClassIdentifier: 
   _cardId: 4449
-  _cardName: Guardian Stance
-  _description: Grant 25 shield to yourself. Grant 10 Thorns to yourself. Enter Guardian
+  _cardName: Defensive Stance
+  _description: Grant 25 shield to yourself. Grant 10 Thorns to yourself. Enter Defensive
     stance.
   _cardArtwork: {fileID: 0}
   _cardCategory: 1
@@ -73,7 +73,7 @@ MonoBehaviour:
   _requiresCombo: 0
   _requiredComboAmount: 1
   _changesStance: 1
-  _newStance: 5
+  _newStance: 2
   _canAlsoTargetSelf: 0
   _canAlsoTargetAllies: 0
   _canAlsoTargetOpponent: 0

@@ -305,8 +305,23 @@ public class CardEffectResolver : NetworkBehaviour
         
         /* Debug.Log($"CardEffectResolver: Effect {effect.effectType} targeting {effectTargets.Count} entities: {string.Join(", ", effectTargets.Select(e => e.EntityName.Value))}"); */
         
-        // Apply scaling if defined on the effect
+        // Check for amplify next effect and apply if present
         int amount = effect.amount;
+        
+        // Check each target for amplify effects (amplify is consumed per entity that benefits)
+        foreach (var target in effectTargets)
+        {
+            EntityTracker targetTracker = target.GetComponent<EntityTracker>();
+            if (targetTracker != null && targetTracker.HasAmplifyNextEffect)
+            {
+                int amplifyAmount = targetTracker.ConsumeAmplifyNextEffect();
+                amount += amplifyAmount;
+                Debug.Log($"CardEffectResolver: Amplified {effect.effectType} by {amplifyAmount} for {target.EntityName.Value}. New amount: {amount}");
+                break; // Only amplify once per effect, even if multiple targets have amplify
+            }
+        }
+        
+        // Apply scaling if defined on the effect
         if (effect.scalingType != ScalingType.None && trackingData != null)
         {
             int scalingValue = GetScalingValue(effect.scalingType, trackingData);
@@ -584,6 +599,16 @@ public class CardEffectResolver : NetworkBehaviour
         {
             if (targetEntity == null) continue;
             
+            // Record this effect for Mimic functionality (only if source != target, i.e., hostile effects)
+            if (sourceEntity != targetEntity)
+            {
+                EntityTracker targetTracker = targetEntity.GetComponent<EntityTracker>();
+                if (targetTracker != null)
+                {
+                    targetTracker.RecordEffectUsedAgainstMe(effectType, amount, duration);
+                }
+            }
+            
             switch (effectType)
             {
                 case CardEffectType.Damage:
@@ -651,6 +676,36 @@ public class CardEffectResolver : NetworkBehaviour
                     ProcessStanceChangeEffect(targetEntity, StanceType.None); // Exit to neutral stance
                     break;
                     
+                // ═══ COMPLEX TACTICAL EFFECTS ═══
+                case CardEffectType.RedirectNextAttack:
+                    ProcessRedirectNextAttackEffect(sourceEntity, targetEntity, amount);
+                    break;
+                    
+                case CardEffectType.Amplify:
+                    ProcessAmplifyEffect(targetEntity, amount);
+                    break;
+                    
+                case CardEffectType.Siphon:
+                    ProcessSiphonEffect(sourceEntity, targetEntity);
+                    break;
+                    
+                case CardEffectType.Revenge:
+                    // Revenge is handled via conditional effects, not direct processing
+                    Debug.LogWarning($"CardEffectResolver: Revenge should be implemented as a conditional effect, not a direct effect");
+                    break;
+                    
+                case CardEffectType.Corrupt:
+                    ProcessCorruptEffect(targetEntity);
+                    break;
+                    
+                case CardEffectType.Mimic:
+                    ProcessMimicEffect(sourceEntity, targetEntity);
+                    break;
+                    
+                case CardEffectType.HealthSwap:
+                    ProcessHealthSwapEffect(sourceEntity, targetEntity);
+                    break;
+                    
                 default:
                     Debug.LogWarning($"CardEffectResolver: Effect type {effectType} not implemented");
                     break;
@@ -662,11 +717,25 @@ public class CardEffectResolver : NetworkBehaviour
     {
         Debug.Log($"CardEffectResolver: ProcessDamageEffect - Amount: {amount}");
         
+        // Check for redirect next attack effect on the target
+        NetworkEntity finalTarget = targetEntity;
+        EntityTracker targetTracker = targetEntity.GetComponent<EntityTracker>();
+        if (targetTracker != null && targetTracker.HasRedirectNextAttack)
+        {
+            NetworkEntity redirectTarget = FindEntityById(targetTracker.RedirectNextAttackTargetId);
+            if (redirectTarget != null)
+            {
+                finalTarget = redirectTarget;
+                targetTracker.ClearRedirectNextAttack(); // Consume the redirect effect
+                Debug.Log($"CardEffectResolver: Redirected damage from {targetEntity.EntityName.Value} to {finalTarget.EntityName.Value}");
+            }
+        }
+        
         // Use DamageCalculator for consistent damage calculation instead of duplicating the logic
         int finalDamage = 0;
         if (damageCalculator != null)
         {
-            finalDamage = damageCalculator.CalculateDamage(sourceEntity, targetEntity, amount);
+            finalDamage = damageCalculator.CalculateDamage(sourceEntity, finalTarget, amount);
             Debug.Log($"CardEffectResolver: DamageCalculator returned final damage: {finalDamage}");
         }
         else
@@ -676,7 +745,7 @@ public class CardEffectResolver : NetworkBehaviour
         }
         
         // Apply the damage through LifeHandler
-        LifeHandler targetLifeHandler = targetEntity.GetComponent<LifeHandler>();
+        LifeHandler targetLifeHandler = finalTarget.GetComponent<LifeHandler>();
         if (targetLifeHandler != null)
         {
             targetLifeHandler.TakeDamage(finalDamage, sourceEntity);
@@ -690,7 +759,7 @@ public class CardEffectResolver : NetworkBehaviour
         }
         else
         {
-            Debug.LogError($"CardEffectResolver: Target entity {targetEntity.EntityName.Value} has no LifeHandler!");
+            Debug.LogError($"CardEffectResolver: Target entity {finalTarget.EntityName.Value} has no LifeHandler!");
         }
     }
     
@@ -972,5 +1041,204 @@ public class CardEffectResolver : NetworkBehaviour
             Debug.Log($"[CARDEFFECT] Effect {effect.effectType} has shouldExitStance=true, exiting stance for {sourceEntity.EntityName.Value}");
             ProcessStanceChangeEffect(sourceEntity, StanceType.None);
         }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════
+    // COMPLEX TACTICAL EFFECT PROCESSING
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// <summary>
+    /// Process Redirect Next Attack effect - sets up next damage redirect on target
+    /// </summary>
+    private void ProcessRedirectNextAttackEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity, int redirectTargetType)
+    {
+        EntityTracker targetTracker = targetEntity.GetComponent<EntityTracker>();
+        if (targetTracker == null)
+        {
+            Debug.LogError($"CardEffectResolver: No EntityTracker found on {targetEntity.EntityName.Value} for redirect effect");
+            return;
+        }
+        
+        // Determine redirect target based on amount parameter
+        NetworkEntity redirectTarget = null;
+        switch (redirectTargetType)
+        {
+            case 1: // Redirect to ally
+                redirectTarget = GetAllyForEntity(targetEntity);
+                break;
+            case 2: // Redirect back to attacker (handled dynamically in damage calculation)
+                redirectTarget = sourceEntity; // Placeholder - will be overridden with actual attacker
+                break;
+            case 3: // Redirect to opponent
+                FightManager fightManager = FindFirstObjectByType<FightManager>();
+                if (fightManager != null)
+                {
+                    if (targetEntity.EntityType == EntityType.Player)
+                        redirectTarget = fightManager.GetOpponentForPlayer(targetEntity);
+                    else if (targetEntity.EntityType == EntityType.Pet)
+                        redirectTarget = fightManager.GetOpponentForPet(targetEntity);
+                }
+                break;
+        }
+        
+        if (redirectTarget != null)
+        {
+            targetTracker.SetRedirectNextAttack(redirectTarget.ObjectId);
+            Debug.Log($"CardEffectResolver: {targetEntity.EntityName.Value} will redirect next attack to {redirectTarget.EntityName.Value}");
+        }
+        else
+        {
+            Debug.LogWarning($"CardEffectResolver: Could not find redirect target for type {redirectTargetType}");
+        }
+    }
+    
+    /// <summary>
+    /// Process Amplify effect - sets up next effect amplification on target
+    /// </summary>
+    private void ProcessAmplifyEffect(NetworkEntity targetEntity, int amplifyAmount)
+    {
+        EntityTracker targetTracker = targetEntity.GetComponent<EntityTracker>();
+        if (targetTracker == null)
+        {
+            Debug.LogError($"CardEffectResolver: No EntityTracker found on {targetEntity.EntityName.Value} for amplify effect");
+            return;
+        }
+        
+        targetTracker.SetAmplifyNextEffect(amplifyAmount);
+        Debug.Log($"CardEffectResolver: {targetEntity.EntityName.Value} will amplify next effect by {amplifyAmount}");
+    }
+    
+    /// <summary>
+    /// Process Siphon effect - steals beneficial status effects from target
+    /// </summary>
+    private void ProcessSiphonEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity)
+    {
+        EffectHandler sourceEffectHandler = sourceEntity.GetComponent<EffectHandler>();
+        EffectHandler targetEffectHandler = targetEntity.GetComponent<EffectHandler>();
+        
+        if (sourceEffectHandler == null || targetEffectHandler == null)
+        {
+            Debug.LogError($"CardEffectResolver: Missing EffectHandler for siphon effect - Source: {sourceEffectHandler != null}, Target: {targetEffectHandler != null}");
+            return;
+        }
+        
+        // Get target's beneficial effects
+        var targetEffects = targetEffectHandler.GetAllEffects();
+        var beneficialEffects = new List<string> { "Strength", "Shield", "Salve", "CriticalUp", "Thorns" };
+        
+        foreach (var effect in targetEffects)
+        {
+            if (beneficialEffects.Contains(effect.EffectName))
+            {
+                // Transfer the effect to source
+                sourceEffectHandler.AddEffect(effect.EffectName, effect.Potency, effect.RemainingDuration, sourceEntity);
+                
+                // Remove from target
+                targetEffectHandler.RemoveEffect(effect.EffectName);
+                
+                Debug.Log($"CardEffectResolver: Siphoned {effect.EffectName} ({effect.Potency}) from {targetEntity.EntityName.Value} to {sourceEntity.EntityName.Value}");
+                
+                // Only siphon one effect per use
+                break;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Process Corrupt effect - converts target's next beneficial status into harmful
+    /// </summary>
+    private void ProcessCorruptEffect(NetworkEntity targetEntity)
+    {
+        EffectHandler targetEffectHandler = targetEntity.GetComponent<EffectHandler>();
+        if (targetEffectHandler == null)
+        {
+            Debug.LogError($"CardEffectResolver: No EffectHandler found on {targetEntity.EntityName.Value} for corrupt effect");
+            return;
+        }
+        
+        // Get target's beneficial effects and corrupt the first one found
+        var targetEffects = targetEffectHandler.GetAllEffects();
+        
+        foreach (var effect in targetEffects)
+        {
+            string corruptedEffect = GetCorruptedEffect(effect.EffectName);
+            if (corruptedEffect != null)
+            {
+                // Remove the beneficial effect
+                targetEffectHandler.RemoveEffect(effect.EffectName);
+                
+                // Add the corrupted version
+                targetEffectHandler.AddEffect(corruptedEffect, effect.Potency, effect.RemainingDuration, targetEntity);
+                
+                Debug.Log($"CardEffectResolver: Corrupted {effect.EffectName} into {corruptedEffect} on {targetEntity.EntityName.Value}");
+                
+                // Only corrupt one effect per use
+                break;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Get the corrupted version of a beneficial effect
+    /// </summary>
+    private string GetCorruptedEffect(string beneficialEffect)
+    {
+        switch (beneficialEffect)
+        {
+            case "Shield": return "Burn";
+            case "Strength": return "Curse";
+            case "Salve": return "Burn";
+            case "CriticalUp": return "Weak";
+            case "Thorns": return "Break";
+            default: return null; // Effect cannot be corrupted
+        }
+    }
+    
+    /// <summary>
+    /// Process Mimic effect - copies last effect used against the source entity
+    /// </summary>
+    private void ProcessMimicEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity)
+    {
+        EntityTracker sourceTracker = sourceEntity.GetComponent<EntityTracker>();
+        if (sourceTracker == null)
+        {
+            Debug.LogError($"CardEffectResolver: No EntityTracker found on {sourceEntity.EntityName.Value} for mimic effect");
+            return;
+        }
+        
+        var (effectType, amount, duration) = sourceTracker.GetLastEffectUsedAgainstMe();
+        
+        if (effectType == CardEffectType.Damage && amount == 0)
+        {
+            Debug.LogWarning($"CardEffectResolver: No effect to mimic for {sourceEntity.EntityName.Value}");
+            return;
+        }
+        
+        // Apply the mimicked effect to the target
+        ProcessSingleEffect(sourceEntity, new List<NetworkEntity> { targetEntity }, effectType, amount, duration);
+        
+        Debug.Log($"CardEffectResolver: {sourceEntity.EntityName.Value} mimicked {effectType} ({amount}) against {targetEntity.EntityName.Value}");
+    }
+    
+    /// <summary>
+    /// Process Health Swap effect - swaps health totals between source and target
+    /// </summary>
+    private void ProcessHealthSwapEffect(NetworkEntity sourceEntity, NetworkEntity targetEntity)
+    {
+        if (sourceEntity == null || targetEntity == null)
+        {
+            Debug.LogError($"CardEffectResolver: Cannot swap health with null entity");
+            return;
+        }
+        
+        // Store current health values
+        int sourceCurrentHealth = sourceEntity.CurrentHealth.Value;
+        int targetCurrentHealth = targetEntity.CurrentHealth.Value;
+        
+        // Swap the health values
+        sourceEntity.CurrentHealth.Value = targetCurrentHealth;
+        targetEntity.CurrentHealth.Value = sourceCurrentHealth;
+        
+        Debug.Log($"CardEffectResolver: Swapped health between {sourceEntity.EntityName.Value} ({targetCurrentHealth}) and {targetEntity.EntityName.Value} ({sourceCurrentHealth})");
     }
 } 

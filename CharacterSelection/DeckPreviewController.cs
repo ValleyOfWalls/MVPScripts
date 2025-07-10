@@ -178,8 +178,15 @@ public class DeckPreviewController : MonoBehaviour
             return;
         }
         
+        Debug.Log($"[DECKPREVIEW] ShowCharacterDeck({characterIndex}) called for {availableCharacters[characterIndex].CharacterName}");
+        
+        // Check if this is during randomization completion (allow forcing through)
+        bool isRandomizationRefresh = currentDisplayType == EntityType.Character && currentCharacterIndex == characterIndex && currentDeckSummaries.Count == 0;
+        Debug.Log($"[DECKPREVIEW] Is randomization refresh: {isRandomizationRefresh} (currentDisplayType: {currentDisplayType}, currentCharacterIndex: {currentCharacterIndex}, current deck count: {currentDeckSummaries.Count})");
+        
         // SAFETY CHECK: Don't queue new requests if already processing to prevent infinite loops
-        if (animationQueue != null && animationQueue.QueueCount > 0)
+        // UNLESS this is a randomization refresh where we need to force show the deck
+        if (animationQueue != null && animationQueue.QueueCount > 0 && !isRandomizationRefresh)
         {
             Debug.Log($"DeckPreviewController: Animation queue already has {animationQueue.QueueCount} requests, skipping duplicate character deck request for index {characterIndex}");
             return;

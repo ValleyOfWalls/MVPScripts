@@ -216,12 +216,19 @@ public class CardData : ScriptableObject
             CardEffectType.ApplyBreak => true,
             CardEffectType.ApplyBurn => true,
             CardEffectType.ApplyCurse => true,
+            CardEffectType.Amplify => true,              // Amplification amount can scale
             
             // Effects that don't make sense to scale
             CardEffectType.ExitStance => false,          // Can't exit stance multiple times
             CardEffectType.EnterStance => false,         // Entering stance is binary
             CardEffectType.ApplyStun => false,           // Stun duration doesn't scale well
             CardEffectType.RaiseCriticalChance => false, // Percentage scaling would be weird
+            CardEffectType.RedirectNextAttack => false,  // Targeting is not scalable
+            CardEffectType.Siphon => false,              // Effect transfer is binary
+            CardEffectType.Revenge => false,             // Implemented as conditional, not direct effect
+            CardEffectType.Corrupt => false,             // Conversion is binary
+            CardEffectType.Mimic => false,               // Copies exact effect
+            CardEffectType.HealthSwap => false,          // Health values are absolute
 
             
             _ => false // Default to no scaling for unknown effects
@@ -240,6 +247,8 @@ public class CardData : ScriptableObject
             CardEffectType.ApplyBurn => true,
             CardEffectType.ApplyStun => true,
             CardEffectType.ApplyCurse => true,
+            CardEffectType.Siphon => true,               // Steals from target
+            CardEffectType.Corrupt => true,              // Corrupts target's effects
 
             _ => false
         };
@@ -668,7 +677,9 @@ public class CardEffect
         (int)CardEffectType.ApplyStrength,
         (int)CardEffectType.ApplyCurse,
         (int)CardEffectType.ApplyThorns,
-        (int)CardEffectType.RaiseCriticalChance)]
+        (int)CardEffectType.RaiseCriticalChance,
+        (int)CardEffectType.Amplify,
+        (int)CardEffectType.RedirectNextAttack)]
 
     [Tooltip("Base power/amount of the effect")]
     public int amount = 3;

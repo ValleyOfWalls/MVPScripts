@@ -6,15 +6,11 @@ using System;
 /// </summary>
 public enum CardType
 {
-    None,
     Attack,
     Skill,
-    Spell,
     Combo,
     Finisher,
     Stance,
-    Artifact,
-    Ritual,
     Counter,
     Reaction
 }
@@ -57,7 +53,16 @@ public enum CardEffectType
     
     // ═══ STANCE EFFECTS ═══
     EnterStance,
-    ExitStance
+    ExitStance,
+    
+    // ═══ COMPLEX TACTICAL EFFECTS ═══
+    RedirectNextAttack,    // Forces next damage targeting you to hit different target
+    Amplify,               // Increases potency of next card effect (yours or ally's)
+    Siphon,                // Steal beneficial status effects from target
+    Revenge,               // Triggers bonus effect if you took damage this turn
+    Corrupt,               // Converts target's next beneficial status into harmful
+    Mimic,                 // Copies the last card effect used against you
+    HealthSwap             // Swap health totals with ally
 }
 
 /// <summary>
@@ -83,11 +88,7 @@ public enum StanceType
 {
     None,
     Aggressive,     // +damage, -defense
-    Defensive,      // +defense, -damage
-    Focused,        // +energy, +draw
-    Berserker,      // +damage, +speed, -health
-    Guardian,       // +shield, +thorns
-    Mystic          // +elemental effects
+    Defensive       // +defense, -damage
 }
 
 /// <summary>
@@ -136,6 +137,7 @@ public enum ConditionalType
     IfTimesPlayedThisFight,
     IfDamageTakenThisFight,
     IfDamageTakenLastRound,
+    IfDamageTakenThisTurn,    // New: For Revenge effects - triggers if took damage this turn
     IfHealingReceivedThisFight,
     IfHealingReceivedLastRound,
     IfPerfectionStreak,

@@ -61,16 +61,22 @@ public class CardQueueTile : MonoBehaviour
     }
     
     /// <summary>
-    /// Initializes the tile with card data and optional color
+    /// Initializes the tile with card information
     /// </summary>
     public void Initialize(string cardName, int executionOrder = -1, Color? backgroundColor = null)
     {
+        // QUEUENAME: Debug card name at tile initialization
+        Debug.Log($"QUEUENAME: CardQueueTile.Initialize called with cardName='{cardName}', executionOrder={executionOrder}");
+        
         associatedCardName = cardName;
         
         if (cardNameText != null)
         {
             string displayText = executionOrder >= 0 ? $"{executionOrder}. {cardName}" : cardName;
             cardNameText.text = displayText;
+            
+            // QUEUENAME: Debug text assignment
+            Debug.Log($"QUEUENAME: Set cardNameText.text to '{displayText}', actual text now='{cardNameText.text}'");
         }
         else
         {
