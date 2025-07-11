@@ -17,6 +17,13 @@ public class OfflineGameManager : MonoBehaviour
     [SerializeField, Tooltip("When randomization is enabled, controls whether starting decks should be themed (class-appropriate synergies) or completely random.")]
     private bool useThemedStarterDecks = true;
 
+    [Header("Combat Pairing Settings")]
+    [SerializeField, Tooltip("If true, allows flexible pairing where any entity can fight any other entity (Player vs Player, Player vs AI, AI vs AI, etc.) while ensuring no entity fights their own ally.")]
+    private bool enableFlexiblePairing = false;
+
+    [SerializeField, Tooltip("When flexible pairing is enabled, controls whether to prioritize Player vs Player fights over other combinations.")]
+    private bool prioritizePlayerVsPlayer = true;
+
     [Header("Display Settings")]
     [SerializeField, Tooltip("If true, enables VSync to synchronize frame rate with monitor refresh rate. Note: VSync is automatically disabled when using frame rate limiting (maxFrameRate > 0).")]
     private bool enableVSync = false;
@@ -37,6 +44,8 @@ public class OfflineGameManager : MonoBehaviour
     // Public properties
     public bool EnableRandomizedCards => enableRandomizedCards;
     public bool UseThemedStarterDecks => useThemedStarterDecks;
+    public bool EnableFlexiblePairing => enableFlexiblePairing;
+    public bool PrioritizePlayerVsPlayer => prioritizePlayerVsPlayer;
     public bool EnableVSync => enableVSync;
     public int MaxFrameRate => maxFrameRate;
     public float MasterVolume => masterVolume;
@@ -166,6 +175,16 @@ public class OfflineGameManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Update flexible pairing setting (for runtime changes)
+    /// </summary>
+    public void SetFlexiblePairing(bool enabled, bool prioritizePlayerVsPlayer = true)
+    {
+        enableFlexiblePairing = enabled;
+        this.prioritizePlayerVsPlayer = prioritizePlayerVsPlayer;
+        Debug.Log($"OfflineGameManager: Flexible pairing setting changed to {enabled} (prioritize PvP: {prioritizePlayerVsPlayer})");
+    }
+
+    /// <summary>
     /// Update display settings at runtime
     /// </summary>
     public void SetDisplaySettings(int frameRate, bool vsync)
@@ -200,6 +219,8 @@ public class OfflineGameManager : MonoBehaviour
         Debug.Log($"OfflineGameManager: Current Settings:");
         Debug.Log($"  - Randomization: {enableRandomizedCards}");
         Debug.Log($"  - Themed Starter Decks: {useThemedStarterDecks}");
+        Debug.Log($"  - Flexible Pairing: {enableFlexiblePairing}");
+        Debug.Log($"  - Prioritize Player vs Player: {prioritizePlayerVsPlayer}");
         Debug.Log($"  - Frame Rate: {maxFrameRate}");
         Debug.Log($"  - VSync: {enableVSync}");
         Debug.Log($"  - Master Volume: {masterVolume}");
@@ -209,5 +230,23 @@ public class OfflineGameManager : MonoBehaviour
         Debug.Log($"  - QualitySettings.vSyncCount: {QualitySettings.vSyncCount}");
         Debug.Log($"  - Application.targetFrameRate: {Application.targetFrameRate}");
         Debug.Log($"  - AudioListener.volume: {AudioListener.volume}");
+    }
+
+    [ContextMenu("Enable Flexible Pairing")]
+    public void EnableFlexiblePairingContextMenu()
+    {
+        SetFlexiblePairing(true, true);
+    }
+
+    [ContextMenu("Disable Flexible Pairing")]
+    public void DisableFlexiblePairingContextMenu()
+    {
+        SetFlexiblePairing(false, false);
+    }
+
+    [ContextMenu("Enable Flexible Pairing (No PvP Priority)")]
+    public void EnableFlexiblePairingNoPvPPriorityContextMenu()
+    {
+        SetFlexiblePairing(true, false);
     }
 } 

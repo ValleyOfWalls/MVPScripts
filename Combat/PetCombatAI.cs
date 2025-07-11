@@ -42,33 +42,33 @@ public class PetCombatAI : NetworkBehaviour
     {
         if (!IsServerInitialized) return;
         
-        Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} queuing cards for shared turn");
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} (ID: {petEntity.ObjectId}) starting QueueCardsForSharedTurn");
 
         // Get all cards in hand
-        Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} - Getting hand manager");
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Getting hand manager");
         HandManager handManager = GetHandManager();
         if (handManager == null)
         {
-            Debug.LogError($"PET_AI_DEBUG: Cannot find hand manager for {petEntity.EntityName.Value}");
+            Debug.LogError($"AI_COMBAT_DEBUG: Cannot find hand manager for {petEntity.EntityName.Value}");
             return;
         }
 
-        Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} - Getting hand transform");
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Getting hand transform");
         Transform handTransform = handManager.GetHandTransform();
         if (handTransform == null)
         {
-            Debug.LogError($"PET_AI_DEBUG: Cannot find hand transform for {petEntity.EntityName.Value}");
+            Debug.LogError($"AI_COMBAT_DEBUG: Cannot find hand transform for {petEntity.EntityName.Value}");
             return;
         }
 
-        Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} - Getting cards in hand");
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Getting cards in hand");
         List<GameObject> cardsInHand = GetCardsInHand(handTransform);
-        Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} - Found {cardsInHand.Count} cards in hand");
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Found {cardsInHand.Count} cards in hand");
 
         // If no cards in hand, end turn
         if (cardsInHand.Count == 0)
         {
-            Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} has no cards to queue");
+            Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} has no cards to queue - ending turn early");
             return;
         }
 
@@ -76,34 +76,40 @@ public class PetCombatAI : NetworkBehaviour
         NetworkEntity opponentEntity = GetOpponentEntity();
         if (opponentEntity == null)
         {
-            Debug.LogError($"PET_AI_DEBUG: Cannot find opponent for {petEntity.EntityName.Value}");
+            Debug.LogError($"AI_COMBAT_DEBUG: Cannot find opponent for {petEntity.EntityName.Value}");
             return;
         }
+        
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} found opponent: {opponentEntity.EntityName.Value} (ID: {opponentEntity.ObjectId})");
 
         // Sort cards by priority for AI to play
         List<GameObject> sortedCards = GetSortedCardsByPriority(cardsInHand, opponentEntity);
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} sorted {sortedCards.Count} cards by priority");
 
         // Play cards until out of energy or cards
         int remainingEnergy = petEntity.CurrentEnergy.Value;
-        Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} - Starting with {remainingEnergy} energy");
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Starting with {remainingEnergy} energy");
 
+        int cardsQueued = 0;
         foreach (GameObject cardObject in sortedCards)
         {
             Card card = cardObject.GetComponent<Card>();
             if (card == null || card.CardData == null)
             {
-                Debug.LogError($"PET_AI_DEBUG: Invalid card in hand for {petEntity.EntityName.Value}");
+                Debug.LogError($"AI_COMBAT_DEBUG: Invalid card in hand for {petEntity.EntityName.Value}");
                 continue;
             }
+
+            Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Evaluating card: {card.CardData.CardName} (cost: {card.CardData.EnergyCost})");
 
             // Check if we have enough energy to play this card
             if (card.CardData.EnergyCost > remainingEnergy)
             {
-                Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} - Skipping {card.CardData.CardName} (cost: {card.CardData.EnergyCost}, remaining: {remainingEnergy})");
+                Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Skipping {card.CardData.CardName} (cost: {card.CardData.EnergyCost}, remaining: {remainingEnergy})");
                 continue;
             }
             
-            Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} - Can afford {card.CardData.CardName} (cost: {card.CardData.EnergyCost}, remaining: {remainingEnergy})");
+            Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Can afford {card.CardData.CardName} (cost: {card.CardData.EnergyCost}, remaining: {remainingEnergy})");
 
             // Queue the card play
             // Prepare card for play by setting up source and target
@@ -115,17 +121,18 @@ public class PetCombatAI : NetworkBehaviour
                 if (correctTarget != null)
                 {
                     sourceTarget.ForceUpdateSourceAndTarget(petEntity, correctTarget);
+                    Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Set target for {card.CardData.CardName}: {correctTarget.EntityName.Value}");
                 }
                 else
                 {
                     CardTargetType effectiveTargetType = card.CardData.GetEffectiveTargetType();
-                    Debug.LogWarning($"PET_AI_DEBUG: Could not determine valid target for card {card.CardData.CardName} with target type {effectiveTargetType}");
+                    Debug.LogWarning($"AI_COMBAT_DEBUG: Could not determine valid target for card {card.CardData.CardName} with target type {effectiveTargetType}");
                     continue;
                 }
             }
             else
             {
-                Debug.LogError($"PET_AI_DEBUG: Card {card.CardData.CardName} missing SourceAndTargetIdentifier");
+                Debug.LogError($"AI_COMBAT_DEBUG: Card {card.CardData.CardName} missing SourceAndTargetIdentifier");
                 continue;
             }
 
@@ -133,7 +140,7 @@ public class PetCombatAI : NetworkBehaviour
             HandleCardPlay cardPlayHandler = cardObject.GetComponent<HandleCardPlay>();
             if (cardPlayHandler != null)
             {
-                Debug.Log($"PET_AI_DEBUG: Attempting to queue card {card.CardData.CardName}");
+                Debug.Log($"AI_COMBAT_DEBUG: Attempting to queue card {card.CardData.CardName}");
                 
                 // Get source and target information for the server call
                 SourceAndTargetIdentifier sourceTargetId = cardObject.GetComponent<SourceAndTargetIdentifier>();
@@ -148,38 +155,39 @@ public class PetCombatAI : NetworkBehaviour
                     int sourceId = sourceEntity != null ? sourceEntity.ObjectId : petEntity.ObjectId; // Fallback to pet entity
                     int[] targetIds = allTargets != null ? allTargets.Select(t => t != null ? t.ObjectId : 0).Where(id => id != 0).ToArray() : new int[0];
                     
-                    Debug.Log($"PET_AI_DEBUG: Calling ServerPlayCard (queuing) with sourceId: {sourceId}, targetIds: [{string.Join(", ", targetIds)}]");
+                    Debug.Log($"AI_COMBAT_DEBUG: Calling ServerPlayCard (queuing) with sourceId: {sourceId}, targetIds: [{string.Join(", ", targetIds)}]");
                     
                     // Call the ServerPlayCard method with parameters (this will queue the card)
                     try
                     {
                         cardPlayHandler.ServerPlayCard(sourceId, targetIds);
-                        Debug.Log($"PET_AI_DEBUG: Successfully queued card {card.CardData.CardName}");
+                        Debug.Log($"AI_COMBAT_DEBUG: Successfully queued card {card.CardData.CardName}");
+                        cardsQueued++;
                     }
                     catch (System.Exception ex)
                     {
-                        Debug.LogError($"PET_AI_DEBUG: Exception queuing card {card.CardData.CardName}: {ex.Message}");
+                        Debug.LogError($"AI_COMBAT_DEBUG: Exception queuing card {card.CardData.CardName}: {ex.Message}");
                         continue;
                     }
                 }
                 else
                 {
-                    Debug.LogError($"PET_AI_DEBUG: SourceAndTargetIdentifier not found on card {card.CardData.CardName}");
+                    Debug.LogError($"AI_COMBAT_DEBUG: SourceAndTargetIdentifier not found on card {card.CardData.CardName}");
                     continue;
                 }
                 
                 // Update remaining energy for AI decision making
                 remainingEnergy -= card.CardData.EnergyCost;
-                Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} - Energy after queuing {card.CardData.CardName}: {remainingEnergy}");
+                Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} - Energy after queuing {card.CardData.CardName}: {remainingEnergy}");
             }
             else
             {
-                Debug.LogError($"PET_AI_DEBUG: Card {card.CardData.CardName} missing HandleCardPlay");
+                Debug.LogError($"AI_COMBAT_DEBUG: Card {card.CardData.CardName} missing HandleCardPlay");
                 continue;
             }
         }
 
-        Debug.Log($"PET_AI_DEBUG: {petEntity.EntityName.Value} finished queuing cards for shared turn");
+        Debug.Log($"AI_COMBAT_DEBUG: {petEntity.EntityName.Value} finished queuing cards for shared turn - {cardsQueued} cards queued, {remainingEnergy} energy remaining");
     }
 
     /// <summary>
@@ -420,13 +428,13 @@ public class PetCombatAI : NetworkBehaviour
         var relationshipManager = petEntity.GetComponent<RelationshipManager>();
         if (relationshipManager == null)
         {
-            Debug.LogError($"PET_AI_DEBUG: No RelationshipManager found on pet {petEntity.EntityName.Value}");
+            Debug.LogError($"PetCombatAI: No RelationshipManager found on pet {petEntity.EntityName.Value}");
             return null;
         }
 
         if (relationshipManager.HandEntity == null)
         {
-            Debug.LogError($"PET_AI_DEBUG: No hand entity found for pet {petEntity.EntityName.Value}");
+            Debug.LogError($"PetCombatAI: No hand entity found for pet {petEntity.EntityName.Value}");
             return null;
         }
 

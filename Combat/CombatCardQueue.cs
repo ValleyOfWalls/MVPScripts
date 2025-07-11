@@ -77,22 +77,23 @@ public class CombatCardQueue : NetworkBehaviour
             return;
         }
         
-        // QUEUENAME: Debug card name at queue entry point
+        // AI_COMBAT_DEBUG: Debug card name at queue entry point
         string cardName = cardData?.CardName ?? "NULL_CARDDATA";
-        Debug.Log($"QUEUENAME: Queuing card - CardData.CardName='{cardName}', GameObject.name='{cardObject?.name ?? "NULL_GAMEOBJECT"}'");
+        Debug.Log($"AI_COMBAT_DEBUG: QUEUEING CARD - Entity {sourceEntityId} queuing card '{cardName}' (GameObject: '{cardObject?.name ?? "NULL_GAMEOBJECT"}')");
         
         // Initialize queue for this entity if it doesn't exist
         if (!entityCardQueues.ContainsKey(sourceEntityId))
         {
             entityCardQueues[sourceEntityId] = new List<QueuedCardPlay>();
+            Debug.Log($"AI_COMBAT_DEBUG: Created new card queue for entity {sourceEntityId}");
         }
         
         // Create queued card play
         QueuedCardPlay queuedPlay = new QueuedCardPlay(sourceEntityId, targetEntityIds, cardObject, cardData);
         entityCardQueues[sourceEntityId].Add(queuedPlay);
         
-        // QUEUENAME: Debug the queued card play data
-        Debug.Log($"QUEUENAME: Created QueuedCardPlay - queuedPlay.CardData.CardName='{queuedPlay.CardData?.CardName ?? "NULL"}'");
+        // AI_COMBAT_DEBUG: Debug the queued card play data
+        Debug.Log($"AI_COMBAT_DEBUG: CARD QUEUED SUCCESSFULLY - Entity {sourceEntityId} now has {entityCardQueues[sourceEntityId].Count} cards in queue");
         
         Debug.Log($"CombatCardQueue: Queued card play for entity {sourceEntityId} - {cardData.CardName}. Queue size: {entityCardQueues[sourceEntityId].Count}");
     }
@@ -267,14 +268,22 @@ public class CombatCardQueue : NetworkBehaviour
         // Collect all queued card plays from all entities
         List<QueuedCardPlay> allQueuedPlays = new List<QueuedCardPlay>();
         
+        Debug.Log($"AI_COMBAT_DEBUG: CHECKING QUEUES - Found {entityCardQueues.Count} entities with potential queues");
+        
         foreach (var entityQueue in entityCardQueues)
         {
             int entityId = entityQueue.Key;
             List<QueuedCardPlay> queuedPlays = entityQueue.Value;
             
+            Debug.Log($"AI_COMBAT_DEBUG: Entity {entityId} has {queuedPlays.Count} cards in queue");
+            
             if (queuedPlays.Count > 0)
             {
-                Debug.Log($"CombatCardQueue: Found {queuedPlays.Count} queued cards for entity {entityId}");
+                Debug.Log($"AI_COMBAT_DEBUG: Found {queuedPlays.Count} queued cards for entity {entityId}");
+                foreach (var play in queuedPlays)
+                {
+                    Debug.Log($"AI_COMBAT_DEBUG: - Card: {play.CardData?.CardName ?? "NULL"}");
+                }
                 allQueuedPlays.AddRange(queuedPlays);
             }
         }
@@ -342,9 +351,12 @@ public class CombatCardQueue : NetworkBehaviour
         {
             QueuedCardPlay queuedPlay = allQueuedPlays[i];
             
+            Debug.Log($"AI_COMBAT_DEBUG: Processing card {i + 1}/{allQueuedPlays.Count} - Entity {queuedPlay.sourceEntityId}, Card: {queuedPlay.CardData?.CardName ?? "NULL"}");
+            
             // Check if this card's fight is still active before executing
             if (!ShouldExecuteCard(queuedPlay))
             {
+                Debug.Log($"AI_COMBAT_DEBUG: SKIPPING card - fight has ended for entity {queuedPlay.sourceEntityId}");
                 Debug.Log($"CombatCardQueue: Skipping card {i + 1}/{allQueuedPlays.Count}: {queuedPlay.CardData.CardName} from entity {queuedPlay.sourceEntityId} - fight has ended");
                 
                 // Still notify visualization system that this card was "executed" (skipped)
@@ -354,34 +366,77 @@ public class CombatCardQueue : NetworkBehaviour
                 continue;
             }
             
+            Debug.Log($"AI_COMBAT_DEBUG: Card fight check passed - proceeding with execution");
+            
             if (queuedPlay.cardObject != null)
             {
+                Debug.Log($"AI_COMBAT_DEBUG: Card object found: {queuedPlay.cardObject.name} (ID: {queuedPlay.cardObject.GetInstanceID()})");
+                
                 HandleCardPlay cardPlayHandler = queuedPlay.cardObject.GetComponent<HandleCardPlay>();
                 if (cardPlayHandler != null)
                 {
+                    Debug.Log($"AI_COMBAT_DEBUG: HandleCardPlay component found on {queuedPlay.cardObject.name}");
                     Debug.Log($"CombatCardQueue: Executing card {i + 1}/{allQueuedPlays.Count}: {queuedPlay.CardData.CardName} from entity {queuedPlay.sourceEntityId}");
                     
-                    // Execute the card play directly (bypass queuing)
-                    cardPlayHandler.ExecuteCardPlayDirectly(queuedPlay.sourceEntityId, queuedPlay.targetEntityIds);
-                    
-                    // EVENT-DRIVEN: Wait for card animation completion instead of fixed delay
-                    yield return StartCoroutine(WaitForCardExecutionComplete(queuedPlay.cardObject));
-                    
-                    // Notify visualization system that this card finished executing
-                    OnCardExecuted?.Invoke(queuedPlay.CardData.CardName, i);
-                    RpcNotifyCardExecuted(queuedPlay.CardData.CardName, i);
-                    
-                    // Add delay between card executions (except after the last card)
-                    if (i < allQueuedPlays.Count - 1 && delayBetweenCardExecutions > 0f)
+                    // Debug target entities
+                    if (queuedPlay.targetEntityIds != null && queuedPlay.targetEntityIds.Length > 0)
                     {
-                        Debug.Log($"CombatCardQueue: Waiting {delayBetweenCardExecutions}s before next card execution");
-                        yield return new WaitForSeconds(delayBetweenCardExecutions);
+                        Debug.Log($"AI_COMBAT_DEBUG: Executing with {queuedPlay.targetEntityIds.Length} targets: [{string.Join(", ", queuedPlay.targetEntityIds)}]");
+                    }
+                    else
+                    {
+                        Debug.Log($"AI_COMBAT_DEBUG: Executing with NO targets (self-target or no-target card)");
+                    }
+                    
+                    // Execute the card play directly (bypass queuing)
+                    Debug.Log($"AI_COMBAT_DEBUG: Calling ExecuteCardPlayDirectly...");
+                    
+                    bool executionSucceeded = false;
+                    try
+                    {
+                        cardPlayHandler.ExecuteCardPlayDirectly(queuedPlay.sourceEntityId, queuedPlay.targetEntityIds);
+                        executionSucceeded = true;
+                        Debug.Log($"AI_COMBAT_DEBUG: ExecuteCardPlayDirectly completed successfully");
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogError($"AI_COMBAT_DEBUG: EXCEPTION during ExecuteCardPlayDirectly for {queuedPlay.CardData.CardName}: {ex.Message}");
+                        Debug.LogError($"AI_COMBAT_DEBUG: Exception stack trace: {ex.StackTrace}");
+                        executionSucceeded = false;
+                    }
+                    
+                    if (executionSucceeded)
+                    {
+                        // EVENT-DRIVEN: Wait for card animation completion instead of fixed delay
+                        yield return StartCoroutine(WaitForCardExecutionComplete(queuedPlay.cardObject));
+                        
+                        // Notify visualization system that this card finished executing
+                        OnCardExecuted?.Invoke(queuedPlay.CardData.CardName, i);
+                        RpcNotifyCardExecuted(queuedPlay.CardData.CardName, i);
+                        
+                        Debug.Log($"AI_COMBAT_DEBUG: Card execution fully completed for {queuedPlay.CardData.CardName}");
+                        
+                        // Add delay between card executions (except after the last card)
+                        if (i < allQueuedPlays.Count - 1 && delayBetweenCardExecutions > 0f)
+                        {
+                            Debug.Log($"CombatCardQueue: Waiting {delayBetweenCardExecutions}s before next card execution");
+                            yield return new WaitForSeconds(delayBetweenCardExecutions);
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError($"AI_COMBAT_DEBUG: Card execution FAILED for {queuedPlay.CardData.CardName} - skipping animation and continuing");
                     }
                 }
                 else
                 {
+                    Debug.LogError($"AI_COMBAT_DEBUG: MISSING HandleCardPlay component on card object {queuedPlay.cardObject.name}!");
                     Debug.LogError($"CombatCardQueue: HandleCardPlay component missing on queued card {queuedPlay.CardData.CardName}");
                 }
+            }
+            else
+            {
+                Debug.LogError($"AI_COMBAT_DEBUG: CARD OBJECT IS NULL for entity {queuedPlay.sourceEntityId}, card {queuedPlay.CardData?.CardName ?? "NULL"}!");
             }
         }
         

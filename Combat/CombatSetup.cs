@@ -362,18 +362,215 @@ public class CombatSetup : NetworkBehaviour
     [Server]
     private void AssignFights()
     {
-        if (!IsServerInitialized || fightManager == null) return;
+        if (!IsServerInitialized || fightManager == null) 
+        {
+            Debug.LogError("FLEXPAIRING: Cannot assign fights - server not initialized or fightManager is null");
+            return;
+        }
 
         // Get all entities
         List<NetworkEntity> entities = GetAllSpawnedEntities<NetworkEntity>();
+        Debug.Log($"FLEXPAIRING: Found {entities.Count} total entities");
         
-        // Separate players and pets
         var players = entities.Where(e => e.EntityType == EntityType.Player).ToList();
         var pets = entities.Where(e => e.EntityType == EntityType.Pet).ToList();
         
-        AssignPlayersToPets(players, pets);
+        Debug.Log($"FLEXPAIRING: Entity breakdown - {players.Count} players, {pets.Count} pets");
+        foreach (var player in players)
+        {
+            Debug.Log($"FLEXPAIRING: Player - {player.EntityName.Value} (Owner: {player.OwnerId}, ObjectId: {player.ObjectId})");
+        }
+        foreach (var pet in pets)
+        {
+            Debug.Log($"FLEXPAIRING: Pet - {pet.EntityName.Value} (Owner: {pet.OwnerId}, ObjectId: {pet.ObjectId}, OwnerEntityId: {pet.OwnerEntityId.Value})");
+        }
+        
+        // Check if flexible pairing is enabled
+        OfflineGameManager offlineManager = OfflineGameManager.Instance;
+        bool flexiblePairingEnabled = offlineManager != null && offlineManager.EnableFlexiblePairing;
+
+        Debug.Log($"FLEXPAIRING: OfflineGameManager.Instance: {offlineManager != null}");
+        if (offlineManager != null)
+        {
+            Debug.Log($"FLEXPAIRING: EnableFlexiblePairing: {offlineManager.EnableFlexiblePairing}, PrioritizePlayerVsPlayer: {offlineManager.PrioritizePlayerVsPlayer}");
+        }
+
+        if (flexiblePairingEnabled)
+        {
+            Debug.Log("FLEXPAIRING: Using flexible pairing algorithm");
+            AssignFlexibleFights(entities);
+        }
+        else
+        {
+            Debug.Log("FLEXPAIRING: Using traditional Player vs Pet pairing");
+            AssignPlayersToPets(players, pets);
+        }
     }
     
+    /// <summary>
+    /// Flexible pairing algorithm that can pair any entity with any other entity
+    /// Ensures: 1) Everyone is paired, 2) No one fights their own ally, 3) Each entity is in only one fight
+    /// </summary>
+    private void AssignFlexibleFights(List<NetworkEntity> entities)
+    {
+        // Filter to only combat entities (Player and Pet)
+        var combatEntities = entities.Where(e => e.EntityType == EntityType.Player || e.EntityType == EntityType.Pet).ToList();
+        
+        Debug.Log($"FLEXPAIRING: AssignFlexibleFights called with {entities.Count} entities, {combatEntities.Count} combat entities");
+        
+        if (combatEntities.Count < 2)
+        {
+            Debug.LogWarning("FLEXPAIRING: Not enough combat entities for flexible pairing");
+            return;
+        }
+        
+        // Create a list of available entities for pairing
+        List<NetworkEntity> availableEntities = new List<NetworkEntity>(combatEntities);
+        
+        OfflineGameManager offlineManager = OfflineGameManager.Instance;
+        bool prioritizePlayerVsPlayer = offlineManager != null && offlineManager.PrioritizePlayerVsPlayer;
+        
+        Debug.Log($"FLEXPAIRING: Flexible pairing with {availableEntities.Count} entities (prioritize PvP: {prioritizePlayerVsPlayer})");
+        
+        // Phase 1: If prioritizing Player vs Player, try to pair players first
+        if (prioritizePlayerVsPlayer)
+        {
+            Debug.Log("FLEXPAIRING: Phase 1 - Pairing players vs players");
+            PairPlayerVsPlayer(availableEntities);
+        }
+        
+        // Phase 2: Pair remaining entities using optimal algorithm
+        Debug.Log("FLEXPAIRING: Phase 2 - Pairing remaining entities");
+        PairRemainingEntities(availableEntities);
+        
+        Debug.Log($"FLEXPAIRING: Flexible pairing complete. {availableEntities.Count} entities remain unpaired.");
+    }
+    
+    /// <summary>
+    /// Pairs players against each other when prioritizing Player vs Player fights
+    /// </summary>
+    private void PairPlayerVsPlayer(List<NetworkEntity> availableEntities)
+    {
+        var players = availableEntities.Where(e => e.EntityType == EntityType.Player).ToList();
+        
+        Debug.Log($"FLEXPAIRING: Attempting to pair {players.Count} players against each other");
+        
+        // Pair players in groups of 2
+        for (int i = 0; i < players.Count - 1; i += 2)
+        {
+            NetworkEntity player1 = players[i];
+            NetworkEntity player2 = players[i + 1];
+            
+            Debug.Log($"FLEXPAIRING: Checking if {player1.EntityName.Value} and {player2.EntityName.Value} are allies");
+            
+            // Ensure they're not allies (shouldn't happen with players, but safety check)
+            if (!AreEntitiesAllies(player1, player2))
+            {
+                Debug.Log($"FLEXPAIRING: Adding fight assignment - {player1.EntityName.Value} vs {player2.EntityName.Value}");
+                fightManager.AddFightAssignment(player1, player2);
+                availableEntities.Remove(player1);
+                availableEntities.Remove(player2);
+                
+                Debug.Log($"FLEXPAIRING: Successfully paired Player vs Player - {player1.EntityName.Value} vs {player2.EntityName.Value}");
+            }
+            else
+            {
+                Debug.LogWarning($"FLEXPAIRING: Players {player1.EntityName.Value} and {player2.EntityName.Value} are allies, skipping pairing");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Pairs remaining entities using an optimal algorithm
+    /// </summary>
+    private void PairRemainingEntities(List<NetworkEntity> availableEntities)
+    {
+        Debug.Log($"FLEXPAIRING: Pairing {availableEntities.Count} remaining entities");
+        
+        while (availableEntities.Count >= 2)
+        {
+            NetworkEntity leftFighter = availableEntities[0];
+            NetworkEntity rightFighter = null;
+            
+            Debug.Log($"FLEXPAIRING: Looking for opponent for {leftFighter.EntityName.Value} ({leftFighter.EntityType})");
+            
+            // Find the best opponent for leftFighter
+            for (int i = 1; i < availableEntities.Count; i++)
+            {
+                NetworkEntity candidate = availableEntities[i];
+                
+                Debug.Log($"FLEXPAIRING: Checking candidate {candidate.EntityName.Value} ({candidate.EntityType})");
+                
+                // Check if they can fight (not allies)
+                if (!AreEntitiesAllies(leftFighter, candidate))
+                {
+                    rightFighter = candidate;
+                    Debug.Log($"FLEXPAIRING: Found valid opponent - {candidate.EntityName.Value}");
+                    break;
+                }
+                else
+                {
+                    Debug.Log($"FLEXPAIRING: {candidate.EntityName.Value} is ally of {leftFighter.EntityName.Value}, skipping");
+                }
+            }
+            
+            if (rightFighter != null)
+            {
+                Debug.Log($"FLEXPAIRING: Adding fight assignment - {leftFighter.EntityName.Value} vs {rightFighter.EntityName.Value}");
+                fightManager.AddFightAssignment(leftFighter, rightFighter);
+                availableEntities.Remove(leftFighter);
+                availableEntities.Remove(rightFighter);
+                
+                Debug.Log($"FLEXPAIRING: Successfully paired {leftFighter.EntityName.Value} ({leftFighter.EntityType}) vs {rightFighter.EntityName.Value} ({rightFighter.EntityType})");
+            }
+            else
+            {
+                // No valid opponent found for leftFighter, remove them from pairing
+                Debug.LogWarning($"FLEXPAIRING: No valid opponent found for {leftFighter.EntityName.Value}, removing from pairing");
+                availableEntities.Remove(leftFighter);
+            }
+        }
+        
+        if (availableEntities.Count > 0)
+        {
+            Debug.LogWarning($"FLEXPAIRING: {availableEntities.Count} entities could not be paired:");
+            foreach (var entity in availableEntities)
+            {
+                Debug.LogWarning($"FLEXPAIRING:   - {entity.EntityName.Value} ({entity.EntityType})");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Checks if two entities are allies (same owner or one owns the other)
+    /// </summary>
+    private bool AreEntitiesAllies(NetworkEntity entity1, NetworkEntity entity2)
+    {
+        if (entity1 == null || entity2 == null) return false;
+
+        // Check if they are the same entity
+        if (entity1.ObjectId == entity2.ObjectId) return true;
+
+        // Check if one owns the other
+        if (entity1.EntityType == EntityType.Player && entity2.EntityType == EntityType.Pet)
+        {
+            return entity2.OwnerEntityId.Value == entity1.ObjectId;
+        }
+        if (entity2.EntityType == EntityType.Player && entity1.EntityType == EntityType.Pet)
+        {
+            return entity1.OwnerEntityId.Value == entity2.ObjectId;
+        }
+
+        // Check if they have the same owner (both are pets owned by the same player)
+        if (entity1.EntityType == EntityType.Pet && entity2.EntityType == EntityType.Pet)
+        {
+            return entity1.OwnerEntityId.Value == entity2.OwnerEntityId.Value;
+        }
+
+        // Players are not allies with other players by default
+        return false;
+    }
+
     private void AssignPlayersToPets(List<NetworkEntity> players, List<NetworkEntity> pets)
     {
         List<NetworkEntity> availablePets = new List<NetworkEntity>(pets);

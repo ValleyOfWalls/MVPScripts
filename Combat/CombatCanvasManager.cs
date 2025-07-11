@@ -162,6 +162,8 @@ public class CombatCanvasManager : NetworkBehaviour
 
     public void SetupCombatUI()
     {
+        Debug.Log("FLEXPAIRING: SetupCombatUI called");
+        
         // Find managers if not already assigned
         if (fightManager == null) fightManager = FindFirstObjectByType<FightManager>();
         if (combatManager == null) combatManager = FindFirstObjectByType<CombatManager>();
@@ -169,11 +171,15 @@ public class CombatCanvasManager : NetworkBehaviour
         if (arenaManager == null) arenaManager = FindFirstObjectByType<ArenaManager>();
         if (cameraManager == null) cameraManager = FindFirstObjectByType<CameraManager>();
 
+        Debug.Log($"FLEXPAIRING: Managers found - FightManager: {fightManager != null}, CombatManager: {combatManager != null}");
+
         if (fightManager == null) Debug.LogError("FightManager not found by CombatCanvasManager.");
         if (combatManager == null) Debug.LogError("CombatManager not found by CombatCanvasManager.");
 
         // Try multiple approaches to find the local player
         FindLocalPlayer();
+
+        Debug.Log($"FLEXPAIRING: Local player found: {localPlayer?.EntityName.Value}");
 
         if (localPlayer == null)
         {
@@ -184,13 +190,17 @@ public class CombatCanvasManager : NetworkBehaviour
         // Find opponent
         opponentForLocalPlayer = fightManager.GetOpponent(localPlayer);
 
+        Debug.Log($"FLEXPAIRING: Opponent found: {opponentForLocalPlayer?.EntityName.Value}");
+
         if (opponentForLocalPlayer == null)
         {
+            Debug.Log("FLEXPAIRING: Opponent not found, starting retry coroutine");
             // Try to wait and retry if opponent isn't available yet
             StartCoroutine(RetryFindOpponent());
         }
         else
         {
+            Debug.Log("FLEXPAIRING: Opponent found, completing UI setup");
             // Complete UI setup since we found opponent
             CompleteUISetup();
         }
@@ -198,13 +208,27 @@ public class CombatCanvasManager : NetworkBehaviour
     
     private void FindLocalPlayer()
     {
+        Debug.Log("FLEXPAIRING: FindLocalPlayer called");
+        
         // Try to find local player through various means
-        localPlayer = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None)
-            .FirstOrDefault(p => p.EntityType == EntityType.Player && p.IsOwner);
+        var allPlayers = FindObjectsByType<NetworkEntity>(FindObjectsSortMode.None)
+            .Where(p => p.EntityType == EntityType.Player).ToList();
+        
+        Debug.Log($"FLEXPAIRING: Found {allPlayers.Count} total players");
+        foreach (var player in allPlayers)
+        {
+            Debug.Log($"FLEXPAIRING: Player - {player.EntityName.Value}, IsOwner: {player.IsOwner}, Owner: {player.Owner?.ClientId}");
+        }
+        
+        localPlayer = allPlayers.FirstOrDefault(p => p.IsOwner);
 
         if (localPlayer == null)
         {
-            Debug.LogWarning("Could not find local player through direct search.");
+            Debug.LogWarning("FLEXPAIRING: Could not find local player through direct search.");
+        }
+        else
+        {
+            Debug.Log($"FLEXPAIRING: Local player found: {localPlayer.EntityName.Value}");
         }
     }
 
@@ -682,29 +706,128 @@ public class CombatCanvasManager : NetworkBehaviour
     /// <summary>
     /// Positions combat entities for a specific fight
     /// Only positions entities owned by the local client to respect NetworkTransform ownership
+    /// Uses perspective-aware positioning for flexible pairing
     /// </summary>
-    public void PositionCombatEntitiesForSpecificFight(NetworkEntity player, NetworkEntity opponentPet)
+    public void PositionCombatEntitiesForSpecificFight(NetworkEntity leftFighter, NetworkEntity rightFighter)
     {
-        if (player == null || opponentPet == null)
+        if (leftFighter == null || rightFighter == null)
         {
-            Debug.LogWarning("Cannot position entities - player or opponent pet is null");
+            Debug.LogWarning("Cannot position entities - leftFighter or rightFighter is null");
             return;
+        }
+
+        // Determine which entity is the local player and which is the opponent
+        NetworkEntity localPlayerEntity = null;
+        NetworkEntity opponentEntity = null;
+        
+        if (leftFighter.IsOwner)
+        {
+            localPlayerEntity = leftFighter;
+            opponentEntity = rightFighter;
+            Debug.Log($"FLEXPAIRING: Positioning from perspective of left fighter {leftFighter.EntityName.Value}");
+        }
+        else if (rightFighter.IsOwner)
+        {
+            localPlayerEntity = rightFighter;
+            opponentEntity = leftFighter;
+            Debug.Log($"FLEXPAIRING: Positioning from perspective of right fighter {rightFighter.EntityName.Value}");
+        }
+        else
+        {
+            // Neither entity is owned by local client - use leftFighter as default perspective
+            localPlayerEntity = leftFighter;
+            opponentEntity = rightFighter;
+            Debug.Log($"FLEXPAIRING: Neither entity owned by local client, using left fighter perspective");
         }
 
         // Use arena-based positioning if ArenaManager is available
         if (arenaManager != null && arenaManager.IsInitialized)
         {
-            PositionEntitiesInArena(player, opponentPet);
+            PositionEntitiesInArenaPerspectiveAware(localPlayerEntity, opponentEntity, leftFighter, rightFighter);
         }
         else
         {
             // Fallback to original positioning system
-            PositionEntitiesLegacy(player, opponentPet);
+            PositionEntitiesLegacyPerspectiveAware(localPlayerEntity, opponentEntity);
         }
     }
     
     /// <summary>
-    /// Positions entities in their designated arena using ArenaManager
+    /// Positions entities in their designated arena using ArenaManager with perspective awareness
+    /// </summary>
+    private void PositionEntitiesInArenaPerspectiveAware(NetworkEntity localPlayerEntity, NetworkEntity opponentEntity, NetworkEntity leftFighter, NetworkEntity rightFighter)
+    {
+        // Get the arena based on the left fighter (maintains consistent arena assignment)
+        uint leftFighterObjectId = (uint)leftFighter.ObjectId;
+        int arenaIndex = arenaManager.GetArenaForPlayer(leftFighterObjectId);
+        
+        if (arenaIndex < 0)
+        {
+            Debug.LogWarning($"No arena found for left fighter {leftFighterObjectId}, using fallback positioning");
+            PositionEntitiesLegacyPerspectiveAware(localPlayerEntity, opponentEntity);
+            return;
+        }
+        
+        // Get arena positions - these are still based on absolute left/right assignment for model positioning
+        Vector3 leftFighterArenaPos = arenaManager.GetPlayerPositionInArena(arenaIndex);
+        Vector3 rightFighterArenaPos = arenaManager.GetOpponentPetPositionInArena(arenaIndex);
+        
+        // Position main entities based on their absolute positions (not perspective)
+        if (leftFighter.IsOwner)
+        {
+            Debug.Log($"NETPOS: Setting {leftFighter.EntityName.Value} (ID: {leftFighter.ObjectId}) position from {leftFighter.transform.position} to {leftFighterArenaPos} - IsOwner: {leftFighter.IsOwner}");
+            leftFighter.transform.position = leftFighterArenaPos;
+            Debug.Log($"NETPOS: After setting, {leftFighter.EntityName.Value} position is {leftFighter.transform.position}");
+            Debug.Log($"[ARENA_POSITIONING] Left Fighter {leftFighter.EntityName.Value} positioned at arena {arenaIndex}: {leftFighterArenaPos}");
+        }
+        else
+        {
+            Debug.Log($"NETPOS: Skipping {leftFighter.EntityName.Value} (ID: {leftFighter.ObjectId}) positioning - IsOwner: {leftFighter.IsOwner}, NetworkTransform should handle this");
+        }
+        
+        if (rightFighter.IsOwner)
+        {
+            Debug.Log($"NETPOS: Setting {rightFighter.EntityName.Value} (ID: {rightFighter.ObjectId}) position from {rightFighter.transform.position} to {rightFighterArenaPos} - IsOwner: {rightFighter.IsOwner}");
+            rightFighter.transform.position = rightFighterArenaPos;
+            Debug.Log($"NETPOS: After setting, {rightFighter.EntityName.Value} position is {rightFighterArenaPos}");
+            Debug.Log($"[ARENA_POSITIONING] Right Fighter {rightFighter.EntityName.Value} positioned at arena {arenaIndex}: {rightFighterArenaPos}");
+        }
+        else
+        {
+            Debug.Log($"NETPOS: Skipping {rightFighter.EntityName.Value} (ID: {rightFighter.ObjectId}) positioning - IsOwner: {rightFighter.IsOwner}, NetworkTransform should handle this");
+        }
+        
+        // Position hands and stats UI based on LOCAL PLAYER PERSPECTIVE
+        if (arenaManager.ReferencePositionsCaptured)
+        {
+            Vector3 referenceCenter = (arenaManager.ReferencePlayerPosition + arenaManager.ReferenceOpponentPetPosition) * 0.5f;
+            Vector3 localPlayerHandRelative = playerHandPositionTransform.position - referenceCenter;
+            Vector3 opponentHandRelative = opponentPetHandPositionTransform.position - referenceCenter;
+            Vector3 localPlayerStatsRelative = playerStatsUIPositionTransform.position - referenceCenter;
+            Vector3 opponentStatsRelative = opponentPetStatsUIPositionTransform.position - referenceCenter;
+            
+            PositionHandEntityInArena(localPlayerEntity, arenaIndex, localPlayerHandRelative, "Local Player Hand");
+            PositionHandEntityInArena(opponentEntity, arenaIndex, opponentHandRelative, "Opponent Hand");
+            PositionStatsUIInArena(localPlayerEntity, arenaIndex, localPlayerStatsRelative, "Local Player Stats UI");
+            PositionStatsUIInArena(opponentEntity, arenaIndex, opponentStatsRelative, "Opponent Stats UI");
+        }
+        else
+        {
+            // Fallback to local positions if reference positions weren't captured
+            PositionHandEntityInArena(localPlayerEntity, arenaIndex, playerHandPositionTransform.localPosition, "Local Player Hand");
+            PositionHandEntityInArena(opponentEntity, arenaIndex, opponentPetHandPositionTransform.localPosition, "Opponent Hand");
+            PositionStatsUIInArena(localPlayerEntity, arenaIndex, playerStatsUIPositionTransform.localPosition, "Local Player Stats UI");
+            PositionStatsUIInArena(opponentEntity, arenaIndex, opponentPetStatsUIPositionTransform.localPosition, "Opponent Stats UI");
+        }
+        
+        // Make entities face each other after positioning
+        SetupEntityFacingWhenReady(leftFighter, rightFighter);
+        
+        Debug.Log($"[ARENA_POSITIONING] Completed perspective-aware positioning for fight in arena {arenaIndex}");
+    }
+    
+    /// <summary>
+    /// Positions entities in their designated arena using ArenaManager (legacy method for backward compatibility)
     /// </summary>
     private void PositionEntitiesInArena(NetworkEntity player, NetworkEntity opponentPet)
     {
@@ -779,7 +902,30 @@ public class CombatCanvasManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Legacy positioning method (original system)
+    /// Legacy positioning method (original system) with perspective awareness
+    /// </summary>
+    private void PositionEntitiesLegacyPerspectiveAware(NetworkEntity localPlayerEntity, NetworkEntity opponentEntity)
+    {
+        // Position local player only if owned by local client (has NetworkTransform)
+        PositionEntityIfOwned(localPlayerEntity, playerPositionTransform, "Local Player");
+
+        // Position opponent only if owned by local client (has NetworkTransform)
+        PositionEntityIfOwned(opponentEntity, opponentPetPositionTransform, "Opponent");
+
+        // Position ALL hands locally based on LOCAL PLAYER PERSPECTIVE
+        PositionHandEntityAlways(localPlayerEntity, playerHandPositionTransform, "Local Player Hand");
+        PositionHandEntityAlways(opponentEntity, opponentPetHandPositionTransform, "Opponent Hand");
+        
+        // Position ALL stats UI locally based on LOCAL PLAYER PERSPECTIVE
+        PositionStatsUIAlways(localPlayerEntity, playerStatsUIPositionTransform, "Local Player Stats UI");
+        PositionStatsUIAlways(opponentEntity, opponentPetStatsUIPositionTransform, "Opponent Stats UI");
+
+        // Make entities face each other after positioning (event-driven readiness check)
+        SetupEntityFacingWhenReady(localPlayerEntity, opponentEntity);
+    }
+    
+    /// <summary>
+    /// Legacy positioning method (original system) - kept for backward compatibility
     /// </summary>
     private void PositionEntitiesLegacy(NetworkEntity player, NetworkEntity opponentPet)
     {

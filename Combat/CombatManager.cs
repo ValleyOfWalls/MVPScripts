@@ -15,9 +15,52 @@ public enum CombatTurn
     SharedTurn  // Both player and pet can act simultaneously
 }
 
+// Fight data structure - each fight has two participants
+[System.Serializable]
+public struct Fight
+{
+    public int fightId;
+    public NetworkEntity leftEntity;
+    public NetworkEntity rightEntity;
+    public int round;
+    public CombatTurn turn;
+    public bool leftReady;
+    public bool rightReady;
+    public bool isActive;
+    
+    public Fight(int id, NetworkEntity left, NetworkEntity right)
+    {
+        fightId = id;
+        leftEntity = left;
+        rightEntity = right;
+        round = 0;
+        turn = CombatTurn.None;
+        leftReady = false;
+        rightReady = false;
+        isActive = true;
+    }
+    
+    public bool ContainsEntity(NetworkEntity entity)
+    {
+        return leftEntity == entity || rightEntity == entity;
+    }
+    
+    public NetworkEntity GetOpponent(NetworkEntity entity)
+    {
+        if (leftEntity == entity) return rightEntity;
+        if (rightEntity == entity) return leftEntity;
+        return null;
+    }
+    
+    public bool BothEntitiesReady()
+    {
+        return leftReady && rightReady;
+    }
+}
+
 /// <summary>
-/// Orchestrates the combat flow including turns, rounds, and fight progression.
-/// Attach to: A persistent NetworkObject in the scene that manages combat gameplay.
+/// Manages combat encounters between entities.
+/// Handles multiple simultaneous fights in a fight-centric way.
 /// </summary>
 public class CombatManager : NetworkBehaviour
 {
@@ -28,30 +71,23 @@ public class CombatManager : NetworkBehaviour
     [SerializeField] private FightConclusionManager fightConclusionManager;
     [SerializeField] private CombatCardQueue combatCardQueue;
 
-    // Track round numbers for each fight independently
-    private readonly SyncDictionary<NetworkEntity, int> fightRounds = new SyncDictionary<NetworkEntity, int>();
+    // Fight-centric data structures
+    private readonly SyncDictionary<int, Fight> activeFights = new SyncDictionary<int, Fight>();
+    private readonly SyncDictionary<int, bool> fightResults = new SyncDictionary<int, bool>(); // true if left entity won, false if right entity won
+    private readonly Dictionary<int, Fight> completedFights = new Dictionary<int, Fight>(); // Store completed fight data for result conversion
     
-    // Track active fights
-    private readonly SyncDictionary<NetworkEntity, NetworkEntity> activeFights = new SyncDictionary<NetworkEntity, NetworkEntity>();
+    // Entity readiness tracking (applies to all entities regardless of type)
+    private readonly SyncDictionary<NetworkEntity, bool> entitiesReadyToEndTurn = new SyncDictionary<NetworkEntity, bool>();
     
-    // Track current turn for each fight
-    private readonly SyncDictionary<NetworkEntity, CombatTurn> fightTurns = new SyncDictionary<NetworkEntity, CombatTurn>();
-    
-    // Track fight results
-    private readonly SyncDictionary<NetworkEntity, bool> fightResults = new SyncDictionary<NetworkEntity, bool>(); // true if player won, false if pet won
-    
-    // Track which players have pressed end turn this round
-    private readonly SyncDictionary<NetworkEntity, bool> playersReadyToEndTurn = new SyncDictionary<NetworkEntity, bool>();
-    
-    // Track which clients have completed card execution
+    // Client synchronization tracking
     private readonly SyncDictionary<NetworkConnection, bool> clientsCompletedCardExecution = new SyncDictionary<NetworkConnection, bool>();
-    
-    // Track which clients have completed hand discard
     private readonly SyncDictionary<NetworkConnection, bool> clientsCompletedHandDiscard = new SyncDictionary<NetworkConnection, bool>();
     
     // Client-side tracking
     private bool clientCardExecutionInProgress = false;
     private bool clientHandDiscardInProgress = false;
+    
+    private int nextFightId = 1;
     
     private void Awake()
     {
@@ -108,7 +144,6 @@ public class CombatManager : NetworkBehaviour
     public void StartCombat()
     {
         if (!IsServerInitialized) return;
-        /* Debug.Log("CombatManager: Starting combat..."); */
 
         // Ensure CombatCardQueue is spawned as NetworkObject
         if (combatCardQueue != null && combatCardQueue.GetComponent<NetworkObject>() != null)
@@ -123,54 +158,53 @@ public class CombatManager : NetworkBehaviour
 
         // Get all spawned entities
         List<NetworkEntity> entities = GetAllSpawnedEntities();
-        /* Debug.Log($"CombatManager: Found {entities.Count} total entities"); */
+        var players = entities.Where(e => e.EntityType == EntityType.Player).ToList();
         
-        // Find players and their assigned opponent pets
-        var players = entities.Where(e => e.EntityType == EntityType.Player);
-        /* Debug.Log($"CombatManager: Found {players.Count()} players"); */
-
-        if (players.Count() == 0)
+        if (players.Count == 0)
         {
             Debug.LogError("CombatManager: No players found! Combat cannot start.");
             return;
         }
-
-        foreach (var player in players)
+        
+        if (players.Count % 2 != 0)
         {
-            /* Debug.Log($"CombatManager: Processing player {player.EntityName.Value}"); */
-            NetworkEntity opponentPet = fightManager.GetOpponent(player);
-            if (opponentPet != null)
+            Debug.LogError($"CombatManager: Need even number of players for combat, found {players.Count}");
+            return;
+        }
+        
+        // Create all fights based on existing FightManager assignments
+        var fightAssignments = fightManager.GetAllFightAssignments();
+        Debug.Log($"CombatManager: Found {fightAssignments.Count} fight assignments from FightManager");
+        
+        foreach (var assignment in fightAssignments)
+        {
+            NetworkEntity leftEntity = GetNetworkEntityById(assignment.LeftFighterObjectId);
+            NetworkEntity rightEntity = GetNetworkEntityById(assignment.RightFighterObjectId);
+            
+            if (leftEntity != null && rightEntity != null)
             {
-                /* Debug.Log($"CombatManager: Found opponent pet {opponentPet.EntityName.Value} for player {player.EntityName.Value}"); */
-                activeFights.Add(player, opponentPet);
-                fightRounds.Add(player, 0); // Initialize round counter for this fight
-                fightTurns.Add(player, CombatTurn.None); // Initialize turn state
-                playersReadyToEndTurn.Add(player, false); // Initialize end turn state
+                Debug.Log($"CombatManager: Creating fight: {leftEntity.EntityName.Value} vs {rightEntity.EntityName.Value}");
+                CreateNewFight(leftEntity, rightEntity);
                 
-                // Initialize entity trackers for new fight
-                EntityTracker playerTracker = player.GetComponent<EntityTracker>();
-                if (playerTracker != null)
+                // Create the ally fight
+                NetworkEntity leftAlly = GetAllyForEntity(leftEntity);
+                NetworkEntity rightAlly = GetAllyForEntity(rightEntity);
+                
+                if (leftAlly != null && rightAlly != null)
                 {
-                    playerTracker.ResetForNewFight();
+                    Debug.Log($"CombatManager: Creating ally fight: {leftAlly.EntityName.Value} vs {rightAlly.EntityName.Value}");
+                    CreateNewFight(leftAlly, rightAlly);
                 }
-                
-                EntityTracker petTracker = opponentPet.GetComponent<EntityTracker>();
-                if (petTracker != null)
+                else
                 {
-                    petTracker.ResetForNewFight();
+                    Debug.LogWarning($"CombatManager: Could not create ally fight - LeftAlly: {leftAlly?.EntityName.Value ?? "NULL"}, RightAlly: {rightAlly?.EntityName.Value ?? "NULL"}");
                 }
-                
-                // Start first round for this fight
-                /* Debug.Log($"CombatManager: Starting first round for player {player.EntityName.Value}"); */
-                StartNewRound(player);
             }
             else
             {
-                Debug.LogError($"No opponent pet found for player {player.EntityName.Value}");
+                Debug.LogError($"CombatManager: Could not find entities for fight assignment - Left: {assignment.LeftFighterObjectId}, Right: {assignment.RightFighterObjectId}");
             }
         }
-
-        /* Debug.Log("CombatManager: Combat initialization complete!"); */
     }
     
     /// <summary>
@@ -185,29 +219,34 @@ public class CombatManager : NetworkBehaviour
         
         foreach (var fight in activeFights)
         {
-            NetworkEntity player = fight.Key;
-            NetworkEntity pet = fight.Value;
+            NetworkEntity leftEntity = fight.Value.leftEntity;
+            NetworkEntity rightEntity = fight.Value.rightEntity;
             
-            if (player != null && pet != null)
+            if (leftEntity != null && rightEntity != null)
             {
-                Debug.Log($"CombatManager: Drawing initial cards for player {player.EntityName.Value}");
-                DrawCardsForEntity(player);
-                Debug.Log($"CombatManager: Drawing initial cards for pet {pet.EntityName.Value}");
-                DrawCardsForEntity(pet);
+                // Draw cards for both entities in the fight
+                DrawCardsForEntity(leftEntity);
+                DrawCardsForEntity(rightEntity);
                 
-                // Now that hands are drawn, queue cards for pets that are in SharedTurn
-                if (fightTurns.TryGetValue(player, out CombatTurn currentTurn) && currentTurn == CombatTurn.SharedTurn)
+                // Draw cards for their allies
+                NetworkEntity leftAlly = GetAllyForEntity(leftEntity);
+                NetworkEntity rightAlly = GetAllyForEntity(rightEntity);
+                
+                if (leftAlly != null) DrawCardsForEntity(leftAlly);
+                if (rightAlly != null) DrawCardsForEntity(rightAlly);
+                
+                // Queue cards for AI entities in SharedTurn fights
+                if (fight.Value.turn == CombatTurn.SharedTurn)
                 {
-                    PetCombatAI petAI = pet.GetComponent<PetCombatAI>();
-                    if (petAI != null)
-                    {
-                        Debug.Log($"PET_AI_DEBUG: Queuing cards for pet {pet.EntityName.Value} after initial hand draw (Round 1)");
-                        petAI.QueueCardsForSharedTurn();
-                    }
+                    QueueCardsForAIEntity(leftEntity, 1);
+                    QueueCardsForAIEntity(rightEntity, 1);
+                    if (leftAlly != null) QueueCardsForAIEntity(leftAlly, 1);
+                    if (rightAlly != null) QueueCardsForAIEntity(rightAlly, 1);
                 }
             }
         }
         
+        CheckAllEntitiesReadyToEndTurn();
         Debug.Log("CombatManager: Finished drawing initial hands for all fights");
     }
 
@@ -221,114 +260,195 @@ public class CombatManager : NetworkBehaviour
         Debug.Log($"CombatManager: Found {entities.Count} entities in GetAllSpawnedEntities");
         return entities;
     }
+    
+    private NetworkEntity GetNetworkEntityById(uint objectId)
+    {
+        if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue((int)objectId, out var networkObject))
+        {
+            return networkObject.GetComponent<NetworkEntity>();
+        }
+        return null;
+    }
+    
+    /// <summary>
+    /// Queues cards for an AI entity if it's a pet
+    /// </summary>
+    private void QueueCardsForAIEntity(NetworkEntity entity, int round)
+    {
+        if (entity == null || entity.EntityType != EntityType.Pet) return;
+        
+        PetCombatAI aiComponent = entity.GetComponent<PetCombatAI>();
+        if (aiComponent != null)
+        {
+            Debug.Log($"AI_COMBAT_DEBUG: Queuing cards for AI entity {entity.EntityName.Value} (Round {round})");
+            aiComponent.QueueCardsForSharedTurn();
+            entitiesReadyToEndTurn[entity] = true;
+        }
+        else
+        {
+            Debug.LogError($"AI_COMBAT_DEBUG: No PetCombatAI component found on {entity.EntityName.Value}");
+        }
+    }
+    
+    /// <summary>
+    /// Resets an entity's state for a new round
+    /// </summary>
+    private void ResetEntityForNewRound(NetworkEntity entity)
+    {
+        if (entity == null) return;
+        
+        // Reset entity tracker
+        EntityTracker tracker = entity.GetComponent<EntityTracker>();
+        if (tracker != null)
+        {
+            tracker.ResetTurnData();
+        }
+        
+        // Reset AI state for pets
+        if (entity.EntityType == EntityType.Pet)
+        {
+            PetCombatAI ai = entity.GetComponent<PetCombatAI>();
+            if (ai != null)
+            {
+                ai.ResetTurnState();
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Processes start of round effects for an entity
+    /// </summary>
+    private void ProcessStartOfRoundEffects(NetworkEntity entity)
+    {
+        if (entity == null) return;
+        
+        EffectHandler effectHandler = entity.GetComponent<EffectHandler>();
+        if (effectHandler != null)
+        {
+            effectHandler.ProcessStartOfRoundEffects();
+        }
+    }
+    
+    /// <summary>
+    /// Refreshes energy for an entity at the start of a round
+    /// </summary>
+    private void RefreshEntityEnergyForRound(NetworkEntity entity)
+    {
+        if (entity == null) return;
+        
+        EnergyHandler energyHandler = entity.GetComponent<EnergyHandler>();
+        if (energyHandler != null)
+        {
+            energyHandler.ReplenishEnergy();
+        }
+    }
 
     [Server]
-    private void StartNewRound(NetworkEntity player)
+    private int CreateNewFight(NetworkEntity leftEntity, NetworkEntity rightEntity)
     {
-        if (!IsServerInitialized || player == null) 
+        int fightId = nextFightId++;
+        Fight newFight = new Fight(fightId, leftEntity, rightEntity);
+        activeFights.Add(fightId, newFight);
+        
+        // Initialize entity readiness tracking
+        entitiesReadyToEndTurn.Add(leftEntity, false);
+        entitiesReadyToEndTurn.Add(rightEntity, false);
+        
+        // Initialize entity trackers
+        EntityTracker leftTracker = leftEntity.GetComponent<EntityTracker>();
+        if (leftTracker != null)
         {
-            Debug.LogError("CombatManager: Cannot start round - server not initialized or player is null");
+            leftTracker.ResetForNewFight();
+        }
+        
+        EntityTracker rightTracker = rightEntity.GetComponent<EntityTracker>();
+        if (rightTracker != null)
+        {
+            rightTracker.ResetForNewFight();
+        }
+        
+        Debug.Log($"CombatManager: Created new fight with ID {fightId} for {leftEntity.EntityName.Value} vs {rightEntity.EntityName.Value}");
+        
+        // Start the first round for this fight
+        StartNewRound(leftEntity);
+        
+        return fightId;
+    }
+
+    [Server]
+    private void StartNewRound(NetworkEntity entity)
+    {
+        if (!IsServerInitialized || entity == null) 
+        {
+            Debug.LogError("CombatManager: Cannot start round - server not initialized or entity is null");
             return;
         }
 
-        // Get the pet for this player's fight
-        if (!activeFights.TryGetValue(player, out NetworkEntity pet))
+        // Find the fight this entity belongs to
+        Fight currentFight = default;
+        int fightId = -1;
+        foreach (var fight in activeFights)
         {
-            Debug.LogError($"CombatManager: Could not find pet for player {player.EntityName.Value} in active fights");
+            if (fight.Value.ContainsEntity(entity))
+            {
+                fightId = fight.Key;
+                currentFight = fight.Value;
+                currentFight.round++;
+                activeFights[fightId] = currentFight;
+                Debug.Log($"CombatManager: Starting round {currentFight.round} for fight: {currentFight.leftEntity.EntityName.Value} vs {currentFight.rightEntity.EntityName.Value}");
+                break;
+            }
+        }
+        
+        if (fightId == -1)
+        {
+            Debug.LogError($"CombatManager: Could not find fight for entity {entity.EntityName.Value}");
             return;
         }
 
-        // Increment round counter for this specific fight
-        if (fightRounds.ContainsKey(player))
-        {
-            fightRounds[player]++;
-            Debug.Log($"CombatManager: Starting round {fightRounds[player]} for fight: {player.EntityName.Value} vs {pet.EntityName.Value}");
-        }
-        else
-        {
-            Debug.LogError($"CombatManager: Fight rounds dictionary doesn't contain entry for player {player.EntityName.Value}");
-            return;
-        }
+        NetworkEntity leftEntity = currentFight.leftEntity;
+        NetworkEntity rightEntity = currentFight.rightEntity;
         
-        // Reset end turn ready state for new round
-        playersReadyToEndTurn[player] = false;
+        // Reset turn state for both entities
+        entitiesReadyToEndTurn[leftEntity] = false;
+        entitiesReadyToEndTurn[rightEntity] = false;
         
-        // Notify entity trackers about new round
-        EntityTracker playerTracker = player.GetComponent<EntityTracker>();
-        if (playerTracker != null)
-        {
-            playerTracker.ResetTurnData();
-        }
+        // Reset entity trackers and AI state
+        ResetEntityForNewRound(leftEntity);
+        ResetEntityForNewRound(rightEntity);
         
-        EntityTracker petTracker = pet.GetComponent<EntityTracker>();
-        if (petTracker != null)
-        {
-            petTracker.ResetTurnData();
-        }
+        // Process start of round effects for both entities
+        ProcessStartOfRoundEffects(leftEntity);
+        ProcessStartOfRoundEffects(rightEntity);
         
-        // Reset pet AI turn state for new round
-        PetCombatAI petAI = pet.GetComponent<PetCombatAI>();
-        if (petAI != null)
-        {
-            Debug.Log($"PET_AI_DEBUG: Resetting turn state for pet {pet.EntityName.Value} at start of round {fightRounds[player]}");
-            petAI.ResetTurnState();
-        }
-        
-        // Process start of round effects (Shield clearing, etc.) for both entities
-        EffectHandler playerEffectHandler = player.GetComponent<EffectHandler>();
-        if (playerEffectHandler != null)
-        {
-            playerEffectHandler.ProcessStartOfRoundEffects();
-            Debug.Log($"CombatManager: Processed start of round effects for player {player.EntityName.Value}");
-        }
-        
-        EffectHandler petEffectHandler = pet.GetComponent<EffectHandler>();
-        if (petEffectHandler != null)
-        {
-            petEffectHandler.ProcessStartOfRoundEffects();
-            Debug.Log($"CombatManager: Processed start of round effects for pet {pet.EntityName.Value}");
-        }
-        
-        // Refresh energy on server first (needed for pet AI)
-        Debug.Log($"PET_AI_DEBUG: Server refreshing energy for {player.EntityName.Value}");
-        EnergyHandler playerEnergyHandler = player.GetComponent<EnergyHandler>();
-        if (playerEnergyHandler != null)
-        {
-            playerEnergyHandler.ReplenishEnergy();
-        }
-        
-        Debug.Log($"PET_AI_DEBUG: Server refreshing energy for {pet.EntityName.Value}");
-        EnergyHandler petEnergyHandler = pet.GetComponent<EnergyHandler>();
-        if (petEnergyHandler != null)
-        {
-            petEnergyHandler.ReplenishEnergy();
-        }
+        // Refresh energy for both entities
+        RefreshEntityEnergyForRound(leftEntity);
+        RefreshEntityEnergyForRound(rightEntity);
 
         // Notify clients to refresh energy for their local fight
-        RpcStartNewRound(player.ObjectId, pet.ObjectId, fightRounds[player]);
+        RpcStartNewRound(leftEntity.ObjectId, rightEntity.ObjectId, fightId);
 
-        // Draw cards for both entities - but only after the first round (initial hands are drawn separately)
-        int currentRound = fightRounds[player];
-        if (currentRound > 1)
+        // Draw cards for subsequent rounds (initial hands are drawn separately)
+        if (currentFight.round > 1)
         {
-            Debug.Log($"CombatManager: Drawing cards for round {currentRound} - player {player.EntityName.Value}");
-            DrawCardsForEntity(player);
-            Debug.Log($"CombatManager: Drawing cards for round {currentRound} - pet {pet.EntityName.Value}");
-            DrawCardsForEntity(pet);
-            Debug.Log($"CombatManager: Finished drawing cards for round {currentRound}");
-        }
-        else
-        {
-            Debug.Log($"CombatManager: Skipping card draw for round {currentRound} (initial hands drawn separately)");
+            DrawCardsForEntity(leftEntity);
+            DrawCardsForEntity(rightEntity);
+            
+            // Draw cards for allies
+            NetworkEntity leftAlly = GetAllyForEntity(leftEntity);
+            NetworkEntity rightAlly = GetAllyForEntity(rightEntity);
+            
+            if (leftAlly != null) DrawCardsForEntity(leftAlly);
+            if (rightAlly != null) DrawCardsForEntity(rightAlly);
+            
+            Debug.Log($"CombatManager: Finished drawing cards for round {currentFight.round}");
         }
 
-        // Set turn to shared turn for this fight (both player and pet can act)
-        /* Debug.Log($"CombatManager: Setting turn to SharedTurn for fight: {player.EntityName.Value} vs {pet.EntityName.Value}"); */
-        SetTurn(player, CombatTurn.SharedTurn);
+        SetTurn(entity, CombatTurn.SharedTurn);
     }
     
     [ObserversRpc]
-    private void RpcStartNewRound(int playerObjectId, int petObjectId, int roundNumber)
+    private void RpcStartNewRound(int playerObjectId, int petObjectId, int fightId)
     {
 
         // Check if we should refresh energy for this specific fight
@@ -460,11 +580,25 @@ public class CombatManager : NetworkBehaviour
         if (!IsServerInitialized || player == null) return;
 
         // Update turn state for this specific fight
-        if (fightTurns.ContainsKey(player))
+        int fightId = -1;
+        Fight currentFight = default;
+        foreach (var fight in activeFights)
         {
-            CombatTurn previousTurn = fightTurns[player];
-            fightTurns[player] = turn;
-            RpcUpdateTurnUI(player, turn);
+            if (fight.Value.leftEntity == player || fight.Value.rightEntity == player)
+            {
+                fightId = fight.Key;
+                currentFight = fight.Value;
+                break;
+            }
+        }
+        
+        if (fightId != -1 && currentFight.isActive)
+        {
+            CombatTurn previousTurn = currentFight.turn;
+            currentFight.turn = turn;
+            activeFights[fightId] = currentFight;
+            RpcUpdateTurnUI(currentFight.leftEntity, turn);
+            RpcUpdateTurnUI(currentFight.rightEntity, turn);
 
             // Process turn end for the entity whose turn is ending
             if (previousTurn == CombatTurn.PlayerTurn && turn != CombatTurn.PlayerTurn)
@@ -480,7 +614,8 @@ public class CombatManager : NetworkBehaviour
             else if (previousTurn == CombatTurn.PetTurn && turn != CombatTurn.PetTurn)
             {
                 // Pet's turn is ending
-                if (activeFights.TryGetValue(player, out NetworkEntity pet))
+                NetworkEntity pet = currentFight.GetOpponent(player);
+                if (pet != null)
                 {
                     EntityTracker petTracker = pet.GetComponent<EntityTracker>();
                     if (petTracker != null)
@@ -499,7 +634,8 @@ public class CombatManager : NetworkBehaviour
                     playerTracker.OnTurnEnd();
                 }
                 
-                if (activeFights.TryGetValue(player, out NetworkEntity pet))
+                NetworkEntity pet = currentFight.GetOpponent(player);
+                if (pet != null)
                 {
                     EntityTracker petTracker = pet.GetComponent<EntityTracker>();
                     if (petTracker != null)
@@ -522,7 +658,8 @@ public class CombatManager : NetworkBehaviour
             }
             else if (turn == CombatTurn.PetTurn)
             {
-                if (activeFights.TryGetValue(player, out NetworkEntity pet))
+                NetworkEntity pet = currentFight.GetOpponent(player);
+                if (pet != null)
                 {
                     EntityTracker petTracker = pet.GetComponent<EntityTracker>();
                     if (petTracker != null)
@@ -540,7 +677,8 @@ public class CombatManager : NetworkBehaviour
                     playerTracker.OnTurnStart();
                 }
                 
-                if (activeFights.TryGetValue(player, out NetworkEntity pet))
+                NetworkEntity pet = currentFight.GetOpponent(player);
+                if (pet != null)
                 {
                     EntityTracker petTracker = pet.GetComponent<EntityTracker>();
                     if (petTracker != null)
@@ -548,17 +686,105 @@ public class CombatManager : NetworkBehaviour
                         petTracker.OnTurnStart();
                     }
                     
-                    // Pet cards will be queued after initial hands are drawn in DrawInitialHands()
+                    // AI cards will be queued after initial hands are drawn in DrawInitialHands()
                     // For subsequent rounds, queue cards immediately since hands are already present
-                    int currentRound = fightRounds.TryGetValue(player, out int round) ? round : 0;
+                    int currentRound = currentFight.round;
+                    Debug.Log($"AI_COMBAT_DEBUG: Setting SharedTurn for fight {currentFight.leftEntity.EntityName.Value} vs {currentFight.rightEntity.EntityName.Value} (Round {currentRound})");
+                    
                     if (currentRound > 1)
                     {
-                        PetCombatAI petAI = pet.GetComponent<PetCombatAI>();
-                        if (petAI != null)
+                        Debug.Log($"AI_COMBAT_DEBUG: Round {currentRound} > 1, queueing cards immediately for AI entities");
+                        
+                        // Queue cards for the first entity if it's AI-controlled
+                        if (player.EntityType == EntityType.Pet)
                         {
-                            Debug.Log($"PET_AI_DEBUG: Queuing cards for pet {pet.EntityName.Value} in SetTurn (Round {currentRound})");
-                            petAI.QueueCardsForSharedTurn();
+                            PetCombatAI playerAI = player.GetComponent<PetCombatAI>();
+                            if (playerAI != null)
+                            {
+                                Debug.Log($"AI_COMBAT_DEBUG: Queuing cards for AI entity {player.EntityName.Value} in SetTurn (Round {currentRound})");
+                                playerAI.QueueCardsForSharedTurn();
+                                // Mark AI as ready to end turn after queuing cards
+                                entitiesReadyToEndTurn[player] = true;
+                                Debug.Log($"AI_COMBAT_DEBUG: Marked AI entity {player.EntityName.Value} as ready to end turn");
+                            }
+                            else
+                            {
+                                Debug.LogError($"AI_COMBAT_DEBUG: AI entity {player.EntityName.Value} missing PetCombatAI component!");
+                            }
                         }
+                        else
+                        {
+                            // Check if this player has an AI ally that should queue cards
+                            NetworkEntity playerAlly = GetAllyForPlayer(player);
+                            if (playerAlly != null && playerAlly.EntityType == EntityType.Pet)
+                            {
+                                PetCombatAI allyAI = playerAlly.GetComponent<PetCombatAI>();
+                                if (allyAI != null)
+                                {
+                                    Debug.Log($"AI_COMBAT_DEBUG: Queuing cards for player ally {playerAlly.EntityName.Value} in SetTurn (Round {currentRound})");
+                                    allyAI.QueueCardsForSharedTurn();
+                                    // Mark AI as ready to end turn after queuing cards
+                                    if (entitiesReadyToEndTurn.ContainsKey(playerAlly))
+                                    {
+                                        entitiesReadyToEndTurn[playerAlly] = true;
+                                        Debug.Log($"AI_COMBAT_DEBUG: Marked AI ally {playerAlly.EntityName.Value} as ready to end turn");
+                                    }
+                                }
+                                else
+                                {
+                                    Debug.LogError($"AI_COMBAT_DEBUG: No PetCombatAI component found on player ally {playerAlly.EntityName.Value}");
+                                }
+                            }
+                        }
+                        
+                        // Queue cards for the second entity if it's AI-controlled
+                        if (pet.EntityType == EntityType.Pet)
+                        {
+                            PetCombatAI petAI = pet.GetComponent<PetCombatAI>();
+                            if (petAI != null)
+                            {
+                                Debug.Log($"AI_COMBAT_DEBUG: Queuing cards for AI entity {pet.EntityName.Value} in SetTurn (Round {currentRound})");
+                                petAI.QueueCardsForSharedTurn();
+                                // Mark AI as ready to end turn after queuing cards
+                                entitiesReadyToEndTurn[pet] = true;
+                                Debug.Log($"AI_COMBAT_DEBUG: Marked AI entity {pet.EntityName.Value} as ready to end turn");
+                            }
+                            else
+                            {
+                                Debug.LogError($"AI_COMBAT_DEBUG: AI entity {pet.EntityName.Value} missing PetCombatAI component!");
+                            }
+                        }
+                        else
+                        {
+                            // Check if this player has an AI ally that should queue cards
+                            NetworkEntity petAlly = GetAllyForPlayer(pet);
+                            if (petAlly != null && petAlly.EntityType == EntityType.Pet)
+                            {
+                                PetCombatAI allyAI = petAlly.GetComponent<PetCombatAI>();
+                                if (allyAI != null)
+                                {
+                                    Debug.Log($"AI_COMBAT_DEBUG: Queuing cards for player ally {petAlly.EntityName.Value} in SetTurn (Round {currentRound})");
+                                    allyAI.QueueCardsForSharedTurn();
+                                    // Mark AI as ready to end turn after queuing cards
+                                    if (entitiesReadyToEndTurn.ContainsKey(petAlly))
+                                    {
+                                        entitiesReadyToEndTurn[petAlly] = true;
+                                        Debug.Log($"AI_COMBAT_DEBUG: Marked AI ally {petAlly.EntityName.Value} as ready to end turn");
+                                    }
+                                }
+                                else
+                                {
+                                    Debug.LogError($"AI_COMBAT_DEBUG: No PetCombatAI component found on player ally {petAlly.EntityName.Value}");
+                                }
+                            }
+                        }
+                        
+                        // Check if this fight is AI vs AI and automatically trigger turn end
+                        CheckAllEntitiesReadyToEndTurn();
+                    }
+                    else
+                    {
+                        Debug.Log($"AI_COMBAT_DEBUG: Round {currentRound} <= 1, AI cards will be queued in DrawInitialHands()");
                     }
                 }
                 
@@ -598,58 +824,147 @@ public class CombatManager : NetworkBehaviour
 
         /* Debug.Log($"CombatManager: Found player entity {playerEntity.EntityName.Value} for end turn request"); */
 
-        // Only allow ending turn if it's actually this player's turn
-        if (!fightTurns.TryGetValue(playerEntity, out CombatTurn currentTurn))
-        {
-            Debug.LogError($"CombatManager: No turn state found for player {playerEntity.EntityName.Value}");
-            return;
-        }
-
-        if (currentTurn != CombatTurn.PlayerTurn && currentTurn != CombatTurn.SharedTurn)
-        {
-            Debug.LogWarning($"CombatManager: Cannot end turn for {playerEntity.EntityName.Value} - not their turn (current turn: {currentTurn})");
-            return;
-        }
-
-        // Mark this player as ready to end turn
-        playersReadyToEndTurn[playerEntity] = true;
-        Debug.Log($"CombatManager: Player {playerEntity.EntityName.Value} is ready to end turn");
-
-        // Update UI to show waiting state
-        RpcUpdatePlayerWaitingState(playerEntity, true);
-
-        // Check if all players are ready to end turn
-        CheckAllPlayersReadyToEndTurn();
-    }
-
-    /// <summary>
-    /// Checks if all players are ready to end turn and executes if so
-    /// </summary>
-    [Server]
-    private void CheckAllPlayersReadyToEndTurn()
-    {
-        // Check if all active players are ready
-        bool allPlayersReady = true;
+        // Find the fight this player is in
+        Fight playerFight = default;
+        bool foundFight = false;
         foreach (var fight in activeFights)
         {
-            NetworkEntity player = fight.Key;
-            if (!playersReadyToEndTurn.TryGetValue(player, out bool isReady) || !isReady)
+            if (fight.Value.leftEntity == playerEntity || fight.Value.rightEntity == playerEntity)
             {
-                allPlayersReady = false;
+                playerFight = fight.Value;
+                foundFight = true;
                 break;
             }
         }
 
-        if (allPlayersReady)
+        if (!foundFight)
         {
-            Debug.Log("CombatManager: All players are ready to end turn, executing card plays");
+            Debug.LogWarning($"CombatManager: Cannot end turn for {playerEntity.EntityName.Value} - not in any active fight");
+            return;
+        }
+
+        // Only allow ending turn if it's SharedTurn or the player's specific turn
+        if (playerFight.turn != CombatTurn.SharedTurn && playerFight.turn != CombatTurn.PlayerTurn)
+        {
+            Debug.LogWarning($"CombatManager: Cannot end turn for {playerEntity.EntityName.Value} - not their turn (current turn: {playerFight.turn})");
+            return;
+        }
+
+        // Mark this player as ready to end turn
+        entitiesReadyToEndTurn[playerEntity] = true;
+        Debug.Log($"AI_COMBAT_DEBUG: Player {playerEntity.EntityName.Value} pressed end turn and is now ready");
+
+        // If this player has an AI ally, automatically mark the ally as ready too
+        NetworkEntity playerAlly = GetAllyForPlayer(playerEntity);
+        if (playerAlly != null && playerAlly.EntityType == EntityType.Pet)
+        {
+            if (entitiesReadyToEndTurn.ContainsKey(playerAlly))
+            {
+                entitiesReadyToEndTurn[playerAlly] = true;
+                Debug.Log($"AI_COMBAT_DEBUG: Auto-marking AI ally {playerAlly.EntityName.Value} as ready to end turn");
+            }
+            else
+            {
+                Debug.LogWarning($"AI_COMBAT_DEBUG: Player {playerEntity.EntityName.Value} has ally {playerAlly.EntityName.Value} but ally not in entitiesReadyToEndTurn dictionary!");
+            }
+        }
+        else
+        {
+            Debug.Log($"AI_COMBAT_DEBUG: Player {playerEntity.EntityName.Value} has no AI ally to auto-mark ready");
+        }
+
+        // Update UI to show waiting state
+        RpcUpdatePlayerWaitingState(playerEntity, true);
+
+        // Check if all entities are ready to end turn
+        CheckAllEntitiesReadyToEndTurn();
+    }
+
+    /// <summary>
+    /// Checks if all entities (players and AI) are ready to end turn and executes if so
+    /// </summary>
+    [Server]
+    private void CheckAllEntitiesReadyToEndTurn()
+    {
+        Debug.Log($"AI_COMBAT_DEBUG: CheckAllEntitiesReadyToEndTurn called - checking {activeFights.Count} active fights");
+        
+        // Check if all entities in all active fights are ready
+        bool allEntitiesReady = true;
+        
+        foreach (var fight in activeFights)
+        {
+            NetworkEntity leftEntity = fight.Value.leftEntity;
+            NetworkEntity rightEntity = fight.Value.rightEntity;
             
-            // Reset all players' ready states
+            Debug.Log($"AI_COMBAT_DEBUG: Checking fight {leftEntity.EntityName.Value} ({leftEntity.EntityType}) vs {rightEntity.EntityName.Value} ({rightEntity.EntityType})");
+            
+            // Check if left entity is ready
+            bool leftReady = false;
+            if (leftEntity.EntityType == EntityType.Player)
+            {
+                leftReady = entitiesReadyToEndTurn.TryGetValue(leftEntity, out bool playerReady) && playerReady;
+                Debug.Log($"AI_COMBAT_DEBUG: Player {leftEntity.EntityName.Value} ready: {leftReady}");
+            }
+            else if (leftEntity.EntityType == EntityType.Pet)
+            {
+                leftReady = entitiesReadyToEndTurn.TryGetValue(leftEntity, out bool aiReady) && aiReady;
+                Debug.Log($"AI_COMBAT_DEBUG: AI entity {leftEntity.EntityName.Value} ready: {leftReady}");
+            }
+            
+            // Check if right entity is ready
+            bool rightReady = false;
+            if (rightEntity.EntityType == EntityType.Player)
+            {
+                rightReady = entitiesReadyToEndTurn.TryGetValue(rightEntity, out bool playerReady) && playerReady;
+                Debug.Log($"AI_COMBAT_DEBUG: Player {rightEntity.EntityName.Value} ready: {rightReady}");
+            }
+            else if (rightEntity.EntityType == EntityType.Pet)
+            {
+                rightReady = entitiesReadyToEndTurn.TryGetValue(rightEntity, out bool aiReady) && aiReady;
+                Debug.Log($"AI_COMBAT_DEBUG: AI entity {rightEntity.EntityName.Value} ready: {rightReady}");
+            }
+            
+            if (!leftReady || !rightReady)
+            {
+                allEntitiesReady = false;
+                Debug.Log($"AI_COMBAT_DEBUG: Fight {leftEntity.EntityName.Value} vs {rightEntity.EntityName.Value} - Left Ready: {leftReady}, Right Ready: {rightReady} - NOT ALL READY");
+                break;
+            }
+            else
+            {
+                Debug.Log($"AI_COMBAT_DEBUG: Fight {leftEntity.EntityName.Value} vs {rightEntity.EntityName.Value} - Both entities ready!");
+            }
+        }
+
+        if (allEntitiesReady)
+        {
+            Debug.Log("AI_COMBAT_DEBUG: All entities are ready to end turn, executing card plays");
+            
+            // Reset all entities' ready states
             foreach (var fight in activeFights)
             {
-                NetworkEntity player = fight.Key;
-                playersReadyToEndTurn[player] = false;
-                RpcUpdatePlayerWaitingState(player, false);
+                NetworkEntity leftEntity = fight.Value.leftEntity;
+                NetworkEntity rightEntity = fight.Value.rightEntity;
+                
+                if (leftEntity.EntityType == EntityType.Player)
+                {
+                    entitiesReadyToEndTurn[leftEntity] = false;
+                    RpcUpdatePlayerWaitingState(leftEntity, false);
+                }
+                else if (leftEntity.EntityType == EntityType.Pet)
+                {
+                    entitiesReadyToEndTurn[leftEntity] = false;
+                }
+                
+                if (rightEntity.EntityType == EntityType.Player)
+                {
+                    entitiesReadyToEndTurn[rightEntity] = false;
+                    RpcUpdatePlayerWaitingState(rightEntity, false);
+                }
+                else if (rightEntity.EntityType == EntityType.Pet)
+                {
+                    entitiesReadyToEndTurn[rightEntity] = false;
+                }
             }
             
             // Execute queued card plays for all fights simultaneously
@@ -657,7 +972,7 @@ public class CombatManager : NetworkBehaviour
         }
         else
         {
-            Debug.Log("CombatManager: Waiting for more players to end turn");
+            Debug.Log("AI_COMBAT_DEBUG: Waiting for more entities to end turn");
         }
     }
 
@@ -690,10 +1005,15 @@ public class CombatManager : NetworkBehaviour
         var activeConnections = new List<NetworkConnection>();
         foreach (var fight in activeFights)
         {
-            NetworkEntity player = fight.Key;
+            NetworkEntity player = fight.Value.leftEntity;
             if (player.Owner != null)
             {
                 activeConnections.Add(player.Owner);
+            }
+            NetworkEntity pet = fight.Value.rightEntity;
+            if (pet.Owner != null)
+            {
+                activeConnections.Add(pet.Owner);
             }
         }
         
@@ -727,8 +1047,8 @@ public class CombatManager : NetworkBehaviour
         // Discard hands for all entities in all fights
         foreach (var fight in activeFights)
         {
-            NetworkEntity player = fight.Key;
-            NetworkEntity pet = fight.Value;
+            NetworkEntity player = fight.Value.leftEntity;
+            NetworkEntity pet = fight.Value.rightEntity;
             
             HandManager playerHandManager = GetHandManagerForEntity(player);
             if (playerHandManager != null)
@@ -757,8 +1077,8 @@ public class CombatManager : NetworkBehaviour
         // Start new rounds for all fights
         foreach (var fight in activeFights.ToList()) // ToList to avoid modification during iteration
         {
-            NetworkEntity player = fight.Key;
-            if (activeFights.ContainsKey(player)) // Double-check fight is still active
+            NetworkEntity player = fight.Value.leftEntity;
+            if (activeFights.ContainsKey(fight.Key)) // Double-check fight is still active
             {
                 StartNewRound(player);
             }
@@ -996,6 +1316,43 @@ public class CombatManager : NetworkBehaviour
     }
     
     /// <summary>
+    /// Gets the AI ally (pet) for a given player, if any
+    /// </summary>
+    private NetworkEntity GetAllyForPlayer(NetworkEntity player)
+    {
+        if (player == null || player.EntityType != EntityType.Player) return null;
+
+        RelationshipManager relationshipManager = player.GetComponent<RelationshipManager>();
+        if (relationshipManager?.AllyEntity != null)
+        {
+            return relationshipManager.AllyEntity.GetComponent<NetworkEntity>();
+        }
+
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the ally for any entity (player or pet)
+    /// </summary>
+    private NetworkEntity GetAllyForEntity(NetworkEntity entity)
+    {
+        if (entity == null) return null;
+        
+        if (entity.EntityType == EntityType.Player)
+        {
+            // For players, get their pet ally
+            return GetAllyForPlayer(entity);
+        }
+        else if (entity.EntityType == EntityType.Pet)
+        {
+            // For pets, get their owner player as ally
+            return entity.GetOwnerEntity();
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
     /// Called when an entity dies during combat
     /// </summary>
     [Server]
@@ -1018,19 +1375,36 @@ public class CombatManager : NetworkBehaviour
         {
             // Player died, find their opponent pet
             player = deadEntity;
-            if (activeFights.TryGetValue(player, out pet))
+            foreach (var fight in activeFights)
             {
-                playerWon = false; // Pet won
+                if (fight.Value.leftEntity == player)
+                {
+                    pet = fight.Value.rightEntity;
+                    playerWon = false; // Pet won
+                }
+                else if (fight.Value.rightEntity == player)
+                {
+                    pet = fight.Value.leftEntity;
+                    playerWon = true; // Player won
+                }
+                if (pet != null) break;
             }
         }
         else if (deadEntity.EntityType == EntityType.Pet)
         {
             // Pet died, find the player they were fighting
             pet = deadEntity;
-            player = GetPlayerFightingPet(pet);
-            if (player != null)
+            foreach (var fight in activeFights)
             {
-                playerWon = true; // Player won
+                if (fight.Value.leftEntity == pet)
+                {
+                    player = fight.Value.rightEntity;
+                }
+                else if (fight.Value.rightEntity == pet)
+                {
+                    player = fight.Value.leftEntity;
+                }
+                if (player != null) break;
             }
         }
         
@@ -1045,14 +1419,30 @@ public class CombatManager : NetworkBehaviour
             // Despawn all remaining cards for both entities in this fight
             DespawnAllCardsForFight(player, pet);
             
-            // Record the fight result
-            fightResults[player] = playerWon;
+            // Find the fight and record the result
+            int completedFightId = -1;
+            Fight completedFight = default;
+            foreach (var fight in activeFights)
+            {
+                if (fight.Value.leftEntity == player || fight.Value.rightEntity == player)
+                {
+                    completedFightId = fight.Key;
+                    completedFight = fight.Value;
+                    break;
+                }
+            }
             
-            // Remove the fight from active fights
-            activeFights.Remove(player);
-            fightRounds.Remove(player);
-            fightTurns.Remove(player);
-            playersReadyToEndTurn.Remove(player);
+            if (completedFightId != -1)
+            {
+                // Record the fight result
+                fightResults[completedFightId] = playerWon;
+                
+                // Store the completed fight data for result conversion
+                completedFights[completedFightId] = completedFight;
+                
+                // Remove the fight from active fights
+                activeFights.Remove(completedFightId);
+            }
             
             // Notify clients about the fight end
             RpcNotifyFightEnded(player, pet, playerWon);
@@ -1072,52 +1462,31 @@ public class CombatManager : NetworkBehaviour
     /// Despawns all remaining cards for both entities in a fight
     /// </summary>
     [Server]
-    private void DespawnAllCardsForFight(NetworkEntity player, NetworkEntity pet)
+    private void DespawnAllCardsForFight(NetworkEntity leftEntity, NetworkEntity rightEntity)
     {
-        /* Debug.Log($"CombatManager: Despawning all cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}"); */
-        
-        // Despawn player's cards
-        HandManager playerHandManager = GetHandManagerForEntity(player);
-        if (playerHandManager != null)
-        {
-            Debug.Log($"CombatManager: Despawning cards for player {player.EntityName.Value}");
-            playerHandManager.DespawnAllCards();
-        }
-        else
-        {
-            Debug.LogWarning($"CombatManager: Player {player.EntityName.Value} has no HandManager component");
-        }
-        
-        // Despawn pet's cards
-        HandManager petHandManager = GetHandManagerForEntity(pet);
-        if (petHandManager != null)
-        {
-            Debug.Log($"CombatManager: Despawning cards for pet {pet.EntityName.Value}");
-            petHandManager.DespawnAllCards();
-        }
-        else
-        {
-            Debug.LogWarning($"CombatManager: Pet {pet.EntityName.Value} has no HandManager component");
-        }
-        
-        /* Debug.Log($"CombatManager: Finished despawning cards for fight between {player.EntityName.Value} and {pet.EntityName.Value}"); */
+        DespawnCardsForEntity(leftEntity);
+        DespawnCardsForEntity(rightEntity);
     }
     
     /// <summary>
-    /// Gets the player that is fighting against a specific pet
+    /// Despawns all cards for a single entity
     /// </summary>
-    [Server]
-    private NetworkEntity GetPlayerFightingPet(NetworkEntity pet)
+    private void DespawnCardsForEntity(NetworkEntity entity)
     {
-        foreach (var fight in activeFights)
+        if (entity == null) return;
+        
+        HandManager handManager = GetHandManagerForEntity(entity);
+        if (handManager != null)
         {
-            if (fight.Value == pet)
-            {
-                return fight.Key;
-            }
+            handManager.DespawnAllCards();
         }
-        return null;
+        else
+        {
+            Debug.LogWarning($"CombatManager: Entity {entity.EntityName.Value} has no HandManager component");
+        }
     }
+    
+
     
     /// <summary>
     /// Checks if all fights are complete and transitions to fight conclusion if so
@@ -1151,15 +1520,19 @@ public class CombatManager : NetworkBehaviour
     {
         if (!IsServerInitialized) return false;
         
-        // Check if the entity is a player in an active fight
+        Debug.Log($"AI_COMBAT_DEBUG: IsFightActive check for entity {entityId}");
+        
+        // Check if the entity is in an active fight (includes both player vs player and AI ally vs AI ally fights)
         foreach (var fight in activeFights)
         {
-            if (fight.Key.ObjectId == entityId || fight.Value.ObjectId == entityId)
+            if (fight.Value.leftEntity.ObjectId == entityId || fight.Value.rightEntity.ObjectId == entityId)
             {
+                Debug.Log($"AI_COMBAT_DEBUG: Entity {entityId} found in active fights - fight is active");
                 return true;
             }
         }
         
+        Debug.Log($"AI_COMBAT_DEBUG: Entity {entityId} not found in any active fights");
         return false;
     }
     
@@ -1169,12 +1542,9 @@ public class CombatManager : NetworkBehaviour
     [Server]
     private void ShowFightConclusion()
     {
-        /* Debug.Log("CombatManager: Starting fight conclusion display"); */
-        
         if (fightConclusionManager != null)
         {
-            // Pass the fight results to the conclusion manager
-            fightConclusionManager.ShowFightConclusion(GetFightResults());
+            fightConclusionManager.ShowFightConclusion(GetFightResultsByEntity());
             Debug.Log("CombatManager: Fight conclusion started successfully");
         }
         else
@@ -1190,15 +1560,9 @@ public class CombatManager : NetworkBehaviour
     [Server]
     private void TransitionToDraftPhaseDirectly()
     {
-        /* Debug.Log("CombatManager: Starting direct transition to draft phase"); */
-        
         if (draftSetup != null)
         {
-            // Reset the draft setup state to allow a new draft to begin
-            /* Debug.Log("CombatManager: Resetting draft setup for new draft round"); */
             draftSetup.ResetSetup();
-            
-            // Initialize the new draft
             Debug.Log("CombatManager: Initializing new draft round");
             draftSetup.InitializeDraft();
         }
@@ -1209,15 +1573,38 @@ public class CombatManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Gets the results of all completed fights
+    /// Gets the results of all completed fights by fight ID
     /// </summary>
-    public Dictionary<NetworkEntity, bool> GetFightResults()
+    public Dictionary<int, bool> GetFightResults()
     {
-        Dictionary<NetworkEntity, bool> results = new Dictionary<NetworkEntity, bool>();
+        Dictionary<int, bool> results = new Dictionary<int, bool>();
         foreach (var result in fightResults)
         {
             results[result.Key] = result.Value;
         }
+        return results;
+    }
+    
+    /// <summary>
+    /// Gets the results of all completed fights by left entity (for legacy compatibility)
+    /// </summary>
+    public Dictionary<NetworkEntity, bool> GetFightResultsByEntity()
+    {
+        Dictionary<NetworkEntity, bool> results = new Dictionary<NetworkEntity, bool>();
+        
+        // Convert fight results back to entity-based format using completed fight data
+        foreach (var fightResult in fightResults)
+        {
+            int fightId = fightResult.Key;
+            bool leftEntityWon = fightResult.Value;
+            
+            if (completedFights.TryGetValue(fightId, out Fight completedFight))
+            {
+                // Use the left entity as the key (maintaining the old convention)
+                results[completedFight.leftEntity] = leftEntityWon;
+            }
+        }
+        
         return results;
     }
     

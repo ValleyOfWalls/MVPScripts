@@ -120,15 +120,25 @@ public class FightManager : NetworkBehaviour
 
     private void OnFightAssignmentsChanged(SyncListOperation op, int index, FightAssignmentData oldData, FightAssignmentData newData, bool asServer)
     {
+        Debug.Log($"FLEXPAIRING: OnFightAssignmentsChanged - Operation: {op}, Index: {index}, AsServer: {asServer}");
+        Debug.Log($"FLEXPAIRING: Total fight assignments: {fightAssignments.Count}");
+        
+        foreach (var assignment in fightAssignments)
+        {
+            Debug.Log($"FLEXPAIRING: Assignment - Left: {assignment.LeftFighterObjectId}, Right: {assignment.RightFighterObjectId}");
+        }
+        
         RebuildLocalLookups(fightAssignments.ToList());
         
         // Notify about fight status changes
         bool hasFights = fightAssignments.Count > 0;
+        Debug.Log($"FLEXPAIRING: Has fights: {hasFights}, invoking OnFightsChanged");
         OnFightsChanged?.Invoke(hasFights);
         
         // Update entity visibility on clients
         if (!asServer)
         {
+            Debug.Log("FLEXPAIRING: Client side - updating entity visibility and combat references");
             UpdateEntityVisibility();
             UpdateCombatReferences();
         }
@@ -167,16 +177,22 @@ public class FightManager : NetworkBehaviour
     {
         // Get the local player's connection
         NetworkConnection localConnection = NetworkManager.ClientManager.Connection;
+        Debug.Log($"FLEXPAIRING: UpdateCombatReferences - Local connection: {localConnection?.ClientId}");
         if (localConnection == null) return;
 
         // Get the fight assignment for the local player
         var localFightAssignment = GetFightForConnection(localConnection);
+        Debug.Log($"FLEXPAIRING: Local fight assignment found: {localFightAssignment.HasValue}");
         
         // Update client combat references
         if (localFightAssignment.HasValue)
         {
+            Debug.Log($"FLEXPAIRING: Local fight - Left: {localFightAssignment.Value.LeftFighterObjectId}, Right: {localFightAssignment.Value.RightFighterObjectId}");
+            
             clientLeftFighter = GetNetworkObjectComponent<NetworkEntity>(localFightAssignment.Value.LeftFighterObjectId);
             clientRightFighter = GetNetworkObjectComponent<NetworkEntity>(localFightAssignment.Value.RightFighterObjectId);
+            
+            Debug.Log($"FLEXPAIRING: Client combat references - Left: {clientLeftFighter?.EntityName.Value}, Right: {clientRightFighter?.EntityName.Value}");
             
             // Initially set viewed combat references to the local combat
             viewedLeftFighter = clientLeftFighter;
@@ -187,6 +203,7 @@ public class FightManager : NetworkBehaviour
         }
         else
         {
+            Debug.Log("FLEXPAIRING: No local fight assignment found, clearing combat references");
             clientLeftFighter = null;
             clientRightFighter = null;
             viewedLeftFighter = null;
@@ -275,18 +292,47 @@ public class FightManager : NetworkBehaviour
     {
         leftToRightMap.Clear();
         rightToLeftMap.Clear();
-        connectionToFightMap.Clear();
+        // Note: connectionToFightMap is now managed manually in AddFightAssignment, not rebuilt here
         
         foreach (var assignment in assignments)
         {
             leftToRightMap[(uint)assignment.LeftFighterObjectId] = (uint)assignment.RightFighterObjectId;
             rightToLeftMap[(uint)assignment.RightFighterObjectId] = (uint)assignment.LeftFighterObjectId;
-            
-            if (assignment.LeftFighterConnection != null)
-            {
-                connectionToFightMap[assignment.LeftFighterConnection.ClientId] = assignment;
-            }
         }
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Checks if two entities are allies (same owner or one owns the other)
+    /// </summary>
+    private bool AreEntitiesAllies(NetworkEntity entity1, NetworkEntity entity2)
+    {
+        if (entity1 == null || entity2 == null) return false;
+
+        // Check if they are the same entity
+        if (entity1.ObjectId == entity2.ObjectId) return true;
+
+        // Check if one owns the other
+        if (entity1.EntityType == EntityType.Player && entity2.EntityType == EntityType.Pet)
+        {
+            return entity2.OwnerEntityId.Value == entity1.ObjectId;
+        }
+        if (entity2.EntityType == EntityType.Player && entity1.EntityType == EntityType.Pet)
+        {
+            return entity1.OwnerEntityId.Value == entity2.ObjectId;
+        }
+
+        // Check if they have the same owner (both are pets owned by the same player)
+        if (entity1.EntityType == EntityType.Pet && entity2.EntityType == EntityType.Pet)
+        {
+            return entity1.OwnerEntityId.Value == entity2.OwnerEntityId.Value;
+        }
+
+        // Players are not allies with other players by default
+        return false;
     }
 
     #endregion
@@ -296,37 +342,115 @@ public class FightManager : NetworkBehaviour
     [Server]
     public void AddFightAssignment(NetworkEntity leftFighter, NetworkEntity rightFighter)
     {
+        Debug.Log($"FLEXPAIRING: AddFightAssignment called with {leftFighter?.EntityName.Value} ({leftFighter?.EntityType}) vs {rightFighter?.EntityName.Value} ({rightFighter?.EntityType})");
+        
         if (leftFighter == null || rightFighter == null)
         {
-            Debug.LogError("Cannot add fight assignment: Left Fighter or Right Fighter is null.");
+            Debug.LogError("FLEXPAIRING: Cannot add fight assignment: Left Fighter or Right Fighter is null.");
             return;
         }
 
-        if (leftFighter.EntityType != EntityType.Player || rightFighter.EntityType != EntityType.Pet)
+        // Check if flexible pairing is enabled
+        OfflineGameManager offlineManager = OfflineGameManager.Instance;
+        bool flexiblePairingEnabled = offlineManager != null && offlineManager.EnableFlexiblePairing;
+
+        Debug.Log($"FLEXPAIRING: Flexible pairing enabled: {flexiblePairingEnabled}");
+
+        if (!flexiblePairingEnabled)
         {
-            Debug.LogError("Invalid entity types for fight assignment. First argument must be a Player, second must be a Pet.");
-            return;
+            // Original rigid pairing rules
+            if (leftFighter.EntityType != EntityType.Player || rightFighter.EntityType != EntityType.Pet)
+            {
+                Debug.LogError("FLEXPAIRING: Invalid entity types for fight assignment. First argument must be a Player, second must be a Pet.");
+                return;
+            }
+        }
+        else
+        {
+            // Flexible pairing rules - just ensure both are valid combat entities
+            if ((leftFighter.EntityType != EntityType.Player && leftFighter.EntityType != EntityType.Pet) ||
+                (rightFighter.EntityType != EntityType.Player && rightFighter.EntityType != EntityType.Pet))
+            {
+                Debug.LogError("FLEXPAIRING: Invalid entity types for fight assignment. Both entities must be either Player or Pet.");
+                return;
+            }
+
+            // Ensure entities are not allies (same owner or one owns the other)
+            Debug.Log($"FLEXPAIRING: Checking if {leftFighter.EntityName.Value} and {rightFighter.EntityName.Value} are allies");
+            if (AreEntitiesAllies(leftFighter, rightFighter))
+            {
+                Debug.LogError($"FLEXPAIRING: Cannot pair allies: {leftFighter.EntityName.Value} and {rightFighter.EntityName.Value} are allies.");
+                return;
+            }
+            Debug.Log($"FLEXPAIRING: Entities are not allies, proceeding with pairing");
         }
 
         // Check if leftFighter or rightFighter is already in a fight
-        if (leftToRightMap.ContainsKey((uint)leftFighter.ObjectId) || rightToLeftMap.ContainsKey((uint)rightFighter.ObjectId))
+        bool leftAlreadyFighting = leftToRightMap.ContainsKey((uint)leftFighter.ObjectId);
+        bool rightAlreadyFighting = rightToLeftMap.ContainsKey((uint)rightFighter.ObjectId);
+        
+        Debug.Log($"FLEXPAIRING: Left fighter already fighting: {leftAlreadyFighting}, Right fighter already fighting: {rightAlreadyFighting}");
+        
+        if (leftAlreadyFighting || rightAlreadyFighting)
         {
-            Debug.LogWarning($"Cannot add fight: Left Fighter {leftFighter.ObjectId} or Right Fighter {rightFighter.ObjectId} is already in a fight.");
+            Debug.LogWarning($"FLEXPAIRING: Cannot add fight: Left Fighter {leftFighter.ObjectId} or Right Fighter {rightFighter.ObjectId} is already in a fight.");
             return;
         }
 
         FightAssignmentData assignment = new FightAssignmentData(leftFighter, rightFighter);
+        Debug.Log($"FLEXPAIRING: Adding fight assignment to SyncList");
         fightAssignments.Add(assignment);
 
         // Update server-side quick lookups
         leftToRightMap[(uint)leftFighter.ObjectId] = (uint)rightFighter.ObjectId;
         rightToLeftMap[(uint)rightFighter.ObjectId] = (uint)leftFighter.ObjectId;
         
-        // Add to connection lookup if leftFighter has an owner connection
-        if (leftFighter.Owner != null)
+        // Add to connection lookup - ONLY map clients to fights where they have a Player entity participating
+        // This ensures each client sees the fight where their Player is involved
+        
+        if (leftFighter.EntityType == EntityType.Player && leftFighter.Owner != null)
         {
-            connectionToFightMap[leftFighter.Owner.ClientId] = assignment;
+            Debug.Log($"FLEXPAIRING: Checking left Player {leftFighter.EntityName.Value} (Client {leftFighter.Owner.ClientId})");
+            Debug.Log($"FLEXPAIRING: connectionToFightMap contains client {leftFighter.Owner.ClientId}: {connectionToFightMap.ContainsKey(leftFighter.Owner.ClientId)}");
+            
+            // Only add the mapping if this client isn't already mapped to a fight
+            if (!connectionToFightMap.ContainsKey(leftFighter.Owner.ClientId))
+            {
+                connectionToFightMap[leftFighter.Owner.ClientId] = assignment;
+                Debug.Log($"FLEXPAIRING: Added connection mapping for client {leftFighter.Owner.ClientId} (Player entity: {leftFighter.EntityName.Value})");
+            }
+            else
+            {
+                var existingAssignment = connectionToFightMap[leftFighter.Owner.ClientId];
+                Debug.Log($"FLEXPAIRING: Client {leftFighter.Owner.ClientId} already mapped to fight (Left: {existingAssignment.LeftFighterObjectId}, Right: {existingAssignment.RightFighterObjectId}), skipping mapping for Player {leftFighter.EntityName.Value}");
+            }
         }
+        
+        if (rightFighter.EntityType == EntityType.Player && rightFighter.Owner != null)
+        {
+            Debug.Log($"FLEXPAIRING: Checking right Player {rightFighter.EntityName.Value} (Client {rightFighter.Owner.ClientId})");
+            Debug.Log($"FLEXPAIRING: connectionToFightMap contains client {rightFighter.Owner.ClientId}: {connectionToFightMap.ContainsKey(rightFighter.Owner.ClientId)}");
+            
+            // Only add the mapping if this client isn't already mapped to a fight
+            if (!connectionToFightMap.ContainsKey(rightFighter.Owner.ClientId))
+            {
+                connectionToFightMap[rightFighter.Owner.ClientId] = assignment;
+                Debug.Log($"FLEXPAIRING: Added connection mapping for client {rightFighter.Owner.ClientId} (Player entity: {rightFighter.EntityName.Value})");
+            }
+            else
+            {
+                var existingAssignment = connectionToFightMap[rightFighter.Owner.ClientId];
+                Debug.Log($"FLEXPAIRING: Client {rightFighter.Owner.ClientId} already mapped to fight (Left: {existingAssignment.LeftFighterObjectId}, Right: {existingAssignment.RightFighterObjectId}), skipping mapping for Player {rightFighter.EntityName.Value}");
+            }
+        }
+        
+        // If neither fighter is a Player, don't map any clients to this fight
+        if (leftFighter.EntityType != EntityType.Player && rightFighter.EntityType != EntityType.Player)
+        {
+            Debug.Log($"FLEXPAIRING: Pet vs Pet fight - no client mapping needed for {leftFighter.EntityName.Value} vs {rightFighter.EntityName.Value}");
+        }
+
+        Debug.Log($"FLEXPAIRING: Fight assignment successfully added: {leftFighter.EntityName.Value} ({leftFighter.EntityType}) vs {rightFighter.EntityName.Value} ({rightFighter.EntityType})");
     }
 
     [Server]
@@ -491,21 +615,41 @@ public class FightManager : NetworkBehaviour
     {
         if (connection == null) return null;
         
+        Debug.Log($"FLEXPAIRING: GetFightForConnection called for client {connection.ClientId}");
+        
         // First try connection lookup for better performance
         if (connectionToFightMap.TryGetValue(connection.ClientId, out FightAssignmentData directMatch))
         {
+            Debug.Log($"FLEXPAIRING: Found direct mapping for client {connection.ClientId} - Left: {directMatch.LeftFighterObjectId}, Right: {directMatch.RightFighterObjectId}");
             return directMatch;
         }
         
-        // Fall back to assignment list scan
+        Debug.Log($"FLEXPAIRING: No direct mapping found for client {connection.ClientId}, scanning assignments");
+        
+        // Fall back to assignment list scan - look for fights where this client owns a PLAYER entity
         foreach (var assignment in fightAssignments)
         {
-            if (assignment.LeftFighterConnection != null && assignment.LeftFighterConnection.ClientId == connection.ClientId)
+            Debug.Log($"FLEXPAIRING: Checking assignment - Left: {assignment.LeftFighterObjectId}, Right: {assignment.RightFighterObjectId}");
+            
+            // Get the actual entities to check their types and owners
+            NetworkEntity leftFighter = GetNetworkObjectComponent<NetworkEntity>(assignment.LeftFighterObjectId);
+            NetworkEntity rightFighter = GetNetworkObjectComponent<NetworkEntity>(assignment.RightFighterObjectId);
+            
+            // Check if this client owns a Player entity in this fight
+            if (leftFighter != null && leftFighter.EntityType == EntityType.Player && leftFighter.Owner != null && leftFighter.Owner.ClientId == connection.ClientId)
             {
+                Debug.Log($"FLEXPAIRING: Found fight for client {connection.ClientId} via left Player entity {leftFighter.EntityName.Value}");
+                return assignment;
+            }
+            
+            if (rightFighter != null && rightFighter.EntityType == EntityType.Player && rightFighter.Owner != null && rightFighter.Owner.ClientId == connection.ClientId)
+            {
+                Debug.Log($"FLEXPAIRING: Found fight for client {connection.ClientId} via right Player entity {rightFighter.EntityName.Value}");
                 return assignment;
             }
         }
         
+        Debug.Log($"FLEXPAIRING: No fight found for client {connection.ClientId}");
         return null;
     }
 
@@ -587,6 +731,4 @@ public class FightManager : NetworkBehaviour
     }
     
     #endregion
-
-
-} 
+}
