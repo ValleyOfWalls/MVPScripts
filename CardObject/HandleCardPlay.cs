@@ -92,14 +92,22 @@ public class HandleCardPlay : NetworkBehaviour
             Debug.LogError($"CARDPLAY_DEBUG: sourceAndTargetIdentifier is null for card {gameObject.name}");
         }
         
-        if (!CanPlayCard())
+        // Check if this card is already queued - check both local flag and server queue state
+        // This must happen BEFORE CanPlayCard validation so queued cards can be unqueued even if they fail validation
+        bool isLocallyQueued = isCurrentlyQueued;
+        bool isServerQueued = false;
+        
+        if (sourceAndTargetIdentifier != null && sourceAndTargetIdentifier.SourceEntity != null && CombatCardQueue.Instance != null)
         {
-            Debug.LogWarning($"CARDPLAY_DEBUG: Cannot play card {card.CardData?.CardName}. Reason: {playBlockReason}");
-            return;
+            var queuedCards = CombatCardQueue.Instance.GetQueuedCardPlays(sourceAndTargetIdentifier.SourceEntity.ObjectId);
+            isServerQueued = queuedCards.Any(qc => qc.cardObject == gameObject);
         }
-
-        // Check if this card is already queued - if so, unqueue it
-        if (isCurrentlyQueued)
+        
+        bool cardIsQueued = isLocallyQueued || isServerQueued;
+        
+        Debug.Log($"CARDPLAY_DEBUG: Queue state check - Local: {isLocallyQueued}, Server: {isServerQueued}, Final: {cardIsQueued}");
+        
+        if (cardIsQueued)
         {
             Debug.Log($"CARDPLAY_DEBUG: Card {card.CardData?.CardName} is already queued, unqueueing it");
             
@@ -109,6 +117,13 @@ public class HandleCardPlay : NetworkBehaviour
             
             // Call server to unqueue the card
             ServerUnqueueCard(unqueueSourceId);
+            return;
+        }
+
+        // Only validate if the card is not already queued
+        if (!CanPlayCard())
+        {
+            Debug.LogWarning($"CARDPLAY_DEBUG: Cannot play card {card.CardData?.CardName}. Reason: {playBlockReason}");
             return;
         }
 

@@ -519,20 +519,8 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
             sourceAndTargetIdentifier.UpdateSourceAndTarget();
         }
         
-        // Check if card meets basic play requirements
-        if (handleCardPlay != null && !handleCardPlay.CanCardBePlayed())
-        {
-            LogDebug($"Cannot play - requirements not met: {handleCardPlay.GetPlayBlockReason()}");
-            return;
-        }
-        
-        // Update source and target before playing
-        if (sourceAndTargetIdentifier != null)
-        {
-            sourceAndTargetIdentifier.UpdateSourceAndTarget();
-        }
-        
-        // Play the card
+        // Let OnCardPlayAttempt handle all validation and queue checking logic
+        // This ensures queued cards can be unqueued even if they fail validation
         if (handleCardPlay != null)
         {
             LogDebug("Playing card via click");
