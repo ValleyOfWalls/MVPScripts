@@ -33,10 +33,14 @@ public class CombatCanvasManager : NetworkBehaviour
     [SerializeField] private TextMeshProUGUI fightEndedText;
     [SerializeField] private GameObject combatCanvas;
 
-    [Header("Own Pet View")]
-    [SerializeField] private Transform ownPetViewContainer;
-    [SerializeField] private GameObject ownPetViewPrefab;
-    [SerializeField] private OwnPetViewController ownPetViewController;
+    // Legacy Own Pet View system removed - replaced by FighterAllyDisplayController
+
+    [Header("Fighter Ally Displays")]
+    [SerializeField] private Transform leftAllyDisplayContainer;
+    [SerializeField] private Transform rightAllyDisplayContainer;
+    [SerializeField] private GameObject fighterAllyDisplayPrefab;
+    [SerializeField] private FighterAllyDisplayController leftAllyDisplayController;
+    [SerializeField] private FighterAllyDisplayController rightAllyDisplayController;
 
     [Header("Deck Viewer")]
     [SerializeField] private DeckViewerManager deckViewerManager;
@@ -55,7 +59,7 @@ public class CombatCanvasManager : NetworkBehaviour
     [SerializeField] private Transform opponentPetStatsUIPositionTransform;
 
     private NetworkEntity localPlayer;
-    private NetworkEntity opponentPetForLocalPlayer;
+    private NetworkEntity opponentForLocalPlayer;
     
     private FightManager fightManager;
     private CombatManager combatManager;
@@ -178,9 +182,9 @@ public class CombatCanvasManager : NetworkBehaviour
         }
 
         // Find opponent
-        opponentPetForLocalPlayer = fightManager.GetOpponentForPlayer(localPlayer);
+        opponentForLocalPlayer = fightManager.GetOpponent(localPlayer);
 
-        if (opponentPetForLocalPlayer == null)
+        if (opponentForLocalPlayer == null)
         {
             // Try to wait and retry if opponent isn't available yet
             StartCoroutine(RetryFindOpponent());
@@ -215,14 +219,14 @@ public class CombatCanvasManager : NetworkBehaviour
         const int maxRetries = 5;
         const float retryDelay = 0.5f;
 
-        while (opponentPetForLocalPlayer == null && retryCount < maxRetries)
+        while (opponentForLocalPlayer == null && retryCount < maxRetries)
         {
             yield return new WaitForSeconds(retryDelay);
-            opponentPetForLocalPlayer = fightManager.GetOpponentForPlayer(localPlayer);
+            opponentForLocalPlayer = fightManager.GetOpponent(localPlayer);
             retryCount++;
         }
 
-        if (opponentPetForLocalPlayer != null)
+        if (opponentForLocalPlayer != null)
         {
             CompleteUISetup();
         }
@@ -235,13 +239,13 @@ public class CombatCanvasManager : NetworkBehaviour
     private void CompleteUISetup()
     {
         // Set up UI elements based on the local player and their opponent
-        if (localPlayer != null && opponentPetForLocalPlayer != null)
+        if (localPlayer != null && opponentForLocalPlayer != null)
         {
             // Initialize button listeners
             InitializeButtonListeners();
             
-            // Setup own pet view
-            SetupOwnPetView();
+            // Setup dual ally displays (replaces legacy OwnPetViewController)
+            SetupFighterAllyDisplays();
             
             // Setup deck viewer
             SetupDeckViewer();
@@ -262,7 +266,7 @@ public class CombatCanvasManager : NetworkBehaviour
         }
         else
         {
-            Debug.LogError($"Cannot complete UI setup - localPlayer: {(localPlayer != null ? "found" : "null")}, opponentPet: {(opponentPetForLocalPlayer != null ? "found" : "null")}");
+            Debug.LogError($"Cannot complete UI setup - localPlayer: {(localPlayer != null ? "found" : "null")}, opponentPet: {(opponentForLocalPlayer != null ? "found" : "null")}");
         }
     }
 
@@ -327,7 +331,7 @@ public class CombatCanvasManager : NetworkBehaviour
             testOpponentPerspectiveButton.onClick.AddListener(() => {
                 if (testManager != null)
                 {
-                    testManager.StartOpponentPetPerspectiveTests();
+                    testManager.StartOpponentPerspectiveTests();
                     Debug.Log("Starting opponent pet perspective tests...");
                 }
                 else
@@ -417,125 +421,7 @@ public class CombatCanvasManager : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Sets up the own pet view functionality
-    /// </summary>
-    private void SetupOwnPetView()
-    {
-        Debug.Log("[PET_VISIBILITY] CombatCanvasManager.SetupOwnPetView() called");
-        
-        // Validate container
-        if (ownPetViewContainer == null)
-        {
-            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ERROR: OwnPetViewContainer not assigned");
-            Debug.LogWarning("CombatCanvasManager: OwnPetViewContainer not assigned. Own pet view will not be available.");
-            return;
-        }
-        
-        Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - OwnPetViewContainer found: {ownPetViewContainer.name}");
-        
-        // Find existing OwnPetViewController if not assigned
-        if (ownPetViewController == null)
-        {
-            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ownPetViewController is null, searching for existing one");
-            ownPetViewController = ownPetViewContainer.GetComponentInChildren<OwnPetViewController>();
-            
-            if (ownPetViewController != null)
-            {
-                Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - Found existing OwnPetViewController: {ownPetViewController.gameObject.name}");
-            }
-            else
-            {
-                Debug.Log("[PET_VISIBILITY] CombatCanvasManager - No existing OwnPetViewController found");
-            }
-        }
-        else
-        {
-            Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - ownPetViewController already assigned: {ownPetViewController.gameObject.name}");
-        }
-        
-        // If still not found, try to spawn the prefab (server only)
-        if (ownPetViewController == null)
-        {
-            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Attempting to spawn OwnPetView prefab");
-            
-            if (ownPetViewPrefab != null)
-            {
-                Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - OwnPetViewPrefab found: {ownPetViewPrefab.name}");
-                
-                // Check if the prefab has a NetworkObject component
-                NetworkObject prefabNetworkObject = ownPetViewPrefab.GetComponent<NetworkObject>();
-                if (prefabNetworkObject != null)
-                {
-                    Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Prefab has NetworkObject, checking if server");
-                    
-                    // Only spawn on server, clients will receive it automatically
-                    var networkManager = FishNet.InstanceFinder.NetworkManager;
-                    if (networkManager != null && networkManager.IsServerStarted)
-                    {
-                        Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Server started, spawning NetworkObject");
-                        
-                        // Spawn at root first to avoid NetworkObject parenting issues
-                        GameObject spawnedObject = Instantiate(ownPetViewPrefab);
-                        
-                        NetworkObject spawnedNetworkObject = spawnedObject.GetComponent<NetworkObject>();
-                        
-                        if (spawnedNetworkObject != null)
-                        {
-                            Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - Spawning NetworkObject: {spawnedObject.name}");
-                            
-                            // Spawn the NetworkObject first
-                            networkManager.ServerManager.Spawn(spawnedNetworkObject);
-                        
-                            // Then move to correct parent after spawning
-                            spawnedObject.transform.SetParent(ownPetViewContainer, false);
-                        
-                            // Ensure it's active
-                            spawnedObject.SetActive(true);
-                        
-                            ownPetViewController = spawnedObject.GetComponent<OwnPetViewController>();
-                            
-                            Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - NetworkObject spawned and ownPetViewController assigned: {ownPetViewController.gameObject.name}");
-                        
-                            // Notify clients to move the spawned object to correct parent
-                            RpcSetOwnPetViewParent(spawnedNetworkObject.ObjectId);
-                        }
-                        else
-                        {
-                            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ERROR: Spawned object has no NetworkObject component");
-                        }
-                    }
-                    else
-                    {
-                        Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Not server or NetworkManager not available, skipping spawn");
-                    }
-                }
-                else
-                {
-                    Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Prefab has no NetworkObject, instantiating directly");
-                    // No NetworkObject, instantiate directly
-                    GameObject spawnedObject = Instantiate(ownPetViewPrefab, ownPetViewContainer);
-                    ownPetViewController = spawnedObject.GetComponent<OwnPetViewController>();
-                    Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - Direct instantiation completed, ownPetViewController: {(ownPetViewController != null ? ownPetViewController.gameObject.name : "null")}");
-                }
-            }
-            else
-            {
-                Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ERROR: OwnPetViewPrefab is null");
-            }
-        }
-        
-        if (ownPetViewController != null)
-        {
-            Debug.Log($"[PET_VISIBILITY] CombatCanvasManager - OwnPetViewController setup complete, calling RefreshDisplayedPet(): {ownPetViewController.gameObject.name}");
-            // Refresh the displayed pet to show the currently viewed player's pet
-            ownPetViewController.RefreshDisplayedPet();
-        }
-        else
-        {
-            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ERROR: Failed to setup OwnPetViewController");
-        }
-    }
+    // Legacy SetupOwnPetView method removed - replaced by SetupFighterAllyDisplays()
 
     /// <summary>
     /// Called when the viewed combat changes (e.g., when spectating)
@@ -543,43 +429,36 @@ public class CombatCanvasManager : NetworkBehaviour
     /// </summary>
     public void OnViewedCombatChanged()
     {
-        Debug.Log("[PET_VISIBILITY] CombatCanvasManager.OnViewedCombatChanged() called");
-        
-        // NOTE: In the arena system, OwnPetView is no longer needed since all pets are visible in different arenas
-        // The code below is kept for compatibility but may not be necessary
-        if (ownPetViewController != null)
+        Debug.Log("CombatCanvasManager: Viewed combat changed, updating displays and positioning");
+
+        // Update ally displays (replaces legacy OwnPetViewController)
+        if (leftAllyDisplayController != null)
         {
-            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - Found ownPetViewController, calling RefreshDisplayedPet()");
-            ownPetViewController.RefreshDisplayedPet();
-        }
-        else
-        {
-            Debug.Log("[PET_VISIBILITY] CombatCanvasManager - ownPetViewController is null (this is expected in arena system)");
+            leftAllyDisplayController.ForceUpdate();
         }
         
-        // Update deck viewer button states for the new viewed combat
-        if (deckViewerManager != null)
+        if (rightAllyDisplayController != null)
         {
-            deckViewerManager.UpdateButtonStates();
+            rightAllyDisplayController.ForceUpdate();
         }
         
         // Update entity positioning and facing for the new viewed combat
         if (fightManager != null)
         {
-            var viewedPlayer = fightManager.ViewedCombatPlayer;
-            var viewedOpponentPet = fightManager.ViewedCombatOpponentPet;
+                    var viewedLeftFighter = fightManager.ViewedLeftFighter;
+        var viewedRightFighter = fightManager.ViewedRightFighter;
             
-            if (viewedPlayer != null && viewedOpponentPet != null)
+            if (viewedLeftFighter != null && viewedRightFighter != null)
             {
-                /* Debug.Log($"CombatCanvasManager: Updating entity positioning and facing for viewed combat - Player: {viewedPlayer.EntityName.Value}, Opponent Pet: {viewedOpponentPet.EntityName.Value}"); */
-                PositionCombatEntitiesForSpecificFight(viewedPlayer, viewedOpponentPet);
+                /* Debug.Log($"CombatCanvasManager: Updating entity positioning and facing for viewed combat - Left Fighter: {viewedLeftFighter.EntityName.Value}, Right Fighter: {viewedRightFighter.EntityName.Value}"); */
+                PositionCombatEntitiesForSpecificFight(viewedLeftFighter, viewedRightFighter);
                 
                 // Move camera to view the new arena
                 if (cameraManager != null)
                 {
-                    Debug.Log($"[ARENA_CAMERA] CombatCanvasManager requesting camera move to view {viewedPlayer.EntityName.Value}'s arena");
+                    Debug.Log($"[ARENA_CAMERA] CombatCanvasManager requesting camera move to view {viewedLeftFighter.EntityName.Value}'s arena");
                     cameraManager.MoveCameraToCurrentViewedFight(true);
-                    Debug.Log($"CombatCanvasManager: Moving camera to view {viewedPlayer.EntityName.Value}'s arena");
+                    Debug.Log($"CombatCanvasManager: Moving camera to view {viewedLeftFighter.EntityName.Value}'s arena");
                 }
                 else
                 {
@@ -649,10 +528,15 @@ public class CombatCanvasManager : NetworkBehaviour
         {
             combatCanvas.SetActive(true);
             
-            // Refresh own pet view when canvas is re-enabled
-            if (ownPetViewController != null)
+            // Refresh ally displays when canvas is re-enabled
+            if (leftAllyDisplayController != null)
             {
-                ownPetViewController.RefreshDisplayedPet();
+                leftAllyDisplayController.ForceUpdate();
+            }
+            
+            if (rightAllyDisplayController != null)
+            {
+                rightAllyDisplayController.ForceUpdate();
             }
             
             // Update deck viewer button states when canvas is re-enabled
@@ -671,13 +555,7 @@ public class CombatCanvasManager : NetworkBehaviour
         DisableEndTurnButton();
     }
 
-    /// <summary>
-    /// Gets the OwnPetViewController for external access
-    /// </summary>
-    public OwnPetViewController GetOwnPetViewController()
-    {
-        return ownPetViewController;
-    }
+    // Legacy GetOwnPetViewController method removed - use GetLeftAllyDisplayController() or GetRightAllyDisplayController() instead
 
     /// <summary>
     /// Sets up the deck viewer functionality
@@ -732,55 +610,7 @@ public class CombatCanvasManager : NetworkBehaviour
         return queueVisualizationManager;
     }
     
-    /// <summary>
-    /// RPC to set the correct parent for the OwnPetView prefab on clients
-    /// </summary>
-    [ObserversRpc]
-    private void RpcSetOwnPetViewParent(int networkObjectId)
-    {
-        StartCoroutine(SetOwnPetViewParentWithRetry(networkObjectId));
-    }
-    
-    /// <summary>
-    /// Coroutine to handle client-side parenting with retry logic
-    /// </summary>
-    private System.Collections.IEnumerator SetOwnPetViewParentWithRetry(int networkObjectId)
-    {
-        NetworkObject spawnedNetworkObject = null;
-        int retryCount = 0;
-        int maxRetries = 10;
-        
-        // Wait for the NetworkObject to be spawned on the client
-        while (retryCount < maxRetries && spawnedNetworkObject == null)
-        {
-            yield return new WaitForSeconds(0.1f);
-            
-            var networkManager = FishNet.InstanceFinder.NetworkManager;
-            if (networkManager != null && networkManager.IsClientStarted)
-            {
-                networkManager.ClientManager.Objects.Spawned.TryGetValue(networkObjectId, out spawnedNetworkObject);
-            }
-            
-            retryCount++;
-        }
-        
-        if (spawnedNetworkObject != null && ownPetViewContainer != null)
-        {
-            /* Debug.Log($"CombatCanvasManager: Moving OwnPetView from root to container on client"); */
-            spawnedNetworkObject.transform.SetParent(ownPetViewContainer, false);
-            spawnedNetworkObject.gameObject.SetActive(true);
-            
-            // Update the reference
-            if (ownPetViewController == null)
-            {
-                ownPetViewController = spawnedNetworkObject.GetComponent<OwnPetViewController>();
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"CombatCanvasManager: Failed to find spawned OwnPetView NetworkObject with ID {networkObjectId} after {maxRetries} retries");
-        }
-    }
+    // Legacy RPC methods for OwnPetViewController removed
 
     /// <summary>
     /// Positions combat entities for all ongoing fights
@@ -809,19 +639,19 @@ public class CombatCanvasManager : NetworkBehaviour
         foreach (var fightAssignment in allFights)
         {
             // Get the actual NetworkEntity objects from the IDs
-            NetworkEntity player = GetNetworkEntityByObjectId(fightAssignment.PlayerObjectId);
-            NetworkEntity opponentPet = GetNetworkEntityByObjectId(fightAssignment.PetObjectId);
+            NetworkEntity leftFighter = GetNetworkEntityByObjectId(fightAssignment.LeftFighterObjectId);
+            NetworkEntity rightFighter = GetNetworkEntityByObjectId(fightAssignment.RightFighterObjectId);
             
-            if (player == null || opponentPet == null)
+            if (leftFighter == null || rightFighter == null)
             {
-                Debug.LogWarning($"Cannot find entities for fight: Player ID {fightAssignment.PlayerObjectId}, Pet ID {fightAssignment.PetObjectId}");
+                Debug.LogWarning($"Cannot find entities for fight: Left Fighter ID {fightAssignment.LeftFighterObjectId}, Right Fighter ID {fightAssignment.RightFighterObjectId}");
                 // Reduce total count if fight can't be processed
                 totalFacingOperations--;
                 continue;
             }
             
             // Position entities for this specific fight (includes facing setup)
-            PositionCombatEntitiesForSpecificFight(player, opponentPet);
+            PositionCombatEntitiesForSpecificFight(leftFighter, rightFighter);
         }
         
         // If no facing operations needed, mark as complete immediately
@@ -896,14 +726,26 @@ public class CombatCanvasManager : NetworkBehaviour
         // Position main entities (player and opponent pet) only if owned by local client
         if (player.IsOwner)
         {
+            Debug.Log($"NETPOS: Setting {player.EntityName.Value} (ID: {player.ObjectId}) position from {player.transform.position} to {playerArenaPos} - IsOwner: {player.IsOwner}");
             player.transform.position = playerArenaPos;
+            Debug.Log($"NETPOS: After setting, {player.EntityName.Value} position is {player.transform.position}");
             Debug.Log($"[ARENA_POSITIONING] Player {player.EntityName.Value} positioned at arena {arenaIndex}: {playerArenaPos}");
+        }
+        else
+        {
+            Debug.Log($"NETPOS: Skipping {player.EntityName.Value} (ID: {player.ObjectId}) positioning - IsOwner: {player.IsOwner}, NetworkTransform should handle this");
         }
         
         if (opponentPet.IsOwner)
         {
+            Debug.Log($"NETPOS: Setting {opponentPet.EntityName.Value} (ID: {opponentPet.ObjectId}) position from {opponentPet.transform.position} to {opponentArenaPos} - IsOwner: {opponentPet.IsOwner}");
             opponentPet.transform.position = opponentArenaPos;
+            Debug.Log($"NETPOS: After setting, {opponentPet.EntityName.Value} position is {opponentPet.transform.position}");
             Debug.Log($"[ARENA_POSITIONING] Opponent Pet {opponentPet.EntityName.Value} positioned at arena {arenaIndex}: {opponentArenaPos}");
+        }
+        else
+        {
+            Debug.Log($"NETPOS: Skipping {opponentPet.EntityName.Value} (ID: {opponentPet.ObjectId}) positioning - IsOwner: {opponentPet.IsOwner}, NetworkTransform should handle this");
         }
         
         // Position hands and stats UI for ALL entities (these don't have NetworkTransforms)
@@ -1034,6 +876,7 @@ public class CombatCanvasManager : NetworkBehaviour
         // Initialize or update the tracked position
         lastTrackedPositions[entity] = entity.transform.position;
         
+        Debug.Log($"NETPOS: Started tracking {entity.EntityName.Value} (ID: {entity.ObjectId}) at {entity.transform.position}, IsOwner: {entity.IsOwner}");
         Debug.Log($"[ENTITY_FACING] Started tracking position for {entity.EntityName.Value}: {entity.transform.position}");
     }
     
@@ -1070,17 +913,26 @@ public class CombatCanvasManager : NetworkBehaviour
             bool playerPositionChanged = HasEntityPositionChanged(player);
             bool petPositionChanged = HasEntityPositionChanged(opponentPet);
             
+            Debug.Log($"NETPOS: Tracking {player.EntityName.Value} (ID: {player.ObjectId}) at {player.transform.position}, IsOwner: {player.IsOwner}, Changed: {playerPositionChanged}");
+            Debug.Log($"NETPOS: Tracking {opponentPet.EntityName.Value} (ID: {opponentPet.ObjectId}) at {opponentPet.transform.position}, IsOwner: {opponentPet.IsOwner}, Changed: {petPositionChanged}");
+            
             if (playerPositionChanged || petPositionChanged)
             {
+                Debug.Log($"NETPOS: Position change detected - Player: {playerPositionChanged}, Pet: {petPositionChanged}");
                 Debug.Log($"[ENTITY_FACING] Position change detected - Player: {playerPositionChanged}, Pet: {petPositionChanged}");
             }
             
             // Check if both entities are now ready for facing
             if (AreEntitiesReadyForFacing(player, opponentPet))
             {
+                Debug.Log($"NETPOS: Entities now ready for facing: {player.EntityName.Value} vs {opponentPet.EntityName.Value}");
                 Debug.Log($"[ENTITY_FACING] Entities now ready after position tracking: {player.EntityName.Value} vs {opponentPet.EntityName.Value}");
                 readyFights.Add(fightKey);
                 kvp.Value.Invoke(); // Call the facing setup callback
+            }
+            else
+            {
+                Debug.Log($"NETPOS: Entities still not ready for facing: {player.EntityName.Value} vs {opponentPet.EntityName.Value}");
             }
         }
         
@@ -1117,7 +969,11 @@ public class CombatCanvasManager : NetworkBehaviour
     /// </summary>
     private bool HasEntityPositionChanged(NetworkEntity entity)
     {
-        if (entity == null || !lastTrackedPositions.ContainsKey(entity)) return false;
+        if (entity == null || !lastTrackedPositions.ContainsKey(entity)) 
+        {
+            Debug.Log($"NETPOS: HasEntityPositionChanged - {entity?.EntityName.Value ?? "null"} not in tracking dictionary");
+            return false;
+        }
         
         Vector3 currentPos = entity.transform.position;
         Vector3 lastPos = lastTrackedPositions[entity];
@@ -1125,8 +981,11 @@ public class CombatCanvasManager : NetworkBehaviour
         float distance = Vector3.Distance(currentPos, lastPos);
         bool hasChanged = distance > 0.01f; // Small threshold for floating point precision
         
+        Debug.Log($"NETPOS: HasEntityPositionChanged - {entity.EntityName.Value}: Last {lastPos}, Current {currentPos}, Distance {distance:F3}, Changed {hasChanged}");
+        
         if (hasChanged)
         {
+            Debug.Log($"NETPOS: Position change detected for {entity.EntityName.Value}: {lastPos} -> {currentPos} (distance: {distance:F3})");
             Debug.Log($"[ENTITY_FACING] Position change detected for {entity.EntityName.Value}: {lastPos} -> {currentPos} (distance: {distance:F3})");
             lastTrackedPositions[entity] = currentPos; // Update tracked position
         }
@@ -1323,15 +1182,15 @@ public class CombatCanvasManager : NetworkBehaviour
             uint entity2Id = (uint)entity2.ObjectId;
             
             // Check if entity1 is in this fight
-            if (fight.PlayerObjectId == entity1Id || fight.PetObjectId == entity1Id)
+            if (fight.LeftFighterObjectId == entity1Id || fight.RightFighterObjectId == entity1Id)
             {
-                entity1Arena = arenaManager.GetArenaForPlayer(fight.PlayerObjectId);
+                entity1Arena = arenaManager.GetArenaForPlayer(fight.LeftFighterObjectId);
             }
             
             // Check if entity2 is in this fight
-            if (fight.PlayerObjectId == entity2Id || fight.PetObjectId == entity2Id)
+            if (fight.LeftFighterObjectId == entity2Id || fight.RightFighterObjectId == entity2Id)
             {
-                entity2Arena = arenaManager.GetArenaForPlayer(fight.PlayerObjectId);
+                entity2Arena = arenaManager.GetArenaForPlayer(fight.LeftFighterObjectId);
             }
         }
         
@@ -1907,23 +1766,23 @@ public class CombatCanvasManager : NetworkBehaviour
         
         foreach (var fightAssignment in allFights)
         {
-            NetworkEntity player = GetNetworkEntityByObjectId(fightAssignment.PlayerObjectId);
-            NetworkEntity opponentPet = GetNetworkEntityByObjectId(fightAssignment.PetObjectId);
+            NetworkEntity leftFighter = GetNetworkEntityByObjectId(fightAssignment.LeftFighterObjectId);
+            NetworkEntity rightFighter = GetNetworkEntityByObjectId(fightAssignment.RightFighterObjectId);
             
-            if (player == null || opponentPet == null)
+            if (leftFighter == null || rightFighter == null)
             {
-                Debug.LogWarning($"DEBUG: Could not find entities for fight - Player ID: {fightAssignment.PlayerObjectId}, Pet ID: {fightAssignment.PetObjectId}");
+                Debug.LogWarning($"DEBUG: Could not find entities for fight - Left Fighter ID: {fightAssignment.LeftFighterObjectId}, Right Fighter ID: {fightAssignment.RightFighterObjectId}");
                 continue;
             }
             
-            /* Debug.Log($"DEBUG: Testing facing for fight - Player: {player.EntityName.Value}, Opponent Pet: {opponentPet.EntityName.Value}"); */
-            /* Debug.Log($"DEBUG: Player position: {player.transform.position}, rotation: {player.transform.rotation.eulerAngles}"); */
-            /* Debug.Log($"DEBUG: Opponent Pet position: {opponentPet.transform.position}, rotation: {opponentPet.transform.rotation.eulerAngles}"); */
+            /* Debug.Log($"DEBUG: Testing facing for fight - Left Fighter: {leftFighter.EntityName.Value}, Right Fighter: {rightFighter.EntityName.Value}"); */
+            /* Debug.Log($"DEBUG: Left Fighter position: {leftFighter.transform.position}, rotation: {leftFighter.transform.rotation.eulerAngles}"); */
+            /* Debug.Log($"DEBUG: Right Fighter position: {rightFighter.transform.position}, rotation: {rightFighter.transform.rotation.eulerAngles}"); */
             
             // Test the facing setup
-            SetupEntityFacing(player, opponentPet);
+            SetupEntityFacing(leftFighter, rightFighter);
             
-            /* Debug.Log($"DEBUG: After facing setup - Player rotation: {player.transform.rotation.eulerAngles}, Opponent Pet rotation: {opponentPet.transform.rotation.eulerAngles}"); */
+            /* Debug.Log($"DEBUG: After facing setup - Left Fighter rotation: {leftFighter.transform.rotation.eulerAngles}, Right Fighter rotation: {rightFighter.transform.rotation.eulerAngles}"); */
         }
         
         /* Debug.Log("=== DEBUG: Entity facing test complete ==="); */
@@ -1999,5 +1858,174 @@ public class CombatCanvasManager : NetworkBehaviour
         cameraManager.MoveCameraToCurrentViewedFight(false); // false = not from spectating, so no transition
         
         Debug.Log("[ARENA_CAMERA] CombatCanvasManager: Initial camera positioning completed");
+    }
+
+    /// <summary>
+    /// Sets up the dual fighter ally display system for both left and right fighters
+    /// </summary>
+    private void SetupFighterAllyDisplays()
+    {
+        Debug.Log("ALLY_SETUP: CombatCanvasManager.SetupFighterAllyDisplays() called");
+        
+        // Setup left ally display
+        SetupLeftAllyDisplay();
+        
+        // Setup right ally display  
+        SetupRightAllyDisplay();
+        
+        Debug.Log("ALLY_SETUP: CombatCanvasManager.SetupFighterAllyDisplays() completed");
+    }
+    
+    /// <summary>
+    /// Sets up the left ally display (traditionally the player's pet)
+    /// </summary>
+    private void SetupLeftAllyDisplay()
+    {
+        Debug.Log("ALLY_SETUP: SetupLeftAllyDisplay() called");
+        Debug.Log($"ALLY_SETUP: leftAllyDisplayContainer: {(leftAllyDisplayContainer != null ? leftAllyDisplayContainer.name : "null")}");
+        Debug.Log($"ALLY_SETUP: leftAllyDisplayContainer active: {(leftAllyDisplayContainer != null ? leftAllyDisplayContainer.gameObject.activeSelf : false)}");
+        Debug.Log($"ALLY_SETUP: leftAllyDisplayContainer activeInHierarchy: {(leftAllyDisplayContainer != null ? leftAllyDisplayContainer.gameObject.activeInHierarchy : false)}");
+        Debug.Log($"ALLY_SETUP: fighterAllyDisplayPrefab: {(fighterAllyDisplayPrefab != null ? fighterAllyDisplayPrefab.name : "null")}");
+        
+        if (leftAllyDisplayContainer == null)
+        {
+            Debug.LogWarning("ALLY_SETUP: Left ally display container not assigned, skipping left ally setup");
+            return;
+        }
+        
+        // If controller is not assigned, try to find or create it
+        if (leftAllyDisplayController == null)
+        {
+            Debug.Log("ALLY_SETUP: leftAllyDisplayController is null, trying to find existing one...");
+            leftAllyDisplayController = leftAllyDisplayContainer.GetComponentInChildren<FighterAllyDisplayController>();
+            
+            if (leftAllyDisplayController != null)
+            {
+                Debug.Log($"ALLY_SETUP: Found existing left ally display controller: {leftAllyDisplayController.name}");
+            }
+            else if (fighterAllyDisplayPrefab != null)
+            {
+                Debug.Log("ALLY_SETUP: Creating left ally display controller from prefab");
+                GameObject leftDisplayObject = Instantiate(fighterAllyDisplayPrefab, leftAllyDisplayContainer);
+                Debug.Log($"ALLY_SETUP: Instantiated prefab as: {leftDisplayObject.name}");
+                
+                leftAllyDisplayController = leftDisplayObject.GetComponent<FighterAllyDisplayController>();
+                
+                if (leftAllyDisplayController != null)
+                {
+                    Debug.Log("ALLY_SETUP: Found FighterAllyDisplayController component, configuring for left side");
+                    // Configure for left side
+                    leftAllyDisplayController.SetFighterSide(FighterSide.Left);
+                    Debug.Log("ALLY_SETUP: Left side configuration applied");
+                }
+                else
+                {
+                    Debug.LogError("ALLY_SETUP: FighterAllyDisplayController component not found on instantiated prefab");
+                }
+            }
+            else
+            {
+                Debug.LogError("ALLY_SETUP: fighterAllyDisplayPrefab is null, cannot create left ally display");
+            }
+        }
+        else
+        {
+            Debug.Log($"ALLY_SETUP: leftAllyDisplayController already assigned: {leftAllyDisplayController.name}");
+        }
+        
+        if (leftAllyDisplayController != null)
+        {
+            Debug.Log("ALLY_SETUP: Calling ForceUpdate() on left ally display controller");
+            leftAllyDisplayController.ForceUpdate();
+            Debug.Log("ALLY_SETUP: Left ally display controller setup completed");
+        }
+        else
+        {
+            Debug.LogWarning("ALLY_SETUP: Failed to setup left ally display controller");
+        }
+    }
+    
+    /// <summary>
+    /// Sets up the right ally display (traditionally the opponent player)
+    /// </summary>
+    private void SetupRightAllyDisplay()
+    {
+        Debug.Log("ALLY_SETUP: SetupRightAllyDisplay() called");
+        Debug.Log($"ALLY_SETUP: rightAllyDisplayContainer: {(rightAllyDisplayContainer != null ? rightAllyDisplayContainer.name : "null")}");
+        Debug.Log($"ALLY_SETUP: rightAllyDisplayContainer active: {(rightAllyDisplayContainer != null ? rightAllyDisplayContainer.gameObject.activeSelf : false)}");
+        Debug.Log($"ALLY_SETUP: rightAllyDisplayContainer activeInHierarchy: {(rightAllyDisplayContainer != null ? rightAllyDisplayContainer.gameObject.activeInHierarchy : false)}");
+        
+        if (rightAllyDisplayContainer == null)
+        {
+            Debug.LogWarning("ALLY_SETUP: Right ally display container not assigned, skipping right ally setup");
+            return;
+        }
+        
+        // If controller is not assigned, try to find or create it
+        if (rightAllyDisplayController == null)
+        {
+            Debug.Log("ALLY_SETUP: rightAllyDisplayController is null, trying to find existing one...");
+            rightAllyDisplayController = rightAllyDisplayContainer.GetComponentInChildren<FighterAllyDisplayController>();
+            
+            if (rightAllyDisplayController != null)
+            {
+                Debug.Log($"ALLY_SETUP: Found existing right ally display controller: {rightAllyDisplayController.name}");
+            }
+            else if (fighterAllyDisplayPrefab != null)
+            {
+                Debug.Log("ALLY_SETUP: Creating right ally display controller from prefab");
+                GameObject rightDisplayObject = Instantiate(fighterAllyDisplayPrefab, rightAllyDisplayContainer);
+                Debug.Log($"ALLY_SETUP: Instantiated prefab as: {rightDisplayObject.name}");
+                
+                rightAllyDisplayController = rightDisplayObject.GetComponent<FighterAllyDisplayController>();
+                
+                if (rightAllyDisplayController != null)
+                {
+                    Debug.Log("ALLY_SETUP: Found FighterAllyDisplayController component, configuring for right side");
+                    // Configure for right side
+                    rightAllyDisplayController.SetFighterSide(FighterSide.Right);
+                    Debug.Log("ALLY_SETUP: Right side configuration applied");
+                }
+                else
+                {
+                    Debug.LogError("ALLY_SETUP: FighterAllyDisplayController component not found on instantiated prefab");
+                }
+            }
+            else
+            {
+                Debug.LogError("ALLY_SETUP: fighterAllyDisplayPrefab is null, cannot create right ally display");
+            }
+        }
+        else
+        {
+            Debug.Log($"ALLY_SETUP: rightAllyDisplayController already assigned: {rightAllyDisplayController.name}");
+        }
+        
+        if (rightAllyDisplayController != null)
+        {
+            Debug.Log("ALLY_SETUP: Calling ForceUpdate() on right ally display controller");
+            rightAllyDisplayController.ForceUpdate();
+            Debug.Log("ALLY_SETUP: Right ally display controller setup completed");
+        }
+        else
+        {
+            Debug.LogWarning("ALLY_SETUP: Failed to setup right ally display controller");
+        }
+    }
+
+    /// <summary>
+    /// Gets the left ally display controller
+    /// </summary>
+    public FighterAllyDisplayController GetLeftAllyDisplayController()
+    {
+        return leftAllyDisplayController;
+    }
+    
+    /// <summary>
+    /// Gets the right ally display controller
+    /// </summary>
+    public FighterAllyDisplayController GetRightAllyDisplayController()
+    {
+        return rightAllyDisplayController;
     }
 } 

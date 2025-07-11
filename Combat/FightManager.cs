@@ -9,15 +9,15 @@ using System.Linq;
 [System.Serializable]
 public struct FightAssignmentData
 {
-    public uint PlayerObjectId;
-    public uint PetObjectId;
-    public NetworkConnection PlayerConnection;
+    public uint LeftFighterObjectId;    // Previously PlayerObjectId - the player fighting on the left
+    public uint RightFighterObjectId;   // Previously PetObjectId - the pet fighting on the right
+    public NetworkConnection LeftFighterConnection;
 
-    public FightAssignmentData(NetworkEntity player, NetworkEntity pet)
+    public FightAssignmentData(NetworkEntity leftFighter, NetworkEntity rightFighter)
     {
-        PlayerObjectId = player != null ? (uint)player.ObjectId : 0U;
-        PetObjectId = pet != null ? (uint)pet.ObjectId : 0U;
-        PlayerConnection = player != null ? player.Owner : null;
+        LeftFighterObjectId = leftFighter != null ? (uint)leftFighter.ObjectId : 0U;
+        RightFighterObjectId = rightFighter != null ? (uint)rightFighter.ObjectId : 0U;
+        LeftFighterConnection = leftFighter != null ? leftFighter.Owner : null;
     }
 }
 
@@ -31,9 +31,9 @@ public class FightManager : NetworkBehaviour
 
     private readonly SyncList<FightAssignmentData> fightAssignments = new SyncList<FightAssignmentData>();
 
-    // Server-side dictionaries for quick lookups
-    private readonly Dictionary<uint, uint> playerToPetMap = new Dictionary<uint, uint>();
-    private readonly Dictionary<uint, uint> petToPlayerMap = new Dictionary<uint, uint>();
+    // Quick lookup dictionaries for performance (private, implementation details)
+    private readonly Dictionary<uint, uint> leftToRightMap = new Dictionary<uint, uint>();
+    private readonly Dictionary<uint, uint> rightToLeftMap = new Dictionary<uint, uint>();
     private readonly Dictionary<int, FightAssignmentData> connectionToFightMap = new Dictionary<int, FightAssignmentData>();
     
     // Event for fight assignments changes
@@ -47,27 +47,33 @@ public class FightManager : NetworkBehaviour
     [System.Serializable]
     private class FightAssignmentDebug
     {
-        public string PlayerName;
-        public uint PlayerObjectId;
-        public string PetName;
-        public uint PetObjectId;
+        public string LeftFighterName;
+        public uint LeftFighterObjectId;
+        public string RightFighterName;
+        public uint RightFighterObjectId;
     }
 
     [Header("Combat References")]
-    [SerializeField, Tooltip("Reference to the network entity of the player in the local player's fight")]
-    private NetworkEntity clientCombatPlayer;
-    [SerializeField, Tooltip("Reference to the network entity of the pet the local player is fighting")]
-    private NetworkEntity clientCombatOpponentPet;
-    [SerializeField, Tooltip("Reference to the network entity of the player in the currently observed fight")]
-    private NetworkEntity viewedCombatPlayer;
-    [SerializeField, Tooltip("Reference to the network entity of the pet in the currently observed fight")]
-    private NetworkEntity viewedCombatOpponentPet;
+    [SerializeField, Tooltip("Reference to the network entity of the left fighter in the local client's fight")]
+    private NetworkEntity clientLeftFighter;
+    [SerializeField, Tooltip("Reference to the network entity of the right fighter in the local client's fight")]
+    private NetworkEntity clientRightFighter;
+    [SerializeField, Tooltip("Reference to the network entity of the left fighter in the currently viewed fight")]
+    private NetworkEntity viewedLeftFighter;
+    [SerializeField, Tooltip("Reference to the network entity of the right fighter in the currently viewed fight")]
+    private NetworkEntity viewedRightFighter;
 
     // Public properties for combat references
-    public NetworkEntity ClientCombatPlayer => clientCombatPlayer;
-    public NetworkEntity ClientCombatOpponentPet => clientCombatOpponentPet;
-    public NetworkEntity ViewedCombatPlayer => viewedCombatPlayer;
-    public NetworkEntity ViewedCombatOpponentPet => viewedCombatOpponentPet;
+    public NetworkEntity ClientLeftFighter => clientLeftFighter;
+    public NetworkEntity ClientRightFighter => clientRightFighter;
+    public NetworkEntity ViewedLeftFighter => viewedLeftFighter;
+    public NetworkEntity ViewedRightFighter => viewedRightFighter;
+    
+    // Legacy compatibility properties (for gradual migration)
+    public NetworkEntity ClientCombatPlayer => clientLeftFighter;
+    public NetworkEntity ClientCombatOpponentPet => clientRightFighter;
+    public NetworkEntity ViewedCombatPlayer => viewedLeftFighter;
+    public NetworkEntity ViewedCombatOpponentPet => viewedRightFighter;
 
     #region Lifecycle Methods
 
@@ -169,22 +175,22 @@ public class FightManager : NetworkBehaviour
         // Update client combat references
         if (localFightAssignment.HasValue)
         {
-            clientCombatPlayer = GetNetworkObjectComponent<NetworkEntity>(localFightAssignment.Value.PlayerObjectId);
-            clientCombatOpponentPet = GetNetworkObjectComponent<NetworkEntity>(localFightAssignment.Value.PetObjectId);
+            clientLeftFighter = GetNetworkObjectComponent<NetworkEntity>(localFightAssignment.Value.LeftFighterObjectId);
+            clientRightFighter = GetNetworkObjectComponent<NetworkEntity>(localFightAssignment.Value.RightFighterObjectId);
             
             // Initially set viewed combat references to the local combat
-            viewedCombatPlayer = clientCombatPlayer;
-            viewedCombatOpponentPet = clientCombatOpponentPet;
+            viewedLeftFighter = clientLeftFighter;
+            viewedRightFighter = clientRightFighter;
             
             // Notify EntityVisibilityManager that combat references are ready
             NotifyEntityVisibilityManagerReady();
         }
         else
         {
-            clientCombatPlayer = null;
-            clientCombatOpponentPet = null;
-            viewedCombatPlayer = null;
-            viewedCombatOpponentPet = null;
+            clientLeftFighter = null;
+            clientRightFighter = null;
+            viewedLeftFighter = null;
+            viewedRightFighter = null;
         }
     }
 
@@ -194,7 +200,7 @@ public class FightManager : NetworkBehaviour
     private void NotifyEntityVisibilityManagerReady()
     {
         // Only notify if we have fight assignments and valid viewed combat references
-        if (fightAssignments.Count > 0 && viewedCombatPlayer != null && viewedCombatOpponentPet != null)
+        if (fightAssignments.Count > 0 && viewedLeftFighter != null && viewedRightFighter != null)
         {
             EntityVisibilityManager entityVisManager = FindEntityVisibilityManager();
             if (entityVisManager != null)
@@ -215,7 +221,7 @@ public class FightManager : NetworkBehaviour
     [ContextMenu("Force Notify EntityVisibilityManager")]
     public void ForceNotifyEntityVisibilityManager()
     {
-        Debug.Log($"FightManager: Force notifying EntityVisibilityManager. Fight assignments: {fightAssignments.Count}, ViewedPlayer: {(viewedCombatPlayer != null ? viewedCombatPlayer.EntityName.Value : "null")}, ViewedPet: {(viewedCombatOpponentPet != null ? viewedCombatOpponentPet.EntityName.Value : "null")}");
+        Debug.Log($"FightManager: Force notifying EntityVisibilityManager. Fight assignments: {fightAssignments.Count}, ViewedLeftFighter: {(viewedLeftFighter != null ? viewedLeftFighter.EntityName.Value : "null")}, ViewedRightFighter: {(viewedRightFighter != null ? viewedRightFighter.EntityName.Value : "null")}");
         NotifyEntityVisibilityManagerReady();
     }
 
@@ -231,15 +237,15 @@ public class FightManager : NetworkBehaviour
         foreach (var assignment in fightAssignments)
         {
             FightAssignmentDebug debug = new FightAssignmentDebug();
-            debug.PlayerObjectId = assignment.PlayerObjectId;
-            debug.PetObjectId = assignment.PetObjectId;
+            debug.LeftFighterObjectId = assignment.LeftFighterObjectId;
+            debug.RightFighterObjectId = assignment.RightFighterObjectId;
             
             // Try to get names
-            NetworkEntity player = GetNetworkObjectComponent<NetworkEntity>(assignment.PlayerObjectId);
-            NetworkEntity pet = GetNetworkObjectComponent<NetworkEntity>(assignment.PetObjectId);
+            NetworkEntity player = GetNetworkObjectComponent<NetworkEntity>(assignment.LeftFighterObjectId);
+            NetworkEntity pet = GetNetworkObjectComponent<NetworkEntity>(assignment.RightFighterObjectId);
             
-            debug.PlayerName = player != null ? player.EntityName.Value : "Unknown Player";
-            debug.PetName = pet != null ? pet.EntityName.Value : "Unknown Pet";
+            debug.LeftFighterName = player != null ? player.EntityName.Value : "Unknown Fighter";
+            debug.RightFighterName = pet != null ? pet.EntityName.Value : "Unknown Fighter";
             
             debugAssignments.Add(debug);
         }
@@ -267,18 +273,18 @@ public class FightManager : NetworkBehaviour
     
     private void RebuildLocalLookups(List<FightAssignmentData> assignments)
     {
-        playerToPetMap.Clear();
-        petToPlayerMap.Clear();
+        leftToRightMap.Clear();
+        rightToLeftMap.Clear();
         connectionToFightMap.Clear();
         
         foreach (var assignment in assignments)
         {
-            playerToPetMap[(uint)assignment.PlayerObjectId] = (uint)assignment.PetObjectId;
-            petToPlayerMap[(uint)assignment.PetObjectId] = (uint)assignment.PlayerObjectId;
+            leftToRightMap[(uint)assignment.LeftFighterObjectId] = (uint)assignment.RightFighterObjectId;
+            rightToLeftMap[(uint)assignment.RightFighterObjectId] = (uint)assignment.LeftFighterObjectId;
             
-            if (assignment.PlayerConnection != null)
+            if (assignment.LeftFighterConnection != null)
             {
-                connectionToFightMap[assignment.PlayerConnection.ClientId] = assignment;
+                connectionToFightMap[assignment.LeftFighterConnection.ClientId] = assignment;
             }
         }
     }
@@ -288,56 +294,56 @@ public class FightManager : NetworkBehaviour
     #region Public API
 
     [Server]
-    public void AddFightAssignment(NetworkEntity player, NetworkEntity pet)
+    public void AddFightAssignment(NetworkEntity leftFighter, NetworkEntity rightFighter)
     {
-        if (player == null || pet == null)
+        if (leftFighter == null || rightFighter == null)
         {
-            Debug.LogError("Cannot add fight assignment: Player or Pet is null.");
+            Debug.LogError("Cannot add fight assignment: Left Fighter or Right Fighter is null.");
             return;
         }
 
-        if (player.EntityType != EntityType.Player || pet.EntityType != EntityType.Pet)
+        if (leftFighter.EntityType != EntityType.Player || rightFighter.EntityType != EntityType.Pet)
         {
             Debug.LogError("Invalid entity types for fight assignment. First argument must be a Player, second must be a Pet.");
             return;
         }
 
-        // Check if player or pet is already in a fight
-        if (playerToPetMap.ContainsKey((uint)player.ObjectId) || petToPlayerMap.ContainsKey((uint)pet.ObjectId))
+        // Check if leftFighter or rightFighter is already in a fight
+        if (leftToRightMap.ContainsKey((uint)leftFighter.ObjectId) || rightToLeftMap.ContainsKey((uint)rightFighter.ObjectId))
         {
-            Debug.LogWarning($"Cannot add fight: Player {player.ObjectId} or Pet {pet.ObjectId} is already in a fight.");
+            Debug.LogWarning($"Cannot add fight: Left Fighter {leftFighter.ObjectId} or Right Fighter {rightFighter.ObjectId} is already in a fight.");
             return;
         }
 
-        FightAssignmentData assignment = new FightAssignmentData(player, pet);
+        FightAssignmentData assignment = new FightAssignmentData(leftFighter, rightFighter);
         fightAssignments.Add(assignment);
 
         // Update server-side quick lookups
-        playerToPetMap[(uint)player.ObjectId] = (uint)pet.ObjectId;
-        petToPlayerMap[(uint)pet.ObjectId] = (uint)player.ObjectId;
+        leftToRightMap[(uint)leftFighter.ObjectId] = (uint)rightFighter.ObjectId;
+        rightToLeftMap[(uint)rightFighter.ObjectId] = (uint)leftFighter.ObjectId;
         
-        // Add to connection lookup if player has an owner connection
-        if (player.Owner != null)
+        // Add to connection lookup if leftFighter has an owner connection
+        if (leftFighter.Owner != null)
         {
-            connectionToFightMap[player.Owner.ClientId] = assignment;
+            connectionToFightMap[leftFighter.Owner.ClientId] = assignment;
         }
     }
 
     [Server]
-    public void RemoveFightAssignment(NetworkEntity player)
+    public void RemoveFightAssignment(NetworkEntity leftFighter)
     {
-        if (player == null || player.EntityType != EntityType.Player) return;
+        if (leftFighter == null || leftFighter.EntityType != EntityType.Player) return;
         
-        if (playerToPetMap.TryGetValue((uint)player.ObjectId, out uint petId))
+        if (leftToRightMap.TryGetValue((uint)leftFighter.ObjectId, out uint rightFighterId))
         {
-            fightAssignments.RemoveAll(fa => fa.PlayerObjectId == (uint)player.ObjectId);
-            playerToPetMap.Remove((uint)player.ObjectId);
-            petToPlayerMap.Remove(petId);
+            fightAssignments.RemoveAll(fa => fa.LeftFighterObjectId == (uint)leftFighter.ObjectId);
+            leftToRightMap.Remove((uint)leftFighter.ObjectId);
+            rightToLeftMap.Remove(rightFighterId);
             
             // Remove from connection lookup
-            if (player.Owner != null)
+            if (leftFighter.Owner != null)
             {
-                connectionToFightMap.Remove(player.Owner.ClientId);
+                connectionToFightMap.Remove(leftFighter.Owner.ClientId);
             }
         }
     }
@@ -346,53 +352,139 @@ public class FightManager : NetworkBehaviour
     public void ClearAllAssignments()
     {
         fightAssignments.Clear();
-        playerToPetMap.Clear();
-        petToPlayerMap.Clear();
+        leftToRightMap.Clear();
+        rightToLeftMap.Clear();
         connectionToFightMap.Clear();
     }
 
-    public NetworkEntity GetOpponentForPlayer(NetworkEntity player)
+    /// <summary>
+    /// Gets the opponent entity for any fighter in a combat
+    /// </summary>
+    /// <param name="fighter">The fighter to find an opponent for</param>
+    /// <returns>The opponent entity, or null if not found</returns>
+    public NetworkEntity GetOpponent(NetworkEntity fighter)
     {
-        if (player == null || player.EntityType != EntityType.Player) return null;
+        if (fighter == null) return null;
         
-        // First, try the direct lookup
-        if (playerToPetMap.TryGetValue((uint)player.ObjectId, out uint petId))
+        if (fighter.EntityType == EntityType.Player)
         {
-            return GetNetworkObjectComponent<NetworkEntity>(petId);
+            // Player fights against a pet
+            if (leftToRightMap.TryGetValue((uint)fighter.ObjectId, out uint opponentId))
+            {
+                return GetNetworkObjectComponent<NetworkEntity>(opponentId);
+            }
+        }
+        else if (fighter.EntityType == EntityType.Pet)
+        {
+            // Pet fights against a player
+            if (rightToLeftMap.TryGetValue((uint)fighter.ObjectId, out uint opponentId))
+            {
+                return GetNetworkObjectComponent<NetworkEntity>(opponentId);
+            }
         }
         
-        // If that fails, scan through assignments
+        // Fallback: scan through assignments
         foreach (var assignment in fightAssignments)
         {
-            if (assignment.PlayerObjectId == (uint)player.ObjectId)
+            if (assignment.LeftFighterObjectId == (uint)fighter.ObjectId)
             {
-                return GetNetworkObjectComponent<NetworkEntity>(assignment.PetObjectId);
+                return GetNetworkObjectComponent<NetworkEntity>(assignment.RightFighterObjectId);
+            }
+            if (assignment.RightFighterObjectId == (uint)fighter.ObjectId)
+            {
+                return GetNetworkObjectComponent<NetworkEntity>(assignment.LeftFighterObjectId);
             }
         }
         
         return null;
     }
-
-    public NetworkEntity GetOpponentForPet(NetworkEntity pet)
+    
+    /// <summary>
+    /// Gets the ally entity for any fighter in a combat
+    /// </summary>
+    /// <param name="fighter">The fighter to find an ally for</param>
+    /// <returns>The ally entity, or null if not found</returns>
+    public NetworkEntity GetAlly(NetworkEntity fighter)
     {
-        if (pet == null || pet.EntityType != EntityType.Pet) return null;
+        if (fighter == null) return null;
         
-        // First, try the direct lookup
-        if (petToPlayerMap.TryGetValue((uint)pet.ObjectId, out uint playerId))
+        if (fighter.EntityType == EntityType.Player)
         {
-            return GetNetworkObjectComponent<NetworkEntity>(playerId);
+            // Player's ally is their pet
+            RelationshipManager relationshipManager = fighter.GetComponent<RelationshipManager>();
+            if (relationshipManager?.AllyEntity != null)
+            {
+                return relationshipManager.AllyEntity.GetComponent<NetworkEntity>();
+            }
+        }
+        else if (fighter.EntityType == EntityType.Pet)
+        {
+            // Pet's ally is their owner player
+            return fighter.GetOwnerEntity();
         }
         
-        // If that fails, scan through assignments
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the fight assignment for any entity involved in combat
+    /// </summary>
+    /// <param name="entity">The entity to find a fight assignment for</param>
+    /// <returns>The fight assignment, or null if not found</returns>
+    public FightAssignmentData? GetFight(NetworkEntity entity)
+    {
+        if (entity == null) return null;
+        
         foreach (var assignment in fightAssignments)
         {
-            if (assignment.PetObjectId == (uint)pet.ObjectId)
+            if (assignment.LeftFighterObjectId == (uint)entity.ObjectId ||
+                assignment.RightFighterObjectId == (uint)entity.ObjectId)
             {
-                return GetNetworkObjectComponent<NetworkEntity>(assignment.PlayerObjectId);
+                return assignment;
             }
         }
         
         return null;
+    }
+    
+    /// <summary>
+    /// Gets all entities involved in a fight
+    /// </summary>
+    /// <param name="entity">Any entity involved in the fight</param>
+    /// <returns>All entities in the fight [leftfighter, leftally, rightfighter, rightally]</returns>
+    public List<NetworkEntity> GetFightEntities(NetworkEntity entity)
+    {
+        List<NetworkEntity> entities = new List<NetworkEntity>();
+        
+        var fight = GetFight(entity);
+        if (!fight.HasValue) return entities;
+        
+        NetworkEntity leftFighter = GetNetworkObjectComponent<NetworkEntity>(fight.Value.LeftFighterObjectId);
+        NetworkEntity rightFighter = GetNetworkObjectComponent<NetworkEntity>(fight.Value.RightFighterObjectId);
+        
+        if (leftFighter != null)
+        {
+            entities.Add(leftFighter);
+            
+            NetworkEntity leftAlly = GetAlly(leftFighter);
+            if (leftAlly != null)
+            {
+                entities.Add(leftAlly);
+            }
+        }
+        
+        if (rightFighter != null)
+        {
+            entities.Add(rightFighter);
+            
+            NetworkEntity rightAlly = GetAlly(rightFighter);
+            if (rightAlly != null)
+            {
+                entities.Add(rightAlly);
+            }
+        }
+        
+        return entities;
     }
 
     public FightAssignmentData? GetFightForConnection(NetworkConnection connection)
@@ -408,7 +500,7 @@ public class FightManager : NetworkBehaviour
         // Fall back to assignment list scan
         foreach (var assignment in fightAssignments)
         {
-            if (assignment.PlayerConnection != null && assignment.PlayerConnection.ClientId == connection.ClientId)
+            if (assignment.LeftFighterConnection != null && assignment.LeftFighterConnection.ClientId == connection.ClientId)
             {
                 return assignment;
             }
@@ -417,35 +509,7 @@ public class FightManager : NetworkBehaviour
         return null;
     }
 
-    public FightAssignmentData? GetFightForPlayer(NetworkEntity player)
-    {
-        if (player == null) return null;
-        
-        foreach (var assignment in fightAssignments)
-        {
-            if (assignment.PlayerObjectId == (uint)player.ObjectId)
-            {
-                return assignment;
-            }
-        }
-        
-        return null;
-    }
 
-    public FightAssignmentData? GetFightForPet(NetworkEntity pet)
-    {
-        if (pet == null) return null;
-        
-        foreach (var assignment in fightAssignments)
-        {
-            if (assignment.PetObjectId == (uint)pet.ObjectId)
-            {
-                return assignment;
-            }
-        }
-        
-        return null;
-    }
 
     public List<FightAssignmentData> GetAllFightAssignments()
     {
@@ -466,36 +530,37 @@ public class FightManager : NetworkBehaviour
     /// <summary>
     /// Changes which fight is currently being viewed
     /// </summary>
-    /// <param name="player">The player whose fight you want to view</param>
+    /// <param name="leftFighter">The left fighter whose fight you want to view</param>
     /// <returns>True if the fight was found and view was updated, false otherwise</returns>
-    public bool SetViewedFight(NetworkEntity player)
+    public bool SetViewedFight(NetworkEntity leftFighter)
     {
-        if (player == null) 
+        if (leftFighter == null) 
         {
-            Debug.Log("FightManager.SetViewedFight: Player is null");
+            Debug.Log("FightManager.SetViewedFight: Left Fighter is null");
             return false;
         }
         
-        Debug.Log($"FightManager.SetViewedFight: Looking for fight for player {player.EntityName.Value} (ID: {player.ObjectId})");
+        Debug.Log($"FightManager.SetViewedFight: Looking for fight for left fighter {leftFighter.EntityName.Value} (ID: {leftFighter.ObjectId})");
         
-        var fightAssignment = GetFightForPlayer(player);
+        var fightAssignment = GetFight(leftFighter);
         if (!fightAssignment.HasValue) 
         {
-            Debug.Log($"FightManager.SetViewedFight: No fight assignment found for player {player.EntityName.Value} (ID: {player.ObjectId})");
+            Debug.Log($"FightManager.SetViewedFight: No fight assignment found for left fighter {leftFighter.EntityName.Value} (ID: {leftFighter.ObjectId})");
             return false;
         }
         
-        Debug.Log($"FightManager.SetViewedFight: Found fight assignment - Player: {fightAssignment.Value.PlayerObjectId}, Pet: {fightAssignment.Value.PetObjectId}");
+        Debug.Log($"FightManager.SetViewedFight: Found fight assignment - Left Fighter: {fightAssignment.Value.LeftFighterObjectId}, Right Fighter: {fightAssignment.Value.RightFighterObjectId}");
         
-        var newViewedPlayer = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PlayerObjectId);
-        var newViewedOpponentPet = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.PetObjectId);
+        var newViewedLeftFighter = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.LeftFighterObjectId);
+        var newViewedRightFighter = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.Value.RightFighterObjectId);
         
-        Debug.Log($"FightManager.SetViewedFight: Resolved entities - Player: {(newViewedPlayer?.EntityName.Value ?? "null")} (ID: {newViewedPlayer?.ObjectId ?? 0}), OpponentPet: {(newViewedOpponentPet?.EntityName.Value ?? "null")} (ID: {newViewedOpponentPet?.ObjectId ?? 0})");
+        Debug.Log($"FightManager.SetViewedFight: Resolved entities - Left Fighter: {(newViewedLeftFighter?.EntityName.Value ?? "null")} (ID: {newViewedLeftFighter?.ObjectId ?? 0}), Right Fighter: {(newViewedRightFighter?.EntityName.Value ?? "null")} (ID: {newViewedRightFighter?.ObjectId ?? 0})");
         
-        viewedCombatPlayer = newViewedPlayer;
-        viewedCombatOpponentPet = newViewedOpponentPet;
+        viewedLeftFighter = newViewedLeftFighter;
+        viewedRightFighter = newViewedRightFighter;
         
-        Debug.Log($"FightManager.SetViewedFight: Set viewed combat references - ViewedPlayer: {(viewedCombatPlayer?.EntityName.Value ?? "null")}, ViewedOpponentPet: {(viewedCombatOpponentPet?.EntityName.Value ?? "null")}");
+        Debug.Log($"FightManager.SetViewedFight: Set viewed combat references - ViewedLeftFighter: {(viewedLeftFighter?.EntityName.Value ?? "null")}, ViewedRightFighter: {(viewedRightFighter?.EntityName.Value ?? "null")}");
+        Debug.Log($"HAND_FILTER: Viewed fight changed to LeftFighter: {(viewedLeftFighter?.EntityName.Value ?? "null")} (ID: {viewedLeftFighter?.ObjectId ?? 0}), RightFighter: {(viewedRightFighter?.EntityName.Value ?? "null")} (ID: {viewedRightFighter?.ObjectId ?? 0})");
         
         // Notify EntityVisibilityManager that the viewed fight has changed
         NotifyEntityVisibilityManagerReady();
@@ -506,85 +571,22 @@ public class FightManager : NetworkBehaviour
     /// <summary>
     /// Gets all entities involved in the currently viewed fight
     /// </summary>
-    /// <returns>A list containing the player, opponent pet, and ally pet (if any) for the viewed fight</returns>
+    /// <returns>All entities in the viewed fight [leftfighter, leftally, rightfighter, rightally]</returns>
     public List<NetworkEntity> GetViewedFightEntities()
     {
-        List<NetworkEntity> entities = new List<NetworkEntity>();
-        
-        Debug.Log($"FightManager.GetViewedFightEntities: ViewedPlayer: {(viewedCombatPlayer?.EntityName.Value ?? "null")} (ID: {viewedCombatPlayer?.ObjectId ?? 0}), ViewedOpponentPet: {(viewedCombatOpponentPet?.EntityName.Value ?? "null")} (ID: {viewedCombatOpponentPet?.ObjectId ?? 0})");
-        
-        if (viewedCombatPlayer != null)
+        if (viewedLeftFighter != null)
         {
-            entities.Add(viewedCombatPlayer);
-            Debug.Log($"FightManager.GetViewedFightEntities: Added viewed player {viewedCombatPlayer.EntityName.Value} to entities list");
-            
-            // Try to find the ally pet
-            RelationshipManager playerRelationship = viewedCombatPlayer.GetComponent<RelationshipManager>();
-            if (playerRelationship != null && playerRelationship.AllyEntity != null)
-            {
-                NetworkEntity allyPet = playerRelationship.AllyEntity.GetComponent<NetworkEntity>();
-                if (allyPet != null)
-                {
-                    entities.Add(allyPet);
-                    Debug.Log($"FightManager.GetViewedFightEntities: Added ally pet {allyPet.EntityName.Value} (ID: {allyPet.ObjectId}) to entities list");
-                }
-            }
-            else
-            {
-                Debug.Log("FightManager.GetViewedFightEntities: No ally pet found for viewed player");
-            }
+            return GetFightEntities(viewedLeftFighter);
+        }
+        else if (viewedRightFighter != null)
+        {
+            return GetFightEntities(viewedRightFighter);
         }
         
-        if (viewedCombatOpponentPet != null)
-        {
-            entities.Add(viewedCombatOpponentPet);
-            Debug.Log($"FightManager.GetViewedFightEntities: Added opponent pet {viewedCombatOpponentPet.EntityName.Value} (ID: {viewedCombatOpponentPet.ObjectId}) to entities list");
-        }
-        
-        Debug.Log($"FightManager.GetViewedFightEntities: Returning {entities.Count} entities in viewed fight");
-        for (int i = 0; i < entities.Count; i++)
-        {
-            Debug.Log($"  Entity {i}: {entities[i].EntityName.Value} (ID: {entities[i].ObjectId}, Type: {entities[i].EntityType})");
-        }
-        
-        return entities;
-    }
-    
-    /// <summary>
-    /// Gets all entities involved in a specific fight
-    /// </summary>
-    /// <param name="fightAssignment">The fight assignment to get entities for</param>
-    /// <returns>A list containing the player, opponent pet, and ally pet (if any) for the specified fight</returns>
-    public List<NetworkEntity> GetFightEntities(FightAssignmentData fightAssignment)
-    {
-        List<NetworkEntity> entities = new List<NetworkEntity>();
-        
-        NetworkEntity player = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.PlayerObjectId);
-        NetworkEntity opponentPet = GetNetworkObjectComponent<NetworkEntity>(fightAssignment.PetObjectId);
-        
-        if (player != null)
-        {
-            entities.Add(player);
-            
-            // Try to find the ally pet
-            RelationshipManager playerRelationship = player.GetComponent<RelationshipManager>();
-            if (playerRelationship != null && playerRelationship.AllyEntity != null)
-            {
-                NetworkEntity allyPet = playerRelationship.AllyEntity.GetComponent<NetworkEntity>();
-                if (allyPet != null)
-                {
-                    entities.Add(allyPet);
-                }
-            }
-        }
-        
-        if (opponentPet != null)
-        {
-            entities.Add(opponentPet);
-        }
-        
-        return entities;
+        return new List<NetworkEntity>();
     }
     
     #endregion
+
+
 } 

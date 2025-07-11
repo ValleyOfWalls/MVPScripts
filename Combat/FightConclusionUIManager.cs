@@ -329,7 +329,7 @@ public class FightConclusionUIManager : NetworkBehaviour
                 continue;
 
             // Get opponent for this player
-            NetworkEntity opponent = fightManager.GetOpponentForPlayer(player);
+            NetworkEntity opponent = fightManager.GetOpponent(player);
             if (opponent == null)
                 continue;
 
@@ -481,7 +481,7 @@ public class FightConclusionUIManager : NetworkBehaviour
 
         if (fightResults.TryGetValue(localPlayer, out bool playerWon))
         {
-            NetworkEntity opponent = fightManager.GetOpponentForPlayer(localPlayer);
+            NetworkEntity opponent = fightManager.GetOpponent(localPlayer);
             if (opponent != null)
             {
                 return (localPlayer, opponent, playerWon);

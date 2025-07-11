@@ -138,7 +138,7 @@ public class CombatManager : NetworkBehaviour
         foreach (var player in players)
         {
             /* Debug.Log($"CombatManager: Processing player {player.EntityName.Value}"); */
-            NetworkEntity opponentPet = fightManager.GetOpponentForPlayer(player);
+            NetworkEntity opponentPet = fightManager.GetOpponent(player);
             if (opponentPet != null)
             {
                 /* Debug.Log($"CombatManager: Found opponent pet {opponentPet.EntityName.Value} for player {player.EntityName.Value}"); */
@@ -330,18 +330,18 @@ public class CombatManager : NetworkBehaviour
     [ObserversRpc]
     private void RpcStartNewRound(int playerObjectId, int petObjectId, int roundNumber)
     {
-        // Check if this is the local player's fight
-        if (fightManager != null && 
-            fightManager.ClientCombatPlayer != null && 
-            fightManager.ClientCombatOpponentPet != null && 
-            fightManager.ClientCombatPlayer.ObjectId == playerObjectId && 
-            fightManager.ClientCombatOpponentPet.ObjectId == petObjectId)
+
+        // Check if we should refresh energy for this specific fight
+        if (playerObjectId != -1 && petObjectId != -1 &&
+            fightManager.ClientLeftFighter != null &&
+            fightManager.ClientRightFighter != null &&
+            fightManager.ClientLeftFighter.ObjectId == playerObjectId &&
+            fightManager.ClientRightFighter.ObjectId == petObjectId)
         {
-            Debug.Log($"CombatManager: Local fight round {roundNumber} started. Refreshing energy for local player and opponent pet.");
-            
-            // Refresh energy for both entities in the local fight
-            RefreshEntityEnergy(fightManager.ClientCombatPlayer);
-            RefreshEntityEnergy(fightManager.ClientCombatOpponentPet);
+            // This is the client's active fight - refresh both entities
+            Debug.Log($"Refreshing energy for client's fight: Player {playerObjectId} vs Opponent {petObjectId}");
+            RefreshEntityEnergy(fightManager.ClientLeftFighter);
+            RefreshEntityEnergy(fightManager.ClientRightFighter);
         }
     }
     

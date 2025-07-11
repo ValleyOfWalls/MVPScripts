@@ -81,11 +81,11 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
                 // Update display immediately
                 UpdateStatusEffectsDisplay();
                 
-                LogDebug($"Status effects display set to pet: {pet.EntityName.Value}");
+                LogDebug($"ALLY_SETUP: Status effects display set to pet: {pet.EntityName.Value}");
             }
             else
             {
-                LogDebug($"No EffectHandler found on pet: {pet.EntityName.Value}");
+                LogDebug($"ALLY_SETUP: No EffectHandler found on pet: {pet.EntityName.Value}");
                 ClearStatusEffectsDisplay();
             }
             
@@ -96,7 +96,7 @@ public class OwnPetStatusEffectsDisplay : MonoBehaviour, IUpdatablePetDisplay
         {
             ClearStatusEffectsDisplay();
             SetContainerVisible(false);
-            LogDebug("Status effects display cleared");
+            LogDebug("ALLY_SETUP: Status effects display cleared");
         }
     }
     

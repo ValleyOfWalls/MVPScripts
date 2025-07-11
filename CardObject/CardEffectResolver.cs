@@ -488,15 +488,7 @@ public class CardEffectResolver : NetworkBehaviour
                 FightManager fightManager = FindFirstObjectByType<FightManager>();
                 if (fightManager != null)
                 {
-                    NetworkEntity opponent = null;
-                    if (sourceEntity.EntityType == EntityType.Player)
-                    {
-                        opponent = fightManager.GetOpponentForPlayer(sourceEntity);
-                    }
-                    else if (sourceEntity.EntityType == EntityType.Pet)
-                    {
-                        opponent = fightManager.GetOpponentForPet(sourceEntity);
-                    }
+                    NetworkEntity opponent = fightManager.GetOpponent(sourceEntity);
                     
                     if (opponent != null)
                     {
@@ -897,15 +889,7 @@ public class CardEffectResolver : NetworkBehaviour
         FightManager fightManager = FindFirstObjectByType<FightManager>();
         if (fightManager != null)
         {
-            NetworkEntity opponent = null;
-            if (sourceEntity.EntityType == EntityType.Player)
-            {
-                opponent = fightManager.GetOpponentForPlayer(sourceEntity);
-            }
-            else if (sourceEntity.EntityType == EntityType.Pet)
-            {
-                opponent = fightManager.GetOpponentForPet(sourceEntity);
-            }
+            NetworkEntity opponent = fightManager.GetOpponent(sourceEntity);
             
             if (opponent != null)
                 allTargets.Add(opponent);
@@ -1073,10 +1057,7 @@ public class CardEffectResolver : NetworkBehaviour
                 FightManager fightManager = FindFirstObjectByType<FightManager>();
                 if (fightManager != null)
                 {
-                    if (targetEntity.EntityType == EntityType.Player)
-                        redirectTarget = fightManager.GetOpponentForPlayer(targetEntity);
-                    else if (targetEntity.EntityType == EntityType.Pet)
-                        redirectTarget = fightManager.GetOpponentForPet(targetEntity);
+                    redirectTarget = fightManager.GetOpponent(targetEntity);
                 }
                 break;
         }

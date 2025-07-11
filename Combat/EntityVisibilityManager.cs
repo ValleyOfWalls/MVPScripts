@@ -34,9 +34,17 @@ public class EntityVisibilityManager : MonoBehaviour
     // Reference to FightManager for combat visibility
     private FightManager fightManager;
     
+    // Singleton instance
+    public static EntityVisibilityManager Instance { get; private set; }
+    
     private void Awake()
     {
-        // Singleton pattern
+        InitializeSingleton();
+        TryFindFightManager();
+    }
+    
+    private void InitializeSingleton()
+    {
         if (Instance == null)
         {
             Instance = this;
@@ -45,10 +53,7 @@ public class EntityVisibilityManager : MonoBehaviour
         {
             Debug.LogWarning("Multiple EntityVisibilityManager instances found! Destroying duplicate.");
             Destroy(gameObject);
-            return;
         }
-        
-        TryFindFightManager();
     }
     
     private void TryFindFightManager()
@@ -66,7 +71,7 @@ public class EntityVisibilityManager : MonoBehaviour
         // Initially set all entities to be hidden in lobby
         if (currentGameState == GameState.Lobby)
         {
-            UpdateVisibilityForLobby();
+            UpdateVisibilityForGameState();
         }
     }
     
@@ -129,25 +134,7 @@ public class EntityVisibilityManager : MonoBehaviour
         currentGameState = newState;
         LogDebug($"Game state changed from {previousState} to {newState}");
         
-        switch (newState)
-        {
-            case GameState.Lobby:
-                UpdateVisibilityForLobby();
-                break;
-            case GameState.CharacterSelection:
-                UpdateVisibilityForCharacterSelection();
-                break;
-            case GameState.Draft:
-                LogDebug("Updating visibility for Draft state");
-                UpdateVisibilityForDraft();
-                break;
-            case GameState.Combat:
-                UpdateVisibilityForCombat();
-                break;
-            default:
-                UpdateAllEntitiesVisibility();
-                break;
-        }
+        UpdateVisibilityForGameState();
     }
     
     /// <summary>
@@ -160,83 +147,92 @@ public class EntityVisibilityManager : MonoBehaviour
         entitiesVisibleInLobby = visible;
         if (currentGameState == GameState.Lobby)
         {
-            UpdateVisibilityForLobby();
+            UpdateVisibilityForGameState();
         }
     }
     
-    private void UpdateVisibilityForLobby()
+    /// <summary>
+    /// Unified method to update visibility based on current game state
+    /// </summary>
+    private void UpdateVisibilityForGameState()
+    {
+        switch (currentGameState)
+        {
+            case GameState.Lobby:
+                SetAllEntitiesVisibility(entitiesVisibleInLobby);
+                break;
+            case GameState.CharacterSelection:
+            case GameState.Draft:
+                SetAllEntitiesVisibility(false);
+                if (currentGameState == GameState.Draft)
+                {
+                    UpdateDraftPackVisibility();
+                }
+                break;
+            case GameState.Combat:
+                UpdateVisibilityForCombat();
+                break;
+            default:
+                UpdateAllEntitiesVisibility();
+                break;
+        }
+    }
+    
+    /// <summary>
+    /// Set visibility for all entities to a specific state
+    /// </summary>
+    private void SetAllEntitiesVisibility(bool visible)
     {
         foreach (var entity in allEntities)
         {
             if (entity != null)
             {
-                var entityUI = entity.GetComponent<NetworkEntityUI>();
-                if (entityUI != null)
-                {
-                    entityUI.SetVisible(entitiesVisibleInLobby);
-                }
+                SetEntityVisibility(entity, visible);
             }
         }
+        LogDebug($"All entities set to {(visible ? "visible" : "hidden")}");
     }
     
-    private void UpdateVisibilityForCharacterSelection()
+    /// <summary>
+    /// Set visibility for a specific entity
+    /// </summary>
+    private void SetEntityVisibility(NetworkEntity entity, bool visible)
     {
-        // During character selection phase, hide all network entities until they are spawned with selections
-        foreach (var entity in allEntities)
-        {
-            if (entity != null)
-            {
-                var entityUI = entity.GetComponent<NetworkEntityUI>();
-                if (entityUI != null)
-                {
-                    entityUI.SetVisible(false);
-                    LogDebug($"Hidden entity {entity.EntityName.Value} for character selection phase");
-                }
-            }
-        }
-        LogDebug("All entities hidden for character selection phase");
-    }
-    
-    private void UpdateVisibilityForDraft()
-    {
-        // During draft phase, hide all network entities
-        foreach (var entity in allEntities)
-        {
-            if (entity != null)
-            {
-                var entityUI = entity.GetComponent<NetworkEntityUI>();
-                if (entityUI != null)
-                {
-                    entityUI.SetVisible(false);
-                    LogDebug($"Hidden entity {entity.EntityName.Value} for draft phase");
-                }
-            }
-        }
-        LogDebug("All entities hidden for draft phase");
+        if (entity == null) return;
         
-        // Update draft pack visibility to show only the local player's current pack
-        UpdateDraftPackVisibility();
+        // Handle stats UI entities with EntityStatsUIController
+        if (entity.EntityType == EntityType.PlayerStatsUI || entity.EntityType == EntityType.PetStatsUI)
+        {
+            var statsUIController = entity.GetComponent<EntityStatsUIController>();
+            if (statsUIController != null)
+            {
+                statsUIController.SetVisible(visible);
+            }
+        }
+        else
+        {
+            // Handle other entities with NetworkEntityUI
+            var entityUI = entity.GetComponent<NetworkEntityUI>();
+            if (entityUI != null)
+            {
+                entityUI.SetVisible(visible);
+            }
+        }
     }
     
     private void UpdateVisibilityForCombat()
     {
-        /* Debug.Log("[ENTITY_VISIBILITY] UpdateVisibilityForCombat called"); */
         TryFindFightManager();
         if (fightManager == null)
         {
-            Debug.LogError("[ENTITY_VISIBILITY] FightManager instance not found! Cannot update visibility for combat.");
             LogDebug("FightManager instance not found! Cannot update visibility for combat.");
             return;
         }
         
-        // Get all fight assignments for debugging
+        // Don't update visibility if there are no fight assignments yet
         var allFights = fightManager.GetAllFightAssignments();
-        /* Debug.Log($"[ENTITY_VISIBILITY] Total fight assignments: {allFights.Count}"); */
-        
-        // Don't update visibility if there are no fight assignments yet - FightManager will notify us when ready
         if (allFights.Count == 0)
         {
-            Debug.Log("[ENTITY_VISIBILITY] No fight assignments yet - waiting for FightManager to be ready");
             LogDebug("No fight assignments yet - waiting for FightManager to be ready");
             return;
         }
@@ -246,17 +242,14 @@ public class EntityVisibilityManager : MonoBehaviour
         
         if (viewedFightEntities == null || viewedFightEntities.Count == 0)
         {
-            Debug.LogWarning("[ENTITY_VISIBILITY] No viewed fight entities found in FightManager despite having fight assignments");
             LogDebug("No viewed fight entities found in FightManager despite having fight assignments");
-            
-            // Hide all entities if no fight is being viewed despite having assignments
-            HideAllEntities();
+            SetAllEntitiesVisibility(false);
             return;
         }
         
         LogDebug($"Combat participants (viewed fight) - Total entities: {viewedFightEntities.Count}");
         
-        // Update visibility for all entities using the unified system
+        // Update visibility for all entities
         foreach (var entity in allEntities)
         {
             if (entity != null)
@@ -274,50 +267,113 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void OnFightManagerReady()
     {
-        /* Debug.Log("[ENTITY_VISIBILITY] OnFightManagerReady called - updating combat visibility"); */
         LogDebug("FightManager is ready - updating combat visibility");
         
         if (currentGameState == GameState.Combat)
         {
             UpdateVisibilityForCombat();
         }
-        else
-        {
-            Debug.LogWarning($"[ENTITY_VISIBILITY] OnFightManagerReady called but not in combat state (current: {currentGameState})");
-        }
     }
-
     
     /// <summary>
-    /// Gets the local player's own pet (the pet they control)
+    /// Update visibility for a specific entity based on current game state
     /// </summary>
-    private NetworkEntity GetLocalPlayerOwnPet(NetworkEntity localPlayer)
+    private void UpdateEntityVisibility(NetworkEntity entity)
     {
-        if (localPlayer == null) return null;
+        if (entity == null) return;
         
-        var relationshipManager = localPlayer.GetComponent<RelationshipManager>();
-        if (relationshipManager == null || relationshipManager.AllyEntity == null)
+        // Simple visibility for non-combat states
+        if (currentGameState != GameState.Combat)
         {
-            return null;
+            bool isVisible = (currentGameState == GameState.Lobby) ? entitiesVisibleInLobby : false;
+            SetEntityVisibility(entity, isVisible);
+            return;
         }
         
-        return relationshipManager.AllyEntity.GetComponent<NetworkEntity>();
-    }
-
-    /// <summary>
-    /// Gets the viewed player's own pet (the pet they control in the currently viewed fight)
-    /// </summary>
-    private NetworkEntity GetViewedPlayerOwnPet()
-    {
+        // Combat-specific visibility logic
         TryFindFightManager();
-        if (fightManager == null) return null;
+        if (fightManager == null) return;
         
-        NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
-        if (viewedPlayer == null) return null;
+        List<NetworkEntity> viewedFightEntities = fightManager.GetViewedFightEntities();
+        if (viewedFightEntities == null || viewedFightEntities.Count == 0)
+        {
+            SetEntityVisibility(entity, false);
+            return;
+        }
         
-        return GetLocalPlayerOwnPet(viewedPlayer);
+        bool shouldBeVisible = DetermineEntityVisibilityInCombat(entity, viewedFightEntities);
+        SetEntityVisibility(entity, shouldBeVisible);
     }
-
+    
+    /// <summary>
+    /// Determines if an entity should be visible during combat
+    /// </summary>
+    private bool DetermineEntityVisibilityInCombat(NetworkEntity entity, List<NetworkEntity> viewedFightEntities)
+    {
+        // Arena system: All player and pet models are always visible
+        if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet)
+        {
+            return true;
+        }
+        
+        // UI elements: Only show for viewed player and opponent (not allies)
+        if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
+        {
+            return IsUIElementForPlayerOrOpponent(entity, viewedFightEntities, IsHandOwnedByEntity);
+        }
+        
+        if (entity.EntityType == EntityType.PlayerStatsUI || entity.EntityType == EntityType.PetStatsUI)
+        {
+            return IsUIElementForPlayerOrOpponent(entity, viewedFightEntities, IsStatsUIOwnedByEntity);
+        }
+        
+        // Default: hide other entity types
+        return false;
+    }
+    
+    /// <summary>
+    /// Generic method to check if a UI element belongs to the viewed player or opponent
+    /// </summary>
+    private bool IsUIElementForPlayerOrOpponent(NetworkEntity uiEntity, List<NetworkEntity> viewedFightEntities, System.Func<NetworkEntity, NetworkEntity, bool> ownershipCheck)
+    {
+        NetworkEntity localPlayer = GetLocalPlayer();
+        if (localPlayer == null) return false;
+        
+        // Determine viewed player and opponent
+        NetworkEntity viewedPlayer = null;
+        NetworkEntity viewedOpponent = null;
+        
+        if (fightManager.ViewedLeftFighter != null && localPlayer.ObjectId == fightManager.ViewedLeftFighter.ObjectId)
+        {
+            viewedPlayer = fightManager.ViewedLeftFighter;
+            viewedOpponent = fightManager.ViewedRightFighter;
+        }
+        else if (fightManager.ViewedRightFighter != null && localPlayer.ObjectId == fightManager.ViewedRightFighter.ObjectId)
+        {
+            viewedPlayer = fightManager.ViewedRightFighter;
+            viewedOpponent = fightManager.ViewedLeftFighter;
+        }
+        else
+        {
+            // Spectating: show UI for both main fighters
+            viewedPlayer = fightManager.ViewedLeftFighter;
+            viewedOpponent = fightManager.ViewedRightFighter;
+        }
+        
+        // Check ownership and determine visibility
+        foreach (var entity in allEntities)
+        {
+            if (entity != null && ownershipCheck(uiEntity, entity))
+            {
+                bool isViewedPlayer = viewedPlayer != null && entity.ObjectId == viewedPlayer.ObjectId;
+                bool isViewedOpponent = viewedOpponent != null && entity.ObjectId == viewedOpponent.ObjectId;
+                return isViewedPlayer || isViewedOpponent;
+            }
+        }
+        
+        return false;
+    }
+    
     /// <summary>
     /// Checks if a hand entity is owned by a specific entity
     /// </summary>
@@ -326,15 +382,12 @@ public class EntityVisibilityManager : MonoBehaviour
         if (handEntity == null || ownerEntity == null) return false;
         
         var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
-        if (relationshipManager == null || relationshipManager.HandEntity == null)
-        {
-            return false;
-        }
+        if (relationshipManager == null || relationshipManager.HandEntity == null) return false;
         
         var entityHand = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
         return entityHand != null && entityHand.ObjectId == handEntity.ObjectId;
     }
-
+    
     /// <summary>
     /// Checks if a stats UI entity is owned by a specific entity
     /// </summary>
@@ -343,274 +396,10 @@ public class EntityVisibilityManager : MonoBehaviour
         if (statsUIEntity == null || ownerEntity == null) return false;
         
         var relationshipManager = ownerEntity.GetComponent<RelationshipManager>();
-        if (relationshipManager == null || relationshipManager.StatsUIEntity == null)
-        {
-            return false;
-        }
+        if (relationshipManager == null || relationshipManager.StatsUIEntity == null) return false;
         
         var entityStatsUI = relationshipManager.StatsUIEntity.GetComponent<NetworkEntity>();
         return entityStatsUI != null && entityStatsUI.ObjectId == statsUIEntity.ObjectId;
-    }
-    
-    /// <summary>
-    /// Update visibility for a specific entity based on current game state
-    /// </summary>
-    private void UpdateEntityVisibility(NetworkEntity entity)
-    {
-        if (entity == null) 
-        {
-            Debug.Log("[PET_VISIBILITY] UpdateEntityVisibility: entity is null, returning");
-            return;
-        }
-        
-        Debug.Log($"[PET_VISIBILITY] UpdateEntityVisibility: Processing {entity.EntityName.Value} (ID: {entity.ObjectId}, Type: {entity.EntityType})");
-        
-        // Handle stats UI entities specially
-        if (entity.EntityType == EntityType.PlayerStatsUI || entity.EntityType == EntityType.PetStatsUI)
-        {
-            Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} is a stats UI entity, handling specially");
-            var statsUIController = entity.GetComponent<EntityStatsUIController>();
-            if (statsUIController == null) 
-            {
-                Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} has no EntityStatsUIController, returning");
-                return;
-            }
-            
-            if (currentGameState == GameState.Lobby)
-            {
-                statsUIController.SetVisible(entitiesVisibleInLobby);
-            }
-            else if (currentGameState == GameState.Combat)
-            {
-                TryFindFightManager();
-                if (fightManager == null) return;
-
-                // Get the local player and their own pet
-                NetworkEntity currentLocalPlayer = GetLocalPlayer();
-                NetworkEntity currentLocalPlayerOwnPet = GetLocalPlayerOwnPet(currentLocalPlayer);
-
-                // Hide stats UI for local player's own pet (handled by OwnPetView)
-                // Only hide if we're currently viewing the local player's fight
-                NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
-                bool isViewingLocalPlayerFight = (currentLocalPlayer != null && viewedPlayer != null && currentLocalPlayer.ObjectId == viewedPlayer.ObjectId);
-                
-                if (currentLocalPlayerOwnPet != null && IsStatsUIOwnedByEntity(entity, currentLocalPlayerOwnPet))
-                {
-                    if (isViewingLocalPlayerFight)
-                    {
-                        // Hide local player's own pet stats UI when viewing their own fight (handled by OwnPetView)
-                        LogDebug($"[ENTITY_VISIBILITY] Local player's own pet stats UI {entity.EntityName.Value} (ID: {entity.ObjectId}) - hidden because viewing local player's fight (handled by OwnPetView)");
-                        statsUIController.SetVisible(false);
-                        return;
-                    }
-                    else
-                    {
-                        // When spectating other fights, the local player's pet might be the opponent pet, so don't auto-hide its stats UI
-                        LogDebug($"[ENTITY_VISIBILITY] Local player's own pet stats UI {entity.EntityName.Value} (ID: {entity.ObjectId}) - not auto-hiding because viewing other player's fight");
-                    }
-                }
-                
-                List<NetworkEntity> viewedFightEntities = fightManager.GetViewedFightEntities();
-                
-                if (viewedFightEntities == null || viewedFightEntities.Count == 0)
-                {
-                    statsUIController.SetVisible(false);
-                }
-                else
-                {
-                    // For stats UI, we need to distinguish between:
-                    // 1. Viewed player's own pet stats UI (should be hidden - OwnPetView handles it)
-                    // 2. Opponent pet stats UI (should be shown)
-                    NetworkEntity viewedPlayerOwnPet = GetViewedPlayerOwnPet();
-                    
-                    if (viewedPlayerOwnPet != null && IsStatsUIOwnedByEntity(entity, viewedPlayerOwnPet))
-                    {
-                        // This is the viewed player's own pet stats UI - hide it (OwnPetView handles it)
-                        LogDebug($"[ENTITY_VISIBILITY] Stats UI {entity.EntityName.Value} (ID: {entity.ObjectId}) - hidden because it's the viewed player's own pet stats UI (handled by OwnPetView)");
-                        statsUIController.SetVisible(false);
-                    }
-                    else
-                    {
-                        // Check if this stats UI belongs to an entity in the viewed fight
-                        bool shouldBeVisible = IsStatsUIEntityInViewedFight(entity, viewedFightEntities);
-                        statsUIController.SetVisible(shouldBeVisible);
-                    }
-                }
-            }
-        }
-        else
-        {
-            // Handle other entities with NetworkEntityUI
-            Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} is a regular entity, checking for NetworkEntityUI");
-            var entityUI = entity.GetComponent<NetworkEntityUI>();
-            if (entityUI == null) 
-            {
-                Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} has no NetworkEntityUI component, returning");
-                return;
-            }
-            Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} has NetworkEntityUI, proceeding with game state check");
-            
-            Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} - current game state: {currentGameState}");
-            
-            if (currentGameState == GameState.Lobby)
-            {
-                Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} - in Lobby state, setting visibility to {entitiesVisibleInLobby}");
-                entityUI.SetVisible(entitiesVisibleInLobby);
-            }
-            else if (currentGameState == GameState.Combat)
-            {
-                Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} - in Combat state, proceeding with combat visibility logic");
-                // Use the viewed combat references from FightManager instead of local player's fight
-                // This allows spectating to work by showing entities for the currently viewed fight
-                TryFindFightManager();
-                if (fightManager == null) 
-                {
-                    Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} - FightManager is null, returning");
-                    return;
-                }
-                Debug.Log($"[PET_VISIBILITY] {entity.EntityName.Value} - FightManager found, continuing with combat logic");
-
-                // Get the local player and their own pet
-                NetworkEntity localPlayer = GetLocalPlayer();
-                NetworkEntity localPlayerOwnPet = GetLocalPlayerOwnPet(localPlayer);
-                
-                List<NetworkEntity> viewedFightEntities = fightManager.GetViewedFightEntities();
-
-                // *** REMOVED: Special case hiding for local player's own pet - all pets now visible in arena system ***
-                // The old logic would hide the local player's own pet and expect OwnPetView to handle it
-                // But in the arena system, all pets are positioned in different arenas and should be visible
-                
-                NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
-                bool isViewingLocalPlayerFight = (localPlayer != null && viewedPlayer != null && localPlayer.ObjectId == viewedPlayer.ObjectId);
-                
-                // Handle pet hands - still need special logic since hands follow UI visibility rules
-                if (entity.EntityType == EntityType.PetHand && localPlayerOwnPet != null && IsHandOwnedByEntity(entity, localPlayerOwnPet))
-                {
-                    if (isViewingLocalPlayerFight)
-                    {
-                        // Hide local player's own pet hand when viewing their own fight (handled by OwnPetView)
-                        entityUI.SetVisible(false);
-                        return;
-                    }
-                }
-                
-                if (viewedFightEntities == null || viewedFightEntities.Count == 0)
-                {
-                    entityUI.SetVisible(false);
-                }
-                else
-                {
-                    bool shouldBeVisible = false;
-                    
-                    // *** ARENA SYSTEM: Make all main models visible at all times ***
-                    if (entity.EntityType == EntityType.Player)
-                    {
-                        // All players are always visible (positioned in different arenas)
-                        shouldBeVisible = true;
-                        Debug.Log($"[PET_VISIBILITY] Player {entity.EntityName.Value} (ID: {entity.ObjectId}) - always visible (arena system)");
-                    }
-                    else if (entity.EntityType == EntityType.Pet)
-                    {
-                        // *** ARENA SYSTEM: All pets are always visible (positioned in different arenas) ***
-                        NetworkEntity viewedPlayerOwnPet = GetViewedPlayerOwnPet();
-                        NetworkEntity currentLocalPlayer = GetLocalPlayer();
-                        NetworkEntity currentLocalPlayerOwnPet = GetLocalPlayerOwnPet(currentLocalPlayer);
-                        
-                        Debug.Log($"[PET_VISIBILITY] Checking pet {entity.EntityName.Value} (ID: {entity.ObjectId})");
-                        Debug.Log($"[PET_VISIBILITY] - ViewedPlayerOwnPet: {(viewedPlayerOwnPet?.EntityName.Value ?? "null")} (ID: {viewedPlayerOwnPet?.ObjectId ?? 0})");
-                        Debug.Log($"[PET_VISIBILITY] - LocalPlayerOwnPet: {(currentLocalPlayerOwnPet?.EntityName.Value ?? "null")} (ID: {currentLocalPlayerOwnPet?.ObjectId ?? 0})");
-                        Debug.Log($"[PET_VISIBILITY] - IsViewingLocalPlayerFight: {isViewingLocalPlayerFight}");
-                        
-                        // All pets are always visible in the arena system (positioned in different arenas)
-                        shouldBeVisible = true;
-                        Debug.Log($"[PET_VISIBILITY] Pet {entity.EntityName.Value} (ID: {entity.ObjectId}) - VISIBLE (arena system - all pets always visible)");
-                    }
-                    else if (entity.EntityType == EntityType.PlayerHand || entity.EntityType == EntityType.PetHand)
-                    {
-                        // *** PRESERVE EXISTING UI LOGIC: Hands still follow viewed fight logic ***
-                        // For hand entities, we need to distinguish between:
-                        // 1. Viewed player's own pet hand (should be hidden - OwnPetView handles it)
-                        // 2. Opponent pet/player hand (should be shown if owner is in viewed fight)
-                        NetworkEntity viewedPlayerOwnPet = GetViewedPlayerOwnPet();
-                        
-                        if (viewedPlayerOwnPet != null && IsHandOwnedByEntity(entity, viewedPlayerOwnPet))
-                        {
-                            // This is the viewed player's own pet hand - hide it (OwnPetView handles it)
-                            shouldBeVisible = false;
-                            LogDebug($"[ENTITY_VISIBILITY] Hand {entity.EntityName.Value} (ID: {entity.ObjectId}) - hidden because it's the viewed player's own pet hand (handled by OwnPetView)");
-                        }
-                        else
-                        {
-                            // Check if this hand belongs to an entity in the viewed fight
-                            shouldBeVisible = IsHandEntityInViewedFight(entity, viewedFightEntities);
-                        }
-                    }
-                    entityUI.SetVisible(shouldBeVisible);
-                }
-            }
-        }
-    }
-    
-    /// <summary>
-    /// Determines if a hand entity should be visible based on whether its owner is in the viewed fight (List version)
-    /// </summary>
-    private bool IsHandEntityInViewedFight(NetworkEntity handEntity, List<NetworkEntity> viewedFightEntities)
-    {
-        if (handEntity == null || viewedFightEntities == null) return false;
-        
-        // Find all entities to check for ownership relationships
-        foreach (var entity in allEntities)
-        {
-            if (entity == null) continue;
-            
-            // Check if this entity has a relationship to the hand
-            var relationshipManager = entity.GetComponent<RelationshipManager>();
-            if (relationshipManager != null && relationshipManager.HandEntity != null)
-            {
-                var entityHand = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
-                if (entityHand != null && (uint)entityHand.ObjectId == (uint)handEntity.ObjectId)
-                {
-                    // This entity owns the hand, check if the entity is in the viewed fight
-                    bool isInViewedFight = viewedFightEntities.Contains(entity);
-                    
-                    // Don't apply special IsOwner filtering here anymore since we handle that at a higher level
-                    return isInViewedFight;
-                }
-            }
-        }
-        
-        return false;
-    }
-    
-    /// <summary>
-    /// Determines if a stats UI entity should be visible based on whether its owner is in the viewed fight (List version)
-    /// </summary>
-    private bool IsStatsUIEntityInViewedFight(NetworkEntity statsUIEntity, List<NetworkEntity> viewedFightEntities)
-    {
-        if (statsUIEntity == null || viewedFightEntities == null) return false;
-        
-        // Find all entities to check for ownership relationships
-        foreach (var entity in allEntities)
-        {
-            if (entity == null) continue;
-            
-            // Check if this entity has a relationship to the stats UI
-            var relationshipManager = entity.GetComponent<RelationshipManager>();
-            if (relationshipManager != null && relationshipManager.StatsUIEntity != null)
-            {
-                var entityStatsUI = relationshipManager.StatsUIEntity.GetComponent<NetworkEntity>();
-                if (entityStatsUI != null && (uint)entityStatsUI.ObjectId == (uint)statsUIEntity.ObjectId)
-                {
-                    // This entity owns the stats UI, check if the entity is in the viewed fight
-                    bool isInViewedFight = viewedFightEntities.Contains(entity);
-                    
-                    // Don't apply special IsOwner filtering here anymore since we handle that at a higher level
-                    return isInViewedFight;
-                }
-            }
-        }
-        
-        return false;
     }
     
     /// <summary>
@@ -618,36 +407,14 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void UpdateAllEntitiesVisibility()
     {
-        Debug.Log($"[PET_VISIBILITY] UpdateAllEntitiesVisibility called - Total registered entities: {allEntities.Count}");
-        
-        // Log all registered entities first
-        for (int i = 0; i < allEntities.Count; i++)
-        {
-            var entity = allEntities[i];
-            if (entity != null)
-            {
-                Debug.Log($"[PET_VISIBILITY] Registered entity {i}: {entity.EntityName.Value} (ID: {entity.ObjectId}, Type: {entity.EntityType})");
-            }
-            else
-            {
-                Debug.Log($"[PET_VISIBILITY] Registered entity {i}: NULL");
-            }
-        }
-        
         foreach (var entity in allEntities)
         {
             if (entity != null)
             {
-                Debug.Log($"[PET_VISIBILITY] Processing visibility for: {entity.EntityName.Value} (ID: {entity.ObjectId}, Type: {entity.EntityType})");
                 UpdateEntityVisibility(entity);
-            }
-            else
-            {
-                Debug.Log("[PET_VISIBILITY] Skipping NULL entity in visibility update");
             }
         }
         
-        // Also update card visibility
         UpdateAllCardVisibility();
     }
     
@@ -656,31 +423,7 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void HideAllEntities()
     {
-        foreach (var entity in allEntities)
-        {
-            if (entity != null)
-            {
-                // Handle stats UI entities with EntityStatsUIController
-                if (entity.EntityType == EntityType.PlayerStatsUI || entity.EntityType == EntityType.PetStatsUI)
-                {
-                    var statsUIController = entity.GetComponent<EntityStatsUIController>();
-                    if (statsUIController != null)
-                    {
-                        statsUIController.SetVisible(false);
-                    }
-                }
-                else
-                {
-                    // Handle other entities with NetworkEntityUI
-                    var entityUI = entity.GetComponent<NetworkEntityUI>();
-                    if (entityUI != null)
-                    {
-                        entityUI.SetVisible(false);
-                    }
-                }
-            }
-        }
-        LogDebug("All entities forcibly hidden");
+        SetAllEntitiesVisibility(false);
     }
     
     #endregion
@@ -689,7 +432,6 @@ public class EntityVisibilityManager : MonoBehaviour
     
     /// <summary>
     /// Applies combat-aware visibility filtering to a card
-    /// Should be called whenever a card's visibility state changes
     /// </summary>
     public void ApplyCardVisibilityFilter(GameObject cardObject, bool serverRequestedState)
     {
@@ -703,18 +445,15 @@ public class EntityVisibilityManager : MonoBehaviour
         
         cardObject.SetActive(finalVisibility);
         
-        LogDebug($"Card visibility filter applied: {cardObject.name} -> SetActive({finalVisibility}) (server: {serverRequestedState}, shouldBeVisible: {shouldBeVisible})");
+        LogDebug($"Card visibility filter applied: {cardObject.name} -> SetActive({finalVisibility})");
     }
     
     /// <summary>
-    /// Determines if a card should be visible to the local client based on current game state and combat assignments
+    /// Determines if a card should be visible to the local client
     /// </summary>
     private bool ShouldCardBeVisibleToLocalClient(Card card)
     {
-        if (card == null || card.OwnerEntity == null)
-        {
-            return false;
-        }
+        if (card == null || card.OwnerEntity == null) return false;
         
         // During combat, use fight-based visibility
         if (currentGameState == GameState.Combat)
@@ -727,104 +466,65 @@ public class EntityVisibilityManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Determines if a card should be visible during combat based on fight assignments
+    /// Determines if a card should be visible during combat
     /// </summary>
     private bool ShouldCardBeVisibleInCombat(Card card)
     {
-        if (card == null || card.OwnerEntity == null)
-        {
-            return false;
-        }
+        if (card == null || card.OwnerEntity == null) return false;
         
-        // Get the fight manager to check combat assignments
         TryFindFightManager();
-        if (fightManager == null)
-        {
-            // If no fight manager, fall back to simple ownership check
-            return card.OwnerEntity.IsOwner;
-        }
+        if (fightManager == null) return card.OwnerEntity.IsOwner;
         
-        // Use the viewed combat references from FightManager instead of local player's fight
-        // This allows spectating to work by showing cards for the currently viewed fight
         List<NetworkEntity> viewedFightEntities = fightManager.GetViewedFightEntities();
-        
         if (viewedFightEntities == null || viewedFightEntities.Count == 0)
         {
-            // If no viewed fight, fall back to simple ownership check
             return card.OwnerEntity.IsOwner;
         }
         
-        // Get the main entity (Player/Pet) that owns this card
+        // Get the main entity that owns this card
         NetworkEntity cardMainOwner = GetMainEntityForCard(card);
-        if (cardMainOwner == null)
-        {
-            LogDebug($"Combat card visibility: Could not find main owner for card {card.gameObject.name}");
-            return false;
-        }
-        //
-        // Check if the card's main owner is involved in the currently viewed fight
-        uint cardMainOwnerObjectId = (uint)cardMainOwner.ObjectId;
+        if (cardMainOwner == null) return false;
         
-        // Card should be visible if its main owner is:
-        // 1. The player in the viewed fight
-        // 2. The opponent pet in the viewed fight
-        bool shouldBeVisible = viewedFightEntities.Contains(cardMainOwner);
-        
-        LogDebug($"Combat card visibility check: Card {card.gameObject.name} main owner: {cardMainOwner.EntityName.Value} (ID: {cardMainOwnerObjectId}), Visible: {shouldBeVisible}");
-        
-        return shouldBeVisible;
+        // Card should be visible if its main owner is involved in the viewed fight
+        return viewedFightEntities.Contains(cardMainOwner);
     }
     
     /// <summary>
-    /// Gets the main entity (Player/Pet) that owns a card, handling the case where cards are owned by Hand entities
+    /// Gets the main entity (Player/Pet) that owns a card
     /// </summary>
     private NetworkEntity GetMainEntityForCard(Card card)
     {
-        if (card == null || card.OwnerEntity == null)
-        {
-            return null;
-        }
+        if (card == null || card.OwnerEntity == null) return null;
         
         NetworkEntity cardOwner = card.OwnerEntity;
         
-        // If the card is owned by a Hand entity, find the main entity that owns the hand
+        // If card is owned by a Hand entity, find the main entity that owns the hand
         if (cardOwner.EntityType == EntityType.PlayerHand || cardOwner.EntityType == EntityType.PetHand)
         {
-            // Search through all entities to find the one that has this hand
             foreach (var entity in allEntities)
             {
                 if (entity != null && (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet))
                 {
-                    var relationshipManager = entity.GetComponent<RelationshipManager>();
-                    if (relationshipManager != null && relationshipManager.HandEntity != null)
+                    if (IsHandOwnedByEntity(cardOwner, entity))
                     {
-                        var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
-                        if (handEntity != null && (uint)handEntity.ObjectId == (uint)cardOwner.ObjectId)
-                        {
-                            // Found the main entity that owns this hand
-                            return entity;
-                        }
+                        return entity;
                     }
                 }
             }
-            
-            LogDebug($"GetMainEntityForCard: Could not find main entity for hand {cardOwner.EntityName.Value} (ID: {cardOwner.ObjectId})");
             return null;
         }
         
-        // If the card is owned by a main entity (Player/Pet), return it directly
+        // If card is owned by a main entity, return it directly
         if (cardOwner.EntityType == EntityType.Player || cardOwner.EntityType == EntityType.Pet)
         {
             return cardOwner;
         }
         
-        LogDebug($"GetMainEntityForCard: Unknown entity type {cardOwner.EntityType} for card owner {cardOwner.EntityName.Value}");
         return null;
     }
     
     /// <summary>
     /// Updates visibility for all cards belonging to registered entities
-    /// Call this when game state changes or fight assignments change
     /// </summary>
     public void UpdateAllCardVisibility()
     {
@@ -844,7 +544,7 @@ public class EntityVisibilityManager : MonoBehaviour
     {
         if (entity == null) return;
         
-        // For main entities (Player/Pet), find their hand entity to get card transforms
+        // For main entities, find their hand entity
         if (entity.EntityType == EntityType.Player || entity.EntityType == EntityType.Pet)
         {
             var relationshipManager = entity.GetComponent<RelationshipManager>();
@@ -853,25 +553,19 @@ public class EntityVisibilityManager : MonoBehaviour
                 var handEntity = relationshipManager.HandEntity.GetComponent<NetworkEntity>();
                 if (handEntity != null)
                 {
-                    // Update card visibility for the hand entity instead
                     UpdateCardVisibilityForEntity(handEntity);
                 }
             }
             return;
         }
         
-        // For Hand entities, get the transforms directly
+        // For Hand entities, update cards in transforms
         var entityUI = entity.GetComponent<NetworkEntityUI>();
         if (entityUI == null) return;
         
-        var handTransform = entityUI.GetHandTransform();
-        var deckTransform = entityUI.GetDeckTransform();
-        var discardTransform = entityUI.GetDiscardTransform();
-        
-        // Update visibility for cards in each location
-        UpdateCardVisibilityInTransform(handTransform, true);  // Hand cards should be visible when enabled
-        UpdateCardVisibilityInTransform(deckTransform, false); // Deck cards should be hidden
-        UpdateCardVisibilityInTransform(discardTransform, false); // Discard cards should be hidden
+        UpdateCardVisibilityInTransform(entityUI.GetHandTransform(), true);
+        UpdateCardVisibilityInTransform(entityUI.GetDeckTransform(), false);
+        UpdateCardVisibilityInTransform(entityUI.GetDiscardTransform(), false);
     }
     
     /// <summary>
@@ -897,104 +591,29 @@ public class EntityVisibilityManager : MonoBehaviour
     
     /// <summary>
     /// Updates visibility for all draft pack cards based on current pack ownership
-    /// Call this when pack ownership changes during draft
     /// </summary>
     public void UpdateDraftPackVisibility()
     {
-        /* Debug.Log($"[EntityVisibilityManager] UpdateDraftPackVisibility called - Current game state: {currentGameState}"); */
-        LogDebug($"UpdateDraftPackVisibility called - Current game state: {currentGameState}");
+        if (currentGameState != GameState.Draft) return;
         
-        if (currentGameState != GameState.Draft)
-        {
-            Debug.Log($"[EntityVisibilityManager] Not in draft state, skipping draft pack visibility update");
-            LogDebug($"Not in draft state, skipping draft pack visibility update");
-            return;
-        }
-        
-        // Find the local player
         NetworkEntity localPlayer = GetLocalPlayer();
-        if (localPlayer == null)
-        {
-            Debug.Log("[EntityVisibilityManager] No local player found for draft pack visibility update");
-            LogDebug("No local player found for draft pack visibility update");
-            return;
-        }
+        if (localPlayer == null) return;
         
-        /* Debug.Log($"[EntityVisibilityManager] Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})"); */
-        LogDebug($"Local player found: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
-        
-        // Find the DraftManager to get the currently visible pack for the local player
         DraftManager draftManager = FindFirstObjectByType<DraftManager>();
-        if (draftManager == null)
-        {
-            Debug.LogWarning("[EntityVisibilityManager] DraftManager not found, cannot determine currently visible pack");
-            LogDebug("DraftManager not found, cannot determine currently visible pack");
-            return;
-        }
+        if (draftManager == null) return;
         
-        // Find all draft packs
         DraftPack[] allDraftPacks = FindObjectsByType<DraftPack>(FindObjectsSortMode.None);
-        /* Debug.Log($"[EntityVisibilityManager] Found {allDraftPacks.Length} draft packs"); */
-        LogDebug($"Found {allDraftPacks.Length} draft packs");
         
         foreach (DraftPack pack in allDraftPacks)
         {
-            if (pack == null || pack.CardContainer == null) 
-            {
-                /* Debug.Log($"[EntityVisibilityManager] Skipping null pack or pack with null CardContainer"); */
-                LogDebug($"Skipping null pack or pack with null CardContainer");
-                continue;
-            }
+            if (pack == null || pack.CardContainer == null) continue;
             
-            // Check if this pack is owned by the local player
             bool isOwnedByLocalPlayer = pack.IsOwnedBy(localPlayer);
+            bool isSelectableByLocalPlayer = pack.GetCards().Any(card => 
+                draftManager.IsCardSelectableByPlayer(card, localPlayer));
             
-            // Check if this pack contains cards that are selectable by the local player (i.e., it's the currently visible pack)
-            bool isSelectableByLocalPlayer = false;
-            List<GameObject> packCards = pack.GetCards();
-            if (packCards.Count > 0)
-            {
-                // Check if any card in this pack is selectable by the local player
-                isSelectableByLocalPlayer = packCards.Any(card => draftManager.IsCardSelectableByPlayer(card, localPlayer));
-            }
-            
-            // A pack should be visible if it's owned by the local player AND it's selectable (currently visible)
             bool shouldBeVisible = isOwnedByLocalPlayer && isSelectableByLocalPlayer;
-            
-            /* Debug.Log($"[EntityVisibilityManager] Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value}, LocalPlayer ObjectId: {localPlayer.ObjectId})"); */
-            LogDebug($"Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value}, LocalPlayer ObjectId: {localPlayer.ObjectId})");
-            
-            // Update visibility for all cards in this pack
             UpdateDraftPackCardVisibility(pack, shouldBeVisible);
-        }
-        
-        /* Debug.Log($"[EntityVisibilityManager] Updated draft pack visibility for {allDraftPacks.Length} packs"); */
-        LogDebug($"Updated draft pack visibility for {allDraftPacks.Length} packs");
-    }
-    
-    /// <summary>
-    /// Updates visibility for cards in a specific draft pack
-    /// </summary>
-    private void UpdateDraftPackCardVisibility(DraftPack pack, bool shouldBeVisible)
-    {
-        if (pack == null || pack.CardContainer == null) 
-        {
-            LogDebug("UpdateDraftPackCardVisibility: pack or CardContainer is null");
-            return;
-        }
-        
-        LogDebug($"UpdateDraftPackCardVisibility for pack {pack.name}: shouldBeVisible = {shouldBeVisible}, CardContainer child count = {pack.CardContainer.childCount}");
-        
-        // Update visibility for all cards in the pack's card container
-        for (int i = 0; i < pack.CardContainer.childCount; i++)
-        {
-            Transform cardTransform = pack.CardContainer.GetChild(i);
-            if (cardTransform != null && cardTransform.gameObject != null)
-            {
-                bool wasActive = cardTransform.gameObject.activeSelf;
-                cardTransform.gameObject.SetActive(shouldBeVisible);
-                LogDebug($"Draft pack card {cardTransform.gameObject.name} visibility changed from {wasActive} to {shouldBeVisible}");
-            }
         }
     }
     
@@ -1003,146 +622,79 @@ public class EntityVisibilityManager : MonoBehaviour
     /// </summary>
     public void UpdateDraftPackVisibilityForPack(DraftPack pack)
     {
-        LogDebug($"UpdateDraftPackVisibilityForPack called for pack {(pack != null ? pack.name : "null")} - Current game state: {currentGameState}");
+        if (currentGameState != GameState.Draft || pack == null) return;
         
-        if (currentGameState != GameState.Draft || pack == null)
-        {
-            LogDebug($"Skipping pack visibility update - not in draft state or pack is null");
-            return;
-        }
-        
-        // Find the local player
         NetworkEntity localPlayer = GetLocalPlayer();
-        if (localPlayer == null)
-        {
-            LogDebug("No local player found for pack-specific visibility update");
-            return;
-        }
+        if (localPlayer == null) return;
         
-        LogDebug($"Local player: {localPlayer.EntityName.Value} (ID: {localPlayer.ObjectId})");
-        
-        // Find the DraftManager to check if cards are selectable
         DraftManager draftManager = FindFirstObjectByType<DraftManager>();
-        if (draftManager == null)
-        {
-            LogDebug("DraftManager not found for pack-specific visibility update");
-            return;
-        }
+        if (draftManager == null) return;
         
-        // Check if this pack is owned by the local player
         bool isOwnedByLocalPlayer = pack.IsOwnedBy(localPlayer);
-        LogDebug($"Pack {pack.name} owned by local player: {isOwnedByLocalPlayer} (CurrentOwnerPlayerId: {pack.CurrentOwnerPlayerId.Value})");
+        bool isSelectableByLocalPlayer = pack.GetCards().Any(card => 
+            draftManager.IsCardSelectableByPlayer(card, localPlayer));
         
-        // Check if this pack contains cards that are selectable by the local player (i.e., it's the currently visible pack)
-        bool isSelectableByLocalPlayer = false;
-        List<GameObject> packCards = pack.GetCards();
-        if (packCards.Count > 0)
-        {
-            // Check if any card in this pack is selectable by the local player
-            isSelectableByLocalPlayer = packCards.Any(card => draftManager.IsCardSelectableByPlayer(card, localPlayer));
-        }
-        
-        // A pack should be visible if it's owned by the local player AND it's selectable (currently visible)
         bool shouldBeVisible = isOwnedByLocalPlayer && isSelectableByLocalPlayer;
-        
-        LogDebug($"Pack {pack.name}: owned={isOwnedByLocalPlayer}, selectable={isSelectableByLocalPlayer}, shouldBeVisible={shouldBeVisible}");
-        
-        // Update visibility for all cards in this pack
         UpdateDraftPackCardVisibility(pack, shouldBeVisible);
+    }
+    
+    /// <summary>
+    /// Updates visibility for cards in a specific draft pack
+    /// </summary>
+    private void UpdateDraftPackCardVisibility(DraftPack pack, bool shouldBeVisible)
+    {
+        if (pack == null || pack.CardContainer == null) return;
         
-        LogDebug($"Updated visibility for draft pack {pack.name}: {(shouldBeVisible ? "Visible" : "Hidden")}");
+        for (int i = 0; i < pack.CardContainer.childCount; i++)
+        {
+            Transform cardTransform = pack.CardContainer.GetChild(i);
+            if (cardTransform != null && cardTransform.gameObject != null)
+            {
+                cardTransform.gameObject.SetActive(shouldBeVisible);
+            }
+        }
     }
     
     #endregion
     
-    #region Visual Effects Visibility Management
+    #region Visual Effects Management
     
     /// <summary>
-    /// Centralized method to check if visual effects should be shown for given entities
-    /// Used by both CardEffectResolver and AttackEffectManager
+    /// Determines if visual effects should be shown for given entities
     /// </summary>
     public bool ShouldShowVisualEffectsForEntities(uint sourceEntityId, uint targetEntityId)
     {
-        // During combat, use fight-based visibility
-        if (currentGameState == GameState.Combat)
-        {
-            return ShouldShowVisualEffectsInCombat(sourceEntityId, targetEntityId);
-        }
+        if (currentGameState != GameState.Combat) return true;
         
-        // For other game states, allow effects to show
-        return true;
-    }
-    
-    /// <summary>
-    /// Determines if visual effects should be shown during combat based on fight assignments
-    /// </summary>
-    private bool ShouldShowVisualEffectsInCombat(uint sourceEntityId, uint targetEntityId)
-    {
-        // Get the fight manager to check current fights
         TryFindFightManager();
-        if (fightManager == null)
-        {
-            Debug.Log("EntityVisibilityManager: No FightManager found for visual effects check, allowing effects to show");
-            return true;
-        }
+        if (fightManager == null) return true;
         
-        // Get the currently viewed fight entities from FightManager
         var viewedEntities = fightManager.GetViewedFightEntities();
-        if (viewedEntities == null || viewedEntities.Count == 0)
-        {
-            Debug.Log("EntityVisibilityManager: No viewed fight entities for visual effects check, allowing effects to show");
-            return true;
-        }
+        if (viewedEntities == null || viewedEntities.Count == 0) return true;
         
-        // Check if both source and target entities are in the viewed fight
+        // Check if both entities are in the viewed fight
         bool sourceInViewedFight = viewedEntities.Any(e => e != null && (uint)e.ObjectId == sourceEntityId);
         bool targetInViewedFight = viewedEntities.Any(e => e != null && (uint)e.ObjectId == targetEntityId);
-        bool shouldShow = sourceInViewedFight && targetInViewedFight;
         
-        /* Debug.Log($"EntityVisibilityManager: Visual effects visibility check - Source entity (ID: {sourceEntityId}) in viewed fight: {sourceInViewedFight}, Target entity (ID: {targetEntityId}) in viewed fight: {targetInViewedFight}, Should show: {shouldShow}"); */
-        
-        return shouldShow;
+        return sourceInViewedFight && targetInViewedFight;
     }
-    
-    /// <summary>
-    /// Get the singleton instance of EntityVisibilityManager
-    /// </summary>
-    public static EntityVisibilityManager Instance { get; private set; }
     
     #endregion
     
     #region Helper Methods
     
     /// <summary>
-    /// Get the local player's connection
-    /// </summary>
-    private NetworkConnection GetLocalPlayerConnection()
-    {
-        var localPlayer = GetLocalPlayer();
-        return localPlayer?.Owner;
-    }
-    
-    /// <summary>
     /// Get the local player entity
     /// </summary>
     private NetworkEntity GetLocalPlayer()
     {
-        LogDebug($"GetLocalPlayer called - allEntities count: {allEntities.Count}");
-        
         foreach (var entity in allEntities)
         {
-            if (entity != null)
+            if (entity != null && entity.EntityType == EntityType.Player && entity.IsOwner)
             {
-                LogDebug($"Checking entity: {entity.EntityName.Value} (Type: {entity.EntityType}, IsOwner: {entity.IsOwner})");
-                if (entity.EntityType == EntityType.Player && entity.IsOwner)
-                {
-                    LogDebug($"Found local player: {entity.EntityName.Value}");
-                    return entity;
-                }
+                return entity;
             }
         }
-        
-        LogDebug("No local player found in allEntities");
         return null;
     }
     
@@ -1153,134 +705,6 @@ public class EntityVisibilityManager : MonoBehaviour
             Debug.Log($"[EntityVisibilityManager] {message}");
         }
     }
-    
-    /// <summary>
-    /// Debug method to manually update combat visibility from inspector
-    /// </summary>
-    [ContextMenu("Force Update Combat Visibility")]
-    public void ForceUpdateCombatVisibility()
-    {
-        if (currentGameState == GameState.Combat)
-        {
-            UpdateVisibilityForCombat();
-            Debug.Log("EntityVisibilityManager: Forced combat visibility update");
-        }
-        else
-        {
-            Debug.LogWarning($"EntityVisibilityManager: Not in combat state (current: {currentGameState}), cannot force combat visibility update");
-        }
-    }
-    
-    /// <summary>
-    /// Debug method to log all registered entities and their stats UI relationships
-    /// </summary>
-    [ContextMenu("Debug Entity Stats UI Relationships")]
-    public void DebugEntityStatsUIRelationships()
-    {
-        /* Debug.Log("=== ENTITY STATS UI RELATIONSHIPS DEBUG ==="); */
-        
-        // Find all stats UI entities
-        var statsUIEntities = allEntities.Where(e => e != null && 
-            (e.EntityType == EntityType.PlayerStatsUI || e.EntityType == EntityType.PetStatsUI)).ToList();
-            
-        /* Debug.Log($"Found {statsUIEntities.Count} stats UI entities:"); */
-        
-        foreach (var statsUI in statsUIEntities)
-        {
-            /* Debug.Log($"Stats UI: {statsUI.EntityName.Value} (ID: {statsUI.ObjectId}, Type: {statsUI.EntityType})"); */
-            
-            // Check if it has EntityStatsUIController
-            var controller = statsUI.GetComponent<EntityStatsUIController>();
-            if (controller != null)
-            {
-                Debug.Log($"  - Has EntityStatsUIController: YES (Linked to: {(controller.GetLinkedEntity()?.EntityName.Value ?? "null")})");
-                Debug.Log($"  - Current visibility: {controller.IsVisible()}");
-            }
-            else
-            {
-                /* Debug.Log($"  - Has EntityStatsUIController: NO"); */
-            }
-            
-            // Check if it has NetworkEntityUI
-            var entityUI = statsUI.GetComponent<NetworkEntityUI>();
-            /* Debug.Log($"  - Has NetworkEntityUI: {(entityUI != null ? "YES" : "NO")}"); */
-            
-            // Find which main entity owns this stats UI
-            NetworkEntity ownerEntity = null;
-            foreach (var entity in allEntities)
-            {
-                if (entity == null) continue;
-                var relationshipManager = entity.GetComponent<RelationshipManager>();
-                if (relationshipManager != null && relationshipManager.StatsUIEntity != null)
-                {
-                    var linkedStatsUI = relationshipManager.StatsUIEntity.GetComponent<NetworkEntity>();
-                    if (linkedStatsUI != null && linkedStatsUI.ObjectId == statsUI.ObjectId)
-                    {
-                        ownerEntity = entity;
-                        break;
-                    }
-                }
-            }
-            
-            if (ownerEntity != null)
-            {
-                /* Debug.Log($"  - Owner: {ownerEntity.EntityName.Value} (ID: {ownerEntity.ObjectId}, Type: {ownerEntity.EntityType})"); */
-            }
-            else
-            {
-                /* Debug.Log($"  - Owner: NOT FOUND"); */
-            }
-        }
-        
-        /* Debug.Log("=== END STATS UI DEBUG ==="); */
-    }
-    
-    /// <summary>
-    /// Debug method to test stats UI visibility for currently viewed fight
-    /// </summary>
-    [ContextMenu("Test Stats UI Visibility for Viewed Fight")]
-    public void TestStatsUIVisibilityForViewedFight()
-    {
-        if (currentGameState != GameState.Combat)
-        {
-            Debug.LogWarning("Not in combat state - cannot test stats UI visibility");
-            return;
-        }
-        
-        TryFindFightManager();
-        if (fightManager == null)
-        {
-            Debug.LogError("FightManager not found");
-            return;
-        }
-        
-        var viewedFightEntities = fightManager.GetViewedFightEntities();
-        if (viewedFightEntities == null || viewedFightEntities.Count == 0)
-        {
-            Debug.LogWarning("No viewed fight entities found");
-            return;
-        }
-        
-        /* Debug.Log($"=== TESTING STATS UI VISIBILITY ==="); */
-        /* Debug.Log($"Viewed fight entities: {string.Join(", ", viewedFightEntities.Select(e => $"{e.EntityName.Value} (ID: {e.ObjectId})"))}"); */
-        
-        // Find all stats UI entities and test their visibility
-        var statsUIEntities = allEntities.Where(e => e != null && 
-            (e.EntityType == EntityType.PlayerStatsUI || e.EntityType == EntityType.PetStatsUI)).ToList();
-            
-        foreach (var statsUI in statsUIEntities)
-        {
-            bool shouldBeVisible = IsStatsUIEntityInViewedFight(statsUI, viewedFightEntities);
-            var controller = statsUI.GetComponent<EntityStatsUIController>();
-            bool actuallyVisible = controller != null ? controller.IsVisible() : false;
-            
-            /* Debug.Log($"Stats UI: {statsUI.EntityName.Value} - Should be visible: {shouldBeVisible}, Actually visible: {actuallyVisible}"); */
-        }
-        
-        /* Debug.Log("=== END VISIBILITY TEST ==="); */
-    }
-    
-
     
     #endregion
 } 

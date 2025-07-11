@@ -459,15 +459,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
                 break;
                 
             case CardTargetType.Opponent:
-                NetworkEntity opponent = null;
-                if (sourceEntity.EntityType == EntityType.Player)
-                {
-                    opponent = fightManager.GetOpponentForPlayer(sourceEntity);
-                }
-                else if (sourceEntity.EntityType == EntityType.Pet)
-                {
-                    opponent = fightManager.GetOpponentForPet(sourceEntity);
-                }
+                NetworkEntity opponent = fightManager.GetOpponent(sourceEntity);
                 
                 if (opponent != null)
                     targets.Add(opponent);
@@ -527,15 +519,7 @@ public class SourceAndTargetIdentifier : NetworkBehaviour, UnityEngine.EventSyst
             allTargets.Add(ally);
             
         // Add opponent
-        NetworkEntity opponent = null;
-        if (sourceEntity.EntityType == EntityType.Player)
-        {
-            opponent = fightManager.GetOpponentForPlayer(sourceEntity);
-        }
-        else if (sourceEntity.EntityType == EntityType.Pet)
-        {
-            opponent = fightManager.GetOpponentForPet(sourceEntity);
-        }
+        NetworkEntity opponent = fightManager.GetOpponent(sourceEntity);
         
         if (opponent != null)
             allTargets.Add(opponent);

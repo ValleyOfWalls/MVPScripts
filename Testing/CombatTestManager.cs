@@ -34,11 +34,11 @@ public class CombatTestManager : NetworkBehaviour
     private bool isTestRunning = false;
     private int currentTestIndex = 0;
     
-    // References to combat entities
+    // Entity references for testing
     private NetworkEntity localPlayer;
-    private NetworkEntity opponentPet;
+    private NetworkEntity opponent;
     private NetworkEntity playerAlly; // Player's pet
-    private NetworkEntity opponentPlayer; // The other player
+    private NetworkEntity opponentPlayer; // The opponent's owner (if opponent is a pet)
     
     private void Start()
     {
@@ -72,18 +72,18 @@ public class CombatTestManager : NetworkBehaviour
             
             // Extract entities by type
             localPlayer = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Player);
-            playerAlly = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Pet && e != fightManager.ViewedCombatOpponentPet);
-            opponentPet = fightManager.ViewedCombatOpponentPet;
+                    playerAlly = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Pet && e != fightManager.ViewedRightFighter);
+        opponent = fightManager.ViewedRightFighter;
             
             // Find the opponent player by getting the owner of the opponent pet
-            if (opponentPet != null)
+            if (opponent != null)
             {
-                opponentPlayer = fightManager.GetOpponentForPet(opponentPet);
+                opponentPlayer = fightManager.GetOpponent(opponent);
             }
             
             Debug.Log($"Test Manager - Using FightManager viewed fight entities:");
-            Debug.Log($"  ViewedPlayer: {fightManager.ViewedCombatPlayer?.EntityName.Value ?? "null"}");
-            Debug.Log($"  ViewedOpponentPet: {fightManager.ViewedCombatOpponentPet?.EntityName.Value ?? "null"}");
+            Debug.Log($"  ViewedPlayer: {fightManager.ViewedLeftFighter?.EntityName.Value ?? "null"}");
+            Debug.Log($"  ViewedOpponent: {fightManager.ViewedRightFighter?.EntityName.Value ?? "null"}");
         }
         else
         {
@@ -99,11 +99,11 @@ public class CombatTestManager : NetworkBehaviour
                 opponentPlayer = GetOpponentPlayer(localPlayer);
                 
                 // Find opponent pet by looking for pets not owned by local player
-                opponentPet = allEntities.FirstOrDefault(e => e.EntityType == EntityType.Pet && e.OwnerEntityId.Value != localPlayer.ObjectId);
+                opponent = allEntities.FirstOrDefault(e => e.EntityType == EntityType.Pet && e.OwnerEntityId.Value != localPlayer.ObjectId);
             }
         }
         
-        Debug.Log($"Test Manager - Found entities: Player={localPlayer?.EntityName.Value}, OpponentPet={opponentPet?.EntityName.Value}, PlayerAlly={playerAlly?.EntityName.Value}, OpponentPlayer={opponentPlayer?.EntityName.Value}");
+        Debug.Log($"Test Manager - Found entities: Player={localPlayer?.EntityName.Value}, Opponent={opponent?.EntityName.Value}, PlayerAlly={playerAlly?.EntityName.Value}, OpponentPlayer={opponentPlayer?.EntityName.Value}");
     }
     
     private NetworkEntity GetPlayerAlly(NetworkEntity player)
@@ -246,7 +246,7 @@ public class CombatTestManager : NetworkBehaviour
         
         // Get the client's local viewed entities before sending to server
         NetworkEntity clientLocalPlayer = null;
-        NetworkEntity clientOpponentPet = null;
+        NetworkEntity clientOpponent = null;
         NetworkEntity clientPlayerAlly = null;
         NetworkEntity clientOpponentPlayer = null;
         
@@ -254,11 +254,11 @@ public class CombatTestManager : NetworkBehaviour
         {
             var viewedEntities = fightManager.GetViewedFightEntities();
             clientLocalPlayer = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Player);
-            clientOpponentPet = fightManager.ViewedCombatOpponentPet;
-            clientPlayerAlly = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Pet && e != clientOpponentPet);
-            clientOpponentPlayer = fightManager.GetOpponentForPet(clientOpponentPet);
+            clientOpponent = fightManager.ViewedRightFighter;
+            clientPlayerAlly = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Pet && e != clientOpponent);
+            clientOpponentPlayer = fightManager.GetOpponent(clientOpponent);
             
-            Debug.Log($"Client entities - Player: {clientLocalPlayer?.EntityName.Value}, OpponentPet: {clientOpponentPet?.EntityName.Value}, PlayerAlly: {clientPlayerAlly?.EntityName.Value}, OpponentPlayer: {clientOpponentPlayer?.EntityName.Value}");
+            Debug.Log($"Client entities - Player: {clientLocalPlayer?.EntityName.Value}, Opponent: {clientOpponent?.EntityName.Value}, PlayerAlly: {clientPlayerAlly?.EntityName.Value}, OpponentPlayer: {clientOpponentPlayer?.EntityName.Value}");
         }
         
         // If we're on the server, run directly. Otherwise, call RPC.
@@ -267,7 +267,7 @@ public class CombatTestManager : NetworkBehaviour
             Debug.Log("Running tests directly on server...");
             StartPlayerPerspectiveTestsServerRpc(
                 clientLocalPlayer?.ObjectId ?? -1,
-                clientOpponentPet?.ObjectId ?? -1,
+                clientOpponent?.ObjectId ?? -1,
                 clientPlayerAlly?.ObjectId ?? -1,
                 clientOpponentPlayer?.ObjectId ?? -1
             );
@@ -278,7 +278,7 @@ public class CombatTestManager : NetworkBehaviour
             // Call the server RPC to start tests with client's entity IDs
             StartPlayerPerspectiveTestsServerRpc(
                 clientLocalPlayer?.ObjectId ?? -1,
-                clientOpponentPet?.ObjectId ?? -1,
+                clientOpponent?.ObjectId ?? -1,
                 clientPlayerAlly?.ObjectId ?? -1,
                 clientOpponentPlayer?.ObjectId ?? -1
             );
@@ -286,19 +286,19 @@ public class CombatTestManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Start testing from opponent pet perspective (called from client)
+    /// Start testing from opponent perspective (called from client)
     /// </summary>
-    public void StartOpponentPetPerspectiveTests()
+    public void StartOpponentPerspectiveTests()
     {
         // Clear console logs and test results for fresh run
         ClearConsole();
         TestLogger.ClearResults();
         
-        Debug.Log($"StartOpponentPetPerspectiveTests called - IsOwner: {IsOwner}, IsServer: {IsServerStarted}, IsClient: {IsClientStarted}");
+        Debug.Log($"StartOpponentPerspectiveTests called - IsOwner: {IsOwner}, IsServer: {IsServerStarted}, IsClient: {IsClientStarted}");
         
         // Get the client's local viewed entities before sending to server
         NetworkEntity clientLocalPlayer = null;
-        NetworkEntity clientOpponentPet = null;
+        NetworkEntity clientOpponent = null;
         NetworkEntity clientPlayerAlly = null;
         NetworkEntity clientOpponentPlayer = null;
         
@@ -306,31 +306,31 @@ public class CombatTestManager : NetworkBehaviour
         {
             var viewedEntities = fightManager.GetViewedFightEntities();
             clientLocalPlayer = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Player);
-            clientOpponentPet = fightManager.ViewedCombatOpponentPet;
-            clientPlayerAlly = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Pet && e != clientOpponentPet);
-            clientOpponentPlayer = fightManager.GetOpponentForPet(clientOpponentPet);
+            clientOpponent = fightManager.ViewedRightFighter;
+            clientPlayerAlly = viewedEntities.FirstOrDefault(e => e.EntityType == EntityType.Pet && e != clientOpponent);
+            clientOpponentPlayer = fightManager.GetOpponent(clientOpponent);
             
-            Debug.Log($"Client entities - Player: {clientLocalPlayer?.EntityName.Value}, OpponentPet: {clientOpponentPet?.EntityName.Value}, PlayerAlly: {clientPlayerAlly?.EntityName.Value}, OpponentPlayer: {clientOpponentPlayer?.EntityName.Value}");
+            Debug.Log($"Client entities - Player: {clientLocalPlayer?.EntityName.Value}, Opponent: {clientOpponent?.EntityName.Value}, PlayerAlly: {clientPlayerAlly?.EntityName.Value}, OpponentPlayer: {clientOpponentPlayer?.EntityName.Value}");
         }
         
         // If we're on the server, run directly. Otherwise, call RPC.
         if (IsServerStarted)
         {
             Debug.Log("Running tests directly on server...");
-            StartOpponentPetPerspectiveTestsServerRpc(
+            StartOpponentPerspectiveTestsServerRpc(
                 clientLocalPlayer?.ObjectId ?? -1,
-                clientOpponentPet?.ObjectId ?? -1,
+                clientOpponent?.ObjectId ?? -1,
                 clientPlayerAlly?.ObjectId ?? -1,
                 clientOpponentPlayer?.ObjectId ?? -1
             );
         }
         else
         {
-            Debug.Log("Calling StartOpponentPetPerspectiveTestsServerRpc...");
+            Debug.Log("Calling StartOpponentPerspectiveTestsServerRpc...");
             // Call the server RPC to start tests with client's entity IDs
-            StartOpponentPetPerspectiveTestsServerRpc(
+            StartOpponentPerspectiveTestsServerRpc(
                 clientLocalPlayer?.ObjectId ?? -1,
-                clientOpponentPet?.ObjectId ?? -1,
+                clientOpponent?.ObjectId ?? -1,
                 clientPlayerAlly?.ObjectId ?? -1,
                 clientOpponentPlayer?.ObjectId ?? -1
             );
@@ -341,9 +341,9 @@ public class CombatTestManager : NetworkBehaviour
     /// Server RPC to start testing from player perspective
     /// </summary>
     [ServerRpc(RequireOwnership = false)]
-    private void StartPlayerPerspectiveTestsServerRpc(int clientLocalPlayerId, int clientOpponentPetId, int clientPlayerAllyId, int clientOpponentPlayerId)
+    private void StartPlayerPerspectiveTestsServerRpc(int clientLocalPlayerId, int clientOpponentId, int clientPlayerAllyId, int clientOpponentPlayerId)
     {
-        Debug.Log($"StartPlayerPerspectiveTestsServerRpc called on server with client entity IDs: Player={clientLocalPlayerId}, OpponentPet={clientOpponentPetId}, PlayerAlly={clientPlayerAllyId}, OpponentPlayer={clientOpponentPlayerId}");
+        Debug.Log($"StartPlayerPerspectiveTestsServerRpc called on server with client entity IDs: Player={clientLocalPlayerId}, Opponent={clientOpponentId}, PlayerAlly={clientPlayerAllyId}, OpponentPlayer={clientOpponentPlayerId}");
         
         if (isTestRunning)
         {
@@ -354,11 +354,11 @@ public class CombatTestManager : NetworkBehaviour
         
         // Use the client's entity IDs to find the correct entities on the server
         localPlayer = FindEntityById(clientLocalPlayerId);
-        opponentPet = FindEntityById(clientOpponentPetId);
+        opponent = FindEntityById(clientOpponentId);
         playerAlly = FindEntityById(clientPlayerAllyId);
         opponentPlayer = FindEntityById(clientOpponentPlayerId);
         
-        Debug.Log($"Server found entities: Player={localPlayer?.EntityName.Value}, OpponentPet={opponentPet?.EntityName.Value}, PlayerAlly={playerAlly?.EntityName.Value}, OpponentPlayer={opponentPlayer?.EntityName.Value}");
+        Debug.Log($"Server found entities: Player={localPlayer?.EntityName.Value}, Opponent={opponent?.EntityName.Value}, PlayerAlly={playerAlly?.EntityName.Value}, OpponentPlayer={opponentPlayer?.EntityName.Value}");
         
         // Capture default states now that entities are confirmed to be ready
         CaptureDefaultStates();
@@ -394,12 +394,12 @@ public class CombatTestManager : NetworkBehaviour
     }
     
     /// <summary>
-    /// Server RPC to start testing from opponent pet perspective
+    /// Server RPC to start testing from opponent perspective
     /// </summary>
     [ServerRpc(RequireOwnership = false)]
-    private void StartOpponentPetPerspectiveTestsServerRpc(int clientLocalPlayerId, int clientOpponentPetId, int clientPlayerAllyId, int clientOpponentPlayerId)
+    private void StartOpponentPerspectiveTestsServerRpc(int clientLocalPlayerId, int clientOpponentId, int clientPlayerAllyId, int clientOpponentPlayerId)
     {
-        Debug.Log($"StartOpponentPetPerspectiveTestsServerRpc called on server with client entity IDs: Player={clientLocalPlayerId}, OpponentPet={clientOpponentPetId}, PlayerAlly={clientPlayerAllyId}, OpponentPlayer={clientOpponentPlayerId}");
+        Debug.Log($"StartOpponentPerspectiveTestsServerRpc called on server with client entity IDs: Player={clientLocalPlayerId}, Opponent={clientOpponentId}, PlayerAlly={clientPlayerAllyId}, OpponentPlayer={clientOpponentPlayerId}");
         
         if (isTestRunning)
         {
@@ -410,22 +410,22 @@ public class CombatTestManager : NetworkBehaviour
         
         // Use the client's entity IDs to find the correct entities on the server
         localPlayer = FindEntityById(clientLocalPlayerId);
-        opponentPet = FindEntityById(clientOpponentPetId);
+        opponent = FindEntityById(clientOpponentId);
         playerAlly = FindEntityById(clientPlayerAllyId);
         opponentPlayer = FindEntityById(clientOpponentPlayerId);
         
-        Debug.Log($"Server found entities: Player={localPlayer?.EntityName.Value}, OpponentPet={opponentPet?.EntityName.Value}, PlayerAlly={playerAlly?.EntityName.Value}, OpponentPlayer={opponentPlayer?.EntityName.Value}");
+        Debug.Log($"Server found entities: Player={localPlayer?.EntityName.Value}, Opponent={opponent?.EntityName.Value}, PlayerAlly={playerAlly?.EntityName.Value}, OpponentPlayer={opponentPlayer?.EntityName.Value}");
         
         // Capture default states now that entities are confirmed to be ready
         CaptureDefaultStates();
         
-        Debug.Log($"Opponent pet: {(opponentPet != null ? opponentPet.EntityName.Value : "NULL")}");
+        Debug.Log($"Opponent: {(opponent != null ? opponent.EntityName.Value : "NULL")}");
         Debug.Log($"Test cards count: {testCards.Count}");
         
-        if (opponentPet == null)
+        if (opponent == null)
         {
-            Debug.LogError("No opponent pet found, cannot run tests");
-            TestLogger.LogEvent("No opponent pet found, cannot run tests");
+            Debug.LogError("No opponent found, cannot run tests");
+            TestLogger.LogEvent("No opponent found, cannot run tests");
             return;
         }
         
@@ -437,7 +437,7 @@ public class CombatTestManager : NetworkBehaviour
         }
         
         Debug.Log("Starting RunTestsFromPerspective coroutine...");
-        StartCoroutine(RunTestsFromPerspective(opponentPet, "Opponent Pet"));
+        StartCoroutine(RunTestsFromPerspective(opponent, "Opponent"));
     }
     
     private IEnumerator RunTestsFromPerspective(NetworkEntity caster, string perspectiveName)
@@ -1035,9 +1035,9 @@ public class CombatTestManager : NetworkBehaviour
                 break;
                 
             case CardTargetType.Opponent:
-                var opponent = GetOpponentForEntity(caster);
-                if (opponent != null)
-                    targets.Add((opponent, GetTargetDescription(caster, opponent)));
+                var opponentEntity = GetOpponentForEntity(caster);
+                if (opponentEntity != null)
+                    targets.Add((opponentEntity, GetTargetDescription(caster, opponentEntity)));
                 break;
                 
             case CardTargetType.Ally:
@@ -1048,7 +1048,7 @@ public class CombatTestManager : NetworkBehaviour
                 
             case CardTargetType.Random:
                 // For random cards, test on all possible targets
-                var allEntities = new[] { localPlayer, opponentPet, playerAlly, opponentPlayer }.Where(e => e != null);
+                var allEntities = new[] { localPlayer, opponent, playerAlly, opponentPlayer }.Where(e => e != null);
                 foreach (var entity in allEntities)
                 {
                     targets.Add((entity, GetTargetDescription(caster, entity)));
@@ -1066,10 +1066,10 @@ public class CombatTestManager : NetworkBehaviour
         if (caster == localPlayer)
         {
             if (target == playerAlly) return $"{target.EntityName.Value} (Ally)";
-            if (target == opponentPet) return $"{target.EntityName.Value} (Opponent Pet)";
+            if (target == opponent) return $"{target.EntityName.Value} (Opponent)";
             if (target == opponentPlayer) return $"{target.EntityName.Value} (Opponent Player)";
         }
-        else if (caster == opponentPet)
+        else if (caster == opponent)
         {
             if (target == opponentPlayer) return $"{target.EntityName.Value} (Ally)";
             if (target == localPlayer) return $"{target.EntityName.Value} (Opponent Player)";
@@ -1078,12 +1078,12 @@ public class CombatTestManager : NetworkBehaviour
         else if (caster == playerAlly)
         {
             if (target == localPlayer) return $"{target.EntityName.Value} (Ally)";
-            if (target == opponentPet) return $"{target.EntityName.Value} (Opponent Pet)";
+            if (target == opponent) return $"{target.EntityName.Value} (Opponent)";
             if (target == opponentPlayer) return $"{target.EntityName.Value} (Opponent Player)";
         }
         else if (caster == opponentPlayer)
         {
-            if (target == opponentPet) return $"{target.EntityName.Value} (Ally)";
+            if (target == opponent) return $"{target.EntityName.Value} (Ally)";
             if (target == localPlayer) return $"{target.EntityName.Value} (Opponent Player)";
             if (target == playerAlly) return $"{target.EntityName.Value} (Opponent Pet)";
         }
@@ -1093,8 +1093,8 @@ public class CombatTestManager : NetworkBehaviour
     
     private NetworkEntity GetOpponentForEntity(NetworkEntity entity)
     {
-        if (entity == localPlayer) return opponentPet;
-        if (entity == opponentPet) return localPlayer;
+        if (entity == localPlayer) return opponent;
+        if (entity == opponent) return localPlayer;
         if (entity == playerAlly) return opponentPlayer;
         if (entity == opponentPlayer) return playerAlly;
         return null;
@@ -1103,9 +1103,9 @@ public class CombatTestManager : NetworkBehaviour
     private NetworkEntity GetAllyForEntity(NetworkEntity entity)
     {
         if (entity == localPlayer) return playerAlly;
-        if (entity == opponentPet) return opponentPlayer;
+        if (entity == opponent) return opponentPlayer;
         if (entity == playerAlly) return localPlayer;
-        if (entity == opponentPlayer) return opponentPet;
+        if (entity == opponentPlayer) return opponent;
         return null;
     }
     
@@ -1414,21 +1414,21 @@ public class CombatTestManager : NetworkBehaviour
                 return caster;
                 
             case CardTargetType.Opponent:
-                if (caster == localPlayer) return opponentPet;
-                if (caster == opponentPet) return localPlayer;
+                if (caster == localPlayer) return opponent;
+                if (caster == opponent) return localPlayer;
                 if (caster == playerAlly) return opponentPlayer;
                 if (caster == opponentPlayer) return playerAlly;
                 break;
                 
             case CardTargetType.Ally:
                 if (caster == localPlayer) return playerAlly;
-                if (caster == opponentPet) return opponentPlayer;
+                if (caster == opponent) return opponentPlayer;
                 if (caster == playerAlly) return localPlayer;
-                if (caster == opponentPlayer) return opponentPet;
+                if (caster == opponentPlayer) return opponent;
                 break;
                 
             case CardTargetType.Random:
-                var allEntities = new[] { localPlayer, opponentPet, playerAlly, opponentPlayer }.Where(e => e != null).ToArray();
+                var allEntities = new[] { localPlayer, opponent, playerAlly, opponentPlayer }.Where(e => e != null).ToArray();
                 return allEntities[Random.Range(0, allEntities.Length)];
         }
         

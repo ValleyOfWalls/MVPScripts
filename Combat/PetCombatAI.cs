@@ -220,7 +220,7 @@ public class PetCombatAI : NetworkBehaviour
         FightManager fightManager = FindFirstObjectByType<FightManager>();
         if (fightManager != null)
         {
-            return fightManager.GetOpponentForPet(petEntity);
+            return fightManager.GetOpponent(petEntity);
         }
         return null;
     }

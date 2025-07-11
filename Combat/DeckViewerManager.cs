@@ -280,17 +280,18 @@ public class DeckViewerManager : NetworkBehaviour
         }
 
         // Get the entities from the currently viewed combat
-        NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
-        NetworkEntity viewedOpponentPet = fightManager.ViewedCombatOpponentPet;
+        NetworkEntity viewedPlayer = fightManager.ViewedLeftFighter;
+        NetworkEntity viewedOpponent = fightManager.ViewedRightFighter;
         
-        if (viewedPlayer == null || viewedOpponentPet == null)
+        if (viewedPlayer == null || viewedOpponent == null)
         {
+            LogDebug("Cannot determine deck to view - missing viewed combat entities");
             return;
         }
-
+        
         NetworkEntity targetEntity = null;
         string deckTitle = "";
-
+        
         switch (deckType)
         {
             case DeckType.MyDeck:
@@ -299,8 +300,8 @@ public class DeckViewerManager : NetworkBehaviour
                 break;
                 
             case DeckType.OpponentDeck:
-                targetEntity = viewedOpponentPet;
-                deckTitle = $"{viewedOpponentPet.EntityName.Value}'s Deck";
+                targetEntity = viewedOpponent;
+                deckTitle = $"{viewedOpponent.EntityName.Value}'s Deck";
                 break;
                 
             case DeckType.AllyDeck:
@@ -317,6 +318,7 @@ public class DeckViewerManager : NetworkBehaviour
                 
                 if (targetEntity == null)
                 {
+                    LogDebug("Cannot view ally deck - no ally entity found");
                     return;
                 }
                 break;
@@ -804,8 +806,8 @@ public class DeckViewerManager : NetworkBehaviour
         LogDebug($"FightManager: {(fightManager != null ? "FOUND" : "NULL")}");
         if (fightManager != null)
         {
-            LogDebug($"  - ViewedCombatPlayer: {(fightManager.ViewedCombatPlayer != null ? fightManager.ViewedCombatPlayer.EntityName.Value : "null")}");
-            LogDebug($"  - ViewedCombatOpponentPet: {(fightManager.ViewedCombatOpponentPet != null ? fightManager.ViewedCombatOpponentPet.EntityName.Value : "null")}");
+                    LogDebug($"  - ViewedLeftFighter: {(fightManager.ViewedLeftFighter != null ? fightManager.ViewedLeftFighter.EntityName.Value : "null")}");
+        LogDebug($"  - ViewedRightFighter: {(fightManager.ViewedRightFighter != null ? fightManager.ViewedRightFighter.EntityName.Value : "null")}");
         }
         
         LogDebug("=== BUTTON SETUP TEST COMPLETE ===");
@@ -1153,8 +1155,8 @@ public class DeckViewerManager : NetworkBehaviour
     {
         if (fightManager == null) return;
 
-        NetworkEntity viewedPlayer = fightManager.ViewedCombatPlayer;
-        NetworkEntity viewedOpponentPet = fightManager.ViewedCombatOpponentPet;
+        NetworkEntity viewedPlayer = fightManager.ViewedLeftFighter;
+        NetworkEntity viewedOpponent = fightManager.ViewedRightFighter;
 
         // Update My Deck button
         if (viewMyDeckButton != null)
@@ -1172,13 +1174,13 @@ public class DeckViewerManager : NetworkBehaviour
         // Update Opponent Deck button
         if (viewOpponentDeckButton != null)
         {
-            bool hasOpponentDeck = viewedOpponentPet != null && viewedOpponentPet.GetComponent<NetworkEntityDeck>() != null;
+            bool hasOpponentDeck = viewedOpponent != null && viewedOpponent.GetComponent<NetworkEntityDeck>() != null;
             viewOpponentDeckButton.interactable = hasOpponentDeck;
             
             var buttonText = viewOpponentDeckButton.GetComponentInChildren<TextMeshProUGUI>();
             if (buttonText != null)
             {
-                buttonText.text = viewedOpponentPet != null ? $"View {viewedOpponentPet.EntityName.Value}'s Deck" : "View Opponent Deck";
+                buttonText.text = viewedOpponent != null ? $"View {viewedOpponent.EntityName.Value}'s Deck" : "View Opponent Deck";
             }
         }
 
@@ -1205,7 +1207,7 @@ public class DeckViewerManager : NetworkBehaviour
             }
         }
 
-        LogDebug($"Updated button states - Player: {viewedPlayer?.EntityName.Value}, Opponent: {viewedOpponentPet?.EntityName.Value}, Ally: {GetAllyName(viewedPlayer)}");
+        LogDebug($"Updated button states - Player: {viewedPlayer?.EntityName.Value}, Opponent: {viewedOpponent?.EntityName.Value}, Ally: {GetAllyName(viewedPlayer)}");
     }
 
     private string GetAllyName(NetworkEntity player)

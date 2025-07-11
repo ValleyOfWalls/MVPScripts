@@ -39,6 +39,15 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
         }
     }
     
+    private void OnDestroy()
+    {
+        // Clean up subscriptions
+        if (currentPet != null)
+        {
+            UnsubscribeFromPetUpdates(currentPet);
+        }
+    }
+    
     private void ValidateComponents()
     {
         if (petImage == null)
@@ -62,18 +71,61 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
     /// <param name="pet">The NetworkEntity pet to display</param>
     public void SetPet(NetworkEntity pet)
     {
+        // Unsubscribe from previous pet if any
+        if (currentPet != null)
+        {
+            UnsubscribeFromPetUpdates(currentPet);
+        }
+        
         currentPet = pet;
         
         if (pet != null)
         {
             UpdatePetVisuals();
-            LogDebug($"Pet visual display set to: {pet.EntityName.Value}");
+            SubscribeToPetUpdates(pet);
+            LogDebug($"ALLY_SETUP: Pet visual display set to: {pet.EntityName.Value} - subscribed to network updates");
         }
         else
         {
             ClearPetVisuals();
-            LogDebug("Pet visual display cleared");
+            LogDebug("ALLY_SETUP: Pet visual display cleared");
         }
+    }
+    
+    /// <summary>
+    /// Subscribes to network updates from the pet entity
+    /// </summary>
+    private void SubscribeToPetUpdates(NetworkEntity pet)
+    {
+        if (pet == null) return;
+        
+        // Subscribe to name changes (affects display)
+        pet.EntityName.OnChange += OnNameChanged;
+        
+        LogDebug($"ALLY_SETUP: Visual display subscribed to network updates for {pet.EntityName.Value}");
+    }
+    
+    /// <summary>
+    /// Unsubscribes from network updates from the pet entity
+    /// </summary>
+    private void UnsubscribeFromPetUpdates(NetworkEntity pet)
+    {
+        if (pet == null) return;
+        
+        // Unsubscribe from name changes
+        pet.EntityName.OnChange -= OnNameChanged;
+        
+        LogDebug($"ALLY_SETUP: Visual display unsubscribed from network updates for {pet.EntityName.Value}");
+    }
+    
+    /// <summary>
+    /// Called when pet name changes over the network
+    /// </summary>
+    private void OnNameChanged(string prev, string next, bool asServer)
+    {
+        LogDebug($"ALLY_SETUP: Pet name changed from {prev} to {next} (asServer: {asServer})");
+        UpdatePetName();
+        UpdatePetImage(); // Name change might affect portrait lookup
     }
     
     /// <summary>
@@ -110,7 +162,13 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
     /// </summary>
     private void UpdatePetImage()
     {
-        if (petImage == null) return;
+        if (petImage == null) 
+        {
+            LogDebug($"PORTRAIT_DEBUG: petImage is null for {currentPet?.EntityName.Value ?? "null"}");
+            return;
+        }
+        
+        LogDebug($"PORTRAIT_DEBUG: UpdatePetImage() called for {currentPet?.EntityName.Value ?? "null"}");
         
         // Try to get actual pet portrait first
         Sprite petPortrait = GetEntityPortrait(currentPet);
@@ -120,89 +178,267 @@ public class OwnPetVisualDisplay : MonoBehaviour, IOwnPetDisplay
             petImage.sprite = petPortrait;
             petImage.color = Color.white; // Reset color to show sprite normally
             petImage.gameObject.SetActive(true);
-            LogDebug($"Pet portrait loaded for: {currentPet?.EntityName.Value ?? "null"}");
+            LogDebug($"PORTRAIT_DEBUG: Pet portrait loaded for: {currentPet?.EntityName.Value ?? "null"} - Sprite: {petPortrait.name}");
         }
         else
         {
             // Fall back to placeholder
             SetupPlaceholderImage();
-            LogDebug($"Using placeholder image for: {currentPet?.EntityName.Value ?? "null"}");
+            LogDebug($"PORTRAIT_DEBUG: Using placeholder image for: {currentPet?.EntityName.Value ?? "null"}");
         }
     }
     
     /// <summary>
-    /// Gets the portrait sprite for the given pet entity
+    /// Gets the portrait sprite for the given entity (supports both Pet and Player entities)
     /// Uses the same approach as EntitySelectionController and existing UI managers
     /// </summary>
-    private Sprite GetEntityPortrait(NetworkEntity petEntity)
+    private Sprite GetEntityPortrait(NetworkEntity entity)
     {
-        if (petEntity == null || petEntity.EntityType != EntityType.Pet) 
+        if (entity == null) 
+        {
+            LogDebug($"PORTRAIT_DEBUG: Entity is null");
             return null;
+        }
         
-        // Method 1: Try to get from PetData through selection system
-        Sprite portraitFromData = GetPortraitFromPetData(petEntity);
+        LogDebug($"PORTRAIT_DEBUG: Looking for portrait for {entity.EntityName.Value} (ID: {entity.ObjectId}, Type: {entity.EntityType})");
+        
+        // Method 1: Try to get from selection data (works for both Pet and Player entities)
+        Sprite portraitFromData = GetPortraitFromSelectionData(entity);
         if (portraitFromData != null)
         {
-            LogDebug($"Found portrait from PetData for {petEntity.EntityName.Value}");
+            LogDebug($"PORTRAIT_DEBUG: Found portrait from selection data for {entity.EntityName.Value}");
             return portraitFromData;
         }
         
         // Method 2: Try to get from SpriteRenderer (legacy approach)
-        SpriteRenderer spriteRenderer = petEntity.GetComponentInChildren<SpriteRenderer>();
+        SpriteRenderer spriteRenderer = entity.GetComponentInChildren<SpriteRenderer>();
         if (spriteRenderer != null && spriteRenderer.sprite != null)
         {
-            LogDebug($"Found portrait from SpriteRenderer for {petEntity.EntityName.Value}");
+            LogDebug($"PORTRAIT_DEBUG: Found portrait from SpriteRenderer for {entity.EntityName.Value}");
             return spriteRenderer.sprite;
+        }
+        else
+        {
+            LogDebug($"PORTRAIT_DEBUG: No SpriteRenderer found for {entity.EntityName.Value}");
         }
         
         // Method 3: Try to get from Image component (UI approach)
-        Image imageComponent = petEntity.GetComponentInChildren<Image>();
+        Image imageComponent = entity.GetComponentInChildren<Image>();
         if (imageComponent != null && imageComponent.sprite != null)
         {
-            LogDebug($"Found portrait from Image component for {petEntity.EntityName.Value}");
+            LogDebug($"PORTRAIT_DEBUG: Found portrait from Image component for {entity.EntityName.Value}");
             return imageComponent.sprite;
         }
+        else
+        {
+            LogDebug($"PORTRAIT_DEBUG: No Image component found for {entity.EntityName.Value}");
+        }
         
-        LogDebug($"No portrait found for pet {petEntity.EntityName.Value}");
+        LogDebug($"PORTRAIT_DEBUG: No portrait found for entity {entity.EntityName.Value} - all methods failed");
         return null;
     }
     
     /// <summary>
-    /// Gets the portrait sprite from PetData through the selection system
+    /// Gets the portrait sprite from selection data (supports both Pet and Player entities)
     /// </summary>
-    private Sprite GetPortraitFromPetData(NetworkEntity petEntity)
+    private Sprite GetPortraitFromSelectionData(NetworkEntity entity)
     {
-        if (petEntity == null) return null;
+        if (entity == null) 
+        {
+            LogDebug("PORTRAIT_DEBUG: entity is null");
+            return null;
+        }
         
-        // Try to get PetData through CharacterSelectionManager (similar to EntityModelManager)
+        LogDebug($"PORTRAIT_DEBUG: Getting portrait from selection data for {entity.EntityName.Value} (Type: {entity.EntityType})");
+        
+        // Method 1: Try to get from CharacterSelectionManager (works for local player entities)
         CharacterSelectionManager selectionManager = FindFirstObjectByType<CharacterSelectionManager>();
-        if (selectionManager == null)
+        if (selectionManager != null)
         {
-            LogDebug("CharacterSelectionManager not found, cannot get PetData");
-            return null;
-        }
-        
-        // Check if the pet has selection data
-        int petIndex = petEntity.SelectedPetIndex.Value;
-        if (petIndex < 0)
-        {
-            LogDebug($"Pet {petEntity.EntityName.Value} has no selection index");
-            return null;
-        }
-        
-        // Get available pets and find the one at the selected index
-        var availablePets = selectionManager.GetAvailablePets();
-        if (petIndex >= 0 && petIndex < availablePets.Count)
-        {
-            PetData petData = availablePets[petIndex];
-            if (petData != null && petData.PetPortrait != null)
+            Sprite portraitFromSelection = TryGetPortraitFromSelectionManager(entity, selectionManager);
+            if (portraitFromSelection != null)
             {
-                LogDebug($"Found PetData portrait for {petEntity.EntityName.Value} at index {petIndex}");
-                return petData.PetPortrait;
+                return portraitFromSelection;
             }
         }
+        else
+        {
+            LogDebug("PORTRAIT_DEBUG: CharacterSelectionManager not found");
+        }
         
-        LogDebug($"No PetData found for pet {petEntity.EntityName.Value} at index {petIndex}");
+        // Method 2: Try to find portrait by matching entity name with available data assets
+        Sprite portraitFromAssets = TryGetPortraitFromDataAssets(entity);
+        if (portraitFromAssets != null)
+        {
+            return portraitFromAssets;
+        }
+        
+        LogDebug($"PORTRAIT_DEBUG: No selection data portrait found for entity {entity.EntityName.Value}");
+        return null;
+    }
+    
+    /// <summary>
+    /// Tries to get portrait from CharacterSelectionManager (works for local player entities)
+    /// </summary>
+    private Sprite TryGetPortraitFromSelectionManager(NetworkEntity entity, CharacterSelectionManager selectionManager)
+    {
+        if (entity.EntityType == EntityType.Pet)
+        {
+            // Handle Pet entities
+            int petIndex = entity.SelectedPetIndex.Value;
+            LogDebug($"PORTRAIT_DEBUG: Pet {entity.EntityName.Value} has SelectedPetIndex: {petIndex}");
+            
+            if (petIndex < 0)
+            {
+                LogDebug($"PORTRAIT_DEBUG: Pet {entity.EntityName.Value} has invalid selection index ({petIndex})");
+                return null;
+            }
+            
+            // Get available pets and find the one at the selected index
+            var availablePets = selectionManager.GetAvailablePets();
+            LogDebug($"PORTRAIT_DEBUG: CharacterSelectionManager has {availablePets?.Count ?? 0} available pets");
+            
+            if (availablePets == null || availablePets.Count == 0)
+            {
+                LogDebug($"PORTRAIT_DEBUG: No available pets in CharacterSelectionManager");
+                return null;
+            }
+            
+            if (petIndex >= 0 && petIndex < availablePets.Count)
+            {
+                PetData petData = availablePets[petIndex];
+                LogDebug($"PORTRAIT_DEBUG: Found PetData at index {petIndex}: {petData?.PetName ?? "null"}");
+                
+                if (petData != null && petData.PetPortrait != null)
+                {
+                    LogDebug($"PORTRAIT_DEBUG: Found PetData portrait from selection manager for {entity.EntityName.Value} at index {petIndex} - Portrait: {petData.PetPortrait.name}");
+                    return petData.PetPortrait;
+                }
+                else
+                {
+                    LogDebug($"PORTRAIT_DEBUG: PetData at index {petIndex} is null or has no portrait - PetData: {petData?.PetName ?? "null"}, Portrait: {petData?.PetPortrait?.name ?? "null"}");
+                }
+            }
+            else
+            {
+                LogDebug($"PORTRAIT_DEBUG: Pet index {petIndex} is out of range for available pets (count: {availablePets.Count})");
+            }
+        }
+        else if (entity.EntityType == EntityType.Player)
+        {
+            // Handle Player entities (they might have character portraits)
+            int characterIndex = entity.SelectedCharacterIndex.Value;
+            LogDebug($"PORTRAIT_DEBUG: Player {entity.EntityName.Value} has SelectedCharacterIndex: {characterIndex}");
+            
+            if (characterIndex < 0)
+            {
+                LogDebug($"PORTRAIT_DEBUG: Player {entity.EntityName.Value} has invalid character selection index ({characterIndex})");
+                return null;
+            }
+            
+            // Get available characters and find the one at the selected index
+            var availableCharacters = selectionManager.GetAvailableCharacters();
+            LogDebug($"PORTRAIT_DEBUG: CharacterSelectionManager has {availableCharacters?.Count ?? 0} available characters");
+            
+            if (availableCharacters == null || availableCharacters.Count == 0)
+            {
+                LogDebug($"PORTRAIT_DEBUG: No available characters in CharacterSelectionManager");
+                return null;
+            }
+            
+            if (characterIndex >= 0 && characterIndex < availableCharacters.Count)
+            {
+                CharacterData characterData = availableCharacters[characterIndex];
+                LogDebug($"PORTRAIT_DEBUG: Found CharacterData at index {characterIndex}: {characterData?.CharacterName ?? "null"}");
+                
+                if (characterData != null && characterData.CharacterPortrait != null)
+                {
+                    LogDebug($"PORTRAIT_DEBUG: Found CharacterData portrait from selection manager for {entity.EntityName.Value} at index {characterIndex} - Portrait: {characterData.CharacterPortrait.name}");
+                    return characterData.CharacterPortrait;
+                }
+                else
+                {
+                    LogDebug($"PORTRAIT_DEBUG: CharacterData at index {characterIndex} is null or has no portrait - CharacterData: {characterData?.CharacterName ?? "null"}, Portrait: {characterData?.CharacterPortrait?.name ?? "null"}");
+                }
+            }
+            else
+            {
+                LogDebug($"PORTRAIT_DEBUG: Character index {characterIndex} is out of range for available characters (count: {availableCharacters.Count})");
+            }
+        }
+        else
+        {
+            LogDebug($"PORTRAIT_DEBUG: Entity type {entity.EntityType} not supported for selection manager lookup");
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Tries to get portrait by searching all data assets in the scene and matching by name
+    /// This works for opponent entities where we don't have selection manager data
+    /// </summary>
+    private Sprite TryGetPortraitFromDataAssets(NetworkEntity entity)
+    {
+        LogDebug($"PORTRAIT_DEBUG: Searching for data assets matching name: {entity.EntityName.Value} (Type: {entity.EntityType})");
+        
+        if (entity.EntityType == EntityType.Pet)
+        {
+            // Search PetData assets
+            PetData[] allPetDataAssets = FindObjectsByType<PetData>(FindObjectsSortMode.None);
+            LogDebug($"PORTRAIT_DEBUG: Found {allPetDataAssets.Length} PetData assets in scene");
+            
+            foreach (PetData petData in allPetDataAssets)
+            {
+                if (petData != null && petData.PetName == entity.EntityName.Value)
+                {
+                    LogDebug($"PORTRAIT_DEBUG: Found matching PetData asset: {petData.PetName}");
+                    
+                    if (petData.PetPortrait != null)
+                    {
+                        LogDebug($"PORTRAIT_DEBUG: Found portrait from PetData asset for {entity.EntityName.Value} - Portrait: {petData.PetPortrait.name}");
+                        return petData.PetPortrait;
+                    }
+                    else
+                    {
+                        LogDebug($"PORTRAIT_DEBUG: Matching PetData asset has no portrait: {petData.PetName}");
+                    }
+                }
+            }
+            
+            LogDebug($"PORTRAIT_DEBUG: No matching PetData asset found for {entity.EntityName.Value}");
+        }
+        else if (entity.EntityType == EntityType.Player)
+        {
+            // Search CharacterData assets
+            CharacterData[] allCharacterDataAssets = FindObjectsByType<CharacterData>(FindObjectsSortMode.None);
+            LogDebug($"PORTRAIT_DEBUG: Found {allCharacterDataAssets.Length} CharacterData assets in scene");
+            
+            foreach (CharacterData characterData in allCharacterDataAssets)
+            {
+                if (characterData != null && characterData.CharacterName == entity.EntityName.Value)
+                {
+                    LogDebug($"PORTRAIT_DEBUG: Found matching CharacterData asset: {characterData.CharacterName}");
+                    
+                    if (characterData.CharacterPortrait != null)
+                    {
+                        LogDebug($"PORTRAIT_DEBUG: Found portrait from CharacterData asset for {entity.EntityName.Value} - Portrait: {characterData.CharacterPortrait.name}");
+                        return characterData.CharacterPortrait;
+                    }
+                    else
+                    {
+                        LogDebug($"PORTRAIT_DEBUG: Matching CharacterData asset has no portrait: {characterData.CharacterName}");
+                    }
+                }
+            }
+            
+            LogDebug($"PORTRAIT_DEBUG: No matching CharacterData asset found for {entity.EntityName.Value}");
+        }
+        else
+        {
+            LogDebug($"PORTRAIT_DEBUG: Entity type {entity.EntityType} not supported for asset search");
+        }
+        
         return null;
     }
     

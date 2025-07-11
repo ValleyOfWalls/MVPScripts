@@ -241,15 +241,14 @@ public class CameraManager : NetworkBehaviour
     {
         Debug.Log("[ARENA_CAMERA] MoveCameraToCurrentViewedFight called");
         
-        if (fightManager == null || fightManager.ViewedCombatPlayer == null)
+        if (fightManager == null || fightManager.ViewedLeftFighter == null)
         {
-            LogDebug("No viewed combat player found, cannot move camera");
-            Debug.Log($"[ARENA_CAMERA] ERROR: No viewed combat player found - FightManager: {fightManager != null}, ViewedPlayer: {fightManager?.ViewedCombatPlayer != null}");
+            Debug.LogWarning($"[ARENA_CAMERA] Cannot move camera - FightManager: {fightManager != null}, ViewedPlayer: {fightManager?.ViewedLeftFighter != null}");
             return;
         }
         
-        uint playerObjectId = (uint)fightManager.ViewedCombatPlayer.ObjectId;
-        Debug.Log($"[ARENA_CAMERA] Current viewed player: {fightManager.ViewedCombatPlayer.EntityName.Value} (ID: {playerObjectId})");
+        uint playerObjectId = (uint)fightManager.ViewedLeftFighter.ObjectId;
+        Debug.Log($"[ARENA_CAMERA] Current viewed player: {fightManager.ViewedLeftFighter.EntityName.Value} (ID: {playerObjectId})");
         MoveCameraToPlayerArena(playerObjectId, animated, duration, onComplete);
     }
     

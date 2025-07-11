@@ -96,30 +96,32 @@ OwnPetViewPrefab
 
 ## How It Works
 
-### Automatic Pet Detection
+### Automatic Ally Detection
 
-The system automatically detects which pet to display based on:
-1. The currently viewed player (from `FightManager.ViewedCombatPlayer`)
-2. The player's relationship to their pet (via `RelationshipManager.AllyEntity`)
+The system automatically detects which ally to display based on:
+1. The currently viewed fighter (from `FightManager.ViewedLeftFighter`)
+2. The fighter's relationship to their ally (via `RelationshipManager.AllyEntity`)
+
+Note: In the current implementation, this displays the left fighter's ally, which in typical player-vs-pet scenarios would be the player's pet. In player-vs-player scenarios, this would be the left player's ally entity.
 
 ### Real-time Updates
 
-The system subscribes to the pet's NetworkEntity SyncVars:
+The system subscribes to the ally's NetworkEntity SyncVars:
 - `CurrentHealth` and `MaxHealth` for health display
 - `CurrentEnergy` and `MaxEnergy` for energy display
 - `EntityName` for name display
 
 ### Status Effects Synchronization
 
-The status effects display automatically syncs with the pet's `EffectHandler` component:
+The status effects display automatically syncs with the ally's `EffectHandler` component:
 - Subscribes to `OnEffectsChanged` events for real-time updates
 - Displays effect name, potency, and remaining duration
 - Configurable formatting and display limits
-- Shows "No active effects" when pet has no status effects
+- Shows "No active effects" when ally has no status effects
 
 ### Spectating Support
 
-When spectating different fights, the system automatically updates to show the currently viewed player's pet.
+When spectating different fights, the system automatically updates to show the currently viewed fighter's ally.
 
 ## Customization
 

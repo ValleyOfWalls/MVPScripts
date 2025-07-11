@@ -161,7 +161,7 @@ public class CombatSpectatorManager : MonoBehaviour
         
         if (localPlayerFight.HasValue)
         {
-            LogDebug($"Cached local player fight: Player {localPlayerFight.Value.PlayerObjectId} vs Pet {localPlayerFight.Value.PetObjectId}");
+            LogDebug($"Cached local player fight: Left Fighter {localPlayerFight.Value.LeftFighterObjectId} vs Right Fighter {localPlayerFight.Value.RightFighterObjectId}");
             return true;
         }
         else
@@ -230,13 +230,13 @@ public class CombatSpectatorManager : MonoBehaviour
         
         foreach (var fight in allFights)
         {
-            if (localPlayerFight.HasValue && fight.PlayerObjectId == localPlayerFight.Value.PlayerObjectId)
+            if (localPlayerFight.HasValue && fight.LeftFighterObjectId == localPlayerFight.Value.LeftFighterObjectId)
             {
-                LogDebug($"Added local player's fight to cycle: Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}");
+                LogDebug($"Added local player's fight to cycle: Left Fighter {fight.LeftFighterObjectId} vs Right Fighter {fight.RightFighterObjectId}");
             }
             else
             {
-                LogDebug($"Added other player's fight to cycle: Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}");
+                LogDebug($"Added other player's fight to cycle: Left Fighter {fight.LeftFighterObjectId} vs Right Fighter {fight.RightFighterObjectId}");
             }
         }
         
@@ -260,7 +260,7 @@ public class CombatSpectatorManager : MonoBehaviour
         {
             foreach (var fight in availableFights)
             {
-                if (fight.PlayerObjectId != localPlayerFight.Value.PlayerObjectId)
+                if (fight.LeftFighterObjectId != localPlayerFight.Value.LeftFighterObjectId)
                 {
                     otherFightsCount++;
                 }
@@ -322,7 +322,7 @@ public class CombatSpectatorManager : MonoBehaviour
         for (int i = 0; i < availableFights.Count; i++)
         {
             if (!localPlayerFight.HasValue || 
-                availableFights[i].PlayerObjectId != localPlayerFight.Value.PlayerObjectId)
+                availableFights[i].LeftFighterObjectId != localPlayerFight.Value.LeftFighterObjectId)
             {
                 currentSpectatedFightIndex = i;
                 break;
@@ -433,7 +433,7 @@ public class CombatSpectatorManager : MonoBehaviour
             return;
         }
 
-        LogDebug($"Attempting to switch to fight: Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}");
+        LogDebug($"Attempting to switch to fight: Left Fighter {fight.LeftFighterObjectId} vs Right Fighter {fight.RightFighterObjectId}");
         
         // Debug: Log all available fight assignments for comparison
         var allFights = fightManager.GetAllFightAssignments();
@@ -441,20 +441,20 @@ public class CombatSpectatorManager : MonoBehaviour
         for (int i = 0; i < allFights.Count; i++)
         {
             var f = allFights[i];
-            var player = GetNetworkObjectComponent<NetworkEntity>(f.PlayerObjectId);
-            var pet = GetNetworkObjectComponent<NetworkEntity>(f.PetObjectId);
-            LogDebug($"  Fight {i}: Player {f.PlayerObjectId} ({(player?.EntityName.Value ?? "null")}) vs Pet {f.PetObjectId} ({(pet?.EntityName.Value ?? "null")})");
+            var leftFighter = GetNetworkObjectComponent<NetworkEntity>(f.LeftFighterObjectId);
+            var rightFighter = GetNetworkObjectComponent<NetworkEntity>(f.RightFighterObjectId);
+            LogDebug($"  Fight {i}: Left Fighter {f.LeftFighterObjectId} ({(leftFighter?.EntityName.Value ?? "null")}) vs Right Fighter {f.RightFighterObjectId} ({(rightFighter?.EntityName.Value ?? "null")})");
         }
 
-        // Get the player entity for this fight
-        var playerEntity = GetNetworkObjectComponent<NetworkEntity>(fight.PlayerObjectId);
-        if (playerEntity == null)
+        // Get the left fighter entity for this fight
+        var leftFighterEntity = GetNetworkObjectComponent<NetworkEntity>(fight.LeftFighterObjectId);
+        if (leftFighterEntity == null)
         {
-            LogDebug($"Cannot find player entity with ID {fight.PlayerObjectId}");
+            LogDebug($"Cannot find left fighter entity with ID {fight.LeftFighterObjectId}");
             return;
         }
 
-        LogDebug($"Found player entity: {playerEntity.EntityName.Value} (ID: {playerEntity.ObjectId})");
+        LogDebug($"Found left fighter entity: {leftFighterEntity.EntityName.Value} (ID: {leftFighterEntity.ObjectId})");
 
         // Close any open deck view before switching fights
         if (deckViewerManager != null && deckViewerManager.IsDeckViewOpen)
@@ -464,13 +464,13 @@ public class CombatSpectatorManager : MonoBehaviour
         }
 
         // Debug: Log current viewed combat state before switching
-        LogDebug($"Before SetViewedFight - ViewedPlayer: {(fightManager.ViewedCombatPlayer?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedCombatPlayer?.ObjectId ?? 0}), ViewedOpponentPet: {(fightManager.ViewedCombatOpponentPet?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedCombatOpponentPet?.ObjectId ?? 0})");
+        LogDebug($"Before SetViewedFight - ViewedLeftFighter: {(fightManager.ViewedLeftFighter?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedLeftFighter?.ObjectId ?? 0}), ViewedRightFighter: {(fightManager.ViewedRightFighter?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedRightFighter?.ObjectId ?? 0})");
 
         // Use FightManager's SetViewedFight method to update the viewed combat references
-        bool success = fightManager.SetViewedFight(playerEntity);
+        bool success = fightManager.SetViewedFight(leftFighterEntity);
         
         // Debug: Log viewed combat state after switching
-        LogDebug($"After SetViewedFight - Success: {success}, ViewedPlayer: {(fightManager.ViewedCombatPlayer?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedCombatPlayer?.ObjectId ?? 0}), ViewedOpponentPet: {(fightManager.ViewedCombatOpponentPet?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedCombatOpponentPet?.ObjectId ?? 0})");
+        LogDebug($"After SetViewedFight - Success: {success}, ViewedLeftFighter: {(fightManager.ViewedLeftFighter?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedLeftFighter?.ObjectId ?? 0}), ViewedRightFighter: {(fightManager.ViewedRightFighter?.EntityName.Value ?? "null")} (ID: {fightManager.ViewedRightFighter?.ObjectId ?? 0})");
 
         if (success)
         {
@@ -496,17 +496,17 @@ public class CombatSpectatorManager : MonoBehaviour
             
             // Check if we've cycled back to the local player's own fight
             if (isSpectating && localPlayerFight.HasValue && 
-                fight.PlayerObjectId == localPlayerFight.Value.PlayerObjectId)
+                fight.LeftFighterObjectId == localPlayerFight.Value.LeftFighterObjectId)
             {
                 LogDebug("Cycled back to local player's own fight - automatically exiting spectating mode");
                 ExitSpectatingMode();
             }
             
-            LogDebug($"Successfully switched to fight: Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}");
+            LogDebug($"Successfully switched to fight: Left Fighter {fight.LeftFighterObjectId} vs Right Fighter {fight.RightFighterObjectId}");
         }
         else
         {
-            LogDebug($"Failed to switch to fight: Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}");
+            LogDebug($"Failed to switch to fight: Left Fighter {fight.LeftFighterObjectId} vs Right Fighter {fight.RightFighterObjectId}");
         }
     }
     

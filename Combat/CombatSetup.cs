@@ -378,36 +378,36 @@ public class CombatSetup : NetworkBehaviour
     {
         List<NetworkEntity> availablePets = new List<NetworkEntity>(pets);
         
-        foreach (NetworkEntity player in players)
+        foreach (NetworkEntity leftFighter in players)
         {
             if (availablePets.Count == 0) break;
             
-            // Find player's own pet to avoid pairing with it
-            NetworkEntity playerOwnedPet = pets.FirstOrDefault(p => p.GetOwnerEntity() == player);
+            // Find left fighter's own pet to avoid pairing with it
+            NetworkEntity leftFighterOwnedPet = pets.FirstOrDefault(p => p.GetOwnerEntity() == leftFighter);
             
-            // Find a suitable pet to fight against
-            NetworkEntity opponentPet = FindOpponentPet(availablePets, playerOwnedPet);
+            // Find a suitable pet to fight against (right fighter)
+            NetworkEntity rightFighter = FindOpponentPet(availablePets, leftFighterOwnedPet);
             
-            if (opponentPet != null)
+            if (rightFighter != null)
             {
-                fightManager.AddFightAssignment(player, opponentPet);
-                availablePets.Remove(opponentPet);
+                fightManager.AddFightAssignment(leftFighter, rightFighter);
+                availablePets.Remove(rightFighter);
             }
         }
     }
     
-    private NetworkEntity FindOpponentPet(List<NetworkEntity> availablePets, NetworkEntity playerOwnedPet)
+    private NetworkEntity FindOpponentPet(List<NetworkEntity> availablePets, NetworkEntity leftFighterOwnedPet)
     {
-        // First try to find a pet that's not owned by the player
+        // First try to find a pet that's not owned by the left fighter
         foreach (NetworkEntity pet in availablePets)
         {
-            if (pet != playerOwnedPet)
+            if (pet != leftFighterOwnedPet)
             {
                 return pet;
             }
         }
         
-        // If no other pet is available, return the first pet (even if it's the player's own)
+        // If no other pet is available, return the first pet (even if it's the left fighter's own)
         return availablePets.Count > 0 ? availablePets[0] : null;
     }
 

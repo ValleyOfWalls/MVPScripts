@@ -11,6 +11,7 @@ using System.Linq;
 public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerDownHandler, IPointerUpHandler
 {
     [Header("Drag Settings")]
+    [SerializeField] private bool enableDragging = false; // Enable/disable dragging functionality
     [SerializeField] private float dragThreshold = 8f; // Minimum distance to start drag (reduced for better responsiveness)
     [SerializeField] private Canvas dragCanvas; // Canvas to parent card to during drag
     [SerializeField] private int dragSortingOrder = 1000; // Sorting order during drag
@@ -343,6 +344,13 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     /// </summary>
     private bool CanDragCard()
     {
+        // Check if dragging is enabled
+        if (!enableDragging)
+        {
+            LogDebug($"Cannot drag {gameObject.name} - dragging is disabled");
+            return false;
+        }
+        
         // Don't allow dragging in draft phase
         GamePhaseManager gamePhaseManager = GamePhaseManager.Instance;
         if (gamePhaseManager != null && gamePhaseManager.GetCurrentPhase() == GamePhaseManager.GamePhase.Draft)
@@ -929,14 +937,7 @@ public class CardDragDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
         
         // Check if entity is the source's opponent in the current fight
         NetworkEntity sourceOpponent = null;
-        if (sourceEntity.EntityType == EntityType.Player)
-        {
-            sourceOpponent = fightManager.GetOpponentForPlayer(sourceEntity);
-        }
-        else if (sourceEntity.EntityType == EntityType.Pet)
-        {
-            sourceOpponent = fightManager.GetOpponentForPet(sourceEntity);
-        }
+                    sourceOpponent = fightManager.GetOpponent(sourceEntity);
         
         if (sourceOpponent == entity)
         {

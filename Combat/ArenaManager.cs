@@ -306,17 +306,17 @@ public class ArenaManager : NetworkBehaviour
         int arenaIndex = nextArenaIndex++;
         
         // Map player to arena
-        playerToArenaMap[fight.PlayerObjectId] = arenaIndex;
+        playerToArenaMap[fight.LeftFighterObjectId] = arenaIndex;
         
         // Map arena to players
         if (!arenaToPlayersMap.ContainsKey(arenaIndex))
         {
             arenaToPlayersMap[arenaIndex] = new List<uint>();
         }
-        arenaToPlayersMap[arenaIndex].Add(fight.PlayerObjectId);
+        arenaToPlayersMap[arenaIndex].Add(fight.LeftFighterObjectId);
         
-        LogDebug($"Assigned fight (Player {fight.PlayerObjectId} vs Pet {fight.PetObjectId}) to arena {arenaIndex}");
-        Debug.Log($"[ARENA_ASSIGN] Player {fight.PlayerObjectId} assigned to arena {arenaIndex} (vs Pet {fight.PetObjectId})");
+        LogDebug($"Assigned fight (Player {fight.LeftFighterObjectId} vs Pet {fight.RightFighterObjectId}) to arena {arenaIndex}");
+        Debug.Log($"[ARENA_ASSIGN] Player {fight.LeftFighterObjectId} assigned to arena {arenaIndex} (vs Pet {fight.RightFighterObjectId})");
     }
     
     #endregion
@@ -364,10 +364,10 @@ public class ArenaManager : NetworkBehaviour
     /// </summary>
     public int GetCurrentViewedArena()
     {
-        if (fightManager == null || fightManager.ViewedCombatPlayer == null)
+        if (fightManager == null || fightManager.ViewedLeftFighter == null)
             return -1;
             
-        return GetArenaForPlayer((uint)fightManager.ViewedCombatPlayer.ObjectId);
+        return GetArenaForPlayer((uint)fightManager.ViewedLeftFighter.ObjectId);
     }
     
     /// <summary>
